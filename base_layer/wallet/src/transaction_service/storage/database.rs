@@ -612,7 +612,6 @@ where T: TransactionBackend + 'static
             source_public_key.clone(),
             comms_public_key.clone(),
             amount,
-            None,
             MicroTari::from(0),
             Transaction::new(
                 Vec::new(),

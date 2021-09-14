@@ -333,8 +333,6 @@ impl SenderTransactionProtocolBuilder {
                                 .clone(),
                             PublicKey::from_secret_key(&change_sender_offset_private_key),
                             metadata_signature,
-                            None,
-                            None,
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },

@@ -433,8 +433,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             for token in tokens {
                 match tx
                     .send(Ok(tari_rpc::GetTokensResponse {
-                        asset_public_key: token.parent_public_key.map(|pk| pk.to_vec()).unwrap_or_default(),
-                        unique_id: token.unique_id.unwrap_or_default(),
+                        asset_public_key: token
+                            .features
+                            .parent_public_key
+                            .map(|pk| pk.to_vec())
+                            .unwrap_or_default(),
+                        unique_id: token.features.unique_id.unwrap_or_default(),
                         owner_commitment: token.commitment.to_vec(),
                         mined_in_block: vec![],
                         mined_height: 0,

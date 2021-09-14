@@ -123,8 +123,6 @@ pub struct SingleRoundSenderData {
     pub sender_offset_public_key: PublicKey,
     /// The sender's portion of the public commitment nonce
     pub public_commitment_nonce: PublicKey,
-    /// Unique id on the blockchain, if present
-    pub unique_id: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,7 +372,6 @@ impl SenderTransactionProtocol {
                     script: recipient_script,
                     sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
                     public_commitment_nonce: PublicKey::from_secret_key(&private_commitment_nonce),
-                    unique_id: info.unique_id.clone(),
                 })
             },
             _ => Err(TPE::InvalidStateError),

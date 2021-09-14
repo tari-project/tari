@@ -32,13 +32,13 @@ pub struct OutputSql {
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
     pub metadata_signature_v_key: Vec<u8>,
-    pub unique_id: Option<Vec<u8>>,
     pub metadata: Option<Vec<u8>>,
     pub features_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
-    pub parent_public_key: Option<Vec<u8>>,
+    pub features_unique_id: Option<Vec<u8>>,
+    pub features_parent_public_key: Option<Vec<u8>>,
 }
 
 impl OutputSql {

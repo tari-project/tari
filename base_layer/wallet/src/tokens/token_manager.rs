@@ -65,7 +65,7 @@ impl<T: OutputManagerBackend + 'static> TokenManager<T> {
             .into_iter()
             .filter(|ub| {
                 // Filter out asset registrations that don't have a parent pub key
-                ub.unblinded_output.parent_public_key.is_some()
+                ub.unblinded_output.features.parent_public_key.is_some()
             })
             .map(|unblinded_output| convert_to_token(unblinded_output))
             .collect::<Result<_, _>>()?;
@@ -81,12 +81,13 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
             unblinded_output.status.to_string(),
             unblinded_output
                 .unblinded_output
+                .features
                 .parent_public_key
                 .as_ref()
                 .map(|a| a.clone())
                 .unwrap(),
             unblinded_output.commitment,
-            unblinded_output.unblinded_output.unique_id.unwrap_or_default(),
+            unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
         ));
     }
     let version = unblinded_output.unblinded_output.features.metadata[0];
@@ -99,12 +100,13 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
         unblinded_output.status.to_string(),
         unblinded_output
             .unblinded_output
+            .features
             .parent_public_key
             .as_ref()
             .map(|a| a.clone())
             .unwrap(),
         unblinded_output.commitment,
-        unblinded_output.unblinded_output.unique_id.unwrap_or_default(),
+        unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
     ))
 }
 

@@ -928,7 +928,6 @@ struct InboundTransactionSql {
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
-    unique_id: Option<Vec<u8>>,
 }
 
 impl InboundTransactionSql {
@@ -1055,7 +1054,6 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
             tx_id: i.tx_id.as_u64() as i64,
             source_public_key: i.source_public_key.to_vec(),
             amount: u64::from(i.amount) as i64,
-            unique_id: i.unique_id,
             receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
             message: i.message,
             timestamp: i.timestamp,
@@ -1076,7 +1074,6 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
             source_public_key: PublicKey::from_vec(&i.source_public_key)
                 .map_err(|_| TransactionStorageError::ConversionError("Invalid Source Publickey".to_string()))?,
             amount: MicroTari::from(i.amount as u64),
-            unique_id: i.unique_id,
             receiver_protocol: serde_json::from_str(&i.receiver_protocol)?,
             status: TransactionStatus::Pending,
             message: i.message,
@@ -1114,7 +1111,6 @@ struct OutboundTransactionSql {
     direct_send_success: i32,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
-    unique_id: Option<Vec<u8>>,
 }
 
 impl OutboundTransactionSql {
@@ -1249,7 +1245,6 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
             direct_send_success: o.direct_send_success as i32,
             send_count: o.send_count as i32,
             last_send_timestamp: o.last_send_timestamp,
-            unique_id: o.unique_id,
         })
     }
 }
@@ -1263,7 +1258,6 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
             destination_public_key: PublicKey::from_vec(&o.destination_public_key)
                 .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
             amount: MicroTari::from(o.amount as u64),
-            unique_id: o.unique_id,
             fee: MicroTari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol)?,
             status: TransactionStatus::Pending,
@@ -1308,7 +1302,6 @@ struct CompletedTransactionSql {
     valid: i32,
     confirmations: Option<i64>,
     mined_height: Option<i64>,
-    unique_id: Option<Vec<u8>>,
 }
 
 impl CompletedTransactionSql {
@@ -1568,7 +1561,6 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             source_public_key: c.source_public_key.to_vec(),
             destination_public_key: c.destination_public_key.to_vec(),
             amount: u64::from(c.amount) as i64,
-            unique_id: c.unique_id,
             fee: u64::from(c.fee) as i64,
             transaction_protocol: serde_json::to_string(&c.transaction)?,
             status: c.status as i32,
@@ -1597,7 +1589,6 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             destination_public_key: PublicKey::from_vec(&c.destination_public_key)
                 .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
             amount: MicroTari::from(c.amount as u64),
-            unique_id: c.unique_id,
             fee: MicroTari::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol)?,
             status: TransactionStatus::try_from(c.status)?,

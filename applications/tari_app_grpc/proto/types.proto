@@ -191,10 +191,6 @@ message TransactionOutput {
     // offset private key
     ComSignature metadata_signature = 7;
     // Tari script offset pubkey, K_O
-
-    // Unique id, e.g. for NFTs
-    bytes unique_id = 8;
-    bytes parent_public_key = 9;
 }
 
 // Options for UTXO's
@@ -207,9 +203,15 @@ message OutputFeatures {
 
     bytes metadata= 3;
 
-    AssetOutputFeatures asset = 16;
-    MintNonFungibleFeatures mint_non_fungible = 17;
-    SideChainCheckpointFeatures sidechain_checkpoint = 18;
+    AssetOutputFeatures asset = 4;
+
+    optional bytes unique_id = 5;
+
+    optional bytes parent_public_key = 6;
+
+    MintNonFungibleFeatures mint_non_fungible = 7;
+
+    SideChainCheckpointFeatures sidechain_checkpoint = 8;
 }
 
 message AssetOutputFeatures {
@@ -313,8 +315,6 @@ message UnblindedOutput {
     bytes sender_offset_public_key = 8;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 9;
-    // Unique Id
-    bytes unique_id = 10;
 }
 
 // ----------------------------- Network Types ----------------------------- //

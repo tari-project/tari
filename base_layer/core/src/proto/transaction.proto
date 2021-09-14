@@ -60,10 +60,8 @@ message TransactionOutput {
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 6;
-    // A unique id field that can be used to ensure there is only one of a specific NFT or token in the Unspent set at a time
-    bytes unique_id = 7;
+    // Numbering 7-8 taken
 
-    bytes parent_public_key = 8;
 }
 
 // Options for UTXO's
@@ -76,9 +74,15 @@ message OutputFeatures {
 
     bytes metadata = 3;
 
-    AssetOutputFeatures asset = 16;
-    MintNonFungibleFeatures mint_non_fungible = 17;
-    SideChainCheckpointFeatures sidechain_checkpoint = 18;
+    AssetOutputFeatures asset = 4;
+
+    optional bytes unique_id = 5;
+
+    optional bytes parent_public_key = 6;
+
+    MintNonFungibleFeatures mint_non_fungible = 7;
+
+    SideChainCheckpointFeatures sidechain_checkpoint = 8;
 }
 
 message AssetOutputFeatures {

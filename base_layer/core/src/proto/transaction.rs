@@ -170,18 +170,6 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let unique_id = if output.unique_id.is_empty() {
-            None
-        } else {
-            Some(output.unique_id.clone())
-        };
-
-        let parent_public_key = if output.parent_public_key.is_empty() {
-            None
-        } else {
-            Some(PublicKey::from_bytes(output.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
-        };
-
         Ok(Self {
             features,
             commitment,
@@ -189,8 +177,6 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             script,
             sender_offset_public_key,
             metadata_signature,
-            unique_id,
-            parent_public_key,
         })
     }
 }
@@ -204,11 +190,6 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.as_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
-            unique_id: output.unique_id.unwrap_or_default(),
-            parent_public_key: output
-                .parent_public_key
-                .map(|pp| pp.as_bytes().to_vec())
-                .unwrap_or_default(),
         }
     }
 }
@@ -224,6 +205,11 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
             metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: match features.parent_public_key {
+                Some(a) => Some(PublicKey::from_bytes(a.as_bytes()).map_err(|err| format!("{:?}", err))?),
+                None => None,
+            },
             asset: match features.asset {
                 Some(a) => Some(a.try_into()?),
                 None => None,
@@ -246,6 +232,11 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
             metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: match features.parent_public_key {
+                Some(a) => Some(a.as_bytes().to_vec()),
+                None => None,
+            },
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),

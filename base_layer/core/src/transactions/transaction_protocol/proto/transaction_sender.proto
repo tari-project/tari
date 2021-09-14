@@ -28,7 +28,7 @@ message SingleRoundSenderData {
     // Output features
     tari.types.OutputFeatures features = 10;
     // Unique id for NFTs
-    bytes unique_id = 11;
+    // bytes unique_id = 11;
 }
 
 message TransactionSenderMessage {

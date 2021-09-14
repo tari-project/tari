@@ -104,8 +104,6 @@ fn get_weatherwax_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
-            unique_id: None,
-            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -211,8 +209,6 @@ fn get_ridcully_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
-            unique_id: None,
-            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -296,8 +292,6 @@ fn get_igor_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
-            unique_id: None,
-            parent_public_key: None
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -384,8 +378,6 @@ fn get_dibbler_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
-            unique_id: None,
-            parent_public_key: None,
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,

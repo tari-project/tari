@@ -106,11 +106,6 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
-        let unique_id = if data.unique_id.is_empty() {
-            None
-        } else {
-            Some(data.unique_id.clone())
-        };
         Ok(Self {
             tx_id: data.tx_id.into(),
             amount: data.amount.into(),
@@ -122,7 +117,6 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             sender_offset_public_key,
             public_commitment_nonce,
-            unique_id,
         })
     }
 }
@@ -142,7 +136,6 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             script: sender_data.script.as_bytes(),
             sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
             public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
-            unique_id: sender_data.unique_id.unwrap_or_default(),
         }
     }
 }

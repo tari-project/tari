@@ -24,7 +24,6 @@ table! {
         valid -> Integer,
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
-        unique_id -> Nullable<Binary>,
     }
 }
 
@@ -47,7 +46,6 @@ table! {
         direct_send_success -> Integer,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
-        unique_id -> Nullable<Binary>,
     }
 }
 
@@ -83,7 +81,6 @@ table! {
         direct_send_success -> Integer,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
-        unique_id -> Nullable<Binary>,
     }
 }
 
@@ -105,13 +102,13 @@ table! {
         metadata_signature_nonce -> Binary,
         metadata_signature_u_key -> Binary,
         metadata_signature_v_key -> Binary,
-        unique_id -> Nullable<Binary>,
         metadata -> Nullable<Binary>,
         features_asset_public_key -> Nullable<Binary>,
         features_mint_asset_public_key -> Nullable<Binary>,
         features_mint_asset_owner_commitment -> Nullable<Binary>,
         features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
-        parent_public_key -> Nullable<Binary>,
+        features_parent_public_key -> Nullable<Binary>,
+        features_unique_id -> Nullable<Binary>,
     }
 }
 

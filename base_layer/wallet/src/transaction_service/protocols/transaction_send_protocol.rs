@@ -232,7 +232,6 @@ where TBackend: TransactionBackend + 'static
                 self.dest_pubkey.clone(),
                 self.amount,
                 // TODO: put value in here
-                None,
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,
@@ -489,7 +488,6 @@ where TBackend: TransactionBackend + 'static
             self.resources.node_identity.public_key().clone(),
             outbound_tx.destination_public_key.clone(),
             outbound_tx.amount,
-            outbound_tx.unique_id,
             outbound_tx.fee,
             tx.clone(),
             TransactionStatus::Completed,
