@@ -105,6 +105,7 @@ Note: this replaces some information in [RFC-0311](RFC-0310_AssetImplementation.
 | asset_registration.template_ids | Vec<bytes(32)> |The templates that this asset exposes. Usually, at least one will be specified |
 | asset_registration.creator_sig | bytes(64) (32 Nonce + 32 sig) | A signature of the UTXO's `commitment` and `script` using the public key in `unique_id` to prove this registration was created in this UTXO |
 | asset_registration.checkpoint_unique_id | bytes(32) | A reference to the unique id reserved for checkpoint UTXOs. Optional |
+| asset_registration.checkpoint_frequency | uint32 | The frequency, in sidechain blocks (or other measure of time the sidechain uses) in which checkpoints are created |
 | mint.issuer_proof | bytes(96) (64 nonce + 32 sig) | A _ComSig_ proof proving that the owner of the UTXO containing the asset registration created this token 
 | checkpoint.merkle_root | bytes(32) | Merkle root of the sidechain data. The format and meaning of this data is specific to the sidechain implementation |
 
@@ -381,14 +382,13 @@ message TokenStatePair {
 }
 ```
 
+## Checkpoints
 
-
-* [structure of checkpoint]
-* [structure of peg in/out]
-* [hotstuff nodes]
-* [fees on side chain]
-* [example side chains]
-* 
+As part of the Commit phase, a validator node includes in its vote, a signature of the current state and instruction set
+in `locked_qc` that can be used as part of the threshold signature to spend the current checkpoint. This sign the state of the chain before the current instruction proposal is executed. Before
+sending out the Decide messages, the current leader looks at the base layer and determines if `checkpoint_frequency`
+blocks in the sidechain have been created since the last checkpoint. If so, the leader assembles a transaction
+spending the previous checkpoint using the signatures it has obtained. 
 
 ## Examples
 
