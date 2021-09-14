@@ -54,27 +54,6 @@ technological merits of the potential system outlined herein.
 
 This RFC details the specifics of how NFTs are stored and represented on 
 the base layer and the digital assets layer.
-If I own an NFT, how can I provide a proof that I own it?
-Transferring of NFTs must be censorship resistant. 
-How are operations on the sidechain managed.
-
-
-* [How are NFTs stored on the base layer]
-* [How do sidechains store data on the base layer] 
-* [what nodes want to see this information]
-* [how are peg ins and peg outs achieved]
-
-
-## Open problems
-* [covenants]
-
-## Goals
-
-* [privacy concerns]
-* [ownership]
-
-## Requirements
-* Only the Asset Issuer can mint a new NFT for a token
 
 ## Proposal
 
@@ -111,24 +90,6 @@ Note: this replaces some information in [RFC-0311](RFC-0310_AssetImplementation.
 
 
 Note: `unique_id` is not always required to be a public key
-
-## Gram weight for new features
-[Mint flag should be heavier]
-
-```rust
-
-pub struct OutputFeatures {
-    flags: OutputFlags,
-    maturity: u64,
-    
-    // New token fields
-    unique_id: Vec<u8>,
-    parent_public_key: Vec<u8>
-    
-    // New instruction features
-}
-```
-
 
 ### New Base Layer Consensus rules
 
@@ -639,6 +600,6 @@ may look like the following:
 }
 ```
 
-Upon receiving an instruction
+Upon receiving an instruction the validator node processes it as described above and will periodically create a checkpoint.
 
 ## Example 2: Importing an ERC20
