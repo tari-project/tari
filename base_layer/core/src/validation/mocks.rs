@@ -36,6 +36,7 @@ use crate::{
         PostOrphanBodyValidation,
     },
 };
+use async_trait::async_trait;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -67,10 +68,11 @@ impl MockValidator {
     }
 }
 
-impl<B: BlockchainBackend> BlockSyncBodyValidation<B> for MockValidator {
-    fn validate_body(&self, _item: &Block, _db: &B) -> Result<(), ValidationError> {
+#[async_trait]
+impl BlockSyncBodyValidation for MockValidator {
+    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            Ok(())
+            Ok(block)
         } else {
             Err(ValidationError::custom_error(
                 "This mock validator always returns an error",
@@ -91,6 +93,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
     }
 }
 
+// #[async_trait]
 impl OrphanValidation for MockValidator {
     fn validate(&self, _item: &Block) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {

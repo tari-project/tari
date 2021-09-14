@@ -69,7 +69,7 @@ async fn test_listening_lagging() {
         .build();
     let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(

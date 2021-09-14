@@ -727,7 +727,7 @@ async fn request_response_get_stats() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -779,7 +779,7 @@ async fn request_response_get_tx_state_by_excess_sig() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -846,7 +846,7 @@ async fn receive_and_propagate_transaction() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
@@ -1085,7 +1085,7 @@ async fn block_event_and_reorg_event_handling() {
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(

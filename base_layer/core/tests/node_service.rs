@@ -83,7 +83,7 @@ async fn request_response_get_metadata() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -113,7 +113,7 @@ async fn request_and_response_fetch_blocks() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
@@ -167,7 +167,7 @@ async fn request_and_response_fetch_blocks_with_hashes() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
@@ -244,7 +244,7 @@ async fn propagate_and_forward_many_valid_blocks() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -358,7 +358,7 @@ async fn propagate_and_forward_invalid_block_hash() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -462,7 +462,7 @@ async fn propagate_and_forward_invalid_block() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
@@ -617,7 +617,7 @@ async fn local_get_new_block_template_and_get_new_block() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
@@ -658,7 +658,7 @@ async fn local_get_new_block_with_zero_conf() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -735,7 +735,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())

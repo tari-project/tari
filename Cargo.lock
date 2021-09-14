@@ -4210,6 +4210,7 @@ dependencies = [
  "config",
  "futures 0.3.16",
  "log 0.4.14",
+ "num_cpus",
  "opentelemetry",
  "opentelemetry-jaeger",
  "regex",
@@ -4456,6 +4457,7 @@ dependencies = [
 name = "tari_core"
 version = "0.9.6"
 dependencies = [
+ "async-trait",
  "bincode",
  "bitflags 1.3.2",
  "blake2",

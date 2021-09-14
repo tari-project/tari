@@ -150,7 +150,7 @@ pub fn create_new_blockchain(
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     // let db = create_lmdb_database(&consensus_manager);
@@ -176,7 +176,7 @@ pub fn create_new_blockchain_with_constants(
     let factories = CryptoFactories::default();
     let (block0, output) = create_genesis_block(&factories, &constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(constants)
+        .add_consensus_constants(constants)
         .with_block(block0.clone())
         .build();
     // let db = create_lmdb_database(&consensus_manager);
@@ -208,7 +208,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let db = create_lmdb_database(path, LMDBConfig::default()).unwrap();

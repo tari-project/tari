@@ -26,6 +26,7 @@ use crate::{
         sync::{hooks::Hooks, rpc},
         BlockSyncConfig,
     },
+    blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
@@ -45,7 +46,6 @@ use tari_comms::{
     peer_manager::NodeId,
     PeerConnection,
 };
-use tokio::task;
 use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
@@ -55,7 +55,7 @@ pub struct BlockSynchronizer<B> {
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
     sync_peer: Option<PeerConnection>,
-    block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
+    block_validator: Arc<dyn BlockSyncBodyValidation>,
     hooks: Hooks,
 }
 
@@ -65,7 +65,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         sync_peer: Option<PeerConnection>,
-        block_validator: Arc<dyn BlockSyncBodyValidation<B>>,
+        block_validator: Arc<dyn BlockSyncBodyValidation>,
     ) -> Self {
         Self {
             config,
@@ -208,8 +208,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
 
             let timer = Instant::now();
-            let block = Arc::new(header.upgrade_to_chain_block(body));
-            self.validate_block(block.clone()).await?;
+            let (header, header_accum_data) = header.into_parts();
+
+            let block = self.block_validator.validate_body(Block::new(header, body)).await?;
+
+            let block = ChainBlock::try_construct(Arc::new(block), header_accum_data)
+                .map(Arc::new)
+                .ok_or(BlockSyncError::FailedToConstructChainBlock)?;
 
             debug!(
                 target: LOG_TARGET,
@@ -258,19 +263,6 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         debug!(target: LOG_TARGET, "Completed block sync with peer `{}`", peer);
 
         Ok(())
-    }
-
-    async fn validate_block(&self, block: Arc<ChainBlock>) -> Result<(), BlockSyncError> {
-        let validator = self.block_validator.clone();
-
-        let db = self.db.clone();
-        task::spawn_blocking(move || {
-            let db = db.inner().db_read_access()?;
-            validator.validate_body(block.block(), &*db)?;
-            Result::<_, BlockSyncError>::Ok(())
-        })
-        .await
-        .expect("block validator panicked")
     }
 
     async fn ban_peer<T: ToString>(&mut self, node_id: NodeId, reason: T) -> Result<(), BlockSyncError> {

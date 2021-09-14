@@ -35,7 +35,7 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
     effective_from_height: u64,
-    /// The min height maturity a coinbase utxo must have
+    /// The min absolute height maturity a coinbase utxo must have
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
