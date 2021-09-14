@@ -148,7 +148,6 @@ where T: AsyncRead + AsyncWrite + Unpin
                 target: LOG_TARGET,
                 "IO error when sending new session handshake to peer: {}", err
             );
-            panic!();
         }
         self.framed.flush().await?;
         match self.recv_next_frame().await {
