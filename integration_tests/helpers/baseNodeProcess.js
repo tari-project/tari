@@ -39,7 +39,7 @@ class BaseNodeProcess {
       if (fs.existsSync(this.baseDir)) {
         instance++;
       } else {
-        fs.mkdirSync(this.baseDir);
+        fs.mkdirSync(this.baseDir, { recursive: true });
       }
     } while (fs.existsSync(this.baseDir));
     const args = ["--base-path", ".", "--init", "--create-id"];
