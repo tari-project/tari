@@ -104,7 +104,8 @@ where B: BlockchainBackend + 'static
             .iter()
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow!("Invalid force sync peer: {:?}", e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
