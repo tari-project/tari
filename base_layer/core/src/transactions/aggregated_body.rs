@@ -83,6 +83,7 @@ impl AggregateBody {
 
     /// Create a new aggregate body from provided inputs, outputs and kernels.
     /// It is up to the caller to ensure that the inputs, outputs and kernels are sorted
+    #[cfg(feature = "base_node")]
     pub(crate) fn new_sorted_unchecked(
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,

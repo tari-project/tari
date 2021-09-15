@@ -125,7 +125,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
         let block = Block::new(
             valid_header,
-            // UNCHECKED: the validator has checked all inputs/outputs are sorted and preserves order in it's output
+            // UNCHECKED: the validator has checked all inputs/outputs are sorted and preserves order in its output
             AggregateBody::new_sorted_unchecked(inputs_result.inputs, outputs_result.outputs, kernels_result.kernels),
         );
 
