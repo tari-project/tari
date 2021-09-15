@@ -40,6 +40,7 @@ class BaseNodeProcess {
         instance++;
       } else {
         fs.mkdirSync(this.baseDir, { recursive: true });
+        break;
       }
     } while (fs.existsSync(this.baseDir));
     const args = ["--base-path", ".", "--init", "--create-id"];
