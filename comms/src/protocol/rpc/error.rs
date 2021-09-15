@@ -65,6 +65,8 @@ pub enum RpcError {
     InvalidPingResponse,
     #[error("Unexpected ACK response. This is likely because of a previous ACK timeout")]
     UnexpectedAckResponse,
+    #[error("Attempted to send more than {expected} payload chunks")]
+    ExceededMaxChunkCount { expected: usize },
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
 }

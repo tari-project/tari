@@ -105,8 +105,8 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
-        check_inputs_are_utxos(tx.get_body(), &*db)?;
-        check_not_duplicate_txos(tx.get_body(), &*db)?;
+        check_inputs_are_utxos(&*db, tx.get_body())?;
+        check_not_duplicate_txos(&*db, tx.get_body())?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;

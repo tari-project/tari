@@ -1183,7 +1183,7 @@ fn invalid_block() {
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validator = MockValidator::new(true);
@@ -1410,7 +1410,7 @@ fn orphan_cleanup_on_reorg() {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -1661,7 +1661,7 @@ fn fails_validation() {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -1774,7 +1774,7 @@ fn input_malleability() {
         .store()
         .rewind_to_height(mod_block.header.height - 1)
         .unwrap();
-    let modded_root = blockchain.store().calculate_mmr_roots(&mod_block).unwrap();
+    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
     assert_ne!(header.input_mr, modded_root.input_mr);
 
     mod_block.header.input_mr = modded_root.input_mr;
