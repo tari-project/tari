@@ -87,6 +87,12 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
 
     let mid_index = timestamps.len() / 2;
     let median_timestamp = if timestamps.len() % 2 == 0 {
+        trace!(
+            target: LOG_TARGET,
+            "No median timestamp available, estimating median as avg of [{}] and [{}]",
+            timestamps[mid_index - 1],
+            timestamps[mid_index],
+        );
         (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
     } else {
         timestamps[mid_index]
