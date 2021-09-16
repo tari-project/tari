@@ -182,7 +182,7 @@ There is no limit to the number of different sidechain checkpoint tokens an asse
 
 ## New Base Node GRPC methods
 
-A base node should expose the following methods on via GRPC:
+A base node should expose the following methods via GRPC:
 
 ```protobuf
 
