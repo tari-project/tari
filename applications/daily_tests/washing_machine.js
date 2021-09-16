@@ -132,13 +132,14 @@ function WashingMachine(options) {
     await this.wallet1.connect(wallet1Grpc);
 
     debug("Compiling and starting applications...");
+    let wallet2Process = null;
     // Start wallet2
     if (wallet2Grpc) {
       this.wallet2 = new WalletClient();
       await this.wallet2.connect(wallet2Grpc);
     } else {
       const port = await getFreePort(20000, 25000);
-      const wallet2Process = createGrpcWallet(
+      wallet2Process = createGrpcWallet(
         baseNodeSeed,
         {
           routingMechanism,
@@ -171,7 +172,7 @@ function WashingMachine(options) {
     let counters = { numSuccess: 0, numFailed: 0 };
     const startTime = DateTime.now();
     let lastNotifiedAt = DateTime.now();
-    while (true) {
+    for (;;) {
       debug(`Wallet 1 -> Wallet 2`);
       {
         let {
@@ -376,7 +377,7 @@ async function waitForBalance(client, balance) {
   debug(
     `Waiting for available wallet balance (${newBalance.available_balance}uT, pending=${newBalance.pending_incoming_balance}uT) to reach at least ${balance}uT...`
   );
-  while (true) {
+  for (;;) {
     newBalance = await client.getBalance();
     if (newBalance.available_balance >= balance) {
       return newBalance;
@@ -394,7 +395,7 @@ async function waitForBalance(client, balance) {
 
 function collect(iter) {
   let arr = [];
-  for (i of iter) {
+  for (let i of iter) {
     arr.push(i);
   }
   return arr;

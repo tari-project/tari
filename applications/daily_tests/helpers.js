@@ -166,10 +166,8 @@ const git = {
       });
       ps.on("close", (exitCode) => {
         if (exitCode && exitCode !== 0) {
-          console.error(`child process exited with code ${exitCode}`);
           reject(`child process exited with code ${exitCode}`);
         } else {
-          console.log(command);
           resolve(null);
         }
       });
