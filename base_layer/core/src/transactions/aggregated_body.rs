@@ -59,12 +59,8 @@ pub struct AggregateBody {
 impl AggregateBody {
     /// Create an empty aggregate body
     pub fn empty() -> AggregateBody {
-        AggregateBody {
-            sorted: false,
-            inputs: vec![],
-            outputs: vec![],
-            kernels: vec![],
-        }
+        // UNCHECKED: empty vecs are sorted
+        AggregateBody::new_sorted_unchecked(vec![], vec![], vec![])
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
