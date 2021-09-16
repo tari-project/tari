@@ -35,7 +35,7 @@ impl HeaderValidator {
         }
 
         let height = block_header.height - 1;
-        let min_height = height.saturating_sub(
+        let min_height = block_header.height.saturating_sub(
             self.rules
                 .consensus_constants(block_header.height)
                 .get_median_timestamp_count() as u64,

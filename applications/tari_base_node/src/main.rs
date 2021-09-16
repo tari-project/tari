@@ -204,7 +204,6 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     )
     .await
     .map_err(|err| {
-        error!(target: LOG_TARGET, "{}", err);
         for boxed_error in err.chain() {
             if let Some(HiddenServiceControllerError::TorControlPortOffline) =
                 boxed_error.downcast_ref::<HiddenServiceControllerError>()
@@ -220,6 +219,12 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
                      127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
                 );
                 return ExitCodes::TorOffline;
+            }
+
+            // todo: find a better way to do this
+            if boxed_error.to_string().contains("Invalid force sync peer") {
+                println!("Please check your force sync peers configuration");
+                return ExitCodes::ConfigError(boxed_error.to_string());
             }
         }
         ExitCodes::UnknownError
