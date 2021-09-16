@@ -15,7 +15,7 @@ const WEBHOOK_CHANNEL = "protocol-bot-stuff";
 
 function failed(message) {
   console.error(message);
-  if (!!getWebhookUrl()) {
+  if (getWebhookUrl()) {
     sendWebhookNotification(WEBHOOK_CHANNEL, `🚨 ${message}`);
   }
   process.exit(1);
@@ -23,7 +23,7 @@ function failed(message) {
 
 function notify(message) {
   console.log(message);
-  if (!!getWebhookUrl()) {
+  if (getWebhookUrl()) {
     sendWebhookNotification(WEBHOOK_CHANNEL, message);
   }
 }
@@ -141,7 +141,13 @@ async function main() {
     runBaseNodeSyncTest(SyncType.Archival)
   ).start();
   new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
-  new CronJob("0 4 * * *", () => git.pull(__dirname)).start();
+  new CronJob("0 4 * * *", () =>
+    git.pull(__dirname).catch((err) => {
+      failed("Failed to update git repo");
+      console.error(err);
+      return Promise.resolve(null);
+    })
+  ).start();
 
   console.log("⏱ Cron jobs started.");
 }

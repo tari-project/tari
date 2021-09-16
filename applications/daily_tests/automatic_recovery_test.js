@@ -5,7 +5,7 @@ const helpers = require("./helpers");
 const WalletProcess = require("integration_tests/helpers/walletProcess");
 
 const RECOVERY_COMPLETE_REGEXP = /Recovery complete! Scanned = (\d+) in/;
-const RECOVERY_WORTH_REGEXP = /worth ([0-9\.]+) (µ?T)/;
+const RECOVERY_WORTH_REGEXP = /worth ([0-9.]+) (µ?T)/;
 const FAILURE_REGEXP =
   /Attempt (\d+)\/(\d+): Failed to complete wallet recovery/;
 
