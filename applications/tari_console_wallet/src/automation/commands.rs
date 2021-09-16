@@ -709,13 +709,12 @@ pub async fn command_runner(
                     .iter()
                     .map(|arg| {
                         let s = arg.to_string();
-                        match &s[0..2] {
-                            "0x" => {
-                                let s = s[2..].to_string();
-                                let r: Vec<u8> = Hex::from_hex(&s).unwrap();
-                                r
-                            },
-                            _ => s.into_bytes(),
+                        if s.starts_with("0x") {
+                            let s = s[2..].to_string();
+                            let r: Vec<u8> = Hex::from_hex(&s).unwrap();
+                            r
+                        } else {
+                            s.into_bytes()
                         }
                     })
                     .collect();
