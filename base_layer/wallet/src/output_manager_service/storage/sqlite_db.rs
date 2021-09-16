@@ -611,11 +611,11 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 p.delete(&(*conn))?;
             },
             Err(e) => {
-                match e {
+                return match e {
                     OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                        return Err(OutputManagerStorageError::ValueNotFound)
+                        Err(OutputManagerStorageError::ValueNotFound)
                     },
-                    e => return Err(e),
+                    e => Err(e),
                 };
             },
         }

@@ -586,6 +586,12 @@ impl AppStateInner {
                     self.refresh_balance().await?;
                     self.updated = true;
                     return Ok(());
+                } else if (tx.status == TransactionStatus::Pending || tx.status == TransactionStatus::Completed) &&
+                    tx.cancelled
+                {
+                    self.refresh_balance().await?;
+                    self.updated = true;
+                    return Ok(());
                 }
 
                 if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {

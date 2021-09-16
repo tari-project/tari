@@ -385,6 +385,19 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
+        match self.db.get_any_transaction(tx_id).await {
+            Ok(_) => {
+                // Make sure the transaction is cancelled
+                self.db.cancel_pending_transaction(tx_id).await.unwrap_or_default();
+                self.db.cancel_completed_transaction(tx_id).await.unwrap_or_default();
+            },
+            Err(_) => error!(
+                // Transaction doesn't exist
+                target: LOG_TARGET,
+                "Error retrieving Cancelled Transaction TxId {}", tx_id
+            ),
+        }
+
         let mut transaction = None;
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
             transaction = Some(tx);
