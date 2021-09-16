@@ -37,8 +37,8 @@ pub struct OutputSql {
     pub features_mint_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
-    pub features_unique_id: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
+    pub features_unique_id: Option<Vec<u8>>,
 }
 
 impl OutputSql {
