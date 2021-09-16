@@ -694,7 +694,7 @@ async fn test_reorg() {
     db.rewind_to_height(2).unwrap();
 
     let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
-    let reorg_block3 = db.prepare_block_merkle_roots(template).unwrap();
+    let reorg_block3 = db.prepare_new_block(template).unwrap();
 
     mempool
         .process_reorg(vec![blocks[3].to_arc_block()], vec![reorg_block3.into()])
@@ -706,7 +706,7 @@ async fn test_reorg() {
 
     // "Mine" block 4
     let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
-    let reorg_block4 = db.prepare_block_merkle_roots(template).unwrap();
+    let reorg_block4 = db.prepare_new_block(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
@@ -1128,7 +1128,7 @@ async fn block_event_and_reorg_event_handling() {
     // These blocks are manually constructed to allow the block event system to be used.
     let empty_block = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(block0.block(), vec![], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![], &consensus_manager))
         .unwrap();
 
     // Add one empty block, so the coinbase UTXO is no longer time-locked.
@@ -1146,7 +1146,7 @@ async fn block_event_and_reorg_event_handling() {
     bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
     let mut block1 = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&empty_block, vec![tx1], &consensus_manager))
+        .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
     // Add Block1 - tx1 will be moved to the ReorgPool.
@@ -1172,13 +1172,13 @@ async fn block_event_and_reorg_event_handling() {
 
     let mut block2a = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
     // Block2b also builds on Block1 but has a stronger PoW
     let mut block2b = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 

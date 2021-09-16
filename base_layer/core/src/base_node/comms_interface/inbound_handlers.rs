@@ -392,7 +392,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                let block = self.blockchain_db.prepare_block_merkle_roots(block_template).await?;
+                let block = self.blockchain_db.prepare_new_block(block_template).await?;
                 Ok(NodeCommsResponse::NewBlock {
                     success: true,
                     error: None,

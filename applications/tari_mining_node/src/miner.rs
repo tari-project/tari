@@ -209,7 +209,7 @@ pub fn mining_task(
                 info!("Mining thread {} disconnected", miner);
                 return;
             }
-            hasher.set_timestamp(timestamp().seconds as u64);
+            hasher.set_forward_timestamp(timestamp().seconds as u64);
         }
         hasher.inc_nonce();
     }
