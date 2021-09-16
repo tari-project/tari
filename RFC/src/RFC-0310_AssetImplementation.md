@@ -508,7 +508,7 @@ This creates and broadcasts a transaction with the following UTXO:
 }
 ```
 
-Note that this must be caller from Asset Issuer's wallet so that it can create the commitment signature. 
+Note that this must be called from Asset Issuer's wallet so that it can create the commitment signature. 
 
 
 
