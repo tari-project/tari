@@ -50,6 +50,8 @@ technological merits of the potential system outlined herein.
 
 ## Related Requests for Comment
 
+None.
+
 ## Problem Statement
 
 This RFC details the specifics of how NFTs are stored and represented on 
