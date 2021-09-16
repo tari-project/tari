@@ -104,7 +104,8 @@ where B: BlockchainBackend + 'static
             .iter()
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow!("Invalid force sync peer: {:?}", e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
@@ -168,6 +169,7 @@ where B: BlockchainBackend + 'static
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
+                    block_sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,

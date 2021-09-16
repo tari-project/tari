@@ -44,7 +44,7 @@ use tokio::sync::{broadcast, watch};
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
     pub horizon_sync_config: HorizonSyncConfig,
@@ -54,6 +54,23 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
+    pub block_sync_validation_concurrency: usize,
+}
+
+impl Default for BaseNodeStateMachineConfig {
+    fn default() -> Self {
+        Self {
+            block_sync_config: Default::default(),
+            horizon_sync_config: Default::default(),
+            sync_peer_config: Default::default(),
+            orphan_db_clean_out_threshold: 0,
+            pruning_horizon: 0,
+            max_randomx_vms: 0,
+            blocks_behind_before_considered_lagging: 0,
+            bypass_range_proof_verification: false,
+            block_sync_validation_concurrency: 8,
+        }
+    }
 }
 
 /// A Tari full node, aka Base Node.

@@ -660,8 +660,8 @@ where B: BlockchainBackend
         let NewBlockTemplate { header, mut body, .. } = template;
         body.sort();
         let header = BlockHeader::from(header);
-        let mut block = Block { header, body };
-        let roots = self.calculate_mmr_roots(&block)?;
+        let block = Block { header, body };
+        let (mut block, roots) = self.calculate_mmr_roots(block)?;
         block.header.kernel_mr = roots.kernel_mr;
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
@@ -675,13 +675,14 @@ where B: BlockchainBackend
     ///
     /// ## Panic
     /// This function will panic if the block body is not sorted
-    pub fn calculate_mmr_roots(&self, block: &Block) -> Result<MmrRoots, ChainStorageError> {
+    pub fn calculate_mmr_roots(&self, block: Block) -> Result<(Block, MmrRoots), ChainStorageError> {
         let db = self.db_read_access()?;
         assert!(
             block.body.is_sorted(),
             "calculate_mmr_roots expected a sorted block body, however the block body was not sorted"
         );
-        calculate_mmr_roots(&*db, &block)
+        let mmr_roots = calculate_mmr_roots(&*db, &block)?;
+        Ok((block, mmr_roots))
     }
 
     /// Fetches the total merkle mountain range node count up to the specified height.
@@ -2004,11 +2005,13 @@ mod test {
             ConsensusConstantsBuilder,
             ConsensusManager,
         },
-        proof_of_work::AchievedTargetDifficulty,
-        test_helpers::{
-            blockchain::{create_new_blockchain, create_test_blockchain_db, TempDatabase},
-            create_block,
-            mine_to_difficulty,
+        test_helpers::blockchain::{
+            create_chained_blocks,
+            create_main_chain,
+            create_new_blockchain,
+            create_orphan_chain,
+            create_test_blockchain_db,
+            TempDatabase,
         },
         validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
@@ -2599,7 +2602,7 @@ mod test {
         // A real validator is needed here to test target difficulties
 
         let consensus = ConsensusManager::builder(Network::LocalNet)
-            .with_consensus_constants(
+            .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
                     .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
@@ -2634,79 +2637,5 @@ mod test {
             )?);
         }
         Ok((results, chain))
-    }
-
-    fn create_main_chain(
-        db: &BlockchainDatabase<TempDatabase>,
-        blocks: &[(&str, u64, u64)],
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-        let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
-        let (names, chain) = create_chained_blocks(blocks, genesis_block);
-        names.iter().for_each(|name| {
-            let block = chain.get(name).unwrap();
-            db.add_block(block.to_arc_block()).unwrap();
-        });
-
-        (names, chain)
-    }
-
-    fn create_orphan_chain(
-        db: &BlockchainDatabase<TempDatabase>,
-        blocks: &[(&str, u64, u64)],
-        root_block: Arc<ChainBlock>,
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-        let (names, chain) = create_chained_blocks(blocks, root_block);
-        let mut access = db.db_write_access().unwrap();
-        let mut txn = DbTransaction::new();
-        for name in &names {
-            let block = chain.get(name).unwrap().clone();
-            txn.insert_chained_orphan(block);
-        }
-        access.write(txn).unwrap();
-
-        (names, chain)
-    }
-
-    fn create_chained_blocks(
-        blocks: &[(&str, u64, u64)],
-        genesis_block: Arc<ChainBlock>,
-    ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-        let mut block_hashes = HashMap::new();
-        block_hashes.insert("GB".to_string(), genesis_block);
-
-        let mut block_names = Vec::with_capacity(blocks.len());
-        for (name, difficulty, time) in blocks {
-            let split = name.split("->").collect::<Vec<_>>();
-            let to = split[0].to_string();
-            let from = split[1].to_string();
-
-            let prev_block = block_hashes
-                .get(&from)
-                .unwrap_or_else(|| panic!("Could not find block {}", from));
-            let (mut block, _) = create_block(1, prev_block.height() + 1, vec![]);
-            block.header.prev_hash = prev_block.hash().clone();
-
-            // Keep times constant in case we need a particular target difficulty
-            block.header.timestamp = prev_block.header().timestamp.increase(*time);
-            block.header.output_mmr_size = prev_block.header().output_mmr_size + block.body.outputs().len() as u64;
-            block.header.kernel_mmr_size = prev_block.header().kernel_mmr_size + block.body.kernels().len() as u64;
-            let block = mine_to_difficulty(block, (*difficulty).into()).unwrap();
-            let accum = BlockHeaderAccumulatedData::builder(prev_block.accumulated_data())
-                .with_hash(block.hash())
-                .with_achieved_target_difficulty(
-                    AchievedTargetDifficulty::try_construct(
-                        PowAlgorithm::Sha3,
-                        (*difficulty - 1).into(),
-                        (*difficulty).into(),
-                    )
-                    .unwrap(),
-                )
-                .with_total_kernel_offset(block.header.total_kernel_offset.clone())
-                .build()
-                .unwrap();
-            block_names.push(to.clone());
-            block_hashes.insert(to, Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap()));
-        }
-        (block_names, block_hashes)
     }
 }

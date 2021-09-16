@@ -43,12 +43,15 @@ use tari_comms::{
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, Metadata, MetadataKey};
 use tokio::sync::broadcast;
 
+const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
+
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
     peer_chain_metadata: Vec<PeerChainMetadata>,
     connectivity: ConnectivityRequester,
     event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
+    number_of_rounds_no_pings: u16,
 }
 
 impl ChainMetadataService {
@@ -69,6 +72,7 @@ impl ChainMetadataService {
             peer_chain_metadata: Vec::new(),
             connectivity,
             event_publisher,
+            number_of_rounds_no_pings: 0,
         }
     }
 
@@ -159,6 +163,7 @@ impl ChainMetadataService {
                     "Received ping from neighbouring node '{}'.",
                     event.node_id
                 );
+                self.number_of_rounds_no_pings = 0;
                 self.collect_chain_state_from_ping(&event.node_id, &event.metadata)?;
                 self.send_chain_metadata_to_event_publisher().await?;
             },
@@ -169,6 +174,7 @@ impl ChainMetadataService {
                     "Received pong from neighbouring node '{}'.",
                     event.node_id
                 );
+                self.number_of_rounds_no_pings = 0;
                 self.collect_chain_state_from_pong(&event.node_id, &event.metadata)?;
                 self.send_chain_metadata_to_event_publisher().await?;
             },
@@ -178,7 +184,14 @@ impl ChainMetadataService {
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
                 );
-                self.send_chain_metadata_to_event_publisher().await?;
+                // If there were no pings for awhile, we are probably alone.
+                if *num_peers == 0 {
+                    self.number_of_rounds_no_pings += 1;
+                    if self.number_of_rounds_no_pings >= NUM_ROUNDS_NETWORK_SILENCE {
+                        self.send_network_silence().await?;
+                        self.number_of_rounds_no_pings = 0;
+                    }
+                }
                 // Ensure that we're waiting for the correct amount of peers to respond
                 // and have allocated space for their replies
 
@@ -186,6 +199,11 @@ impl ChainMetadataService {
             },
         }
 
+        Ok(())
+    }
+
+    async fn send_network_silence(&mut self) -> Result<(), ChainMetadataSyncError> {
+        let _ = self.event_publisher.send(Arc::new(ChainMetadataEvent::NetworkSilence));
         Ok(())
     }
 

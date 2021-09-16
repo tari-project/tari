@@ -1719,8 +1719,7 @@ struct KeyManagerStateUpdateSql {
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
         let encrypted_master_key = encrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
-        let encrypted_branch_seed =
-            encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().as_bytes().to_vec())?;
+        let encrypted_branch_seed = encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().into_bytes())?;
         self.master_key = encrypted_master_key;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())

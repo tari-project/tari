@@ -45,7 +45,7 @@ Feature: Block Sync
     Then NODE1 should have 11 peers
     Then NODE2 should have 11 peers
 
-  @critical @reorg @broken
+  @critical @reorg
   Scenario: Full block sync with small reorg
     Given I have a base node NODE1
     And I have wallet WALLET1 connected to base node NODE1
@@ -60,7 +60,7 @@ Feature: Block Sync
     Then node NODE1 is at height 10
     Given I stop node NODE1
     And I start base node NODE2
-    And mining node MINER2 mines 7 blocks with min difficulty 11 and max difficulty 100000
+    And mining node MINER2 mines 7 blocks with min difficulty 2 and max difficulty 100000
     Then node NODE2 is at height 12
     When I start base node NODE1
     Then all nodes are on the same chain at height 12

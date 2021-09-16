@@ -27,6 +27,7 @@ use crate::{
         ProtocolId,
     },
     utils,
+    Substream,
 };
 use core::iter;
 use std::{
@@ -393,14 +394,13 @@ impl __rpc_deps::NamedProtocolService for GreetingClient {
 }
 
 impl GreetingClient {
-    pub async fn connect<TSubstream>(framed: __rpc_deps::CanonicalFraming<TSubstream>) -> Result<Self, RpcError>
-    where TSubstream: __rpc_deps::AsyncRead + __rpc_deps::AsyncWrite + Unpin + Send + 'static {
+    pub async fn connect(framed: __rpc_deps::CanonicalFraming<Substream>) -> Result<Self, RpcError> {
         let inner = __rpc_deps::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
         Ok(Self { inner })
     }
 
     pub fn builder() -> __rpc_deps::RpcClientBuilder<Self> {
-        __rpc_deps::RpcClientBuilder::new()
+        __rpc_deps::RpcClientBuilder::new().with_protocol_id(Self::PROTOCOL_NAME.into())
     }
 
     pub async fn say_hello(&mut self, request: SayHelloRequest) -> Result<SayHelloResponse, RpcError> {

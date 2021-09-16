@@ -28,6 +28,7 @@ use crate::{
         body::{Body, IntoBody},
         context::RequestContext,
         error::HandshakeRejectReason,
+        RpcStatusCode,
     },
 };
 use bitflags::bitflags;
@@ -136,14 +137,14 @@ impl<T> BaseRequest<T> {
 #[derive(Debug, Clone)]
 pub struct Response<T> {
     pub flags: RpcMessageFlags,
-    pub message: T,
+    pub payload: T,
 }
 
 impl Response<Body> {
     pub fn from_message<T: IntoBody>(message: T) -> Self {
         Self {
             flags: Default::default(),
-            message: message.into_body(),
+            payload: message.into_body(),
         }
     }
 }
@@ -151,7 +152,7 @@ impl Response<Body> {
 impl<T> Response<T> {
     pub fn new(message: T) -> Self {
         Self {
-            message,
+            payload: message,
             flags: Default::default(),
         }
     }
@@ -160,7 +161,7 @@ impl<T> Response<T> {
     where F: FnMut(T) -> U {
         Response {
             flags: self.flags,
-            message: f(self.message),
+            payload: f(self.payload),
         }
     }
 
@@ -169,7 +170,7 @@ impl<T> Response<T> {
     }
 
     pub fn into_message(self) -> T {
-        self.message
+        self.payload
     }
 }
 
@@ -201,6 +202,8 @@ bitflags! {
         const FIN = 0x01;
         /// Typically sent with empty contents and used to confirm a substream is alive.
         const ACK = 0x02;
+        /// Another chunk to be received
+        const MORE = 0x04;
     }
 }
 impl RpcMessageFlags {
@@ -210,6 +213,10 @@ impl RpcMessageFlags {
 
     pub fn is_ack(&self) -> bool {
         self.contains(Self::ACK)
+    }
+
+    pub fn is_more(&self) -> bool {
+        self.contains(Self::MORE)
     }
 }
 
@@ -239,11 +246,41 @@ impl fmt::Display for proto::rpc::RpcRequest {
             self.request_id,
             self.deadline(),
             self.flags(),
-            self.message.len()
+            self.payload.len()
         )
     }
 }
 //---------------------------------- RpcResponse --------------------------------------------//
+
+#[derive(Debug, Clone)]
+pub struct RpcResponse {
+    pub request_id: u32,
+    pub status: RpcStatusCode,
+    pub flags: RpcMessageFlags,
+    pub payload: Bytes,
+}
+
+impl RpcResponse {
+    pub fn to_proto(&self) -> proto::rpc::RpcResponse {
+        proto::rpc::RpcResponse {
+            request_id: self.request_id,
+            status: self.status as u32,
+            flags: self.flags.bits().into(),
+            payload: self.payload.to_vec(),
+        }
+    }
+}
+
+impl Default for RpcResponse {
+    fn default() -> Self {
+        Self {
+            request_id: 0,
+            status: RpcStatusCode::Ok,
+            flags: Default::default(),
+            payload: Default::default(),
+        }
+    }
+}
 
 impl proto::rpc::RpcResponse {
     pub fn flags(&self) -> RpcMessageFlags {
@@ -262,7 +299,7 @@ impl fmt::Display for proto::rpc::RpcResponse {
             "RequestID={}, Flags={:?}, Message={} byte(s)",
             self.request_id,
             self.flags(),
-            self.message.len()
+            self.payload.len()
         )
     }
 }

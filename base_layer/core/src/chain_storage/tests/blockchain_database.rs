@@ -23,14 +23,17 @@
 use crate::{
     blocks::Block,
     chain_storage::BlockchainDatabase,
+    consensus::ConsensusManager,
     tari_utilities::Hashable,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
+        BlockSpec,
     },
     transactions::transaction::{Transaction, UnblindedOutput},
 };
 use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
@@ -38,14 +41,14 @@ fn setup() -> BlockchainDatabase<TempDatabase> {
 }
 
 fn create_next_block(prev_block: &Block, transactions: Vec<Arc<Transaction>>) -> (Arc<Block>, UnblindedOutput) {
-    let (mut block, output) = create_block(
-        1,
-        prev_block.header.height + 1,
-        transactions.into_iter().map(|t| (&*t).clone()).collect(),
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let (block, output) = create_block(
+        &rules,
+        prev_block,
+        BlockSpec::new()
+            .with_transactions(transactions.into_iter().map(|t| (&*t).clone()).collect())
+            .finish(),
     );
-    block.header.prev_hash = prev_block.hash();
-    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
-    block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
     (Arc::new(block), output)
 }
 

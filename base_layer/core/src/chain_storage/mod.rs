@@ -52,6 +52,7 @@ pub use blockchain_database::{
     fetch_target_difficulty_for_next_block,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
+    MmrRoots,
     Validators,
 };
 

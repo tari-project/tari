@@ -1,6 +1,7 @@
 const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
+const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -361,7 +362,7 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({ timeout: 1200000 }, async function () {
+BeforeAll({ timeout: 2400000 }, async function () {
   const baseNode = new BaseNodeProcess("compile");
   console.log("Compiling base node...");
   await baseNode.init();
@@ -378,9 +379,21 @@ BeforeAll({ timeout: 1200000 }, async function () {
     null,
     "127.0.0.1:9998"
   );
+
   console.log("Compiling mmproxy...");
   await mmProxy.init();
   await mmProxy.compile();
+
+  const stratumtranscoder = new StratumTranscoderProcess(
+    "compile",
+    "127.0.0.1:9999",
+    "127.0.0.1:9998",
+    null
+  );
+
+  console.log("Compiling stratum transcoder...");
+  await stratumtranscoder.init();
+  await stratumtranscoder.compile();
 
   const miningNode = new MiningNodeProcess(
     "compile",
@@ -389,6 +402,7 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "127.0.0.1:9998"
     // this.logFilePathMiningNode
   );
+
   console.log("Compiling mining node...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();

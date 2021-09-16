@@ -28,6 +28,7 @@ use crate::{
 };
 use tari_common_types::types::HashOutput;
 use thiserror::Error;
+use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum ValidationError {
@@ -37,8 +38,10 @@ pub enum ValidationError {
     BlockError(#[from] BlockValidationError),
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
-    #[error("Contains unknown inputs")]
+    #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
+    #[error("Contains an unknown input")]
+    UnknownInput,
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Error: {0}")]
@@ -80,6 +83,8 @@ pub enum ValidationError {
     IncorrectNextTipHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
     IncorrectPreviousHash { expected: String, block_hash: String },
+    #[error("Async validation task failed: {0}")]
+    AsyncTaskFailed(#[from] task::JoinError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

@@ -166,7 +166,7 @@ pub struct IncomingSubstreams {
 }
 
 impl IncomingSubstreams {
-    pub fn new(inner: IncomingRx, substream_counter: SubstreamCounter, shutdown: Shutdown) -> Self {
+    pub(self) fn new(inner: IncomingRx, substream_counter: SubstreamCounter, shutdown: Shutdown) -> Self {
         Self {
             inner,
             substream_counter,
@@ -203,6 +203,12 @@ impl Drop for IncomingSubstreams {
 pub struct Substream {
     stream: Compat<yamux::Stream>,
     counter_guard: CounterGuard,
+}
+
+impl Substream {
+    pub fn id(&self) -> yamux::StreamId {
+        self.stream.get_ref().id()
+    }
 }
 
 impl tokio::io::AsyncRead for Substream {
@@ -242,13 +248,17 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
         }
     }
 
-    #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self))]
+    #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self), fields(connection = %self.connection))]
     pub async fn run(mut self) {
         loop {
             tokio::select! {
                 biased;
 
-                _ = &mut self.shutdown_signal => {
+                _ = self.shutdown_signal.wait() => {
+                     debug!(
+                        target: LOG_TARGET,
+                        "{} Yamux connection shutdown", self.connection
+                    );
                     let mut control = self.connection.control();
                     if let Err(err) = control.close().await {
                         error!(target: LOG_TARGET, "Failed to close yamux connection: {}", err);
@@ -259,11 +269,13 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                 result = self.connection.next_stream() => {
                      match result {
                         Ok(Some(stream)) => {
-                            event!(Level::TRACE, "yamux::stream received {}", stream);if self.sender.send(stream).await.is_err() {
+                            event!(Level::TRACE, "yamux::incoming_worker::new_stream {}", stream);
+                            if self.sender.send(stream).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "Incoming peer substream task is shutting down because the internal stream sender channel \
-                                     was closed"
+                                    "{} Incoming peer substream task is shutting down because the internal stream sender channel \
+                                     was closed",
+                                    self.connection
                                 );
                                 break;
                             }
@@ -271,19 +283,23 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                         Ok(None) =>{
                             debug!(
                                 target: LOG_TARGET,
-                                "Incoming peer substream completed. IncomingWorker exiting"
+                                "{} Incoming peer substream completed. IncomingWorker exiting",
+                                self.connection
                             );
                             break;
                         }
                         Err(err) => {
                             event!(
-                        Level::ERROR,
-                        "Incoming peer substream task received an error because '{}'",
-                        err
-                    );
-                    error!(
+                                Level::ERROR,
+                                "{} Incoming peer substream task received an error because '{}'",
+                                self.connection,
+                                err
+                            );
+                            error!(
                                 target: LOG_TARGET,
-                                "Incoming peer substream task received an error because '{}'", err
+                                "{} Incoming peer substream task received an error because '{}'",
+                                self.connection,
+                                err
                             );
                             break;
                         },

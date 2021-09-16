@@ -35,7 +35,6 @@ use tari_comms::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
         node_identity::build_node_identity,
     },
-    Substream,
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::runtime::spawn_until_shutdown;
@@ -46,7 +45,7 @@ use tokio::{
 
 async fn setup() -> (
     WalletConnectivityHandle,
-    MockRpcServer<MockRpcImpl, Substream>,
+    MockRpcServer<MockRpcImpl>,
     ConnectivityManagerMockState,
     Shutdown,
 ) {

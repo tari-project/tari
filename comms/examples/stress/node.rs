@@ -144,6 +144,7 @@ pub async fn create(
         builder
             .with_listener_address(hs_ctl.proxied_address())
             .build()?
+            .with_hidden_service_controller(hs_ctl)
             .add_protocol_extensions(protocols.into())
             .add_protocol_extension(MessagingProtocolExtension::new(
                 event_tx,

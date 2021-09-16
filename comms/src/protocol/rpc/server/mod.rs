@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod chunking;
+use chunking::ChunkedResponseIter;
+
 mod error;
 pub use error::RpcServerError;
 
@@ -40,7 +43,6 @@ use super::{
     not_found::ProtocolServiceNotFound,
     status::RpcStatus,
     Handshake,
-    RpcStatusCode,
     RPC_MAX_FRAME_SIZE,
 };
 use crate::{
@@ -50,23 +52,25 @@ use crate::{
     message::MessageExt,
     peer_manager::NodeId,
     proto,
-    protocol::{ProtocolEvent, ProtocolId, ProtocolNotification, ProtocolNotificationRx},
+    protocol::{
+        rpc::{body::BodyBytes, message::RpcResponse},
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+        ProtocolNotificationRx,
+    },
     Bytes,
+    Substream,
 };
-use futures::SinkExt;
+use futures::{stream, SinkExt, StreamExt};
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use std::{
-    borrow::Cow,
     future::Future,
+    sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
-    time,
-};
-use tokio_stream::StreamExt;
+use tokio::{sync::mpsc, time};
 use tower::Service;
 use tower_make::MakeService;
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
@@ -117,14 +121,13 @@ impl RpcServer {
         RpcServerHandle::new(self.request_tx.clone())
     }
 
-    pub(super) async fn serve<S, TSubstream, TCommsProvider>(
+    pub(super) async fn serve<S, TCommsProvider>(
         self,
         service: S,
-        notifications: ProtocolNotificationRx<TSubstream>,
+        notifications: ProtocolNotificationRx<Substream>,
         comms_provider: TCommsProvider,
     ) -> Result<(), RpcServerError>
     where
-        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
         S: MakeService<
                 ProtocolId,
                 Request<Bytes>,
@@ -198,18 +201,17 @@ impl Default for RpcServerBuilder {
     }
 }
 
-pub(super) struct PeerRpcServer<TSvc, TSubstream, TCommsProvider> {
+pub(super) struct PeerRpcServer<TSvc, TCommsProvider> {
     executor: BoundedExecutor,
     config: RpcServerBuilder,
     service: TSvc,
-    protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
+    protocol_notifications: Option<ProtocolNotificationRx<Substream>>,
     comms_provider: TCommsProvider,
     request_rx: mpsc::Receiver<RpcServerRequest>,
 }
 
-impl<TSvc, TSubstream, TCommsProvider> PeerRpcServer<TSvc, TSubstream, TCommsProvider>
+impl<TSvc, TCommsProvider> PeerRpcServer<TSvc, TCommsProvider>
 where
-    TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     TSvc: MakeService<
             ProtocolId,
             Request<Bytes>,
@@ -226,7 +228,7 @@ where
     fn new(
         config: RpcServerBuilder,
         service: TSvc,
-        protocol_notifications: ProtocolNotificationRx<TSubstream>,
+        protocol_notifications: ProtocolNotificationRx<Substream>,
         comms_provider: TCommsProvider,
         request_rx: mpsc::Receiver<RpcServerRequest>,
     ) -> Self {
@@ -290,7 +292,7 @@ where
     #[tracing::instrument(name = "rpc::server::new_client_connection", skip(self, notification), err)]
     async fn handle_protocol_notification(
         &mut self,
-        notification: ProtocolNotification<TSubstream>,
+        notification: ProtocolNotification<Substream>,
     ) -> Result<(), RpcServerError> {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
@@ -319,7 +321,7 @@ where
         &mut self,
         protocol: ProtocolId,
         node_id: NodeId,
-        mut framed: CanonicalFraming<TSubstream>,
+        mut framed: CanonicalFraming<Substream>,
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
 
@@ -358,15 +360,14 @@ where
             "Server negotiated RPC v{} with client node `{}`", version, node_id
         );
 
-        let service = ActivePeerRpcService {
-            id: OsRng.next_u64(),
-            config: self.config.clone(),
+        let service = ActivePeerRpcService::new(
+            self.config.clone(),
             protocol,
-            node_id: node_id.clone(),
-            framed,
+            node_id.clone(),
             service,
-            comms_provider: self.comms_provider.clone(),
-        };
+            framed,
+            self.comms_provider.clone(),
+        );
 
         self.executor
             .try_spawn(service.start())
@@ -376,73 +377,103 @@ where
     }
 }
 
-struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
+struct ActivePeerRpcService<TSvc, TCommsProvider> {
     id: u64,
     config: RpcServerBuilder,
     protocol: ProtocolId,
     node_id: NodeId,
     service: TSvc,
-    framed: CanonicalFraming<TSubstream>,
+    framed: CanonicalFraming<Substream>,
     comms_provider: TCommsProvider,
+    logging_context_string: Arc<String>,
 }
 
-impl<TSvc, TSubstream, TCommsProvider> ActivePeerRpcService<TSvc, TSubstream, TCommsProvider>
+impl<TSvc, TCommsProvider> ActivePeerRpcService<TSvc, TCommsProvider>
 where
-    TSubstream: AsyncRead + AsyncWrite + Unpin,
     TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>,
     TCommsProvider: RpcCommsProvider + Send + Clone + 'static,
 {
+    pub(self) fn new(
+        config: RpcServerBuilder,
+        protocol: ProtocolId,
+        node_id: NodeId,
+        service: TSvc,
+        framed: CanonicalFraming<Substream>,
+        comms_provider: TCommsProvider,
+    ) -> Self {
+        Self {
+            logging_context_string: Arc::new(format!(
+                "stream_id: {}, peer: {}, protocol: {}",
+                framed.get_ref().id(),
+                node_id,
+                String::from_utf8_lossy(&protocol)
+            )),
+
+            config,
+            protocol,
+            node_id,
+            service,
+            framed,
+            comms_provider,
+        }
+    }
+
     async fn start(mut self) {
         debug!(
             target: LOG_TARGET,
-            "(Peer = `{}`) Rpc server ({}) started.",
-            self.node_id,
-            self.protocol_name()
+            "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
             error!(
                 target: LOG_TARGET,
-                "(Peer = `{}`) Rpc server ({}) exited with an error: {}",
-                self.node_id,
-                self.protocol_name(),
-                err
+                "({}) Rpc server exited with an error: {}", self.logging_context_string, err
             );
         }
-        debug!(
-            target: LOG_TARGET,
-            "(Peer = {}) Rpc service ({}) shutdown",
-            self.node_id,
-            self.protocol_name()
-        );
-    }
-
-    fn protocol_name(&self) -> Cow<'_, str> {
-        String::from_utf8_lossy(&self.protocol)
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
         while let Some(result) = self.framed.next().await {
-            let start = Instant::now();
-            if let Err(err) = self.handle(result?.freeze()).await {
-                self.framed.close().await?;
-                return Err(err);
+            match result {
+                Ok(frame) => {
+                    let start = Instant::now();
+                    if let Err(err) = self.handle_request(frame.freeze()).await {
+                        if let Err(err) = self.framed.close().await {
+                            error!(
+                                target: LOG_TARGET,
+                                "({}) Failed to close substream after socket error: {}",
+                                self.logging_context_string,
+                                err
+                            );
+                        }
+                        return Err(err);
+                    }
+                    let elapsed = start.elapsed();
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) RPC request completed in {:.0?}{}",
+                        self.logging_context_string,
+                        elapsed,
+                        if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
+                    );
+                },
+                Err(err) => {
+                    if let Err(err) = self.framed.close().await {
+                        error!(
+                            target: LOG_TARGET,
+                            "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
+                        );
+                    }
+                    return Err(err.into());
+                },
             }
-            let elapsed = start.elapsed();
-            debug!(
-                target: LOG_TARGET,
-                "RPC ({}) request completed in {:.0?}{}",
-                self.protocol_name(),
-                elapsed,
-                if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
-            );
         }
 
         self.framed.close().await?;
         Ok(())
     }
 
-    #[instrument(name = "rpc::server::handle_req", skip(self), err)]
-    async fn handle(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
+    #[instrument(name = "rpc::server::handle_req", skip(self, request), err, fields(request_size = request.len()))]
+    async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
@@ -453,7 +484,7 @@ where
         if deadline < self.config.minimum_client_deadline {
             debug!(
                 target: LOG_TARGET,
-                "[Peer=`{}`] Client has an invalid deadline. {}", self.node_id, decoded_msg
+                "({}) Client has an invalid deadline. {}", self.logging_context_string, decoded_msg
             );
             // Let the client know that they have disobeyed the spec
             let status = RpcStatus::bad_request(format!(
@@ -464,7 +495,7 @@ where
                 request_id,
                 status: status.as_code(),
                 flags: RpcMessageFlags::FIN.bits().into(),
-                message: status.details_bytes(),
+                payload: status.to_details_bytes(),
             };
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
             return Ok(());
@@ -474,9 +505,7 @@ where
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
-                "[Peer=`{}` {}] sending ACK response.",
-                self.node_id,
-                self.protocol_name()
+                "({}) sending ACK response.", self.logging_context_string
             );
             let ack = proto::rpc::RpcResponse {
                 request_id,
@@ -490,16 +519,21 @@ where
 
         debug!(
             target: LOG_TARGET,
-            "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
+            "({}) Request: {}", self.logging_context_string, decoded_msg
         );
 
         let req = Request::with_context(
             self.create_request_context(request_id),
             method,
-            decoded_msg.message.into(),
+            decoded_msg.payload.into(),
         );
 
-        let service_call = log_timing(request_id, "service call", self.service.call(req));
+        let service_call = log_timing(
+            self.logging_context_string.clone(),
+            request_id,
+            "service call",
+            self.service.call(req),
+        );
         let service_result = time::timeout(deadline, service_call).await;
         let service_result = match service_result {
             Ok(v) => v,
@@ -514,86 +548,7 @@ where
 
         match service_result {
             Ok(body) => {
-                // This is the most basic way we can push responses back to the peer. Keeping this here for reference
-                // and possible future evaluation
-                //
-                // body.into_message()
-                //     .map(|msg| match msg {
-                //         Ok(msg) => {
-                //             trace!(target: LOG_TARGET, "Sending body len = {}", msg.len());
-                //             let mut flags = RpcMessageFlags::empty();
-                //             if msg.is_finished() {
-                //                 flags |= RpcMessageFlags::FIN;
-                //             }
-                //             proto::rpc::RpcResponse {
-                //                 request_id,
-                //                 status: RpcStatus::ok().as_code(),
-                //                 flags: flags.bits().into(),
-                //                 message: msg.into(),
-                //             }
-                //         },
-                //         Err(err) => {
-                //             debug!(target: LOG_TARGET, "Body contained an error: {}", err);
-                //             proto::rpc::RpcResponse {
-                //                 request_id,
-                //                 status: err.as_code(),
-                //                 flags: RpcMessageFlags::FIN.bits().into(),
-                //                 message: err.details().as_bytes().to_vec(),
-                //             }
-                //         },
-                //     })
-                //     .map(|resp| Ok(resp.to_encoded_bytes().into()))
-                //     .forward(PreventClose::new(sink))
-                //     .await?;
-
-                let mut message = body.into_message();
-                loop {
-                    let msg_read = log_timing(request_id, "message read", message.next());
-                    match time::timeout(deadline, msg_read).await {
-                        Ok(Some(msg)) => {
-                            let resp = match msg {
-                                Ok(msg) => {
-                                    trace!(target: LOG_TARGET, "Sending body len = {}", msg.len());
-                                    let mut flags = RpcMessageFlags::empty();
-                                    if msg.is_finished() {
-                                        flags |= RpcMessageFlags::FIN;
-                                    }
-                                    proto::rpc::RpcResponse {
-                                        request_id,
-                                        status: RpcStatus::ok().as_code(),
-                                        flags: flags.bits().into(),
-                                        message: msg.into(),
-                                    }
-                                },
-                                Err(err) => {
-                                    debug!(target: LOG_TARGET, "Body contained an error: {}", err);
-                                    proto::rpc::RpcResponse {
-                                        request_id,
-                                        status: err.as_code(),
-                                        flags: RpcMessageFlags::FIN.bits().into(),
-                                        message: err.details().as_bytes().to_vec(),
-                                    }
-                                },
-                            };
-
-                            let is_valid =
-                                log_timing(request_id, "transmit", self.send_response(request_id, resp)).await?;
-
-                            if !is_valid {
-                                break;
-                            }
-                        },
-                        Ok(None) => break,
-                        Err(_) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Failed to return result within client deadline ({:.0?})", deadline
-                            );
-
-                            break;
-                        },
-                    }
-                } // end loop
+                self.process_body(request_id, deadline, body).await?;
             },
             Err(err) => {
                 debug!(target: LOG_TARGET, "Service returned an error: {}", err);
@@ -601,7 +556,7 @@ where
                     request_id,
                     status: err.as_code(),
                     flags: RpcMessageFlags::FIN.bits().into(),
-                    message: err.details_bytes(),
+                    payload: err.to_details_bytes(),
                 };
 
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
@@ -611,38 +566,54 @@ where
         Ok(())
     }
 
-    /// Sends an RpcResponse on the given Sink. If the size of the message exceeds the RPC_MAX_FRAME_SIZE, an error is
-    /// returned to the client and false is returned from this function, otherwise the message is sent and true is
-    /// returned
-    async fn send_response(&mut self, request_id: u32, resp: proto::rpc::RpcResponse) -> Result<bool, RpcServerError> {
-        match resp.to_encoded_bytes() {
-            buf if buf.len() > RPC_MAX_FRAME_SIZE => {
-                let msg = format!(
-                    "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
-                     {:.4} MiB",
-                    RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0),
-                    buf.len() as f32 / (1024.0 * 1024.0)
-                );
-                warn!(target: LOG_TARGET, "{}", msg);
-                self.framed
-                    .send(
-                        proto::rpc::RpcResponse {
-                            request_id,
-                            status: RpcStatusCode::MalformedResponse as u32,
-                            flags: RpcMessageFlags::FIN.bits().into(),
-                            message: msg.as_bytes().to_vec(),
-                        }
-                        .to_encoded_bytes()
-                        .into(),
-                    )
-                    .await?;
-                Ok(false)
-            },
-            buf => {
-                self.framed.send(buf.into()).await?;
-                Ok(true)
-            },
-        }
+    async fn process_body(
+        &mut self,
+        request_id: u32,
+        deadline: Duration,
+        body: Response<Body>,
+    ) -> Result<(), RpcServerError> {
+        trace!(target: LOG_TARGET, "Service call succeeded");
+        let mut stream = body
+            .into_message()
+            .map(|result| into_response(request_id, result))
+            .flat_map(|message| stream::iter(ChunkedResponseIter::new(message)))
+            .map(|resp| Bytes::from(resp.to_encoded_bytes()));
+
+        loop {
+            let next_item = log_timing(
+                self.logging_context_string.clone(),
+                request_id,
+                "message read",
+                stream.next(),
+            );
+            match time::timeout(deadline, next_item).await {
+                Ok(Some(msg)) => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "({}) Sending body len = {}",
+                        self.logging_context_string,
+                        msg.len()
+                    );
+
+                    self.framed.send(msg).await?;
+                },
+                Ok(None) => {
+                    debug!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);
+                    break;
+                },
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Failed to return result within client deadline ({:.0?})",
+                        self.logging_context_string,
+                        deadline
+                    );
+
+                    break;
+                },
+            }
+        } // end loop
+        Ok(())
     }
 
     fn create_request_context(&self, request_id: u32) -> RequestContext {
@@ -650,18 +621,47 @@ where
     }
 }
 
-async fn log_timing<R, F: Future<Output = R>>(request_id: u32, tag: &str, fut: F) -> R {
+async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_id: u32, tag: &str, fut: F) -> R {
     let t = Instant::now();
     let span = span!(Level::TRACE, "rpc::internal::timing::{}::{}", request_id, tag);
     let ret = fut.instrument(span).await;
     let elapsed = t.elapsed();
     trace!(
         target: LOG_TARGET,
-        "RPC TIMING(REQ_ID={}): '{}' took {:.2}s{}",
+        "({}) RPC TIMING(REQ_ID={}): '{}' took {:.2}s{}",
+        context_str,
         request_id,
         tag,
         elapsed.as_secs_f32(),
         if elapsed.as_secs() >= 5 { " (SLOW)" } else { "" }
     );
     ret
+}
+
+#[allow(clippy::cognitive_complexity)]
+fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcResponse {
+    match result {
+        Ok(msg) => {
+            trace!(target: LOG_TARGET, "Sending body len = {}", msg.len());
+            let mut flags = RpcMessageFlags::empty();
+            if msg.is_finished() {
+                flags |= RpcMessageFlags::FIN;
+            }
+            RpcResponse {
+                request_id,
+                status: RpcStatus::ok().status_code(),
+                flags,
+                payload: msg.into_bytes().unwrap_or_else(Bytes::new),
+            }
+        },
+        Err(err) => {
+            debug!(target: LOG_TARGET, "Body contained an error: {}", err);
+            RpcResponse {
+                request_id,
+                status: err.status_code(),
+                flags: RpcMessageFlags::FIN,
+                payload: Bytes::from(err.to_details_bytes()),
+            }
+        },
+    }
 }

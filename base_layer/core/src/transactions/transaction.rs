@@ -485,6 +485,11 @@ impl TransactionInput {
         Ok(key)
     }
 
+    /// Returns true if this input is mature at the given height, otherwise false
+    pub fn is_mature_at(&self, block_height: u64) -> bool {
+        self.features.maturity <= block_height
+    }
+
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
@@ -935,6 +940,12 @@ pub struct TransactionKernel {
     pub excess_sig: Signature,
 }
 
+impl TransactionKernel {
+    pub fn is_coinbase(&self) -> bool {
+        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+    }
+}
+
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
 pub struct KernelBuilder {
     features: KernelFeatures,
@@ -1060,6 +1071,7 @@ impl Display for TransactionKernel {
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
+#[derive(Default)]
 pub struct KernelSum {
     pub sum: Commitment,
     pub fees: MicroTari,
@@ -1294,14 +1306,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use rand::{self, rngs::OsRng};
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::ExecutionStack,
-    };
-
     use crate::{
         transactions::{
             helpers,
@@ -1311,7 +1315,14 @@ mod test {
         },
         txn_schema,
     };
+    use rand::{self, rngs::OsRng};
     use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        ristretto::pedersen::PedersenCommitmentFactory,
+        script,
+        script::ExecutionStack,
+    };
 
     use super::*;
 
