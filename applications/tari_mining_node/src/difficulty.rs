@@ -75,8 +75,14 @@ impl BlockHeaderSha3 {
             .chain(self.header.total_script_offset.as_bytes())
     }
 
-    pub fn set_timestamp(&mut self, timestamp: u64) {
-        self.timestamp = timestamp;
+    /// This function will update the timestamp of the header, but only if the new timestamp is greater than the current
+    /// one.
+    pub fn set_forward_timestamp(&mut self, timestamp: u64) {
+        // if the timestamp has been advanced by the base_node due to the median time we should not reverse it but we
+        // should only change the timestamp if we move it forward.
+        if timestamp > self.timestamp {
+            self.timestamp = timestamp;
+        }
     }
 
     pub fn random_nonce(&mut self) {
@@ -171,7 +177,7 @@ pub mod test {
             );
             timestamp = timestamp.increase(1);
             core_header.timestamp = timestamp;
-            hasher.set_timestamp(timestamp.as_u64());
+            hasher.set_forward_timestamp(timestamp.as_u64());
         }
     }
 }
