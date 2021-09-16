@@ -969,7 +969,7 @@ fn handle_reorg_failure_recovery() {
             orphan1_outputs.push(block_utxos);
 
             let template = chain_block(&orphan1_blocks.last().unwrap().block(), txns, &consensus_manager);
-            let mut block = orphan1_store.prepare_block_merkle_roots(template).unwrap();
+            let mut block = orphan1_store.prepare_new_block(template).unwrap();
             block.header.nonce = OsRng.next_u64();
             block.header.height += 1;
             find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));

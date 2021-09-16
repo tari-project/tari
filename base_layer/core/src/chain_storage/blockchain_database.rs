@@ -49,7 +49,14 @@ use crate::{
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::transaction::TransactionKernel,
-    validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
+    validation::{
+        helpers::calc_median_timestamp,
+        DifficultyCalculator,
+        HeaderValidation,
+        OrphanValidation,
+        PostOrphanBodyValidation,
+        ValidationError,
+    },
 };
 use croaring::Bitmap;
 use log::*;
@@ -640,10 +647,27 @@ where B: BlockchainBackend
         Ok(targets)
     }
 
-    pub fn prepare_block_merkle_roots(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
+    pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let NewBlockTemplate { header, mut body, .. } = template;
         body.sort();
-        let header = BlockHeader::from(header);
+        let mut header = BlockHeader::from(header);
+        // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
+        // to increase the timestamp to be greater than the median timestamp
+        let height = header.height - 1;
+        let min_height = header.height.saturating_sub(
+            self.consensus_manager
+                .consensus_constants(header.height)
+                .get_median_timestamp_count() as u64,
+        );
+        let db = self.db_read_access()?;
+        let timestamps = fetch_headers(&*db, min_height, height)?
+            .iter()
+            .map(|h| h.timestamp)
+            .collect::<Vec<_>>();
+        let median_timestamp = calc_median_timestamp(&timestamps);
+        if median_timestamp > header.timestamp {
+            header.timestamp = median_timestamp.increase(1);
+        }
         let block = Block { header, body };
         let (mut block, roots) = self.calculate_mmr_roots(block)?;
         block.header.kernel_mr = roots.kernel_mr;
