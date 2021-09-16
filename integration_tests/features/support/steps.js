@@ -3938,7 +3938,7 @@ Then(
 );
 
 Then(
-  "I wait for ffi wallet (.*) to receive {int} mined",
+  "I wait for ffi wallet {word} to receive {int} mined",
   { timeout: 710 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
