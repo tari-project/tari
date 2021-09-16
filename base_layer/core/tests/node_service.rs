@@ -811,7 +811,7 @@ async fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let mut block1 = db
-        .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_mmr_size += 1;
