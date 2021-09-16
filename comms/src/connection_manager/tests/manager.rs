@@ -219,6 +219,9 @@ async fn dial_success_aux_tcp_listener() {
         protocols,
         shutdown.to_signal(),
     );
+    // This is required for the test to pass. Because we do not have a Connectivity actor to receive the event and hold
+    // onto the PeerConnection handle, the connection would drop in this test.
+    let _event_sub1 = conn_man1.get_event_subscription();
 
     let tcp_listener_addr = conn_man1
         .wait_until_listening()
@@ -429,6 +432,6 @@ async fn dial_cancelled() {
 
     assert_eq!(events1.len(), 1);
     unpack_enum!(ConnectionManagerEvent::PeerConnectFailed(node_id, err) = &*events1[0]);
-    assert_eq!(&**node_id, node_identity2.node_id());
+    assert_eq!(&*node_id, node_identity2.node_id());
     unpack_enum!(ConnectionManagerError::DialCancelled = err);
 }

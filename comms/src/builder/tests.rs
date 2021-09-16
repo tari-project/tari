@@ -148,7 +148,7 @@ async fn peer_to_peer_custom_protocols() {
         .unwrap();
 
     let mut conn_man_events1 = comms_node1.subscribe_connection_manager_events();
-    let mut conn_man_requester1 = comms_node1.connectivity();
+    let conn_man_requester1 = comms_node1.connectivity();
     let mut conn_man_events2 = comms_node2.subscribe_connection_manager_events();
 
     let mut conn1 = conn_man_requester1
