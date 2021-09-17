@@ -5,7 +5,6 @@ echo Set up environment variables
 echo ----------------------------
 rem These are the console wallet executable and SQLite dynamic link library names
 set my_exe=tari_console_wallet.exe
-set sqlite_runtime=sqlite3.dll
 
 rem This is the location of the configuration and identity files
 set config_path=%~dp0..\config
