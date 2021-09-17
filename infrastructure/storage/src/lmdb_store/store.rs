@@ -85,7 +85,7 @@ impl LMDBConfig {
 
 impl Default for LMDBConfig {
     fn default() -> Self {
-        Self::new_from_mb(64, 16, 4)
+        Self::new_from_mb(16, 16, 4)
     }
 }
 
