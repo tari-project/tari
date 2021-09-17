@@ -92,13 +92,19 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          # args: --release
+          args: --release
 
       - name: cargo build wallet
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p tari_wallet
+          args: --release -p tari_wallet
+
+      - name: cargo build wallet ffi
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release -p tari_wallet_ffi
 
   test:
     name: test
