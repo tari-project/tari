@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.9.6"
+version = "0.10.0"
 edition = "2018"
 
 [features]
@@ -25,7 +25,7 @@ log4rs = { version = "1.0.0", default_features= false, features = ["config_parsi
 multiaddr={version = "0.13.0"}
 sha2 = "0.9.5"
 path-clean = "0.1.0"
-tari_storage = { version = "^0.9", path = "../infrastructure/storage"}
+tari_storage = { version = "^0.10", path = "../infrastructure/storage"}
 tracing = "0.1.26"
 tracing-opentelemetry = "0.15.0"
 tracing-subscriber = "0.2.20"
@@ -40,6 +40,6 @@ prost-build = { version = "0.8.0", optional = true }
 toml = { version = "0.5", optional = true }
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.9", path = "../infrastructure/test_utils"}
+tari_test_utils = { version = "^0.10", path = "../infrastructure/test_utils"}
 tempfile = "3.1.0"
 anyhow = "1.0"
