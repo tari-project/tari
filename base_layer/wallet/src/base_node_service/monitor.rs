@@ -131,11 +131,6 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
-            // Note: Do not use an RPC ping call to measure latency here, as the time measured for that always follows
-            // the time it takes for the metadata call, which is evident as well when the base node gets busy and will
-            // often take longer than the metadata call itself. Having two longish RPC calls with no added value
-            // results in more RPC request timeouts than is necessary.
-            // TODO: Find root cause of RPC ping calls taking approximately as long as RPC fetch meta data calls
             let latency = start.elapsed();
 
             let is_synced = tip_info.is_synced;

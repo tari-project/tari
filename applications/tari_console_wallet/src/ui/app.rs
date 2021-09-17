@@ -40,7 +40,6 @@ use crate::{
     },
     wallet_modes::PeerConfig,
 };
-use log::*;
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
@@ -153,9 +152,6 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_tick(&mut self) {
-        if let Err(e) = Handle::current().block_on(self.app_state.refresh_balance_check()) {
-            warn!(target: LOG_TARGET, "Error refresh balance check: {}", e);
-        }
         Handle::current().block_on(self.app_state.update_cache());
         self.tabs.on_tick(&mut self.app_state);
     }

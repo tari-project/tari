@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod app_state;
+mod debouncer;
 mod tasks;
 mod wallet_event_monitor;
 
