@@ -27,40 +27,6 @@ if ["%my_exe%"]==[""] (
     pause
     exit /b 10101
 )
-if ["%sqlite_runtime%"]==[""] (
-    echo Problem with "sqlite_runtime" environment variable: '%sqlite_runtime%'
-    pause
-    exit /b 10101
-)
-
-rem Verify SQLite's location and prepend the default location to the system path if it exist
-if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
-    set "path=%TARI_SQLITE_DIR%;%path%"
-    echo.
-    echo Default location of "%sqlite_runtime%" prepended to the system path
-) else if exist "%USERPROFILE%\.sqlite\%sqlite_runtime%" (
-    set "path=%USERPROFILE%\.sqlite;%path%"
-    echo.
-    echo Default location of "%sqlite_runtime%" prepended to the system path
-) else (
-    set FOUND=
-    for %%X in (%sqlite_runtime%) do (set FOUND=%%~$PATH:X)
-    if defined FOUND (
-        echo.
-        echo "%sqlite_runtime%" found in system path:
-        where "%sqlite_runtime%"
-    ) else (
-        echo.
-        echo Note: "%sqlite_runtime%" not found in the default location or in the system path; this may be a problem
-		if ["%TARI_SQLITE_DIR%"]==["%USERPROFILE%\.sqlite"] (
-			echo       {default location: tried "%TARI_SQLITE_DIR%"}
-		) else (
-			echo       {default location: tried "%TARI_SQLITE_DIR%" and "%USERPROFILE%\.sqlite"}
-		)
-        echo.
-        pause
-    )
-)
 
 rem Find the base node executable
 if exist "%my_exe_path%\%my_exe%" (
