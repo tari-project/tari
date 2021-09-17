@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -209,6 +210,7 @@ where
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
             let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
             let result = TransactionService::new(
                 config,
@@ -227,6 +229,7 @@ where
                 node_identity,
                 factories,
                 handles.get_shutdown_signal(),
+                base_node_service_handle,
             )
             .start()
             .await;

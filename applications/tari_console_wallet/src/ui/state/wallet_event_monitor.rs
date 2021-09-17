@@ -176,7 +176,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*msg {
+                                if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {
                                     self.trigger_balance_refresh().await;
                                 }
                             },

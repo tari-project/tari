@@ -30,5 +30,3 @@ ALTER TABLE outputs
     ADD spent_in_tx_id BIGINT;
 UPDATE outputs
 SET received_in_tx_id = tx_id;
-
--- TODO: drop outputs tx_id column

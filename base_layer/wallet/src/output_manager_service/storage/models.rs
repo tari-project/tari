@@ -127,4 +127,8 @@ pub enum OutputStatus {
     EncumberedToBeSpent,
     Invalid,
     CancelledInbound,
+    UnspentMinedUnconfirmed,
+    ShortTermEncumberedToBeReceived,
+    ShortTermEncumberedToBeSpent,
+    SpentMinedUnconfirmed,
 }

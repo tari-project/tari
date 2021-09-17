@@ -1781,3 +1781,90 @@ fn input_malleability() {
     let mod_block_hash = mod_block.hash();
     assert_ne!(*block_hash, mod_block_hash);
 }
+
+#[allow(clippy::identity_op)]
+#[test]
+fn fetch_deleted_position_block_hash() {
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // Block 1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![11 * T, 12 * T, 13 * T, 14 * T]
+    )];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager
+    )
+    .is_ok());
+    // Block 2
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(3),
+        &consensus_manager
+    )
+    .is_ok());
+    // Blocks 3 - 12 so we can test the search in the bottom and top half
+    for i in 0..10 {
+        assert!(generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            vec![],
+            Difficulty::from(4 + i),
+            &consensus_manager
+        )
+        .is_ok());
+    }
+    // Block 13
+    let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(30),
+        &consensus_manager
+    )
+    .is_ok());
+    // Block 14
+    let txs = vec![txn_schema!(from: vec![outputs[13][0].clone()], to: vec![1 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(50),
+        &consensus_manager
+    )
+    .is_ok());
+
+    let block1_hash = store.fetch_header(1).unwrap().unwrap().hash();
+    let block2_hash = store.fetch_header(2).unwrap().unwrap().hash();
+    let block13_hash = store.fetch_header(13).unwrap().unwrap().hash();
+    let block14_hash = store.fetch_header(14).unwrap().unwrap().hash();
+
+    let deleted_positions = store
+        .fetch_complete_deleted_bitmap_at(block14_hash.clone())
+        .unwrap()
+        .bitmap()
+        .to_vec();
+
+    let headers = store
+        .fetch_headers_of_deleted_positions(deleted_positions.iter().map(|p| *p as u64).collect())
+        .unwrap();
+
+    assert_eq!(headers[0].hash(), block14_hash);
+    assert_eq!(headers[1].hash(), block13_hash);
+    assert_eq!(headers[2].hash(), block2_hash);
+    assert_eq!(headers[3].hash(), block1_hash);
+}

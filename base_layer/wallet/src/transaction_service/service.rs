@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     output_manager_service::{handle::OutputManagerHandle, TxId},
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -31,7 +32,7 @@ use crate::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
-            transaction_validation_protocol_v2::TransactionValidationProtocolV2,
+            transaction_validation_protocol::TransactionValidationProtocol,
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
@@ -43,7 +44,7 @@ use crate::{
             send_transaction_reply::send_transaction_reply,
         },
     },
-    types::{HashDigest, ValidationRetryStrategy},
+    types::HashDigest,
     utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
 };
 use chrono::{NaiveDateTime, Utc};
@@ -83,7 +84,6 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, mpsc, mpsc::Sender, oneshot},
     task::JoinHandle,
-    time::interval_at,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -134,11 +134,12 @@ pub struct TransactionService<
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<u64>,
-    active_coinbase_monitoring_protocols: HashSet<u64>,
     timeout_update_publisher: broadcast::Sender<Duration>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
     wallet_db: WalletDatabase<WBackend>,
+    base_node_service: BaseNodeServiceHandle,
+    last_seen_tip_height: Option<u64>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -181,6 +182,7 @@ where
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
+        base_node_service: BaseNodeServiceHandle,
     ) -> Self {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
@@ -219,11 +221,12 @@ where
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
             active_transaction_broadcast_protocols: HashSet::new(),
-            active_coinbase_monitoring_protocols: HashSet::new(),
             timeout_update_publisher,
             base_node_update_publisher,
             power_mode: PowerMode::Normal,
+            base_node_service,
             wallet_db,
+            last_seen_tip_height: None,
         }
     }
 
@@ -280,29 +283,22 @@ where
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
-        let mut coinbase_transaction_monitoring_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
-        > = FuturesUnordered::new();
-
         let mut transaction_validation_protocol_handles: FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
-        // Should probably be block time or at least configurable
-        // Start a bit later so that the wallet can start up
-        let mut tx_validation_interval = interval_at(
-            (Instant::now() + Duration::from_secs(30)).into(),
-            Duration::from_secs(30),
-        )
-        .fuse();
+        let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
         info!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
-                // tx validation timer
-               _ = tx_validation_interval.select_next_some() => {
-                    self.start_transaction_validation_protocol(ValidationRetryStrategy::Limited(0),  &mut transaction_validation_protocol_handles).await?;
-                    },
+                // Base Node Monitoring Service event
+                event = base_node_service_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_base_node_service_event(msg, &mut transaction_validation_protocol_handles).await,
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    };
+                },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
                     // TODO: Remove time measurements; this is to aid in system testing only
@@ -314,7 +310,6 @@ where
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
-                        &mut coinbase_transaction_monitoring_protocol_handles,
                         &mut transaction_validation_protocol_handles,
                         reply_tx,
                     ).await.map_err(|e| {
@@ -489,18 +484,10 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Broadcast Protocol: {:?}", e),
                     };
                 }
-                Some(join_result) = coinbase_transaction_monitoring_protocol_handles.next() => {
-                    trace!(target: LOG_TARGET, "Coinbase transaction monitoring protocol has ended with result {:?}",
-                    join_result);
-                    match join_result {
-                        Ok(join_result_inner) => self.complete_coinbase_transaction_monitoring_protocol(join_result_inner),
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
-                    };
-                }
                 Some(join_result) = transaction_validation_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner).await,
+                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles,).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
@@ -523,9 +510,6 @@ where
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
-        >,
-        coinbase_monitoring_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
         transaction_validation_join_handles: &mut FuturesUnordered<
@@ -615,7 +599,7 @@ where
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
-                .generate_coinbase_transaction(reward, fees, block_height, coinbase_monitoring_join_handles)
+                .generate_coinbase_transaction(reward, fees, block_height)
                 .await
                 .map(|tx| TransactionServiceResponse::CoinbaseTransactionGenerated(Box::new(tx))),
             TransactionServiceRequest::SetLowPowerMode => {
@@ -646,7 +630,7 @@ where
                 .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::RestartBroadcastProtocols => self
-                .restart_broadcast_protocols(transaction_broadcast_join_handles, coinbase_monitoring_join_handles)
+                .restart_broadcast_protocols(transaction_broadcast_join_handles)
                 .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
             TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
@@ -656,14 +640,10 @@ where
                 self.resources.config.num_confirmations_required = number;
                 Ok(TransactionServiceResponse::NumConfirmationsSet)
             },
-            TransactionServiceRequest::ValidateTransactions(retry_strategy) => self
-                .start_transaction_validation_protocol(retry_strategy, transaction_validation_join_handles)
+            TransactionServiceRequest::ValidateTransactions => self
+                .start_transaction_validation_protocol(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
-            /* TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, validity) => self
-             *   .set_completed_transaction_validity(tx_id, validity)
-             *  .await
-             *  .map(|_| TransactionServiceResponse::CompletedTransactionValidityChanged), */
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -674,6 +654,36 @@ where
             });
         }
         Ok(())
+    }
+
+    async fn handle_base_node_service_event(
+        &mut self,
+        event: Arc<BaseNodeEvent>,
+        transaction_validation_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    ) {
+        match (*event).clone() {
+            BaseNodeEvent::BaseNodeStateChanged(state) => {
+                let trigger_validation = match (self.last_seen_tip_height, state.chain_metadata.clone()) {
+                    (Some(last_seen_tip_height), Some(cm)) => last_seen_tip_height != cm.height_of_longest_chain(),
+                    (None, _) => true,
+                    _ => false,
+                };
+
+                if trigger_validation {
+                    let _ = self
+                        .start_transaction_validation_protocol(transaction_validation_join_handles)
+                        .await
+                        .map_err(|e| {
+                            warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                            e
+                        });
+                }
+                self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
+            },
+            BaseNodeEvent::BaseNodePeerSet(_peer) => (),
+        }
     }
 
     /// Sends a new transaction to a recipient
@@ -1547,32 +1557,19 @@ where
 
     async fn start_transaction_validation_protocol(
         &mut self,
-        _retry_strategy: ValidationRetryStrategy,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<u64, TransactionServiceError> {
         if self.base_node_public_key.is_none() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
-        trace!(target: LOG_TARGET, "Starting transaction validation protocols");
+        trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OsRng.next_u64();
-        let _timeout = match self.power_mode {
-            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
-            PowerMode::Low => self.config.low_power_polling_timeout,
-        };
+
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                // let protocol = TransactionValidationProtocol::new(
-                //     id,
-                //     self.resources.clone(),
-                //     pk,
-                //     timeout,
-                //     self.base_node_update_publisher.subscribe(),
-                //     self.timeout_update_publisher.subscribe(),
-                //     retry_strategy,
-                // );
-
-                let protocol = TransactionValidationProtocolV2::new(
+                let protocol = TransactionValidationProtocol::new(
+                    id,
                     self.resources.db.clone(),
                     pk,
                     self.resources.connectivity_manager.clone(),
@@ -1592,6 +1589,9 @@ where
     async fn complete_transaction_validation_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
     ) {
         match join_result {
             Ok(id) => {
@@ -1599,6 +1599,11 @@ where
                     target: LOG_TARGET,
                     "Transaction Validation Protocol (Id: {}) completed successfully", id
                 );
+                // Restart broadcast protocols for any transactions that were found to be no longer mined.
+                let _ = self
+                    .restart_broadcast_protocols(transaction_broadcast_join_handles)
+                    .await
+                    .map_err(|e| warn!(target: LOG_TARGET, "Error restarting broadcast protocols: {}", e));
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 if let TransactionServiceError::Shutdown = error {
@@ -1618,9 +1623,6 @@ where
     async fn restart_broadcast_protocols(
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-        coinbase_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
-        >,
     ) -> Result<(), TransactionServiceError> {
         if self.base_node_public_key.is_none() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
@@ -1633,16 +1635,6 @@ where
                 error!(
                     target: LOG_TARGET,
                     "Error broadcasting all completed transactions: {:?}", resp
-                );
-                resp
-            })?;
-
-        self.restart_chain_monitoring_for_all_coinbase_transactions(coinbase_transaction_join_handles)
-            .await
-            .map_err(|resp| {
-                error!(
-                    target: LOG_TARGET,
-                    "Error restarting protocols for all coinbase transactions: {:?}", resp
                 );
                 resp
             })?;
@@ -1690,9 +1682,10 @@ where
                     let join_handle = tokio::spawn(protocol.execute());
                     join_handles.push(join_handle);
                 } else {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
-                        "Transaction Broadcast Protocol (TxId: {}) already started", tx_id
+                        "Transaction Broadcast Protocol (TxId: {}) already started",
+                        tx_id
                     );
                 }
             },
@@ -1712,8 +1705,7 @@ where
         for (_, completed_tx) in completed_txs {
             if completed_tx.valid &&
                 (completed_tx.status == TransactionStatus::Completed ||
-                    completed_tx.status == TransactionStatus::Broadcast ||
-                    completed_tx.status == TransactionStatus::MinedUnconfirmed) &&
+                    completed_tx.status == TransactionStatus::Broadcast) &&
                 !completed_tx.is_coinbase_transaction()
             {
                 self.broadcast_completed_transaction(completed_tx, join_handles).await?;
@@ -1888,9 +1880,6 @@ where
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
-        coinbase_monitoring_protocol_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
-        >,
     ) -> Result<Transaction, TransactionServiceError> {
         let amount = reward + fees;
 
@@ -1900,7 +1889,7 @@ where
             .find_coinbase_transaction_at_block_height(block_height, amount)
             .await?;
 
-        let (tx_id, completed_transaction) = match find_result {
+        let completed_transaction = match find_result {
             Some(completed_tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -1910,7 +1899,7 @@ where
                     amount
                 );
 
-                (completed_tx.tx_id, completed_tx.transaction)
+                completed_tx.transaction
             },
             None => {
                 // otherwise create a new coinbase tx
@@ -1957,130 +1946,15 @@ where
                         e
                     });
 
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
                 );
-                (tx_id, tx)
+                tx
             },
         };
-
-        if let Err(e) = self
-            .start_coinbase_transaction_monitoring_protocol(tx_id, coinbase_monitoring_protocol_join_handles)
-            .await
-        {
-            warn!(
-                target: LOG_TARGET,
-                "Could not start chain monitoring for Coinbase transaction (TxId: {}): {:?}", tx_id, e
-            );
-        }
 
         Ok(completed_transaction)
-    }
-
-    /// Send a request to the Base Node to see if the specified coinbase transaction has been mined yet. This function
-    /// will send the request and store a timeout future to check in on the status of the transaction in the future.
-    async fn start_coinbase_transaction_monitoring_protocol(
-        &mut self,
-        tx_id: TxId,
-        _join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError> {
-        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
-
-        if completed_tx.status != TransactionStatus::Coinbase || completed_tx.coinbase_block_height.is_none() {
-            return Err(TransactionServiceError::InvalidCompletedTransaction);
-        }
-
-        let _block_height = if let Some(bh) = completed_tx.coinbase_block_height {
-            bh
-        } else {
-            0
-        };
-
-        let _timeout = match self.power_mode {
-            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
-            PowerMode::Low => self.config.low_power_polling_timeout,
-        };
-        match self.base_node_public_key.clone() {
-            None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
-            Some(_pk) => {
-                if self.active_coinbase_monitoring_protocols.insert(tx_id) {
-                    // let protocol = TransactionCoinbaseMonitoringProtocol::new(
-                    //     completed_tx.tx_id,
-                    //     block_height,
-                    //     self.resources.clone(),
-                    //     timeout,
-                    //     pk,
-                    //     self.base_node_update_publisher.subscribe(),
-                    //     self.timeout_update_publisher.subscribe(),
-                    // );
-                    // let join_handle = tokio::spawn(protocol.execute());
-                    // join_handles.push(join_handle);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Not running coinbase protocol, it will be handled by tx validation protocol"
-                    );
-                } else {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Coinbase Monitoring Protocol (TxId: {}) already started", tx_id
-                    );
-                }
-            },
-        }
-        Ok(())
-    }
-
-    /// Handle the final clean up after a Coinbase Transaction Monitoring protocol completes
-    fn complete_coinbase_transaction_monitoring_protocol(
-        &mut self,
-        join_result: Result<u64, TransactionServiceProtocolError>,
-    ) {
-        match join_result {
-            Ok(id) => {
-                // Cleanup any registered senders
-                let _ = self.active_coinbase_monitoring_protocols.remove(&id);
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Coinbase Transaction monitoring Protocol for TxId: {} completed successfully", id
-                );
-            },
-            Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.active_coinbase_monitoring_protocols.remove(&id);
-                if let TransactionServiceError::Shutdown = error {
-                    return;
-                }
-                warn!(
-                    target: LOG_TARGET,
-                    "Error completing Coinbase Transaction monitoring Protocol (Id: {}): {:?}", id, error
-                );
-                let _ = self
-                    .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
-            },
-        }
-    }
-
-    /// Go through all completed transactions that have the Coinbase status and start querying the base_node to see if
-    /// they have been mined
-    async fn restart_chain_monitoring_for_all_coinbase_transactions(
-        &mut self,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-    ) -> Result<(), TransactionServiceError> {
-        trace!(
-            target: LOG_TARGET,
-            "Starting Coinbase monitoring for all Broadcast Transactions"
-        );
-        let completed_txs = self.db.get_completed_transactions().await?;
-        for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Coinbase {
-                self.start_coinbase_transaction_monitoring_protocol(completed_tx.tx_id, join_handles)
-                    .await?;
-            }
-        }
-
-        Ok(())
     }
 
     /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in

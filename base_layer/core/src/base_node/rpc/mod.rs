@@ -89,6 +89,12 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<QueryDeletedRequest>,
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus>;
+
+    #[rpc(method = 9)]
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

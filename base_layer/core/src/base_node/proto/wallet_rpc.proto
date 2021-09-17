@@ -67,6 +67,7 @@ message FetchUtxosResponse {
 message QueryDeletedRequest{
     repeated uint64 mmr_positions = 1;
     google.protobuf.BytesValue chain_must_include_header = 2;
+    bool include_deleted_block_data = 3;
 }
 
 message QueryDeletedResponse {
@@ -74,6 +75,8 @@ message QueryDeletedResponse {
     repeated uint64 not_deleted_positions = 2;
     bytes best_block = 3;
     uint64 height_of_longest_chain = 4;
+    repeated bytes blocks_deleted_in = 5;
+    repeated uint64 heights_deleted_at = 6;
 }
 
 message UtxoQueryRequest{
