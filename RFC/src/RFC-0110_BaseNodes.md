@@ -138,6 +138,42 @@ Valid transactions are:
 * added to the [mempool];
 * forwarded to peers using the transaction [BroadcastStrategy].
 
+#### Block/Transaction Weight 
+[block-transaction weight]: #blocktransaction-weight "Block/Transaction Weight"
+
+The weight of a transaction / block measured in "grams". Input, output and kernel weights reflect their respective relative 
+storage and computation cost. Transaction fees are typically proportional to a transaction body's total weight, creating 
+incentive to reduce the size of the UTXO set.
+
+|                          	| Bytes    	| Weight (grams) 	| Notes                                                               	|
+|--------------------------	|----------	|----------------	|---------------------------------------------------------------------	|
+| Output:                  	|          	|                	|                                                                     	|
+| - Per output             	| ~777     	| 13             	| Incl. Rangeproof                                                    	|
+| - Asset Registration     	| >= 256   	| 4              	| Set in OutputFeatures, size depends on number of template IDs used 	|
+| - Tari script per opcode 	| variable 	| 1              	|                                                                       |
+| Input:                   	|          	|                	|                                                                     	|
+| - Per input              	| ~196     	| 1              	| Excl. script field                                                  	|
+| Kernel:                  	|          	|                	|                                                                     	|
+| - Per kernel             	| 112      	| 3              	| Excess signature verification                                       	|
+
+
+Block and transaction weights are defined in the same way:
+
+```text
+    output_weight = num_outputs * PER_OUTPUT_GRAMS(13)
+    foreach output in outputs:
+        output_weight += count_opcodes(output.script) * TARISCRIPT_OPCODE_GRAMS(1)
+        if is_asset_registration(output):
+            output_weight += ASSET_REGISTRATION_GRAMS(4)
+        
+    input_weight = num_inputs * PER_INPUT_GRAMS(1)
+    kernel_weight = num_kernels * PER_KERNEL_GRAMS(3)
+    
+    weight = output_weight + input_weight + kernel_weight
+```
+
+where the capitalized values are hard-coded constants.
+
 ### Block Validation and Propagation
 
 The block validation and propagation process is analogous to that of transactions. New blocks are received from the 
