@@ -252,6 +252,10 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
         task::spawn(cli_loop(parser, shutdown));
     }
+    if node_config.force_sync_peers.len() > 0 {
+        println!("\x1B[33m{}\x1B[0m", "FORCE SYNC ENABLED !");
+        warn!(target: LOG_TARGET, "FORCE SYNC ENABLED !");
+    }
 
     ctx.run().await;
 
