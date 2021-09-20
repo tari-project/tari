@@ -80,7 +80,7 @@ impl SingleReceiverTransactionProtocol {
 
     /// Validates the sender info
     fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
-        if sender_info.amount == 0.into() {
+        if sender_info.amount == 0.into() && sender_info.features.unique_id.is_none() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())

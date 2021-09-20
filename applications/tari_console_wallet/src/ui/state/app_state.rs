@@ -238,6 +238,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -253,6 +254,7 @@ impl AppState {
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
+            unique_id,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -266,6 +268,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -281,6 +284,7 @@ impl AppState {
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
+            unique_id,
             message,
             fee_per_gram,
             tx_service_handle,

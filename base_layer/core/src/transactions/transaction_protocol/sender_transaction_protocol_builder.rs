@@ -94,7 +94,6 @@ pub struct SenderTransactionProtocolBuilder {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
-    unique_id: Option<Vec<u8>>,
     tx_id: Option<TxId>,
 }
 
@@ -135,7 +134,6 @@ impl SenderTransactionProtocolBuilder {
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
-            unique_id: None,
             tx_id: None,
         }
     }
@@ -364,11 +362,6 @@ impl SenderTransactionProtocolBuilder {
         self.amounts.clone().into_vec().iter().sum()
     }
 
-    pub fn with_unique_id(mut self, unique_id: Vec<u8>) -> Self {
-        self.unique_id = Some(unique_id);
-        self
-    }
-
     /// Construct a `SenderTransactionProtocol` instance in and appropriate state. The data stored
     /// in the struct is _moved_ into the new struct. If any data is missing, the `self` instance is returned in the
     /// error (so that you can continue building) along with a string listing the missing fields.
@@ -521,10 +514,15 @@ impl SenderTransactionProtocolBuilder {
             None => calculate_tx_id::<D>(&public_nonce, 0),
         };
 
+        let recipient_output_features = self.recipient_output_features.clone().into_vec();
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
-        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
+        // Don't care about the fees when we are sending token.
+        if self.amounts.size() > 0 &&
+            total_fee > self.calculate_amount_to_others() &&
+            recipient_output_features[0].unique_id.is_none()
+        {
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
@@ -548,7 +546,7 @@ impl SenderTransactionProtocolBuilder {
             amount_to_self,
             tx_id,
             amounts: self.amounts.into_vec(),
-            recipient_output_features: self.recipient_output_features.into_vec(),
+            recipient_output_features,
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
             private_commitment_nonces: self.private_commitment_nonces.into_vec(),
@@ -574,7 +572,6 @@ impl SenderTransactionProtocolBuilder {
             recipient_info,
             signatures: Vec::new(),
             message: self.message.unwrap_or_else(|| "".to_string()),
-            unique_id: self.unique_id,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));

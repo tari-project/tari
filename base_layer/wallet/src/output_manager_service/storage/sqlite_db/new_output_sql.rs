@@ -52,6 +52,8 @@ pub struct NewOutputSql {
     script_private_key: Vec<u8>,
     metadata: Option<Vec<u8>>,
     features_asset_public_key: Option<Vec<u8>>,
+    features_mint_asset_public_key: Option<Vec<u8>>,
+    features_mint_asset_owner_commitment: Option<Vec<u8>>,
     features_parent_public_key: Option<Vec<u8>>,
     features_unique_id: Option<Vec<u8>>,
     sender_offset_public_key: Vec<u8>,
@@ -76,6 +78,17 @@ impl NewOutputSql {
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata),
             features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec()),
+            features_mint_asset_public_key: output
+                .unblinded_output
+                .features
+                .mint_non_fungible
+                .clone()
+                .map(|a| a.asset_public_key.to_vec()),
+            features_mint_asset_owner_commitment: output
+                .unblinded_output
+                .features
+                .mint_non_fungible
+                .map(|a| a.asset_owner_commitment.to_vec()),
             features_parent_public_key: output.unblinded_output.features.parent_public_key.map(|a| a.to_vec()),
             features_unique_id: output.unblinded_output.features.unique_id,
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
