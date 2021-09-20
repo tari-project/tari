@@ -44,7 +44,6 @@ use tari_comms_dht::{
     outbound::{OutboundEncryption, SendMessageParams},
     DbConnectionUrl,
     Dht,
-    DhtBuilder,
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -183,18 +182,18 @@ async fn setup_comms_dht(
         .build()
         .unwrap();
 
-    let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
-        outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
-    )
-    .with_config(dht_config)
-    .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
-    .build()
-    .await
-    .unwrap();
+    let dht = Dht::builder()
+        .with_config(dht_config)
+        .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
+        .with_outbound_sender(outbound_tx)
+        .build(
+            comms.node_identity(),
+            comms.peer_manager(),
+            comms.connectivity(),
+            comms.shutdown_signal(),
+        )
+        .await
+        .unwrap();
 
     for peer in peers {
         comms.peer_manager().add_peer(peer).await.unwrap();
@@ -816,10 +815,10 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     let node_B_node_id = node_B.node_identity().node_id().clone();
 
     // Node C should ban node B
-    let banned_node_id = streams::assert_in_stream(
+    let banned_node_id = streams::assert_in_broadcast(
         &mut connectivity_events,
-        |r| match &*r.unwrap() {
-            ConnectivityEvent::PeerBanned(node_id) => Some(node_id.clone()),
+        |r| match r {
+            ConnectivityEvent::PeerBanned(node_id) => Some(node_id),
             _ => None,
         },
         Duration::from_secs(10),
@@ -832,14 +831,27 @@ async fn dht_propagate_message_contents_not_malleable_ban() {
     node_C.shutdown().await;
 }
 
-#[tokio_macros::test]
+#[tokio::test]
 #[allow(non_snake_case)]
 async fn dht_header_not_malleable() {
-    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    env_logger::init();
+    let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
-    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    let mut node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_C.to_peer()),
+    )
+    .await;
     // Node A knows about Node B
-    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    let node_A = make_node(
+        "node_A",
+        PeerFeatures::COMMUNICATION_NODE,
+        dht_config(),
+        Some(node_B.to_peer()),
+    )
+    .await;
     node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
     log::info!(
         "NodeA = {}, NodeB = {}",

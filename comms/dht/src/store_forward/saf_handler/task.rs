@@ -512,23 +512,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         header: &DhtMessageHeader,
         body: &[u8],
     ) -> Result<(Option<CommsPublicKey>, EnvelopeBody), StoreAndForwardError> {
-        let mut header_mac_bytes = Vec::with_capacity(256);
-        header_mac_bytes.extend_from_slice(&header.major.to_le_bytes());
-        header_mac_bytes.extend_from_slice(&header.minor.to_le_bytes());
-        header_mac_bytes.extend_from_slice(header.destination.to_inner_bytes().as_slice());
-        header_mac_bytes.extend_from_slice(&(header.message_type as i32).to_le_bytes());
-        header_mac_bytes.extend_from_slice(&header.flags.bits().to_le_bytes());
-
-        if let Some(t) = header.expires {
-            header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
-        }
-
         if header.flags.contains(DhtMessageFlags::ENCRYPTED) {
             let ephemeral_public_key = header.ephemeral_public_key.as_ref().expect(
                 "[store and forward] DHT header is invalid after validity check because it did not contain an \
                  ephemeral_public_key",
             );
-            header_mac_bytes.extend_from_slice(&ephemeral_public_key.as_bytes());
 
             trace!(
                 target: LOG_TARGET,
@@ -537,7 +525,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
             let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
-            let authenticated_pk = Self::authenticate_message(&decrypted, header_mac_bytes.as_bytes(), body)?;
+            let mac_challenge = crypt::create_origin_mac_challenge(header, body);
+            let authenticated_pk = Self::authenticate_message(&decrypted, mac_challenge)?;
 
             trace!(
                 target: LOG_TARGET,
@@ -553,11 +542,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok((Some(authenticated_pk), envelope_body))
         } else {
             let authenticated_pk = if !header.origin_mac.is_empty() {
-                Some(Self::authenticate_message(
-                    &header.origin_mac,
-                    header_mac_bytes.as_bytes(),
-                    body,
-                )?)
+                let mac_challenge = crypt::create_origin_mac_challenge(header, body);
+                Some(Self::authenticate_message(&header.origin_mac, mac_challenge)?)
             } else {
                 None
             };
@@ -568,15 +554,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     fn authenticate_message(
         origin_mac_body: &[u8],
-        mac_header: &[u8],
-        body: &[u8],
+        challenge: Challenge,
     ) -> Result<CommsPublicKey, StoreAndForwardError> {
         let origin_mac = OriginMac::decode(origin_mac_body)?;
         let public_key =
             CommsPublicKey::from_bytes(&origin_mac.public_key).map_err(|_| StoreAndForwardError::InvalidOriginMac)?;
-        let full_mac_body = [mac_header, body].concat();
 
-        if signature::verify(&public_key, &origin_mac.signature, full_mac_body) {
+        if signature::verify_challenge(&public_key, &origin_mac.signature, challenge) {
             Ok(public_key)
         } else {
             Err(StoreAndForwardError::InvalidOriginMac)
@@ -621,7 +605,7 @@ mod test {
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
         let body = message.into_bytes();
-        let body_hash = hex::to_hex(&Challenge::new().chain(body.clone()).finalize());
+        let body_hash = hex::to_hex(&Challenge::new().chain(&body).finalize());
         StoredMessage {
             id: 1,
             version: 0,

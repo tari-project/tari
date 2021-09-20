@@ -22,7 +22,7 @@
 
 use crate::{
     crypt,
-    envelope::{DhtMessageFlags, DhtMessageHeader},
+    envelope::DhtMessageHeader,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     proto::envelope::OriginMac,
     DhtConfig,
@@ -36,7 +36,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
-    types::CommsPublicKey,
+    types::{Challenge, CommsPublicKey},
     utils::signature,
 };
 use tari_utilities::ByteArray;
@@ -161,7 +161,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let trace_id = message.dht_header.message_tag;
         let tag = message.tag;
         match Self::validate_and_decrypt_message(node_identity, message).await {
-            Ok(msg) => next_service.oneshot(msg).await,
+            Ok(msg) => {
+                trace!(target: LOG_TARGET, "Passing onto next service (Trace: {})", msg.tag);
+                next_service.oneshot(msg).await
+            },
 
             Err(err @ OriginMacNotProvided) |
             Err(err @ EphemeralKeyNotProvided) |
@@ -193,18 +196,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let dht_header = &message.dht_header;
 
-        let mut header_mac_bytes = Vec::with_capacity(256);
-        header_mac_bytes.extend_from_slice(&dht_header.major.to_le_bytes());
-        header_mac_bytes.extend_from_slice(&dht_header.minor.to_le_bytes());
-        header_mac_bytes.extend_from_slice(dht_header.destination.to_inner_bytes().as_slice());
-        header_mac_bytes.extend_from_slice(&(dht_header.message_type as i32).to_le_bytes());
-        header_mac_bytes.extend_from_slice(&dht_header.flags.bits().to_le_bytes());
-        if let Some(t) = dht_header.expires {
-            header_mac_bytes.extend_from_slice(&t.as_u64().to_le_bytes());
-        }
+        let mac_challenge = crypt::create_origin_mac_challenge(dht_header, &message.body);
 
-        if !dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
-            return Self::success_not_encrypted(message, header_mac_bytes).await;
+        if !dht_header.flags.is_encrypted() {
+            return Self::success_not_encrypted(message, mac_challenge).await;
         }
         trace!(
             target: LOG_TARGET,
@@ -224,11 +219,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {
             Ok((public_key, signature)) => {
-                header_mac_bytes.extend_from_slice(e_pk.as_bytes());
-
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                Self::authenticate_origin_mac(&public_key, &signature, header_mac_bytes.as_slice(), &message.body)?;
+                Self::authenticate_origin_mac(&public_key, &signature, mac_challenge)?;
                 public_key
             },
             Err(err) => {
@@ -319,11 +312,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn authenticate_origin_mac(
         public_key: &CommsPublicKey,
         signature: &[u8],
-        mac_header: &[u8],
-        body: &[u8],
+        challenge: Challenge,
     ) -> Result<(), DecryptionError> {
-        let mac_body = [mac_header, body].concat();
-        if signature::verify(public_key, signature, mac_body) {
+        if signature::verify_challenge(public_key, signature, challenge) {
             Ok(())
         } else {
             Err(DecryptionError::OriginMacInvalidSignature)
@@ -366,7 +357,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     async fn success_not_encrypted(
         message: DhtInboundMessage,
-        header_mac_bytes: Vec<u8>,
+        mac_challenge: Challenge,
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = if message.dht_header.origin_mac.is_empty() {
             None
@@ -376,12 +367,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
                 .map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
 
-            Self::authenticate_origin_mac(
-                &public_key,
-                &origin_mac.signature,
-                header_mac_bytes.as_slice(),
-                &message.body,
-            )?;
+            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, mac_challenge)?;
             Some(public_key)
         };
 

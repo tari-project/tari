@@ -25,6 +25,7 @@ use crate::{
     inbound::DhtInboundMessage,
     outbound::message::DhtOutboundMessage,
     proto::envelope::{DhtEnvelope, DhtMessageType, OriginMac},
+    version::DhtProtocolVersion,
 };
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc};
@@ -33,7 +34,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     transports::MemoryTransport,
-    types::{CommsDatabase, CommsPublicKey, CommsSecretKey},
+    types::{Challenge, CommsDatabase, CommsPublicKey, CommsSecretKey},
     utils::signature,
     Bytes,
 };
@@ -83,25 +84,29 @@ pub fn make_dht_header(
     } else {
         NodeDestination::Unknown
     };
+    let mut origin_mac = Vec::new();
+
+    if include_origin {
+        let challenge = crypt::create_origin_mac_challenge_parts(
+            DhtProtocolVersion::latest(),
+            &destination,
+            &DhtMessageType::None,
+            flags,
+            None,
+            Some(&e_pk),
+            &message,
+        );
+        origin_mac = make_valid_origin_mac(node_identity, challenge);
+        if flags.is_encrypted() {
+            let shared_secret = crypt::generate_ecdh_secret(e_sk, node_identity.public_key());
+            origin_mac = crypt::encrypt(&shared_secret, &origin_mac).unwrap()
+        }
+    }
     DhtMessageHeader {
-        major: 0,
-        minor: 0,
-        destination: destination.clone(),
+        version: DhtProtocolVersion::latest(),
+        destination,
         ephemeral_public_key: if flags.is_encrypted() { Some(e_pk.clone()) } else { None },
-        origin_mac: if include_origin {
-            let mut header_mac_bytes = Vec::with_capacity(256);
-            header_mac_bytes.extend_from_slice(&0u32.to_le_bytes());
-            header_mac_bytes.extend_from_slice(&0u32.to_le_bytes());
-            header_mac_bytes.extend_from_slice((destination).to_inner_bytes().as_bytes());
-            header_mac_bytes.extend_from_slice(&(DhtMessageType::None as i32).to_le_bytes());
-            header_mac_bytes.extend_from_slice(&flags.bits().to_le_bytes());
-            if flags.is_encrypted() {
-                header_mac_bytes.extend_from_slice(&e_pk.as_bytes());
-            }
-            make_valid_origin_mac(node_identity, &e_sk, header_mac_bytes.as_bytes(), message, flags)
-        } else {
-            Vec::new()
-        },
+        origin_mac,
         message_type: DhtMessageType::None,
         flags,
         message_tag: trace,
@@ -109,28 +114,15 @@ pub fn make_dht_header(
     }
 }
 
-pub fn make_valid_origin_mac(
-    node_identity: &NodeIdentity,
-    e_sk: &CommsSecretKey,
-    mac_header: &[u8],
-    body: &[u8],
-    flags: DhtMessageFlags,
-) -> Vec<u8> {
-    let mac_body = [mac_header, body].concat();
+pub fn make_valid_origin_mac(node_identity: &NodeIdentity, challenge: Challenge) -> Vec<u8> {
     let mac = OriginMac {
         public_key: node_identity.public_key().to_vec(),
-        signature: signature::sign(&mut OsRng, node_identity.secret_key().clone(), mac_body)
+        signature: signature::sign_challenge(&mut OsRng, node_identity.secret_key().clone(), challenge)
             .unwrap()
             .to_binary()
             .unwrap(),
     };
-    let body = mac.to_encoded_bytes();
-    if flags.is_encrypted() {
-        let shared_secret = crypt::generate_ecdh_secret(e_sk, node_identity.public_key());
-        crypt::encrypt(&shared_secret, &body).unwrap()
-    } else {
-        body
-    }
+    mac.to_encoded_bytes()
 }
 
 pub fn make_dht_inbound_message(
@@ -210,6 +202,7 @@ pub fn build_peer_manager() -> Arc<PeerManager> {
 pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
     let msg_tag = MessageTag::new();
     DhtOutboundMessage {
+        protocol_version: DhtProtocolVersion::latest(),
         tag: msg_tag,
         destination_node_id: NodeId::default(),
         destination: Default::default(),
