@@ -20,26 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    convert::TryFrom,
-    str::from_utf8,
-    sync::{Arc, MutexGuard, RwLock},
-};
-
-use aes_gcm::{self, aead::Error as AeadError, Aes256Gcm};
-use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use log::*;
-use tari_crypto::tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
-
-use tari_common_types::types::PublicKey;
-use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::tari_amount::MicroTari;
-
 use crate::{
     output_manager_service::TxId,
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
@@ -73,9 +53,9 @@ use std::{
     str::from_utf8,
     sync::{Arc, MutexGuard, RwLock},
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, PublicKey};
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
+use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
@@ -796,64 +776,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn confirm_broadcast_or_coinbase_transaction(&self, _tx_id: u64) -> Result<(), TransactionStorageError> {
-        unimplemented!("obsolete");
-        // let conn = self.database_connection.acquire_lock();
-        // match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
-        //     Ok(v) => {
-        //         if v.status == TransactionStatus::MinedUnconfirmed as i32 ||
-        //             v.status == TransactionStatus::MinedConfirmed as i32 ||
-        //             v.status == TransactionStatus::Broadcast as i32 ||
-        //             v.status == TransactionStatus::Coinbase as i32
-        //         {
-        //             v.confirm(&(*conn))?;
-        //         } else {
-        //             return Err(TransactionStorageError::TransactionNotMined(tx_id));
-        //         }
-        //     },
-        //     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-        //         return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-        //             tx_id,
-        //         )));
-        //     },
-        //     Err(e) => return Err(e),
-        // };
-        // Ok(())
-    }
-
-    // fn set_completed_transaction_validity(&self, tx_id: u64, valid: bool) -> Result<(), TransactionStorageError> {
-    //     let conn = self.database_connection.acquire_lock();
-    //     match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
-    //         Ok(v) => {
-    //             v.set_validity(valid, &(*conn))?;
-    //         },
-    //         Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-    //             return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-    //                 tx_id,
-    //             )));
-    //         },
-    //         Err(e) => return Err(e),
-    //     };
-    //     Ok(())
-    // }
-
-    fn update_confirmations(&self, _tx_id: u64, _confirmations: u64) -> Result<(), TransactionStorageError> {
-        unimplemented!("obsolete");
-        // let conn = self.database_connection.acquire_lock();
-        // match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
-        //     Ok(v) => {
-        //         v.update_confirmations(confirmations, &(*conn))?;
-        //     },
-        //     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-        //         return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-        //             tx_id,
-        //         )));
-        //     },
-        //     Err(e) => return Err(e),
-        // };
-        // Ok(())
-    }
-
     fn update_mined_height(
         &self,
         tx_id: u64,
@@ -901,7 +823,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         })
     }
 
-    fn fetch_unmined_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
         let txs = completed_transactions::table
             .filter(
@@ -909,6 +831,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     .is_null()
                     .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
             )
+            .filter(completed_transactions::cancelled.eq(false as i32))
             .order_by(completed_transactions::tx_id)
             .load::<CompletedTransactionSql>(&*conn)?;
 
@@ -1400,10 +1323,17 @@ impl CompletedTransactionSql {
     }
 
     pub fn set_as_unmined(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        let status = if self.coinbase_block_height.is_some() {
+            Some(TransactionStatus::Coinbase as i32)
+        } else if self.status == TransactionStatus::Broadcast as i32 {
+            Some(TransactionStatus::Broadcast as i32)
+        } else {
+            Some(TransactionStatus::Completed as i32)
+        };
+
         self.update(
             UpdateCompletedTransactionSql {
-                // TODO: Coinbases should technically go back to 'Coinbase' instead of 'Completed'
-                status: Some(TransactionStatus::Completed as i32),
+                status,
                 mined_in_block: Some(None),
                 mined_height: Some(None),
                 confirmations: Some(None),
@@ -1451,7 +1381,7 @@ impl CompletedTransactionSql {
                 }),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block)),
-                valid: Some(if is_valid { 1 } else { 0 }),
+                valid: Some(is_valid as i32),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: Some(0),
                 ..Default::default()
@@ -1783,6 +1713,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1802,6 +1733,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1930,6 +1862,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -1950,6 +1883,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -1970,6 +1904,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1)
@@ -2080,6 +2015,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -2161,6 +2097,7 @@ mod test {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         };
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
         completed_tx_sql.commit(&conn).unwrap();

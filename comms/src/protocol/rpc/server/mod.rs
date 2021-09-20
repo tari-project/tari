@@ -64,7 +64,6 @@ use crate::{
 };
 use futures::{stream, SinkExt, StreamExt};
 use prost::Message;
-use rand::{rngs::OsRng, RngCore};
 use std::{
     future::Future,
     sync::Arc,
@@ -378,7 +377,6 @@ where
 }
 
 struct ActivePeerRpcService<TSvc, TCommsProvider> {
-    id: u64,
     config: RpcServerBuilder,
     protocol: ProtocolId,
     node_id: NodeId,

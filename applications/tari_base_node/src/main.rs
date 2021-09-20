@@ -95,7 +95,7 @@ mod status_line;
 mod utils;
 
 use crate::command_handler::{CommandHandler, StatusOutput};
-use futures::{future::Fuse, pin_mut, FutureExt};
+use futures::{pin_mut, FutureExt};
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use parser::Parser;
@@ -119,7 +119,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
     task,
-    time::{self, Delay},
+    time::{self},
 };
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};

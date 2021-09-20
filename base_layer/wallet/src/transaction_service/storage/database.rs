@@ -60,7 +60,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
 
     fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
 
-    fn fetch_unmined_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
     /// Check if a record with the provided key exists in the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
@@ -84,8 +84,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<(), TransactionStorageError>;
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Indicated that a broadcast transaction has been detected as confirm on a base node
-    fn confirm_broadcast_or_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
     fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
@@ -115,8 +113,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Update a transactions number of confirmations
-    fn update_confirmations(&self, tx_id: TxId, confirmations: u64) -> Result<(), TransactionStorageError>;
     /// Update a transactions mined height. A transaction can either be mined as valid or mined as invalid
     /// A normal transaction can only be mined with valid = true,
     /// A coinbase transaction can either be mined as valid = true, meaning that it is the coinbase in that block
@@ -426,12 +422,12 @@ where T: TransactionBackend + 'static
         Ok(*t)
     }
 
-    pub async fn get_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
+    pub async fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.fetch_last_mined_transaction()
     }
 
-    pub async fn fetch_unmined_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.db.fetch_unmined_transactions()
+    pub async fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db.fetch_unconfirmed_transactions()
     }
 
     pub async fn get_completed_transaction_cancelled_or_not(
@@ -756,29 +752,9 @@ where T: TransactionBackend + 'static
         Ok(())
     }
 
-    pub async fn confirm_broadcast_or_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.confirm_broadcast_or_coinbase_transaction(tx_id))
-            .await
-            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
-    }
-
     pub async fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.set_transaction_as_unmined(tx_id))
-            .await
-            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
-    }
-
-    pub async fn set_transaction_confirmations(
-        &self,
-        tx_id: TxId,
-        confirmations: u64,
-    ) -> Result<(), TransactionStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.update_confirmations(tx_id, confirmations))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

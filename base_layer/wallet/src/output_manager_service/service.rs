@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
@@ -29,21 +29,15 @@ use crate::{
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
+            database::{OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
-        tasks::{TxoValidationTaskV2, TxoValidationType},
+        tasks::TxoValidationTask,
         MasterKeyManager,
         TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
-    types::{HashDigest, ValidationRetryStrategy},
-use std::{
-    cmp::Ordering,
-    collections::HashMap,
-    fmt::{self, Display},
-    sync::Arc,
-    time::Duration,
+    types::HashDigest,
 };
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -52,18 +46,9 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{
     cmp::Ordering,
-    collections::HashMap,
     fmt::{self, Display},
     sync::Arc,
-    time::{Duration, Instant},
-use tari_crypto::{
-    inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray},
 };
-use tokio::sync::broadcast;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -74,14 +59,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionOutput,
-            UnblindedOutput,
-        },
+        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::sender::TransactionSenderMessage,
         CoinbaseBuilder,
         CryptoFactories,
@@ -89,9 +67,15 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_crypto::{
+    inputs,
+    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    script::TariScript,
+    tari_utilities::{hex::Hex, ByteArray},
+};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, time::interval_at};
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
@@ -106,8 +90,8 @@ where TBackend: OutputManagerBackend + 'static
     resources: OutputManagerResources<TBackend>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
-    base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     base_node_service: BaseNodeServiceHandle,
+    last_seen_tip_height: Option<u64>,
 }
 
 impl<TBackend> OutputManagerService<TBackend>
@@ -149,14 +133,11 @@ where TBackend: OutputManagerBackend + 'static
             shutdown_signal,
         };
 
-        let (base_node_update_publisher, _) =
-            broadcast::channel(resources.config.base_node_update_publisher_channel_size);
-
         Ok(OutputManagerService {
             resources,
             request_stream: Some(request_stream),
-            base_node_update_publisher,
             base_node_service,
+            last_seen_tip_height: None,
         })
     }
 
@@ -169,23 +150,17 @@ where TBackend: OutputManagerBackend + 'static
         pin_mut!(request_stream);
 
         let mut shutdown = self.resources.shutdown_signal.clone();
-        // Should probably be block time or at least configurable
-        // Start a bit later so that the wallet can start up
-        let mut txo_validation_interval = interval_at(
-            (Instant::now() + Duration::from_secs(35)).into(),
-            Duration::from_secs(30),
-        )
-        .fuse();
+
+        let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
+
         info!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             tokio::select! {
-                      // tx validation timer
-               _ = txo_validation_interval.select_next_some() => {
-                   let _ =self
-                        .validate_outputs(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(0)).map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                        e
-                    });
+                event = base_node_service_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_base_node_service_event(msg),
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    }
                 },
                 Some(request_context) = request_stream.next() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
@@ -269,22 +244,10 @@ where TBackend: OutputManagerBackend + 'static
                 .confirm_encumberance(tx_id)
                 .await
                 .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
-            OutputManagerRequest::ConfirmTransaction((tx_id, spent_outputs, received_outputs)) => self
-                .confirm_transaction(tx_id, &spent_outputs, &received_outputs)
-                .await
-                .map(|_| OutputManagerResponse::TransactionConfirmed),
             OutputManagerRequest::CancelTransaction(tx_id) => self
                 .cancel_transaction(tx_id)
                 .await
                 .map(|_| OutputManagerResponse::TransactionCancelled),
-            OutputManagerRequest::TimeoutTransactions(period) => self
-                .timeout_pending_transactions(period)
-                .await
-                .map(|_| OutputManagerResponse::TransactionsTimedOut),
-            OutputManagerRequest::GetPendingTransactions => self
-                .fetch_pending_transaction_outputs()
-                .await
-                .map(OutputManagerResponse::PendingTransactions),
             OutputManagerRequest::GetSpentOutputs => {
                 let outputs = self
                     .fetch_spent_outputs()
@@ -313,8 +276,8 @@ where TBackend: OutputManagerBackend + 'static
                 .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
-            OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
-                .validate_outputs(validation_type, retries)
+            OutputManagerRequest::ValidateUtxos => self
+                .validate_outputs()
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -370,49 +333,38 @@ where TBackend: OutputManagerBackend + 'static
         }
     }
 
-    fn validate_outputs(
-        &mut self,
-        validation_type: TxoValidationType,
-        _retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, OutputManagerError> {
+    fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
+        match (*event).clone() {
+            BaseNodeEvent::BaseNodeStateChanged(state) => {
+                let trigger_validation = match (self.last_seen_tip_height, state.chain_metadata.clone()) {
+                    (Some(last_seen_tip_height), Some(cm)) => last_seen_tip_height != cm.height_of_longest_chain(),
+                    (None, _) => true,
+                    _ => false,
+                };
+                if trigger_validation {
+                    let _ = self.validate_outputs().map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                        e
+                    });
+                }
+                self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
+            },
+            BaseNodeEvent::BaseNodePeerSet(_peer) => (),
+        }
+    }
+
+    fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
                 let id = OsRng.next_u64();
-                // let utxo_validation_task = TxoValidationTask::new(
-                //     id,
-                //     validation_type,
-                //     retry_strategy,
-                //     self.resources.clone(),
-                //     pk.clone(),
-                //     self.base_node_update_publisher.subscribe(),
-                // );
-                //
-                // tokio::spawn(async move {
-                //     match utxo_validation_task.execute().await {
-                //         Ok(id) => {
-                //             info!(
-                //                 target: LOG_TARGET,
-                //                 "UTXO Validation Protocol (Id: {}) completed successfully", id
-                //             );
-                //         },
-                //         Err(OutputManagerProtocolError { id, error }) => {
-                //             warn!(
-                //                 target: LOG_TARGET,
-                //                 "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
-                //             );
-                //         },
-                //     }
-                // });
-
-                let utxo_validation = TxoValidationTaskV2::new(
+                let utxo_validation = TxoValidationTask::new(
                     pk.clone(),
                     id,
                     100,
                     self.resources.db.clone(),
                     self.resources.connectivity_manager.clone(),
                     self.resources.event_publisher.clone(),
-                    validation_type,
                     self.resources.config.clone(),
                 );
 
@@ -514,10 +466,8 @@ where TBackend: OutputManagerBackend + 'static
 
         self.resources
             .db
-            .accept_incoming_pending_transaction(single_round_sender_data.tx_id, output, None)
+            .add_output_to_be_received(single_round_sender_data.tx_id, output, None)
             .await?;
-
-        self.confirm_encumberance(single_round_sender_data.tx_id).await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
 
@@ -531,46 +481,6 @@ where TBackend: OutputManagerBackend + 'static
         );
 
         Ok(rtp)
-    }
-
-    /// Confirm the reception of an expected transaction output. This will be called by the Transaction Service when it
-    /// detects the output on the blockchain
-    pub async fn confirm_received_transaction_output(
-        &mut self,
-        tx_id: u64,
-        received_output: &TransactionOutput,
-    ) -> Result<(), OutputManagerError> {
-        let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
-
-        // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
-        if pending_transaction.outputs_to_be_received.len() != 1 {
-            return Err(OutputManagerError::IncompleteTransaction(
-                "unexpected number of outputs to be received, exactly one is expected",
-            ));
-        }
-
-        if pending_transaction.outputs_to_be_received[0]
-            .unblinded_output
-            .as_transaction_input(&self.resources.factories.commitment)?
-            .commitment !=
-            received_output.commitment
-        {
-            return Err(OutputManagerError::IncompleteTransaction(
-                "unexpected commitment received",
-            ));
-        }
-
-        self.resources
-            .db
-            .confirm_pending_transaction_outputs(pending_transaction.tx_id)
-            .await?;
-
-        debug!(
-            target: LOG_TARGET,
-            "Confirm received transaction outputs for TxId: {}", tx_id
-        );
-
-        Ok(())
     }
 
     /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
@@ -740,11 +650,23 @@ where TBackend: OutputManagerBackend + 'static
 
         let output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
 
-        // Clear any existing pending coinbase transactions for this blockheight
-        self.resources
+        // Clear any existing pending coinbase transactions for this blockheight if they exist
+        if let Err(e) = self
+            .resources
             .db
-            .cancel_pending_transaction_at_block_height(block_height)
-            .await?;
+            .clear_pending_coinbase_transaction_at_block_height(block_height)
+            .await
+        {
+            match e {
+                OutputManagerStorageError::DieselError(DieselError::NotFound) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "An existing pending coinbase was cleared for block height {}", block_height
+                    )
+                },
+                _ => return Err(OutputManagerError::from(e)),
+            }
+        };
 
         // Clear any matching outputs for this commitment. Even if the older output is valid
         // we are losing no information as this output has the same commitment.
@@ -761,7 +683,7 @@ where TBackend: OutputManagerBackend + 'static
 
         self.resources
             .db
-            .accept_incoming_pending_transaction(tx_id, output, Some(block_height))
+            .add_output_to_be_received(tx_id, output, Some(block_height))
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
@@ -891,56 +813,6 @@ where TBackend: OutputManagerBackend + 'static
         Ok(())
     }
 
-    /// Confirm that a received or sent transaction and its outputs have been detected on the base chain. The inputs and
-    /// outputs are checked to see that they match what the stored PendingTransaction contains. This will
-    /// be called by the Transaction Service which monitors the base chain.
-    async fn confirm_transaction(
-        &mut self,
-        tx_id: u64,
-        inputs: &[TransactionInput],
-        outputs: &[TransactionOutput],
-    ) -> Result<(), OutputManagerError> {
-        let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
-
-        // Check that outputs to be spent can all be found in the provided transaction inputs
-        for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
-            let input_to_check = output_to_spend
-                .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment)?;
-
-            if inputs.iter().all(|input| input.commitment != input_to_check.commitment) {
-                return Err(OutputManagerError::IncompleteTransaction(
-                    "outputs to spend are missing",
-                ));
-            }
-        }
-
-        // Check that outputs to be received can all be found in the provided transaction outputs
-        for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
-            let output_to_check = output_to_receive
-                .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment)?;
-
-            if outputs
-                .iter()
-                .all(|output| output.commitment != output_to_check.commitment)
-            {
-                return Err(OutputManagerError::IncompleteTransaction(
-                    "outputs to receive are missing",
-                ));
-            }
-        }
-
-        self.resources
-            .db
-            .confirm_pending_transaction_outputs(pending_transaction.tx_id)
-            .await?;
-
-        trace!(target: LOG_TARGET, "Confirm transaction (TxId: {})", tx_id);
-
-        Ok(())
-    }
-
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
     pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
         debug!(
@@ -954,7 +826,7 @@ where TBackend: OutputManagerBackend + 'static
     /// cancelled.
     async fn reinstate_cancelled_inbound_transaction(&mut self, _tx_id: TxId) -> Result<(), OutputManagerError> {
         // TODO: is this still needed?
-        unimplemented!()
+        unimplemented!("Still needed?");
         // self.resources.db.reinstate_inbound_output(tx_id).await?;
         //
         // self.resources
@@ -971,11 +843,6 @@ where TBackend: OutputManagerBackend + 'static
         // self.confirm_encumberance(tx_id).await?;
 
         // Ok(())
-    }
-
-    /// Go through the pending transaction and if any have existed longer than the specified duration, cancel them
-    async fn timeout_pending_transactions(&mut self, period: Duration) -> Result<(), OutputManagerError> {
-        Ok(self.resources.db.timeout_pending_transaction_outputs(period).await?)
     }
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
@@ -1118,22 +985,9 @@ where TBackend: OutputManagerBackend + 'static
             "Setting base node public key {} for service", base_node_public_key
         );
 
-        self.resources.base_node_public_key = Some(base_node_public_key.clone());
-        if let Err(e) = self.base_node_update_publisher.send(base_node_public_key) {
-            trace!(
-                target: LOG_TARGET,
-                "No subscribers to receive base node public key update: {:?}",
-                e
-            );
-        }
+        self.resources.base_node_public_key = Some(base_node_public_key);
 
         Ok(())
-    }
-
-    pub async fn fetch_pending_transaction_outputs(
-        &self,
-    ) -> Result<HashMap<u64, PendingTransactionOutputs>, OutputManagerError> {
-        Ok(self.resources.db.fetch_all_pending_transaction_outputs().await?)
     }
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {

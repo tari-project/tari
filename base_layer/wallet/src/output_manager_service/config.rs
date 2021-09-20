@@ -32,6 +32,7 @@ pub struct OutputManagerServiceConfig {
     pub seed_word_language: MnemonicLanguage,
     pub event_channel_size: usize,
     pub base_node_update_publisher_channel_size: usize,
+    pub num_confirmations_required: u64,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -44,6 +45,7 @@ impl Default for OutputManagerServiceConfig {
             seed_word_language: MnemonicLanguage::English,
             event_channel_size: 250,
             base_node_update_publisher_channel_size: 50,
+            num_confirmations_required: 3,
         }
     }
 }

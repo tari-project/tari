@@ -49,6 +49,7 @@ pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
+    // let db_path = "/tmp/test.sqlite3".to_string();
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
     (connection, db_tempdir)

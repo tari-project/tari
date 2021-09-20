@@ -74,11 +74,6 @@ pub enum StatusOutput {
     Full,
 }
 
-pub enum StatusOutput {
-    Log,
-    Full,
-}
-
 pub struct CommandHandler {
     executor: runtime::Handle,
     config: Arc<GlobalConfig>,

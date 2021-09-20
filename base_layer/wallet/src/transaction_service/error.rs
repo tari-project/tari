@@ -152,6 +152,8 @@ pub enum TransactionServiceError {
         #[from]
         source: ConnectivityError,
     },
+    #[error("Base Node is not synced")]
+    BaseNodeNotSynced,
 }
 
 #[derive(Debug, Error)]

@@ -94,7 +94,6 @@ table! {
         flags -> Integer,
         maturity -> BigInt,
         status -> Integer,
-        tx_id -> Nullable<BigInt>,
         hash -> Nullable<Binary>,
         script -> Binary,
         input_data -> Binary,
@@ -110,14 +109,6 @@ table! {
         marked_deleted_in_block -> Nullable<Binary>,
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
-    }
-}
-
-table! {
-    pending_transaction_outputs (tx_id) {
-        tx_id -> BigInt,
-        short_term -> Integer,
-        timestamp -> Timestamp,
         coinbase_block_height -> Nullable<BigInt>,
     }
 }
@@ -138,6 +129,5 @@ allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
-    pending_transaction_outputs,
     wallet_settings,
 );

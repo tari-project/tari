@@ -35,8 +35,6 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use crate::types::ValidationRetryStrategy;
-
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionServiceRequest {
@@ -63,7 +61,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
-    ValidateTransactions(ValidationRetryStrategy),
+    ValidateTransactions,
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -104,11 +102,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
-            TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
-            /* TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
-             *     "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
-             *     tx_id, s
-             * )), */
+            TransactionServiceRequest::ValidateTransactions => f.write_str("ValidateTransactions"),
         }
     }
 }
@@ -514,13 +508,10 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn validate_transactions(
-        &mut self,
-        retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, TransactionServiceError> {
+    pub async fn validate_transactions(&mut self) -> Result<u64, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))
+            .call(TransactionServiceRequest::ValidateTransactions)
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),

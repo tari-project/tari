@@ -22,6 +22,7 @@
 use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
+    crypto::tari_utilities::Hashable,
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
@@ -351,12 +352,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-        // let deleted = self
-        //     .db
-        //     .fetch_complete_deleted_bitmap_at(metadata.best_block().clone())
-        //     .await
-        //     .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-        //     .into_bytes();
         Ok(Response::new(UtxoQueryResponses {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
@@ -428,11 +423,28 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 not_deleted_positions.push(position);
             }
         }
+
+        let mut blocks_deleted_in = Vec::new();
+        let mut heights_deleted_at = Vec::new();
+        if message.include_deleted_block_data {
+            let headers = self
+                .db
+                .fetch_headers_of_deleted_positions(deleted_positions.clone())
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            for header in headers.iter() {
+                heights_deleted_at.push(header.height);
+                blocks_deleted_in.push(header.hash());
+            }
+        }
+
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
             deleted_positions,
             not_deleted_positions,
+            blocks_deleted_in,
+            heights_deleted_at,
         }))
     }
 
@@ -457,6 +469,21 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     }
 
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let height = request.into_message();
+        let header = self
+            .db()
+            .fetch_header(height)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+
+        Ok(Response::new(header.into()))
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()

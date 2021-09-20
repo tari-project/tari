@@ -34,7 +34,11 @@ use crate::{
 };
 use futures::FutureExt;
 use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_common_types::types::Signature;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
@@ -59,7 +63,7 @@ where TBackend: TransactionBackend + 'static
     base_node_public_key: CommsPublicKey,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
     base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
-    first_rejection: bool,
+    last_rejection: Option<Instant>,
 }
 
 impl<TBackend> TransactionBroadcastProtocol<TBackend>
@@ -81,7 +85,7 @@ where TBackend: TransactionBackend + 'static
             base_node_public_key,
             timeout_update_receiver: Some(timeout_update_receiver),
             base_node_update_receiver: Some(base_node_update_receiver),
-            first_rejection: false,
+            last_rejection: None,
         }
     }
 
@@ -159,7 +163,7 @@ where TBackend: TransactionBackend + 'static
                                 target: LOG_TARGET,
                                 "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
                             );
-                            self.first_rejection = false;
+                            self.last_rejection = None;
                             continue;
                         },
                         Err(e) => {
@@ -247,7 +251,7 @@ where TBackend: TransactionBackend + 'static
                                     target: LOG_TARGET,
                                     "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
                                 );
-                                self.first_rejection = false;
+                                self.last_rejection = None;
                                 continue;
                             },
                             Err(e) => {
@@ -269,36 +273,7 @@ where TBackend: TransactionBackend + 'static
                             },
                             TxBroadcastMode::TransactionQuery => {
                                 if result? {
-                                    debug!(target: LOG_TARGET, "Transaction already mined, transaction validation protocol will continue from here ");
-                                   //  self.resources
-                                   //      .output_manager_service
-                                   //      .confirm_transaction(
-                                   //          completed_tx.tx_id,
-                                   //          completed_tx.transaction.body.inputs().clone(),
-                                   //          completed_tx.transaction.body.outputs().clone(),
-                                   //      )
-                                   //      .await
-                                   //      .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-                                   //
-                                   //  self.resources
-                                   //      .db
-                                   //      .confirm_broadcast_or_coinbase_transaction(completed_tx.tx_id)
-                                   //      .await
-                                   //      .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-                                   //
-                                   // let _ = self
-                                   //      .resources
-                                   //      .event_publisher
-                                   //      .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
-                                   //      .map_err(|e| {
-                                   //          trace!(
-                                   //              target: LOG_TARGET,
-                                   //              "Error sending event because there are no subscribers: {:?}",
-                                   //              e
-                                   //          );
-                                   //          e
-                                   //      });
-
+                                    debug!(target: LOG_TARGET, "Transaction broadcast, transaction validation protocol will continue from here");
                                     return Ok(self.tx_id)
                                 }
                             },
@@ -477,76 +452,21 @@ where TBackend: TransactionBackend + 'static
         if response.location == TxLocation::Mined {
             info!(
                 target: LOG_TARGET,
-                "Broadcast transaction detected as mined, will be managed by transaction validation protoocol"
+                "Broadcast transaction detected as mined, will be managed by transaction validation protocol"
             );
-            return Ok(true);
-            // self.resources
-            //     .db
-            //     .set_transaction_confirmations(self.tx_id, response.confirmations)
-            //     .await
-            //     .for_protocol(self.tx_id)?;
-            //
-            // self.resources
-            //     .db
-            //     .set_transaction_mined_height(
-            //         self.tx_id,
-            //         response.height_of_longest_chain.saturating_sub(response.confirmations),
-            //         response
-            //             .block_hash
-            //             .map(|bh| bh.clone())
-            //             .ok_or_else(|| {
-            //                 TransactionServiceError::InvalidMessageError(
-            //                     "Block hash was not provided for mined transaction".to_string(),
-            //                 )
-            //             })
-            //             .for_protocol(self.tx_id)?,
-            //     )
-            //     .await
-            //     .for_protocol(self.tx_id)?;
-            //
-            // if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
-            //     info!(
-            //         target: LOG_TARGET,
-            //         "Transaction (TxId: {}) detected as mined and CONFIRMED with {} confirmations",
-            //         self.tx_id,
-            //         response.confirmations
-            //     );
-            //     return Ok(true);
-            // }
-            // info!(
-            //     target: LOG_TARGET,
-            //     "Transaction (TxId: {}) detected as mined but UNCONFIRMED with {} confirmations",
-            //     self.tx_id,
-            //     response.confirmations
-            // );
-            // self.resources
-            //     .db
-            //     .mine_completed_transaction(self.tx_id)
-            //     .await
-            //     .for_protocol(self.tx_id)?;
-            // let _ = self
-            //     .resources
-            //     .event_publisher
-            //     .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(
-            //         self.tx_id,
-            //         response.confirmations,
-            //     )))
-            //     .map_err(|e| {
-            //         trace!(
-            //             target: LOG_TARGET,
-            //             "Error sending event because there are no subscribers: {:?}",
-            //             e
-            //         );
-            //         e
-            //     });
+            Ok(true)
         } else if response.location != TxLocation::InMempool {
-            if !self.first_rejection {
+            if self.last_rejection.is_none() ||
+                self.last_rejection.unwrap().elapsed() >
+                    self.resources.config.transaction_mempool_resubmission_window
+            {
                 info!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) not found in mempool, attempting to resubmit transaction", self.tx_id
                 );
                 self.mode = TxBroadcastMode::TransactionSubmission;
-                self.first_rejection = true;
+                self.last_rejection = Some(Instant::now());
+                Ok(false)
             } else {
                 error!(
                     target: LOG_TARGET,
@@ -568,19 +488,18 @@ where TBackend: TransactionBackend + 'static
                         );
                         e
                     });
-                return Err(TransactionServiceProtocolError::new(
+                Err(TransactionServiceProtocolError::new(
                     self.tx_id,
                     TransactionServiceError::MempoolRejection,
-                ));
+                ))
             }
         } else {
             info!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) found in mempool.", self.tx_id
             );
+            Ok(true)
         }
-
-        Ok(false)
     }
 
     async fn query_or_submit_transaction(

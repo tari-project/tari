@@ -235,6 +235,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
 
+    make_async_fn!(fetch_headers_of_deleted_positions(mmr_position: Vec<u64>) -> Vec<BlockHeader>, "fetch_headers_of_deleted_positions");
+
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
     make_async_fn!(fetch_total_size_stats() -> DbTotalSizeStats, "fetch_total_size_stats");
