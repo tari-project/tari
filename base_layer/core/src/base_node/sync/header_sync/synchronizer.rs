@@ -34,7 +34,7 @@ use crate::{
     tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::{future, stream::FuturesUnordered, StreamExt};
+use futures::{future, StreamExt};
 use log::*;
 use std::{
     convert::TryFrom,
@@ -197,15 +197,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         debug!(target: LOG_TARGET, "Dialing {} sync peer(s)", self.sync_peers.len());
-        let tasks = self
-            .sync_peers
-            .iter()
-            .map(|node_id| {
-                let mut c = self.connectivity.clone();
-                let node_id = node_id.clone();
-                async move { c.dial_peer(node_id).await }
-            })
-            .collect::<FuturesUnordered<_>>();
+        let tasks = self.connectivity.dial_many_peers(self.sync_peers.iter().cloned());
 
         let connections = tasks
             .filter_map(|r| match r {

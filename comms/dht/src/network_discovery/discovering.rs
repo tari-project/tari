@@ -245,7 +245,7 @@ impl Discovering {
             .peers
             .iter()
             .map(|peer| {
-                let mut connectivity = self.context.connectivity.clone();
+                let connectivity = self.context.connectivity.clone();
                 let peer = peer.clone();
                 async move { connectivity.dial_peer(peer).await }
             })
