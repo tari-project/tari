@@ -208,11 +208,8 @@ where
                     target: LOG_TARGET,
                     "Failed to dial peer '{}' because '{:?}'", node_id, err
                 );
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
-                    Box::new(node_id.clone()),
-                    err.clone(),
-                ))
-                .await
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
+                    .await
             },
         }
 

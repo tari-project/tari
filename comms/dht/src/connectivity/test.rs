@@ -111,21 +111,15 @@ async fn initialize() {
 
     // Wait for calls to add peers
     async_assert!(
-        connectivity.count_calls_containing("AddManagedPeers").await >= 2,
+        connectivity.get_dialed_peers().await.len() >= 2,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
 
     // Check that neighbours are added
-    let mut managed = connectivity.get_managed_peers().await;
     for neighbour in &neighbours {
-        let pos = managed.iter().position(|n| n == neighbour).unwrap();
-        managed.remove(pos);
+        connectivity.expect_dial_peer(neighbour).await;
     }
-
-    // Check that random peers (excl neighbours) are added
-    assert_eq!(managed.len(), 2);
-    assert!(managed.iter().all(|n| !neighbours.contains(n)));
 }
 
 #[runtime::test]
@@ -153,32 +147,27 @@ async fn added_neighbours() {
     );
 
     let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
+    assert_eq!(count_string_occurrences(&calls, &["DialPeer"]), 5);
 
     let (conn, _) = create_dummy_peer_connection(closer_peer.node_id().clone());
-    connectivity.publish_event(ConnectivityEvent::PeerConnected(conn));
+    connectivity.publish_event(ConnectivityEvent::PeerConnected(conn.clone()));
 
     async_assert!(
-        connectivity.call_count().await >= 2,
+        connectivity.get_dialed_peers().await.len() >= 5,
         max_attempts = 20,
-        interval = Duration::from_millis(10),
+        interval = Duration::from_millis(50),
     );
 
-    let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
-    assert_eq!(count_string_occurrences(&calls, &["RemovePeer"]), 1);
-
-    // Check that the closer neighbour was added to managed peers
-    let managed = connectivity.get_managed_peers().await;
-    assert_eq!(managed.len(), 5);
-    assert!(managed.contains(closer_peer.node_id()));
+    // 1 for this test, 1 for the connectivity manager
+    assert_eq!(conn.handle_count(), 2);
 }
 
 #[runtime::test]
-#[allow(clippy::redundant_closure)]
-async fn reinitialize_pools_when_offline() {
+async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
-    let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();
+    // let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();
+    let node_identities =
+        ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
     let peers = node_identities.iter().map(|ni| ni.to_peer()).collect::<Vec<_>>();
 
@@ -190,16 +179,20 @@ async fn reinitialize_pools_when_offline() {
     let (dht_connectivity, _, connectivity, _, _, _shutdown) = setup(config, node_identity, peers).await;
     dht_connectivity.spawn();
 
-    // Wait for calls to add peers
+    // Wait for calls to dial peers
     async_assert!(
-        connectivity.call_count().await >= 1,
+        connectivity.call_count().await >= 6,
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
+    let _ = connectivity.take_calls().await;
 
-    let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
+    let dialed = connectivity.take_dialed_peers().await;
+    assert_eq!(dialed.len(), 5);
 
+    connectivity.publish_event(ConnectivityEvent::PeerDisconnected(
+        node_identities[4].node_id().clone(),
+    ));
     connectivity.publish_event(ConnectivityEvent::ConnectivityStateOffline);
 
     async_assert!(
@@ -207,13 +200,11 @@ async fn reinitialize_pools_when_offline() {
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
-    let calls = connectivity.take_calls().await;
-    assert_eq!(count_string_occurrences(&calls, &["RemovePeer"]), 0);
-    assert_eq!(count_string_occurrences(&calls, &["AddManagedPeers"]), 1);
 
-    // Check that the closer neighbour was added to managed peers
-    let managed = connectivity.get_managed_peers().await;
-    assert_eq!(managed.len(), 5);
+    // Check that the next closer neighbour was added to the pool
+    let dialed = connectivity.take_dialed_peers().await;
+    assert_eq!(dialed.len(), 2);
+    assert_eq!(dialed[0], *node_identities.last().unwrap().node_id());
 }
 
 #[runtime::test]
