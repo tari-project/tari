@@ -57,6 +57,7 @@ use crate::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
 };
+use std::ops::Shl;
 use tari_common_types::types::{
     BlindingFactor,
     Challenge,
@@ -281,6 +282,12 @@ impl UnblindedOutput {
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -295,12 +302,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 
@@ -309,6 +311,12 @@ impl UnblindedOutput {
         factories: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
@@ -330,12 +338,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 }
@@ -1383,7 +1386,9 @@ mod test {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionError::ValidationError("Range proof could not be verified".to_string())
+                TransactionError::ValidationError(
+                    "Value provided is outside the range allowed by the range proof".to_string()
+                )
             ),
         }
 

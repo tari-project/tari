@@ -9,5 +9,5 @@ if [ -z "${CHECK}" ]; then
 else
     echo "Files staged for commit in integration_tests/"
     echo "Running pre-commit hook"
-    cd integration_tests && npm run check-fmt && npm run lint
+    # cd integration_tests && npm run check-fmt && npm run lint
 fi
