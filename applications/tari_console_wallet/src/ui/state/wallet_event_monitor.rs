@@ -138,9 +138,8 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg);
                                 match msg {
-                                    ConnectivityEvent::PeerDisconnected(_) |
-                                    ConnectivityEvent::ManagedPeerDisconnected(_) |
-                                    ConnectivityEvent::PeerConnected(_)  => {
+                                    ConnectivityEvent::PeerConnected(_) |
+                                    ConnectivityEvent::PeerDisconnected(_) => {
                                         self.trigger_peer_state_refresh().await;
                                     },
                                     // Only the above variants trigger state refresh
