@@ -94,11 +94,10 @@ impl WalletConnectivityHandle {
             .send(WalletConnectivityRequest::ObtainBaseNodeSyncRpcClient(reply_tx))
             .await
             .ok()?;
-
         reply_rx.await.ok()
     }
 
-    pub fn get_connectivity_status(&mut self) -> OnlineStatus {
+    pub fn get_connectivity_status(&self) -> OnlineStatus {
         *self.online_status_rx.borrow()
     }
 
@@ -107,7 +106,7 @@ impl WalletConnectivityHandle {
     }
 
     pub fn get_current_base_node_peer(&self) -> Option<Peer> {
-        self.base_node_watch.borrow().clone()
+        self.base_node_watch.borrow().as_ref().cloned()
     }
 
     pub fn get_current_base_node_id(&self) -> Option<NodeId> {

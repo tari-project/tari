@@ -303,32 +303,35 @@ impl NetworkTab {
                         return KeyHandled::Handled;
                     },
                 },
-                BaseNodeInputMode::Address => match c {
-                    '\n' => {
-                        match Handle::current().block_on(
-                            app_state.set_custom_base_node(self.public_key_field.clone(), self.address_field.clone()),
-                        ) {
-                            Ok(peer) => {
-                                self.previous_address_field = self.address_field.clone();
-                                self.previous_public_key_field = self.public_key_field.clone();
-                                self.detailed_base_node = Some(peer);
-                            },
-                            Err(e) => {
-                                warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
-                                self.error_message =
-                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
-                                self.address_field = self.previous_address_field.clone();
-                                self.public_key_field = self.previous_public_key_field.clone();
-                            },
-                        }
+                BaseNodeInputMode::Address => {
+                    return match c {
+                        '\n' => {
+                            match Handle::current().block_on(
+                                app_state
+                                    .set_custom_base_node(self.public_key_field.clone(), self.address_field.clone()),
+                            ) {
+                                Ok(peer) => {
+                                    self.previous_address_field = self.address_field.clone();
+                                    self.previous_public_key_field = self.public_key_field.clone();
+                                    self.detailed_base_node = Some(peer);
+                                },
+                                Err(e) => {
+                                    warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
+                                    self.error_message =
+                                        Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                                    self.address_field = self.previous_address_field.clone();
+                                    self.public_key_field = self.previous_public_key_field.clone();
+                                },
+                            }
 
-                        self.base_node_edit_mode = BaseNodeInputMode::None;
-                        return KeyHandled::Handled;
-                    },
-                    c => {
-                        self.address_field.push(c);
-                        return KeyHandled::Handled;
-                    },
+                            self.base_node_edit_mode = BaseNodeInputMode::None;
+                            KeyHandled::Handled
+                        },
+                        c => {
+                            self.address_field.push(c);
+                            KeyHandled::Handled
+                        },
+                    }
                 },
                 BaseNodeInputMode::Selection => match c {
                     '\n' => {

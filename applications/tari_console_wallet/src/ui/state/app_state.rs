@@ -411,7 +411,7 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        (&self.node_config.transaction_num_confirmations_required).to_owned()
+        self.node_config.transaction_num_confirmations_required
     }
 
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
@@ -570,14 +570,14 @@ impl AppStateInner {
                 let tx = CompletedTransaction::from(tx);
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && !tx.cancelled {
-                        self.data.pending_txs[index] = tx;
+                        self.data.pending_txs[index] = tx.clone();
                         self.updated = true;
                         return Ok(());
                     } else {
                         let _ = self.data.pending_txs.remove(index);
                     }
                 } else if tx.status == TransactionStatus::Pending && !tx.cancelled {
-                    self.data.pending_txs.push(tx);
+                    self.data.pending_txs.push(tx.clone());
                     self.data.pending_txs.sort_by(|a, b| {
                         b.timestamp
                             .partial_cmp(&a.timestamp)
@@ -589,9 +589,9 @@ impl AppStateInner {
                 }
 
                 if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {
-                    self.data.completed_txs[index] = tx;
+                    self.data.completed_txs[index] = tx.clone();
                 } else {
-                    self.data.completed_txs.push(tx);
+                    self.data.completed_txs.push(tx.clone());
                 }
                 self.data.completed_txs.sort_by(|a, b| {
                     b.timestamp
