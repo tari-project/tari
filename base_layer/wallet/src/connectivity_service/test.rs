@@ -138,9 +138,9 @@ async fn it_changes_to_a_new_base_node() {
     // Initiate a connection to the base node
     handle.set_base_node(base_node_peer1.to_peer()).await.unwrap();
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer1.node_id()).await;
-    assert!(mock_state.count_calls_containing("AddManagedPeer").await >= 1);
+    assert!(mock_state.count_calls_containing("DialPeer").await >= 1);
     let _ = mock_state.take_calls().await;
 
     let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
@@ -149,7 +149,7 @@ async fn it_changes_to_a_new_base_node() {
     // Initiate a connection to the base node
     handle.set_base_node(base_node_peer2.to_peer()).await.unwrap();
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer2.node_id()).await;
 
     let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
@@ -185,7 +185,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
         }
     });
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer.node_id()).await;
 
     // Make sure that the task has actually started before continuing, otherwise we may not be testing the client asking
@@ -222,7 +222,7 @@ async fn it_gracefully_handles_multiple_connection_failures() {
         }
     });
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer.node_id()).await;
 
     barrier.wait().await;

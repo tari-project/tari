@@ -203,6 +203,12 @@ jobs:
           name: tari_binary_archive-${{ matrix.os }}-${{ matrix.target_cpu }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
+      - name: Artifact miner
+        uses: actions/upload-artifact@v2
+        with:
+          name: tari_mining_node-${{ matrix.os }}-${{ matrix.target_cpu }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_mining_node${{ env.TBN_EXT}}"
+
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' }}

@@ -109,7 +109,7 @@ pub struct DhtConfig {
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
     /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
     /// peers that were previously tried.
-    /// Default: 24 hours
+    /// Default: 2 hours
     pub offline_peer_cooldown: Duration,
 }
 

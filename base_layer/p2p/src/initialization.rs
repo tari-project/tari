@@ -193,7 +193,7 @@ pub async fn initialize_local_test_comms(
         .with_user_agent("/test/1.0")
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_min_connectivity(1.0)
+        .with_min_connectivity(1)
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
