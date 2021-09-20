@@ -228,7 +228,6 @@ where B: BlockchainBackend
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
-
         Ok(self.consensus_manager.consensus_constants(height))
     }
 
@@ -648,7 +647,7 @@ where B: BlockchainBackend
 
     pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let NewBlockTemplate { header, mut body, .. } = template;
-        body.sort();
+        body.sort(header.version);
         let mut header = BlockHeader::from(header);
         // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
         // to increase the timestamp to be greater than the median timestamp
@@ -1051,10 +1050,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
+    // TODO: #testnetreset clean up this code
+    let input_mr = if header.version == 1 {
+        MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
+    } else {
+        input_mmr.get_merkle_root()?
+    };
+
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
-        input_mr: input_mmr.get_merkle_root()?,
+        input_mr,
         output_mr: output_mmr.get_merkle_root()?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: witness_mmr.get_merkle_root()?,

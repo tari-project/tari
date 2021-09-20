@@ -45,7 +45,7 @@ pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AggregateBody {
     sorted: bool,
     /// List of inputs spent by the transaction.
@@ -198,13 +198,18 @@ impl AggregateBody {
     }
 
     /// Sort the component lists of the aggregate body
-    pub fn sort(&mut self) {
+    pub fn sort(&mut self, version: u16) {
         if self.sorted {
             return;
         }
         self.inputs.sort();
         self.outputs.sort();
-        self.kernels.sort();
+        // TODO: #testnetreset clean up this code
+        if version <= 1 {
+            self.kernels.sort_by(|a, b| a.deprecated_cmp(b));
+        } else {
+            self.kernels.sort();
+        }
         self.sorted = true;
     }
 
@@ -470,6 +475,14 @@ impl AggregateBody {
             .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
     }
 }
+
+impl PartialEq for AggregateBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.kernels == other.kernels && self.inputs == other.inputs && self.outputs == other.outputs
+    }
+}
+
+impl Eq for AggregateBody {}
 
 /// This will strip away the offset of the transaction returning a pure aggregate body
 impl From<Transaction> for AggregateBody {
