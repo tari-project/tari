@@ -35,11 +35,18 @@ const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 
 pub struct WalletEventMonitor {
     app_state_inner: Arc<RwLock<AppStateInner>>,
+    balance_enquiry_debounce_tx: broadcast::Sender<()>,
 }
 
 impl WalletEventMonitor {
-    pub fn new(app_state_inner: Arc<RwLock<AppStateInner>>) -> Self {
-        Self { app_state_inner }
+    pub fn new(
+        app_state_inner: Arc<RwLock<AppStateInner>>,
+        balance_enquiry_debounce_tx: broadcast::Sender<()>,
+    ) -> Self {
+        Self {
+            app_state_inner,
+            balance_enquiry_debounce_tx,
+        }
     }
 
     pub async fn run(mut self, notifier: Notifier) {
@@ -75,20 +82,24 @@ impl WalletEventMonitor {
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                         notifier.transaction_received(tx_id);
                                     },
                                     TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
                                         self.trigger_confirmations_refresh(tx_id, confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                         notifier.transaction_mined_unconfirmed(tx_id, confirmations);
                                     },
                                     TransactionEvent::TransactionMined(tx_id) => {
                                         self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
                                     },
                                     TransactionEvent::TransactionCancelled(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);
                                     },
                                     TransactionEvent::ReceivedTransaction(tx_id) |
@@ -96,15 +107,18 @@ impl WalletEventMonitor {
                                     TransactionEvent::TransactionBroadcast(tx_id) |
                                     TransactionEvent::TransactionMinedRequestTimedOut(tx_id) | TransactionEvent::TransactionImported(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                     },
                                     TransactionEvent::TransactionDirectSendResult(tx_id, true) |
                                     TransactionEvent::TransactionStoreForwardSendResult(tx_id, true) |
                                     TransactionEvent::TransactionCompletedImmediately(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
                                         notifier.transaction_sent(tx_id);
                                     },
                                     TransactionEvent::TransactionValidationSuccess(_) => {
                                         self.trigger_full_tx_state_refresh().await;
+                                        self.trigger_balance_refresh();
                                     },
                                     // Only the above variants trigger state refresh
                                     _ => (),
@@ -162,6 +176,7 @@ impl WalletEventMonitor {
                                     }
                                     BaseNodeEvent::BaseNodePeerSet(peer) => {
                                         self.trigger_base_node_peer_refresh(*peer).await;
+                                        self.trigger_balance_refresh();
                                     }
                                 }
                             },
@@ -176,7 +191,7 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                                 if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*msg {
-                                    self.trigger_balance_refresh().await;
+                                    self.trigger_balance_refresh();
                                 }
                             },
                             Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -249,10 +264,8 @@ impl WalletEventMonitor {
         }
     }
 
-    async fn trigger_balance_refresh(&mut self) {
-        let mut inner = self.app_state_inner.write().await;
-
-        if let Err(e) = inner.refresh_balance().await {
+    fn trigger_balance_refresh(&mut self) {
+        if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

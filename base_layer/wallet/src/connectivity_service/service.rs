@@ -210,7 +210,10 @@ impl WalletConnectivityService {
         loop {
             let node_id = match self.current_base_node() {
                 Some(n) => n,
-                None => return,
+                None => {
+                    self.set_online_status(OnlineStatus::Offline);
+                    return;
+                },
             };
             debug!(
                 target: LOG_TARGET,

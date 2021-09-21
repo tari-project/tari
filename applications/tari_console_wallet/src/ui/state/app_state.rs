@@ -65,6 +65,7 @@ use crate::{
     notifier::Notifier,
     ui::{
         state::{
+            debouncer::BalanceEnquiryDebouncer,
             tasks::{send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
@@ -74,6 +75,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
+use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -86,6 +88,8 @@ pub struct AppState {
     node_config: GlobalConfig,
     config: AppStateConfig,
     wallet_connectivity: WalletConnectivityHandle,
+    output_manager_service: OutputManagerHandle,
+    balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
 impl AppState {
@@ -98,23 +102,43 @@ impl AppState {
         node_config: GlobalConfig,
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
+        let output_manager_service = wallet.output_manager_service.clone();
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
 
+        let inner = Arc::new(RwLock::new(inner));
         Self {
-            inner: Arc::new(RwLock::new(inner)),
+            inner: inner.clone(),
             cached_data,
             cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-            node_config,
+            node_config: node_config.clone(),
             config: AppStateConfig::default(),
             wallet_connectivity,
+            output_manager_service: output_manager_service.clone(),
+            balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
+                inner,
+                Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
+                output_manager_service,
+            ),
         }
     }
 
     pub async fn start_event_monitor(&self, notifier: Notifier) {
-        let event_monitor = WalletEventMonitor::new(self.inner.clone());
+        let balance_enquiry_debounce_tx = self.balance_enquiry_debouncer.clone().get_sender();
+        let event_monitor = WalletEventMonitor::new(self.inner.clone(), balance_enquiry_debounce_tx);
         tokio::spawn(event_monitor.run(notifier));
+    }
+
+    pub async fn start_balance_enquiry_debouncer(&self) -> Result<(), UiError> {
+        tokio::spawn(self.balance_enquiry_debouncer.clone().run());
+        let _ = self
+            .balance_enquiry_debouncer
+            .clone()
+            .get_sender()
+            .send(())
+            .map_err(|e| UiError::SendError(e.to_string()));
+        Ok(())
     }
 
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
@@ -525,7 +549,6 @@ impl AppStateInner {
         });
 
         self.data.completed_txs = completed_transactions;
-        self.refresh_balance().await?;
         self.updated = true;
         Ok(())
     }
@@ -583,7 +606,6 @@ impl AppStateInner {
                             .partial_cmp(&a.timestamp)
                             .expect("Should be able to compare timestamps")
                     });
-                    self.refresh_balance().await?;
                     self.updated = true;
                     return Ok(());
                 }
@@ -600,7 +622,6 @@ impl AppStateInner {
                 });
             },
         }
-        self.refresh_balance().await?;
         self.updated = true;
         Ok(())
     }
@@ -642,8 +663,7 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
-        let balance = self.wallet.output_manager_service.get_balance().await?;
+    pub async fn refresh_balance(&mut self, balance: Balance) -> Result<(), UiError> {
         self.data.balance = balance;
         self.updated = true;
 
