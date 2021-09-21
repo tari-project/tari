@@ -171,7 +171,7 @@ that output has the `MINT` flag set.
 ### Sidechain Checkpoints
 
 A sidechain checkpoint is a special type of NFT UTXO. Extra sidechain data can be specified in the `sidechain` field of the output features. Like 
-other NFT's, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
+other NFTs, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
 who can spend a checkpoint are determined by the TariScript on the checkpoint. In most cases it will be an `n of m` multisig condition 
 using the members of the Hotstuff committee, with `m` equal to the number of members of the committee and `n` equal to `m` minus 
 the number of failures the committee can tolerate.
