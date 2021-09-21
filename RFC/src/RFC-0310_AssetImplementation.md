@@ -176,7 +176,7 @@ who can spend a checkpoint are determined by the TariScript on the checkpoint. I
 using the members of the Hotstuff committee, with `m` equal to the number of members of the committee and `n` equal to `m` minus 
 the number of failures the committee can tolerate.
 
-The unique_id can be a specificly chosen id, but can also be a random public key. 
+The unique_id can be a specifically chosen id, but can also be a random public key. 
 
 There is no limit to the number of different sidechain checkpoint tokens an asset has, but it will usually be one. 
 
