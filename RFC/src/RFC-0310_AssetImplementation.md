@@ -348,7 +348,7 @@ message TokenStatePair {
 ## Checkpoints
 
 As part of the Commit phase, a validator node includes in its vote, a signature of the current state and instruction set
-in `locked_qc` that can be used as part of the threshold signature to spend the current checkpoint. This sign the state of the chain before the current instruction proposal is executed. Before
+in `locked_qc` that can be used as part of the threshold signature to spend the current checkpoint. This signs the state of the chain before the current instruction proposal is executed. Before
 sending out the Decide messages, the current leader looks at the base layer and determines if `checkpoint_frequency`
 blocks in the sidechain have been created since the last checkpoint. If so, the leader assembles a transaction
 spending the previous checkpoint using the signatures it has obtained. 
