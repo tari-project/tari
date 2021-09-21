@@ -30,6 +30,4 @@ pub enum UiError {
     AddressParseError,
     #[error("Peer did not include an address")]
     NoAddressError,
-    #[error("Channel send error: `{0}`")]
-    SendError(String),
 }

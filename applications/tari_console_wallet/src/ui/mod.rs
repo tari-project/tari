@@ -60,8 +60,6 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
             app.app_state.refresh_contacts_state().await?;
             trace!(target: LOG_TARGET, "Refreshing connected peers state");
             app.app_state.refresh_connected_peers_state().await?;
-            trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
-            app.app_state.start_balance_enquiry_debouncer().await?;
             trace!(target: LOG_TARGET, "Starting app state event monitor");
             app.app_state.start_event_monitor(app.notifier.clone()).await;
             Result::<_, UiError>::Ok(())

@@ -65,7 +65,6 @@ use crate::{
     notifier::Notifier,
     ui::{
         state::{
-            debouncer::BalanceEnquiryDebouncer,
             tasks::{send_one_sided_transaction_task, send_transaction_task},
             wallet_event_monitor::WalletEventMonitor,
         },
@@ -89,7 +88,6 @@ pub struct AppState {
     config: AppStateConfig,
     wallet_connectivity: WalletConnectivityHandle,
     output_manager_service: OutputManagerHandle,
-    balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
 impl AppState {
@@ -108,37 +106,20 @@ impl AppState {
 
         let inner = Arc::new(RwLock::new(inner));
         Self {
-            inner: inner.clone(),
+            inner,
             cached_data,
             cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-            node_config: node_config.clone(),
+            node_config,
             config: AppStateConfig::default(),
             wallet_connectivity,
-            output_manager_service: output_manager_service.clone(),
-            balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
-                inner,
-                Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
-                output_manager_service,
-            ),
+            output_manager_service,
         }
     }
 
     pub async fn start_event_monitor(&self, notifier: Notifier) {
-        let balance_enquiry_debounce_tx = self.balance_enquiry_debouncer.clone().get_sender();
-        let event_monitor = WalletEventMonitor::new(self.inner.clone(), balance_enquiry_debounce_tx);
+        let event_monitor = WalletEventMonitor::new(self.inner.clone());
         tokio::spawn(event_monitor.run(notifier));
-    }
-
-    pub async fn start_balance_enquiry_debouncer(&self) -> Result<(), UiError> {
-        tokio::spawn(self.balance_enquiry_debouncer.clone().run());
-        let _ = self
-            .balance_enquiry_debouncer
-            .clone()
-            .get_sender()
-            .send(())
-            .map_err(|e| UiError::SendError(e.to_string()));
-        Ok(())
     }
 
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
@@ -663,7 +644,8 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn refresh_balance(&mut self, balance: Balance) -> Result<(), UiError> {
+    pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
+        let balance = self.wallet.output_manager_service.get_balance().await?;
         self.data.balance = balance;
         self.updated = true;
 
