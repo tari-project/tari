@@ -297,7 +297,7 @@ b_{MRi} &= r_{MRi_b} + e(k_i)
 \tag{5}
 $$
 
-The receiver sends \\( s_{MRi} = (a_{MRi}, b_{MRi}, R_{Mi} ) \\) along with the other partial transaction information to 
+The receiver sends \\( s_{MRi} = (a_{MRi}, b_{MRi}, R_{MRi} ) \\) along with the other partial transaction information to 
 the sender. The sender starts by calculating the final challenge (16) and then completes their part of the aggregated 
 Commitment Signature.
 
