@@ -359,7 +359,7 @@ spending the previous checkpoint using the signatures it has obtained.
 
 Use case: I want to issue an NFT that has some immutable metadata and some mutable metadata.
 
-In  this example, let's pretend we are making a simple game YachtClicker in 
+In this example, let's pretend we are making a simple game called YachtClicker in 
 which every time a user clicks on a Yacht, it increases in XP. The user can change the name of the yacht, 
 but only the asset issuer can award XP based on the clicks reported in the app. 
 
