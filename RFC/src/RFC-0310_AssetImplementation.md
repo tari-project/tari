@@ -151,7 +151,7 @@ instruction. This allows sub assets to be grouped under a parent asset.
 
 When receiving a UTXO with the `MINT` and `NON_FUNGIBLE` flags set and the `ASSET_REGISTRATION` unset, the `minting_proof_signature`
 must be a valid commitment signature using the commitment of the UTXO that contains the currently valid asset registration feature
-for with the `unique_id` = `parent_public_key`. The message signed must be `Hash(commitment|script|unique_id|parent_public_key)`
+with the `unique_id`  that is the same as this minted output's `parent_public_key`. The message signed must be `Hash(commitment|script|unique_id|parent_public_key)`
 
 Note: because this requires extra validation, the gram weight of a UTXO that carries the `MINT` flag should be higher.
 
