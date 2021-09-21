@@ -151,7 +151,7 @@ instruction. This allows sub assets to be grouped under a parent asset.
 
 When receiving a UTXO with the `MINT` and `NON_FUNGIBLE` flags set and the `ASSET_REGISTRATION` unset, the `minting_proof_signature`
 must be a valid commitment signature using the commitment of the UTXO that contains the currently valid asset registration feature
-for with the `unique_id` = `parent_public_key`. The message signed must be `Hash(commitment|script|unique_id|parent_public_key)`
+with the `unique_id`  that is the same as this minted output's `parent_public_key`. The message signed must be `Hash(commitment|script|unique_id|parent_public_key)`
 
 Note: because this requires extra validation, the gram weight of a UTXO that carries the `MINT` flag should be higher.
 
@@ -171,12 +171,12 @@ that output has the `MINT` flag set.
 ### Sidechain Checkpoints
 
 A sidechain checkpoint is a special type of NFT UTXO. Extra sidechain data can be specified in the `sidechain` field of the output features. Like 
-other NFT's, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
+other NFTs, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
 who can spend a checkpoint are determined by the TariScript on the checkpoint. In most cases it will be an `m of n` multisig condition 
 using the members of the Hotstuff committee, with `m` equal to the number of members of the committee and `n` equal to `m` minus 
 the number of failures the committee can tolerate.
 
-The unique_id can be a specificly chosen id, but can also be a random public key. 
+The unique_id can be a specifically chosen id, but can also be a random public key. 
 
 There is no limit to the number of different sidechain checkpoint tokens an asset has, but it will usually be one. 
 
@@ -348,7 +348,7 @@ message TokenStatePair {
 ## Checkpoints
 
 As part of the Commit phase, a validator node includes in its vote, a signature of the current state and instruction set
-in `locked_qc` that can be used as part of the threshold signature to spend the current checkpoint. This sign the state of the chain before the current instruction proposal is executed. Before
+in `locked_qc` that can be used as part of the threshold signature to spend the current checkpoint. This signs the state of the chain before the current instruction proposal is executed. Before
 sending out the Decide messages, the current leader looks at the base layer and determines if `checkpoint_frequency`
 blocks in the sidechain have been created since the last checkpoint. If so, the leader assembles a transaction
 spending the previous checkpoint using the signatures it has obtained. 
@@ -359,7 +359,7 @@ spending the previous checkpoint using the signatures it has obtained.
 
 Use case: I want to issue an NFT that has some immutable metadata and some mutable metadata.
 
-In  this example, let's pretend we are making a simple game YachtClicker in 
+In this example, let's pretend we are making a simple game called YachtClicker in 
 which every time a user clicks on a Yacht, it increases in XP. The user can change the name of the yacht, 
 but only the asset issuer can award XP based on the clicks reported in the app. 
 
