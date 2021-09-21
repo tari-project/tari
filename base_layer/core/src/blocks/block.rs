@@ -81,6 +81,10 @@ impl Block {
         Self { header, body }
     }
 
+    pub fn version(&self) -> u16 {
+        self.header.version
+    }
+
     /// This function will calculate the total fees contained in a block
     pub fn calculate_fees(&self) -> MicroTari {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
@@ -239,7 +243,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort();
+        block.body.sort(block.header.version);
         block
     }
 }
