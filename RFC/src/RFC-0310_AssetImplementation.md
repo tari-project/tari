@@ -10,7 +10,7 @@ Maintainer(s): [mikethetike](https://github.com/mikethetike)
 
 [ The 3-Clause BSD Licence](https://opensource.org/licenses/BSD-3-Clause).
 
-Copyright <YEAR> <COPYRIGHT HOLDER | The Tari Development Community>
+Copyright 2021 The Tari Development Community
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 following conditions are met:
@@ -46,11 +46,11 @@ This document may include preliminary concepts that may or may not be in the pro
 community. The release of this document is intended solely for review and discussion by the community regarding the
 technological merits of the potential system outlined herein.
 
-## Abstract
-
 ## Related Requests for Comment
 
-None.
+* [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
+* [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
+* [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
 
 ## Problem Statement
 
@@ -66,16 +66,16 @@ New flags to be added to OutputFlags
 
 | Name | Value | Description |
 | --- | --- | --- |
-| NON_FUNGIBLE | 0b1000_1000 | This UTXO contains Non Fungile data and must not be combined with other fungible UTXOs |
+| NON_FUNGIBLE | 0b1000_1000 | This UTXO contains Non Fungible data and must not be combined with other fungible UTXOs |
 | ASSET_REGISTRATION | 0b1100_1000 | This UTXO contains registration information for a new asset |
-| MINT |0b0100_0000 | This UTXO represents the creation of a new NFT, and is used during the  |
+| MINT |0b0100_0000 | This UTXO represents the creation of a new NFT |
 | BURN | 0b0010_0000 | The `unique_id` in this UTXO can be spent as a normal input and must not appear in the output set unless accompanied by a `MINT` flag |
 | SIDECHAIN_CHECKPOINT | 0b1001_1000 | This UTXO is a checkpoint for a sidechain | 
 
 
 New fields added to `OutputFeatures`
 
-Note: this replaces some information in [RFC-0311](RFC-0310_AssetImplementation.md)
+Note: this replaces some information in [RFC-0311](RFC-0311_AssetTemplates.md)
 
 | Name | Type | Description |
 | --- | --- | --- |
@@ -172,7 +172,7 @@ that output has the `MINT` flag set.
 
 A sidechain checkpoint is a special type of NFT UTXO. Extra sidechain data can be specified in the `sidechain` field of the output features. Like 
 other NFT's, only one sidechain checkpoint UTXO with that unique_id can exist in the unspent set at one time. The conditions of 
-who can spend a checkpoint are determined by the TariScript on the checkpoint. In most cases it will be an `n of m` multisig condition 
+who can spend a checkpoint are determined by the TariScript on the checkpoint. In most cases it will be an `m of n` multisig condition 
 using the members of the Hotstuff committee, with `m` equal to the number of members of the committee and `n` equal to `m` minus 
 the number of failures the committee can tolerate.
 
@@ -363,7 +363,7 @@ In  this example, let's pretend we are making a simple game YachtClicker in
 which every time a user clicks on a Yacht, it increases in XP. The user can change the name of the yacht, 
 but only the asset issuer can award XP based on the clicks reported in the app. 
 
-Template used: [EditableMetadata](linktbd) 
+Template used: [EditableMetadata](RFC-0312_AssetTemplateEdtitableMetadata.md) 
 
 Tools used: Wallet CLI, Collectibles CLI
 
