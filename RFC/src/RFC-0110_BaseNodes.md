@@ -145,29 +145,32 @@ The weight of a transaction / block measured in "grams". Input, output and kerne
 storage and computation cost. Transaction fees are typically proportional to a transaction body's total weight, creating 
 incentive to reduce the size of the UTXO set.
 
-|                          	| Bytes    	| Weight (grams) 	| Notes                                                               	|
-|--------------------------	|----------	|----------------	|---------------------------------------------------------------------	|
-| Output:                  	|          	|                	|                                                                     	|
-| - Per output             	| ~777     	| 13             	| Incl. Rangeproof                                                    	|
-| - Asset Registration     	| >= 256   	| 4              	| Set in OutputFeatures, size depends on number of template IDs used 	|
-| - Tari script per opcode 	| variable 	| 1              	|                                                                       |
-| Input:                   	|          	|                	|                                                                     	|
-| - Per input              	| ~196     	| 1              	| Excl. script field                                                  	|
-| Kernel:                  	|          	|                	|                                                                     	|
-| - Per kernel             	| 112      	| 3              	| Excess signature verification                                       	|
+Given the target block size of `S` and the choice for 1 gram to represent `N` bytes, we end up with
+a maximum block weight of `S/N` grams. 
+
+To illustrate (these values should not be considered authoritative), with an `S` of 1MiB and `N` of 16, the block and 
+transaction body weights are as follows:
 
 
-Block and transaction weights are defined in the same way:
+|                   	| Byte size 	| Natural Weight         	| Adjust 	| Final                  	|
+|-------------------	|-----------	|------------------------	|--------	|------------------------	|
+| Output            	|           	|                        	|        	|                        	|
+| - Per output      	| 832       	| 52                     	| 0      	| 52                     	|
+| - Tari Script     	| variable  	| size_of(script) / 16   	| 0      	| size_of(script) / 16   	|
+| - Output Features 	| variable  	| size_of(features) / 16 	| 0      	| size_of(features) / 16 	|
+| Input             	|       169 	|                     11 	|     -2 	|                      9 	|
+| Kernel size       	|       113 	|                      8 	|      2 	|                     10 	|
+
+Pseudocode: 
 
 ```text
-    output_weight = num_outputs * PER_OUTPUT_GRAMS(13)
+    output_weight = num_outputs * PER_OUTPUT_GRAMS(53)
     foreach output in outputs:
-        output_weight += count_opcodes(output.script) * TARISCRIPT_OPCODE_GRAMS(1)
-        if is_asset_registration(output):
-            output_weight += ASSET_REGISTRATION_GRAMS(4)
+        output_weight += serialize(output.script) / BYTES_PER_GRAM
+        output_weight += serialize(output.features) / BYTES_PER_GRAM
         
-    input_weight = num_inputs * PER_INPUT_GRAMS(1)
-    kernel_weight = num_kernels * PER_KERNEL_GRAMS(3)
+    input_weight = num_inputs * PER_INPUT_GRAMS(9)
+    kernel_weight = num_kernels * PER_KERNEL_GRAMS(10)
     
     weight = output_weight + input_weight + kernel_weight
 ```
