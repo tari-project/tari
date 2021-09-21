@@ -50,6 +50,7 @@ use crate::{
     },
     validation::ValidationError,
 };
+use std::cmp::Ordering;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
@@ -259,14 +260,14 @@ pub fn check_coinbase_output(
         .map_err(ValidationError::from)
 }
 
-pub fn is_all_unique_and_sorted<I: AsRef<[T]>, T: PartialOrd>(items: I) -> bool {
-    let items = items.as_ref();
-    if items.is_empty() {
+pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd + 'a>(items: I) -> bool {
+    let mut items = items.into_iter();
+    let prev_item = items.next();
+    if prev_item.is_none() {
         return true;
     }
-
-    let mut prev_item = &items[0];
-    for item in items.iter().skip(1) {
+    let mut prev_item = prev_item.unwrap();
+    for item in items {
         if item <= prev_item {
             return false;
         }
@@ -277,7 +278,8 @@ pub fn is_all_unique_and_sorted<I: AsRef<[T]>, T: PartialOrd>(items: I) -> bool 
 }
 
 // This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
-pub fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
+pub fn check_sorting_and_duplicates(block: &Block) -> Result<(), ValidationError> {
+    let body = &block.body;
     if !is_all_unique_and_sorted(body.inputs()) {
         return Err(ValidationError::UnsortedOrDuplicateInput);
     }
@@ -285,7 +287,40 @@ pub fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), Validati
         return Err(ValidationError::UnsortedOrDuplicateOutput);
     }
 
+    if block.version() == 1 {
+        let wrapped = body
+            .kernels()
+            .iter()
+            .map(KernelDeprecatedOrdWrapper::new)
+            .collect::<Vec<_>>();
+        if !is_all_unique_and_sorted(&wrapped) {
+            return Err(ValidationError::UnsortedOrDuplicateKernel);
+        }
+    } else if !is_all_unique_and_sorted(body.kernels()) {
+        return Err(ValidationError::UnsortedOrDuplicateKernel);
+    }
+
     Ok(())
+}
+
+#[derive(PartialEq, Eq)]
+struct KernelDeprecatedOrdWrapper<'a> {
+    kernel: &'a TransactionKernel,
+}
+impl<'a> KernelDeprecatedOrdWrapper<'a> {
+    pub fn new(kernel: &'a TransactionKernel) -> Self {
+        Self { kernel }
+    }
+}
+impl PartialOrd for KernelDeprecatedOrdWrapper<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.kernel.deprecated_cmp(&other.kernel))
+    }
+}
+impl Ord for KernelDeprecatedOrdWrapper<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.kernel.deprecated_cmp(&other.kernel)
+    }
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent

@@ -482,7 +482,6 @@ OutputFeatures::default()),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -513,7 +512,6 @@ OutputFeatures::default()),
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -769,7 +767,6 @@ async fn test_block_sync_body_validator() {
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     validator.validate_body(new_block).await.unwrap_err();
 
     // lets check duplicate txos
@@ -779,7 +776,6 @@ async fn test_block_sync_body_validator() {
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     validator.validate_body(new_block).await.unwrap_err();
 
     // let break coinbase value

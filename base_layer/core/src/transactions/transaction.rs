@@ -926,7 +926,7 @@ impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -946,6 +946,77 @@ pub struct TransactionKernel {
 impl TransactionKernel {
     pub fn is_coinbase(&self) -> bool {
         self.features.contains(KernelFeatures::COINBASE_KERNEL)
+    }
+
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+        let excess = self.excess.as_public_key();
+        let r = self.excess_sig.get_public_nonce();
+        let m = TransactionMetadata {
+            lock_height: self.lock_height,
+            fee: self.fee,
+        };
+        let c = build_challenge(r, &m);
+        if self.excess_sig.verify_challenge(excess, &c) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying kernel signature".to_string(),
+            ))
+        }
+    }
+
+    /// This method was used to sort kernels. It has been replaced, and will be removed in future
+    pub fn deprecated_cmp(&self, other: &Self) -> Ordering {
+        self.features
+            .cmp(&other.features)
+            .then(self.fee.cmp(&other.fee))
+            .then(self.lock_height.cmp(&other.lock_height))
+            .then(self.excess.cmp(&other.excess))
+            .then(self.excess_sig.cmp(&other.excess_sig))
+    }
+}
+
+impl Hashable for TransactionKernel {
+    /// Produce a canonical hash for a transaction kernel. The hash is given by
+    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    fn hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(&[self.features.bits])
+            .chain(u64::from(self.fee).to_le_bytes())
+            .chain(self.lock_height.to_le_bytes())
+            .chain(self.excess.as_bytes())
+            .chain(self.excess_sig.get_public_nonce().as_bytes())
+            .chain(self.excess_sig.get_signature().as_bytes())
+            .finalize()
+            .to_vec()
+    }
+}
+
+impl Display for TransactionKernel {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let msg = format!(
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            self.fee,
+            self.lock_height,
+            self.features,
+            self.excess.to_hex(),
+            self.excess_sig
+                .to_json()
+                .unwrap_or_else(|_| "Failed to serialize signature".into()),
+        );
+        fmt.write_str(&msg)
+    }
+}
+
+impl PartialOrd for TransactionKernel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.excess_sig.partial_cmp(&other.excess_sig)
+    }
+}
+
+impl Ord for TransactionKernel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.excess_sig.cmp(&other.excess_sig)
     }
 }
 
@@ -1021,57 +1092,6 @@ impl Default for KernelBuilder {
     }
 }
 
-impl TransactionKernel {
-    pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        let excess = self.excess.as_public_key();
-        let r = self.excess_sig.get_public_nonce();
-        let m = TransactionMetadata {
-            lock_height: self.lock_height,
-            fee: self.fee,
-        };
-        let c = build_challenge(r, &m);
-        if self.excess_sig.verify_challenge(excess, &c) {
-            Ok(())
-        } else {
-            Err(TransactionError::InvalidSignatureError(
-                "Verifying kernel signature".to_string(),
-            ))
-        }
-    }
-}
-
-impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel. The hash is given by
-    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(&[self.features.bits])
-            .chain(u64::from(self.fee).to_le_bytes())
-            .chain(self.lock_height.to_le_bytes())
-            .chain(self.excess.as_bytes())
-            .chain(self.excess_sig.get_public_nonce().as_bytes())
-            .chain(self.excess_sig.get_signature().as_bytes())
-            .finalize()
-            .to_vec()
-    }
-}
-
-impl Display for TransactionKernel {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let msg = format!(
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
-            self.fee,
-            self.lock_height,
-            self.features,
-            self.excess.to_hex(),
-            self.excess_sig
-                .to_json()
-                .unwrap_or_else(|_| "Failed to serialize signature".into()),
-        );
-        fmt.write_str(&msg)
-    }
-}
-
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
 #[derive(Default)]
@@ -1107,12 +1127,10 @@ impl Transaction {
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
         script_offset: BlindingFactor,
-    ) -> Transaction {
-        let mut body = AggregateBody::new(inputs, outputs, kernels);
-        body.sort();
-        Transaction {
+    ) -> Self {
+        Self {
             offset,
-            body,
+            body: AggregateBody::new(inputs, outputs, kernels),
             script_offset,
         }
     }

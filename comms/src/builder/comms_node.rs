@@ -241,11 +241,6 @@ impl UnspawnedCommsNode {
         Arc::clone(&self.node_identity)
     }
 
-    /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
-    pub fn connection_manager(&self) -> ConnectionManagerRequester {
-        self.connection_manager_requester.clone()
-    }
-
     /// Return an owned copy of a ConnectivityRequester. This is the async interface to the ConnectivityManager
     pub fn connectivity(&self) -> ConnectivityRequester {
         self.connectivity_requester.clone()

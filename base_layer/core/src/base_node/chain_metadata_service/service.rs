@@ -117,7 +117,7 @@ impl ChainMetadataService {
     fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
         use ConnectivityEvent::*;
         match event {
-            PeerDisconnected(node_id) | ManagedPeerDisconnected(node_id) | PeerBanned(node_id) => {
+            PeerDisconnected(node_id) | PeerBanned(node_id) => {
                 if let Some(pos) = self.peer_chain_metadata.iter().position(|p| p.node_id == node_id) {
                     debug!(
                         target: LOG_TARGET,
