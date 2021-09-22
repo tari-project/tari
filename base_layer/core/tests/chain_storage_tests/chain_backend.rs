@@ -84,8 +84,6 @@ fn lmdb_file_lock() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        if let Err(e) = std::fs::remove_dir_all(&temp_path) {
-            println!("\n{:?}\n", e)
-        }
+        std::fs::remove_dir_all(&temp_path).expect("Could not clear temp storage for db");
     }
 }

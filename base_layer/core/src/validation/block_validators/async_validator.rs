@@ -41,7 +41,7 @@ use crate::{
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use std::{cmp, thread, time::Instant};
+use std::{cmp, cmp::Ordering, thread, time::Instant};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tokio::task;
@@ -138,6 +138,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         kernels: Vec<TransactionKernel>,
     ) -> AbortOnDropJoinHandle<Result<KernelValidationData, ValidationError>> {
         let height = header.height;
+        let block_version = header.version;
+        let kernel_comparer = move |a: &TransactionKernel, b: &TransactionKernel| -> Ordering {
+            if block_version == 1 {
+                a.deprecated_cmp(b)
+            } else {
+                a.cmp(b)
+            }
+        };
+
         let total_kernel_offset = header.total_kernel_offset.clone();
         let total_reward = self.rules.calculate_coinbase_and_fees(height, &kernels);
         let total_offset = self
@@ -155,6 +164,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut coinbase_index = None;
             let mut max_kernel_timelock = 0;
             for (i, kernel) in kernels.iter().enumerate() {
+                if i > 0 &&
+                    matches!(
+                        kernel_comparer(kernel, &kernels[i - 1]),
+                        Ordering::Equal | Ordering::Less
+                    )
+                {
+                    return Err(ValidationError::UnsortedOrDuplicateKernel);
+                }
+
                 kernel.verify_signature()?;
 
                 if kernel.is_coinbase() {

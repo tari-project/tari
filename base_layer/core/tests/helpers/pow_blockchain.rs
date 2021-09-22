@@ -65,7 +65,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
     let mut prev_block = chain_tip;
     for pow_algo in pow_algos {
         let new_block = chain_block(&prev_block, Vec::new(), consensus_manager);
-        let mut new_block = db.prepare_block_merkle_roots(new_block).unwrap();
+        let mut new_block = db.prepare_new_block(new_block).unwrap();
         new_block.header.timestamp = prev_block.header.timestamp.increase(120);
         new_block.header.pow.pow_algo = pow_algo;
 

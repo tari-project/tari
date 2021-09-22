@@ -1,6 +1,6 @@
 [package]
 name = "test_faucet"
-version = "0.9.6"
+version = "0.10.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -16,7 +16,7 @@ serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0"
 
 [dependencies.tari_core]
-version = "^0.9"
+version = "^0.10"
 path = "../../base_layer/core/"
 default-features = false
 features = ["transactions", "avx2"]

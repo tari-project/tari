@@ -357,7 +357,7 @@ where TBackend: WalletBackend + 'static
         };
         // this returns the index of the vec of hashes we sent it, that is the last hash it knows of.
         match client.find_chain_split(request).await {
-            Ok(_) => Ok(metadata.utxo_index),
+            Ok(_) => Ok(metadata.utxo_index + 1),
             Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
                 warn!(target: LOG_TARGET, "Reorg detected: {}", err);
                 // The node does not know of the last hash we scanned, thus we had a chain split.

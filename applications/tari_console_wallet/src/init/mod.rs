@@ -38,7 +38,7 @@ use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
-    initialization::CommsConfig,
+    initialization::P2pConfig,
     peer_seeds::SeedPeer,
     transport::TransportType::Tor,
     DEFAULT_DNS_NAME_SERVER,
@@ -322,7 +322,7 @@ pub async fn init_wallet(
         _ => transport_type,
     };
 
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: config.network,
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),

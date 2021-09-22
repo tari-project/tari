@@ -58,12 +58,12 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(PeerConnection),
-    PeerDisconnected(Box<NodeId>),
-    PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
+    PeerDisconnected(NodeId),
+    PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Substreams
-    NewInboundSubstream(Box<NodeId>, ProtocolId, Substream),
+    NewInboundSubstream(NodeId, ProtocolId, Substream),
 }
 
 impl fmt::Display for ConnectionManagerEvent {
@@ -403,7 +403,7 @@ where
                 );
                 let notify_fut = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream));
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
                     Ok(Err(err)) => {
                         error!(

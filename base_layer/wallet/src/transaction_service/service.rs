@@ -1239,8 +1239,21 @@ where
                 traced_message_tag
             );
 
+            // Check if this transaction has already been received and cancelled.
+            if let Ok(inbound_tx) = self.db.get_cancelled_pending_inbound_transaction(data.tx_id).await {
+                if inbound_tx.source_public_key != source_pubkey {
+                    return Err(TransactionServiceError::InvalidSourcePublicKey);
+                }
+                trace!(
+                    target: LOG_TARGET,
+                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled",
+                    inbound_tx.tx_id
+                );
+                return Ok(());
+            }
+
             // Check if this transaction has already been received.
-            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.tx_id).await {
+            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.clone().tx_id).await {
                 // Check that it is from the same person
                 if inbound_tx.source_public_key != source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);

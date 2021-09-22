@@ -716,7 +716,9 @@ async fn local_get_new_block_with_zero_conf() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -788,7 +790,9 @@ async fn local_get_new_block_with_combined_transaction() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -811,7 +815,7 @@ async fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let mut block1 = db
-        .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_mmr_size += 1;

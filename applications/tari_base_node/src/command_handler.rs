@@ -537,7 +537,7 @@ impl CommandHandler {
     }
 
     pub fn dial_peer(&self, dest_node_id: NodeId) {
-        let mut connectivity = self.connectivity.clone();
+        let connectivity = self.connectivity.clone();
 
         self.executor.spawn(async move {
             let start = Instant::now();

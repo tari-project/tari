@@ -26,16 +26,35 @@
 use std::{fs, fs::File, io::Write, path::Path};
 
 /// Set up application-level logging using the Log4rs configuration file specified in
-pub fn initialize_logging(config_file: &Path) -> bool {
+pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
     println!(
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")
     );
 
+    let current_working_dir = std::env::current_dir().unwrap_or_default();
+
+    if std::env::set_current_dir(&base_path).is_err() {
+        println!(
+            "Logging initialized in {}, could not initialize in {}.",
+            &current_working_dir.display(),
+            &base_path.display()
+        );
+    };
+
     if let Err(e) = log4rs::init_file(config_file, Default::default()) {
         println!("We couldn't load a logging configuration file. {}", e.to_string());
         return false;
     }
+
+    if std::env::set_current_dir(&current_working_dir).is_err() {
+        println!(
+            "Working directory could not be changed back to {} after logging has been initialized. New working \
+             directory is {}",
+            &current_working_dir.display(),
+            &std::env::current_dir().unwrap_or_default().display()
+        );
+    };
 
     // simplelog config - perhaps for future use
     // let config = ConfigBuilder::new()

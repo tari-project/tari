@@ -149,7 +149,7 @@ fn async_add_new_block() {
     )
     .0;
 
-    let new_block = db.prepare_block_merkle_roots(new_block).unwrap();
+    let new_block = db.prepare_new_block(new_block).unwrap();
 
     test_async(|rt| {
         let db = AsyncBlockchainDb::new(db);
