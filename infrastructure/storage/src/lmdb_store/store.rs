@@ -629,18 +629,13 @@ impl LMDBDatabase {
     }
 
     /// Create a read-only transaction on the current database and execute the instructions given in the closure. The
-    /// transaction is automatically committed when the closure goes out of scope. You may provide the results of the
-    /// transaction to the calling scope by populating a `Vec<V>` with the results of `txn.get(k)`. Otherwise, if the
-    /// results are not needed, or you did not call `get`, just return `Ok(None)`.
-    pub fn with_read_transaction<F, V>(&self, f: F) -> Result<Option<Vec<V>>, LMDBError>
-    where
-        V: serde::de::DeserializeOwned,
-        F: FnOnce(LMDBReadTransaction) -> Result<Option<Vec<V>>, LMDBError>,
-    {
+    /// transaction is automatically committed when the closure goes out of scope.
+    pub fn with_read_transaction<F, R>(&self, f: F) -> Result<R, LMDBError>
+    where F: FnOnce(LMDBReadTransaction) -> R {
         let txn = ReadTransaction::new(self.env.clone())?;
         let access = txn.access();
         let wrapper = LMDBReadTransaction { db: &self.db, access };
-        f(wrapper)
+        Ok(f(wrapper))
     }
 
     /// Create a transaction with write access on the current table.

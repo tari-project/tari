@@ -53,6 +53,13 @@ where T: KeyValueStore<PeerId, Peer>
         self.inner.get(key)
     }
 
+    fn get_many(&self, keys: &[PeerId]) -> Result<Vec<Peer>, KeyValStoreError> {
+        if keys.iter().any(|k| k == &MIGRATION_VERSION_KEY) {
+            return Ok(Vec::new());
+        }
+        self.inner.get_many(keys)
+    }
+
     fn size(&self) -> Result<usize, KeyValStoreError> {
         self.inner.size().map(|s| s.saturating_sub(1))
     }

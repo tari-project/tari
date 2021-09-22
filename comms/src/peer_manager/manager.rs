@@ -88,6 +88,11 @@ impl PeerManager {
         self.peer_storage.read().await.find_by_node_id(node_id)
     }
 
+    /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
+    pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.find_all_starts_with(partial)
+    }
+
     /// Find the peer with the provided PublicKey
     pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
         self.peer_storage.read().await.find_by_public_key(public_key)
