@@ -26,6 +26,7 @@ use crate::{
     message::MessageExt,
     proto,
     protocol::{
+        rpc,
         rpc::{
             body::ClientStreaming,
             message::{BaseRequest, RpcMessageFlags},
@@ -557,14 +558,15 @@ impl RpcClientWorker {
                 "Client request was cancelled before request was sent"
             );
         }
-        self.framed.send(req.to_encoded_bytes().into()).await?;
 
         let (response_tx, response_rx) = mpsc::channel(10);
         if let Err(mut rx) = reply.send(response_rx) {
             event!(Level::WARN, "Client request was cancelled after request was sent");
             warn!(
                 target: LOG_TARGET,
-                "Client request was cancelled after request was sent"
+                "Client request was cancelled after request was sent. This means that you are making an RPC request \
+                 and then immediately dropping the response! (protocol = {})",
+                self.protocol_name(),
             );
             rx.close();
             // RPC is strictly request/response
@@ -574,6 +576,12 @@ impl RpcClientWorker {
             // Option 1 has the disadvantage when receiving large/many streamed responses, however if all client handles
             // have been dropped, then read_reply will exit early the stream will close and the server-side
             // can exit early
+        }
+
+        if let Err(err) = self.send_request(req).await {
+            warn!(target: LOG_TARGET, "{}", err);
+            let _ = response_tx.send(Err(err.into()));
+            return Ok(());
         }
 
         loop {
@@ -671,6 +679,18 @@ impl RpcClientWorker {
             }
         }
 
+        Ok(())
+    }
+
+    async fn send_request(&mut self, req: proto::rpc::RpcRequest) -> Result<(), RpcError> {
+        let payload = req.to_encoded_bytes();
+        if payload.len() > rpc::max_request_size() {
+            return Err(RpcError::MaxRequestSizeExceeded {
+                got: payload.len(),
+                expected: rpc::max_request_size(),
+            });
+        }
+        self.framed.send(payload.into()).await?;
         Ok(())
     }
 
