@@ -30,6 +30,7 @@ use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 use tokio::{
     sync::{broadcast, RwLock},
     time,
+    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::debouncer";
@@ -61,8 +62,9 @@ impl BalanceEnquiryDebouncer {
     pub async fn run(mut self) {
         let balance_enquiry_events = &mut self.tx.subscribe();
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
-        let delay = time::sleep(self.balance_enquiry_cooldown_period);
-        tokio::pin!(delay);
+        let mut interval = time::interval(self.balance_enquiry_cooldown_period);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        tokio::pin!(interval);
 
         debug!(target: LOG_TARGET, "Balance enquiry debouncer starting");
         if let Ok(balance) = self.output_manager_service.get_balance().await {
@@ -80,13 +82,16 @@ impl BalanceEnquiryDebouncer {
         }
         loop {
             tokio::select! {
-                _ = &mut delay => {
+                _ = interval.tick() => {
                     if let Ok(result) = time::timeout(
                         self.balance_enquiry_cooldown_period,
                         balance_enquiry_events.recv()
                     ).await {
+                        if let Err(broadcast::error::RecvError::Lagged(n)) = result {
+                            trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {} update requests", n);
+                        }
                         match result {
-                            Ok(_) => {
+                            Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {
                                 let start_time = Instant::now();
                                 match self.output_manager_service.get_balance().await {
                                     Ok(balance) => {
@@ -107,10 +112,6 @@ impl BalanceEnquiryDebouncer {
                                         warn!(target: LOG_TARGET, "Could not obtain balance ({})", e);
                                     }
                                 }
-                            }
-                            Err(broadcast::error::RecvError::Lagged(n)) => {
-                                trace!(target: LOG_TARGET, "Balance enquiry debouncer lagged {} update requests", n);
-                                continue;
                             }
                             Err(broadcast::error::RecvError::Closed) => {
                                 info!(
