@@ -159,7 +159,7 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     Block {
         header: BlockHeader {
             version: 0,
@@ -226,7 +226,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("07 Jul 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
@@ -336,7 +336,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     Block {
         header: BlockHeader {
             version: 0,
@@ -419,7 +419,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(2);
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("27 Aug 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;

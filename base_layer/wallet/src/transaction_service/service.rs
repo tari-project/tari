@@ -20,47 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryInto,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
-use chrono::{NaiveDateTime, Utc};
-use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
-use tokio::{sync::broadcast, task::JoinHandle};
-
-use tari_common_types::types::PrivateKey;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{
-    crypto::keys::SecretKey,
-    proto::base_node as base_node_proto,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{
-            proto,
-            recipient::RecipientSignedMessage,
-            sender::TransactionSenderMessage,
-            RewindData,
-        },
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-    },
-};
-use tari_p2p::domain_message::DomainMessage;
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{mpsc, mpsc::Sender, oneshot};
-
 use crate::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
+    storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -83,6 +45,45 @@ use crate::{
         },
     },
     types::{HashDigest, ValidationRetryStrategy},
+    utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
+};
+use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tari_common_types::types::PrivateKey;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_core::{
+    crypto::keys::SecretKey,
+    proto::base_node as base_node_proto,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, OutputFeatures, Transaction},
+        transaction_protocol::{
+            proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            RewindData,
+        },
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+    },
+};
+use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
+use tari_p2p::domain_message::DomainMessage;
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    sync::{broadcast, mpsc, mpsc::Sender, oneshot},
+    task::JoinHandle,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -107,7 +108,10 @@ pub struct TransactionService<
     BNResponseStream,
     TBackend,
     TTxCancelledStream,
-> where TBackend: TransactionBackend + 'static
+    WBackend,
+> where
+    TBackend: TransactionBackend + 'static,
+    WBackend: WalletBackend + 'static,
 {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
@@ -134,11 +138,20 @@ pub struct TransactionService<
     timeout_update_publisher: broadcast::Sender<Duration>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
+    wallet_db: WalletDatabase<WBackend>,
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream>
-    TransactionService<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream>
+impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream, WBackend>
+    TransactionService<
+        TTxStream,
+        TTxReplyStream,
+        TTxFinalizedStream,
+        BNResponseStream,
+        TBackend,
+        TTxCancelledStream,
+        WBackend,
+    >
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
@@ -146,10 +159,12 @@ where
     BNResponseStream: Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
     TBackend: TransactionBackend + 'static,
+    WBackend: WalletBackend + 'static,
 {
     pub fn new(
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
+        wallet_db: WalletDatabase<WBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -208,6 +223,7 @@ where
             timeout_update_publisher,
             base_node_update_publisher,
             power_mode: PowerMode::Normal,
+            wallet_db,
         }
     }
 
@@ -316,7 +332,7 @@ where
                             msg.dht_header.message_tag);
                         }
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}, Trace: {}",
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
                                 e, self.node_identity.node_id().short_str(), msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
@@ -346,7 +362,7 @@ where
                             msg.dht_header.message_tag);
                         },
                         Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
                             for NodeId: {}, Trace: {}", e, self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
@@ -384,7 +400,7 @@ where
                             msg.dht_header.message_tag);
                         },
                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {} \
                             for NodeID: {}, Trace: {}", e , self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag.as_value());
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
@@ -879,6 +895,9 @@ where
         source_pubkey: CommsPublicKey,
         recipient_reply: proto::RecipientSignedMessage,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let recipient_reply: RecipientSignedMessage = recipient_reply
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -1181,6 +1200,9 @@ where
         traced_message_tag: u64,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let sender_message: TransactionSenderMessage = sender_message
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
@@ -1195,8 +1217,21 @@ where
                 traced_message_tag
             );
 
+            // Check if this transaction has already been received and cancelled.
+            if let Ok(inbound_tx) = self.db.get_cancelled_pending_inbound_transaction(data.tx_id).await {
+                if inbound_tx.source_public_key != source_pubkey {
+                    return Err(TransactionServiceError::InvalidSourcePublicKey);
+                }
+                trace!(
+                    target: LOG_TARGET,
+                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled",
+                    inbound_tx.tx_id
+                );
+                return Ok(());
+            }
+
             // Check if this transaction has already been received.
-            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.tx_id).await {
+            if let Ok(inbound_tx) = self.db.get_pending_inbound_transaction(data.clone().tx_id).await {
                 // Check that it is from the same person
                 if inbound_tx.source_public_key != source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
@@ -1289,6 +1324,9 @@ where
         finalized_transaction: proto::TransactionFinalizedMessage,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
+        // Check if a wallet recovery is in progress, if it is we will ignore this request
+        self.check_recovery_status().await?;
+
         let tx_id = finalized_transaction.tx_id;
         let transaction: Transaction = finalized_transaction
             .transaction
@@ -2024,6 +2062,16 @@ where
         }
 
         Ok(())
+    }
+
+    /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in
+    /// progress
+    async fn check_recovery_status(&self) -> Result<(), TransactionServiceError> {
+        let value = self.wallet_db.get_client_key_value(RECOVERY_KEY.to_owned()).await?;
+        match value {
+            None => Ok(()),
+            Some(_) => Err(TransactionServiceError::WalletRecoveryInProgress),
+        }
     }
 }
 

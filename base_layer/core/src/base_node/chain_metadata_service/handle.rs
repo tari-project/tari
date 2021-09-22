@@ -53,6 +53,7 @@ impl Display for PeerChainMetadata {
 #[derive(Debug)]
 pub enum ChainMetadataEvent {
     PeerChainMetadataReceived(Vec<PeerChainMetadata>),
+    NetworkSilence,
 }
 
 #[derive(Clone)]

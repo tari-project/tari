@@ -1,4 +1,3 @@
-#![recursion_limit = "1024"]
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -109,6 +108,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_app_utilities::{
+    consts,
     identity_management::setup_node_identity,
     initialization::init_configuration,
     utilities::{setup_runtime, ExitCodes},
@@ -158,7 +158,9 @@ fn main_inner() -> Result<(), ExitCodes> {
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
-    enable_tracing_if_specified(&bootstrap);
+    if bootstrap.tracing_enabled {
+        enable_tracing();
+    }
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -202,7 +204,6 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     )
     .await
     .map_err(|err| {
-        error!(target: LOG_TARGET, "{}", err);
         for boxed_error in err.chain() {
             if let Some(HiddenServiceControllerError::TorControlPortOffline) =
                 boxed_error.downcast_ref::<HiddenServiceControllerError>()
@@ -218,6 +219,12 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
                      127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
                 );
                 return ExitCodes::TorOffline;
+            }
+
+            // todo: find a better way to do this
+            if boxed_error.to_string().contains("Invalid force sync peer") {
+                println!("Please check your force sync peers configuration");
+                return ExitCodes::ConfigError(boxed_error.to_string());
             }
         }
         ExitCodes::UnknownError
@@ -252,23 +259,26 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     Ok(())
 }
 
-fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
-    if bootstrap.tracing_enabled {
-        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
-        // jaegertracing/all-in-one:latest
-        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-        let tracer = opentelemetry_jaeger::new_pipeline()
-            .with_service_name("tari::base_node")
-            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
-            // TODO: uncomment when using tokio 1
-            // .install_batch(opentelemetry::runtime::Tokio)
-            .install_simple()
-            .unwrap();
-        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-        let subscriber = Registry::default().with(telemetry);
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
-    }
+fn enable_tracing() {
+    // To run:
+    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tari::base_node")
+        .with_tags(vec![
+            KeyValue::new("pid", process::id().to_string()),
+            KeyValue::new(
+                "current_exe",
+                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
+            ),
+            KeyValue::new("version", consts::APP_VERSION),
+        ])
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }
 
 /// Runs the gRPC server

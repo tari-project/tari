@@ -69,7 +69,7 @@ async fn test_listening_lagging() {
         .build();
     let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -112,7 +112,7 @@ async fn test_listening_lagging() {
     let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_block_merkle_roots(chain_block(&prev_block.block(), vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&prev_block.block(), vec![], &consensus_manager))
         .unwrap();
     prev_block.header.output_mmr_size += 1;
     prev_block.header.kernel_mmr_size += 1;

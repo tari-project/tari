@@ -20,17 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-
-use digest::Digest;
-use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
-    tari_utilities::ByteArray,
-};
-
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::*,
@@ -55,7 +44,16 @@ use crate::transactions::{
         TransactionProtocolError as TPE,
     },
 };
+use digest::Digest;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    script::TariScript,
+    tari_utilities::ByteArray,
+};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 

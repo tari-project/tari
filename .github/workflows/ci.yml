@@ -3,15 +3,16 @@ on:
     branches:
       - development
       - main
+      - ci-*
   pull_request:
-    types: [opened, synchronize, reopened ]
+    types: [opened, synchronize, reopened]
 
 name: CI
 
 jobs:
   clippy:
     name: clippy
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -41,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-20.04, macos-10.15, windows-2019]
+        os: [ubuntu-18.04, macos-10.15, windows-2019]
     runs-on: ${{ matrix.os }}
     steps:
       - name: checkout
@@ -53,6 +54,7 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            clang-10 \
             pkg-config \
             git \
             cmake \
@@ -90,17 +92,23 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          # args: --release
+          args: --release
 
       - name: cargo build wallet
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: -p tari_wallet
+          args: --release -p tari_wallet
+
+      - name: cargo build wallet ffi
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release -p tari_wallet_ffi
 
   test:
     name: test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2

@@ -38,6 +38,7 @@ use helpers::{
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
+use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
@@ -693,7 +694,7 @@ async fn test_reorg() {
     db.rewind_to_height(2).unwrap();
 
     let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
-    let reorg_block3 = db.prepare_block_merkle_roots(template).unwrap();
+    let reorg_block3 = db.prepare_new_block(template).unwrap();
 
     mempool
         .process_reorg(vec![blocks[3].to_arc_block()], vec![reorg_block3.into()])
@@ -705,7 +706,7 @@ async fn test_reorg() {
 
     // "Mine" block 4
     let template = chain_block(blocks[2].block(), vec![], &consensus_manager);
-    let reorg_block4 = db.prepare_block_merkle_roots(template).unwrap();
+    let reorg_block4 = db.prepare_new_block(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
@@ -726,7 +727,7 @@ async fn request_response_get_stats() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -778,7 +779,7 @@ async fn request_response_get_tx_state_by_excess_sig() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -845,7 +846,7 @@ async fn receive_and_propagate_transaction() {
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
@@ -860,14 +861,20 @@ async fn receive_and_propagate_transaction() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
@@ -1078,7 +1085,7 @@ async fn block_event_and_reorg_event_handling() {
     let (block0, utxos0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -1092,6 +1099,8 @@ async fn block_event_and_reorg_event_handling() {
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
@@ -1119,7 +1128,7 @@ async fn block_event_and_reorg_event_handling() {
     // These blocks are manually constructed to allow the block event system to be used.
     let empty_block = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(block0.block(), vec![], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![], &consensus_manager))
         .unwrap();
 
     // Add one empty block, so the coinbase UTXO is no longer time-locked.
@@ -1137,7 +1146,7 @@ async fn block_event_and_reorg_event_handling() {
     bob.mempool.insert(Arc::new(tx1.clone())).unwrap();
     let mut block1 = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&empty_block, vec![tx1], &consensus_manager))
+        .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
     // Add Block1 - tx1 will be moved to the ReorgPool.
@@ -1163,13 +1172,13 @@ async fn block_event_and_reorg_event_handling() {
 
     let mut block2a = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
     // Block2b also builds on Block1 but has a stronger PoW
     let mut block2b = bob
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 

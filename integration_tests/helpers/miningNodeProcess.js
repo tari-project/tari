@@ -47,7 +47,12 @@ class MiningNodeProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-    this.mineOnTipOnly = mineOnTipOnly || this.mineOnTipOnly;
+
+    // Can't use the || shortcut here because `false` is a valid value
+    this.mineOnTipOnly =
+      mineOnTipOnly === undefined || mineOnTipOnly === null
+        ? this.mineOnTipOnly
+        : mineOnTipOnly;
     this.numMiningThreads = numMiningThreads || this.numMiningThreads;
   }
 

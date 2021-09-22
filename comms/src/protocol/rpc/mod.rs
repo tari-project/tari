@@ -26,6 +26,29 @@
 #[cfg(test)]
 mod test;
 
+/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
+/// This can be thought of as the hard limit on message size.
+pub const RPC_MAX_FRAME_SIZE: usize = 2 * 1024 * 1024; // 2 MiB
+/// Maximum number of chunks into which a message can be broken up.
+const RPC_CHUNKING_MAX_CHUNKS: usize = 16; // 16 x 256 Kib = 4 MiB max combined message size
+const RPC_CHUNKING_THRESHOLD: usize = 256 * 1024;
+const RPC_CHUNKING_SIZE_LIMIT: usize = 384 * 1024;
+
+/// Convenience function that returns the maximum size for a single RPC message
+const fn max_message_size() -> usize {
+    RPC_CHUNKING_MAX_CHUNKS * RPC_CHUNKING_THRESHOLD
+}
+
+const fn max_payload_size() -> usize {
+    // RpcResponse overhead is:
+    // - 4 varint protobuf fields, each field ID is 1 byte
+    // - 3 u32 fields, VarInt(u32::MAX) is 5 bytes
+    // - 1 length varint for the payload, allow for 5 bytes to be safe (max_payload_size being technically too small is
+    //   fine, being too large isn't)
+    const MAX_HEADER_SIZE: usize = 4 + 4 * 5;
+    max_message_size() - MAX_HEADER_SIZE
+}
+
 mod body;
 pub use body::{Body, ClientStreaming, IntoBody, Streaming};
 
@@ -56,13 +79,11 @@ pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
 
-/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
-pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
-
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro
 pub mod __macro_reexports {
     pub use crate::{
         framing::CanonicalFraming,
+        multiplexing::Substream,
         protocol::{
             rpc::{
                 client_pool::RpcPoolClient,

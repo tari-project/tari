@@ -78,31 +78,28 @@ where
 {
     let val_buf = serialize(val)?;
     trace!(target: LOG_TARGET, "LMDB: {} bytes inserted", val_buf.len());
-    txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
-        error!(
-            target: LOG_TARGET,
-            "Could not insert value into lmdb {} ({}/{:?}): {:?}",
+    match txn.access().put(&db, key, &val_buf, put::NOOVERWRITE) {
+        Ok(_) => Ok(()),
+        Err(lmdb_zero::Error::Code(lmdb_zero::error::KEYEXIST)) => Err(ChainStorageError::KeyExists {
             table_name,
-            to_hex(key.as_lmdb_bytes()),
-            val,
-            e,
-        );
-        if let lmdb_zero::Error::Code(code) = &e {
-            if *code == lmdb_zero::error::KEYEXIST {
-                return ChainStorageError::KeyExists {
-                    table_name,
-                    key: to_hex(key.as_lmdb_bytes()),
-                };
-            }
-            if *code == lmdb_zero::error::MAP_FULL {
-                return ChainStorageError::DbResizeRequired;
-            }
-        }
-        ChainStorageError::InsertError {
-            table: table_name,
-            error: e.to_string(),
-        }
-    })
+            key: to_hex(key.as_lmdb_bytes()),
+        }),
+        Err(lmdb_zero::Error::Code(lmdb_zero::error::MAP_FULL)) => Err(ChainStorageError::DbResizeRequired),
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Could not insert value into lmdb {} ({}/{:?}): {:?}",
+                table_name,
+                to_hex(key.as_lmdb_bytes()),
+                val,
+                e,
+            );
+            Err(ChainStorageError::InsertError {
+                table: table_name,
+                error: e.to_string(),
+            })
+        },
+    }
 }
 
 /// Note that calling this on a table that does not allow duplicates will replace it
@@ -118,15 +115,15 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
-        error!(
-            target: LOG_TARGET,
-            "Could not insert value into lmdb transaction: {:?}", e
-        );
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
                 return ChainStorageError::DbResizeRequired;
             }
         }
+        error!(
+            target: LOG_TARGET,
+            "Could not insert value into lmdb transaction: {:?}", e
+        );
         ChainStorageError::AccessError(e.to_string())
     })
 }
@@ -139,6 +136,11 @@ where
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        if let lmdb_zero::Error::Code(code) = &e {
+            if *code == lmdb_zero::error::MAP_FULL {
+                return ChainStorageError::DbResizeRequired;
+            }
+        }
         error!(
             target: LOG_TARGET,
             "Could not replace value in lmdb transaction: {:?}", e

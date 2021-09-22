@@ -1028,8 +1028,7 @@ impl InboundTransactionSql {
 
 impl Encryptable<Aes256Gcm> for InboundTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        let encrypted_protocol =
-            encrypt_bytes_integral_nonce(&cipher, self.receiver_protocol.clone().as_bytes().to_vec())?;
+        let encrypted_protocol = encrypt_bytes_integral_nonce(&cipher, self.receiver_protocol.as_bytes().to_vec())?;
         self.receiver_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
@@ -1211,8 +1210,7 @@ impl OutboundTransactionSql {
 
 impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        let encrypted_protocol =
-            encrypt_bytes_integral_nonce(&cipher, self.sender_protocol.clone().as_bytes().to_vec())?;
+        let encrypted_protocol = encrypt_bytes_integral_nonce(&cipher, self.sender_protocol.as_bytes().to_vec())?;
         self.sender_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
@@ -1534,8 +1532,7 @@ impl CompletedTransactionSql {
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        let encrypted_protocol =
-            encrypt_bytes_integral_nonce(&cipher, self.transaction_protocol.clone().as_bytes().to_vec())?;
+        let encrypted_protocol = encrypt_bytes_integral_nonce(&cipher, self.transaction_protocol.as_bytes().to_vec())?;
         self.transaction_protocol = encrypted_protocol.to_hex();
         Ok(())
     }

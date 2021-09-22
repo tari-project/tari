@@ -67,7 +67,7 @@ type DialFuturesUnordered =
 pub(crate) enum DialerRequest {
     Dial(
         Box<Peer>,
-        oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ),
     CancelPendingDial(NodeId),
 }
@@ -189,33 +189,27 @@ where
 
     async fn handle_dial_result(
         &mut self,
-        dial_state: DialState,
+        mut dial_state: DialState,
         dial_result: Result<PeerConnection, ConnectionManagerError>,
     ) {
-        let DialState { peer, reply_tx, .. } = dial_state;
-
-        let node_id = peer.node_id.clone();
-        let peer_id_short_str = peer.node_id.short_str();
+        let node_id = dial_state.peer().node_id.clone();
 
         let removed = self.cancel_signals.remove(&node_id);
         drop(removed);
 
         match &dial_result {
             Ok(conn) => {
-                debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", peer_id_short_str);
+                debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone()))
                     .await
             },
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Failed to dial peer '{}' because '{:?}'", peer_id_short_str, err
+                    "Failed to dial peer '{}' because '{:?}'", node_id, err
                 );
-                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(
-                    Box::new(node_id.clone()),
-                    err.clone(),
-                ))
-                .await
+                self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
+                    .await
             },
         }
 
@@ -223,7 +217,12 @@ where
             self.reply_to_pending_requests(&node_id, dial_result.clone());
         }
 
-        let _ = reply_tx.send(dial_result);
+        if dial_state.send_reply(dial_result).is_err() {
+            warn!(
+                target: LOG_TARGET,
+                "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
+            );
+        }
     }
 
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
@@ -259,11 +258,13 @@ where
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
         peer: Box<Peer>,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         if self.is_pending_dial(&peer.node_id) {
-            let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
-            entry.push(reply_tx);
+            if let Some(reply_tx) = reply_tx {
+                let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
+                entry.push(reply_tx);
+            }
             return;
         }
 
@@ -292,7 +293,7 @@ where
             match dial_result {
                 Ok((socket, addr)) => {
                     let authenticated_public_key =
-                        match Self::check_authenticated_public_key(&socket, &dial_state.peer.public_key) {
+                        match Self::check_authenticated_public_key(&socket, &dial_state.peer().public_key) {
                             Ok(pk) => pk,
                             Err(err) => {
                                 return (dial_state, Err(err));
@@ -443,17 +444,17 @@ where
                 target: LOG_TARGET,
                 "[Attempt {}] Will attempt connection to peer '{}' in {} second(s)",
                 current_state.num_attempts(),
-                current_state.peer.node_id.short_str(),
+                current_state.peer().node_id.short_str(),
                 backoff_duration.as_secs()
             );
             let delay = time::sleep(backoff_duration).fuse();
             let cancel_signal = current_state.get_cancel_signal();
             tokio::select! {
                 _ = delay => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connecting to peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
                     match Self::dial_peer(current_state, &noise_config, &current_transport, config.network_info.network_byte).await {
                         (state, Ok((socket, addr))) => {
-                            debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer.node_id.short_str(), state.num_attempts());
+                            debug!(target: LOG_TARGET, "Dial succeeded for peer '{}' after {} attempt(s)", state.peer().node_id.short_str(), state.num_attempts());
                             break (state, Ok((socket, addr)));
                         },
                         // Inflight dial was cancelled
@@ -471,7 +472,7 @@ where
                 },
                 // Delayed dial was cancelled
                 _ = cancel_signal => {
-                    debug!(target: LOG_TARGET, "[Attempt {}] Connection attempt cancelled for peer '{}'", current_state.num_attempts(), current_state.peer.node_id.short_str());
+                    debug!(target: LOG_TARGET, "[Attempt {}] Connection attempt cancelled for peer '{}'", current_state.num_attempts(), current_state.peer().node_id.short_str());
                     break (current_state, Err(ConnectionManagerError::DialCancelled));
                 }
             }
@@ -490,7 +491,7 @@ where
         DialState,
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     ) {
-        let mut addr_iter = dial_state.peer.addresses.iter();
+        let mut addr_iter = dial_state.peer().addresses.iter();
         let cancel_signal = dial_state.get_cancel_signal();
         loop {
             let result = match addr_iter.next() {
@@ -499,7 +500,7 @@ where
                         target: LOG_TARGET,
                         "Attempting address '{}' for peer '{}'",
                         address,
-                        dial_state.peer.node_id.short_str()
+                        dial_state.peer().node_id.short_str()
                     );
 
                     let dial_fut = async move {
@@ -536,7 +537,7 @@ where
                                 "(Attempt {}) Dial failed on address '{}' for peer '{}' because '{}'",
                                 dial_state.num_attempts(),
                                 address,
-                                dial_state.peer.node_id.short_str(),
+                                dial_state.peer().node_id.short_str(),
                                 err,
                             );
                             // Try the next address
@@ -547,7 +548,7 @@ where
                             debug!(
                                 target: LOG_TARGET,
                                 "Dial for peer '{}' cancelled",
-                                dial_state.peer.node_id.short_str()
+                                dial_state.peer().node_id.short_str()
                             );
                             Err(ConnectionManagerError::DialCancelled)
                         },

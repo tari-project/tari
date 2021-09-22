@@ -173,7 +173,7 @@ impl CommsBuilder {
     }
 
     /// Sets the minimum required connectivity as a percentage of peers added to the connectivity manager peer set.
-    pub fn with_min_connectivity(mut self, min_connectivity: f32) -> Self {
+    pub fn with_min_connectivity(mut self, min_connectivity: usize) -> Self {
         self.connectivity_config.min_connectivity = min_connectivity;
         self
     }

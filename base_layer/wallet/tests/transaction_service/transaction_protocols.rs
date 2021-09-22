@@ -32,7 +32,6 @@ use tari_comms::{
     },
     types::CommsPublicKey,
     NodeIdentity,
-    Substream,
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
@@ -96,7 +95,7 @@ pub async fn setup(
     TransactionServiceResources<TransactionServiceSqliteDatabase>,
     ConnectivityManagerMockState,
     OutboundServiceMockState,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
+    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
     broadcast::Sender<Duration>,

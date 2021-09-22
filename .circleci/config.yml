@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-06
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-09
 
 commands:
   test:
@@ -121,9 +121,12 @@ commands:
           name: Build mining_node
           command: cargo build --release --bin tari_mining_node
       - run:
+          name: Build stratum_transcoder
+          command: cargo build --release --bin tari_stratum_transcoder
+      - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky"
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js

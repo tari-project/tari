@@ -1,14 +1,3 @@
-use std::fmt::{Display, Error, Formatter};
-
-use log::*;
-use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
-};
-
 // Copyright 2019, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -31,6 +20,12 @@ use tari_crypto::{
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::transactions::{crypto_factories::CryptoFactories, fee::Fee, tari_amount::*, transaction::*};
+use log::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    cmp::max,
+    fmt::{Display, Error, Formatter},
+};
 use tari_common_types::types::{
     BlindingFactor,
     Commitment,
@@ -39,12 +34,18 @@ use tari_common_types::types::{
     PublicKey,
     RangeProofService,
 };
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitment,
+    tari_utilities::hex::Hex,
+};
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 /// cut-through means that blocks and transactions have the same structure.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AggregateBody {
     sorted: bool,
     /// List of inputs spent by the transaction.
@@ -58,12 +59,8 @@ pub struct AggregateBody {
 impl AggregateBody {
     /// Create an empty aggregate body
     pub fn empty() -> AggregateBody {
-        AggregateBody {
-            sorted: false,
-            inputs: vec![],
-            outputs: vec![],
-            kernels: vec![],
-        }
+        // UNCHECKED: empty vecs are sorted
+        AggregateBody::new_sorted_unchecked(vec![], vec![], vec![])
     }
 
     /// Create a new aggregate body from provided inputs, outputs and kernels
@@ -74,6 +71,21 @@ impl AggregateBody {
     ) -> AggregateBody {
         AggregateBody {
             sorted: false,
+            inputs,
+            outputs,
+            kernels,
+        }
+    }
+
+    /// Create a new aggregate body from provided inputs, outputs and kernels.
+    /// It is up to the caller to ensure that the inputs, outputs and kernels are sorted
+    pub(crate) fn new_sorted_unchecked(
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        kernels: Vec<TransactionKernel>,
+    ) -> AggregateBody {
+        AggregateBody {
+            sorted: true,
             inputs,
             outputs,
             kernels,
@@ -186,13 +198,18 @@ impl AggregateBody {
     }
 
     /// Sort the component lists of the aggregate body
-    pub fn sort(&mut self) {
+    pub fn sort(&mut self, version: u16) {
         if self.sorted {
             return;
         }
         self.inputs.sort();
         self.outputs.sort();
-        self.kernels.sort();
+        // TODO: #testnetreset clean up this code
+        if version <= 1 {
+            self.kernels.sort_by(|a, b| a.deprecated_cmp(b));
+        } else {
+            self.kernels.sort();
+        }
         self.sorted = true;
     }
 
@@ -316,16 +333,17 @@ impl AggregateBody {
         total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError> {
-        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
-        let script_offset_g = PublicKey::from_secret_key(&script_offset);
-
         self.verify_kernel_signatures()?;
+
+        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
         if !bypass_range_proof_verification {
             self.validate_range_proofs(&factories.range_proof)?;
         }
         self.verify_metadata_signatures()?;
+
+        let script_offset_g = PublicKey::from_secret_key(&script_offset);
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 
@@ -450,7 +468,21 @@ impl AggregateBody {
             self.kernels.len()
         )
     }
+
+    pub fn max_kernel_timelock(&self) -> u64 {
+        self.kernels()
+            .iter()
+            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
 }
+
+impl PartialEq for AggregateBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.kernels == other.kernels && self.inputs == other.inputs && self.outputs == other.outputs
+    }
+}
+
+impl Eq for AggregateBody {}
 
 /// This will strip away the offset of the transaction returning a pure aggregate body
 impl From<Transaction> for AggregateBody {

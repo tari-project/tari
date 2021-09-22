@@ -55,6 +55,8 @@ pub enum BlockValidationError {
     TransactionError(#[from] TransactionError),
     #[error("Invalid input in block")]
     InvalidInput,
+    #[error("Contains kernels or inputs that are not yet spendable")]
+    MaturityError,
     #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
@@ -77,6 +79,10 @@ pub struct Block {
 impl Block {
     pub fn new(header: BlockHeader, body: AggregateBody) -> Self {
         Self { header, body }
+    }
+
+    pub fn version(&self) -> u16 {
+        self.header.version
     }
 
     /// This function will calculate the total fees contained in a block
@@ -109,9 +115,12 @@ impl Block {
         Ok(())
     }
 
-    /// Checks that all STXO rules (maturity etc) are followed
-    pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
+    /// Checks that all STXO rules (maturity etc) and kernel heights are followed
+    pub fn check_spend_rules(&self) -> Result<(), BlockValidationError> {
         self.body.check_stxo_rules(self.header.height)?;
+        if self.body.max_kernel_timelock() > self.header.height {
+            return Err(BlockValidationError::MaturityError);
+        }
         Ok(())
     }
 
@@ -234,7 +243,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort();
+        block.body.sort(block.header.version);
         block
     }
 }

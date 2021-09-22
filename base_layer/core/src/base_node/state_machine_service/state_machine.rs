@@ -35,6 +35,7 @@ use crate::{
 };
 use futures::{future, future::Either};
 use log::*;
+use randomx_rs::RandomXFlag;
 use std::{future::Future, sync::Arc};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
@@ -43,7 +44,7 @@ use tokio::sync::{broadcast, watch};
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
     pub horizon_sync_config: HorizonSyncConfig,
@@ -53,6 +54,23 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
+    pub block_sync_validation_concurrency: usize,
+}
+
+impl Default for BaseNodeStateMachineConfig {
+    fn default() -> Self {
+        Self {
+            block_sync_config: Default::default(),
+            horizon_sync_config: Default::default(),
+            sync_peer_config: Default::default(),
+            orphan_db_clean_out_threshold: 0,
+            pruning_horizon: 0,
+            max_randomx_vms: 0,
+            blocks_behind_before_considered_lagging: 0,
+            bypass_range_proof_verification: false,
+            block_sync_validation_concurrency: 8,
+        }
+    }
 }
 
 /// A Tari full node, aka Base Node.
@@ -157,6 +175,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let status = StatusInfo {
             bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),
+            randomx_vm_cnt: self.randomx_factory.get_count(),
+            randomx_vm_flags: self.randomx_factory.get_flags(),
         };
 
         if let Err(e) = self.status_event_sender.send(status) {
@@ -176,6 +196,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     pub fn is_bootstrapped(&self) -> bool {
         self.is_bootstrapped
+    }
+
+    pub fn get_randomx_vm_cnt(&self) -> usize {
+        self.randomx_factory.get_count()
+    }
+
+    pub fn get_randomx_vm_flags(&self) -> RandomXFlag {
+        self.randomx_factory.get_flags()
     }
 
     /// Start the base node runtime.

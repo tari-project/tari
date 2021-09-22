@@ -4,18 +4,27 @@
   "description": "Protocol Dailies",
   "main": "cron_jobs.js",
   "dependencies": {
+    "@babel/eslint-parser": "^7.15.4",
     "cron": "^1.8.2",
     "debug": "^4.3.2",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-config-standard": "^16.0.3",
     "integration_tests": "file:../../integration_tests",
     "luxon": "^2.0.2",
     "yargs": "^17.0.1"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "fmt": "prettier --end-of-line auto -w .",
+    "check-fmt": "prettier --end-of-line auto -c .",
+    "lint": "eslint .",
+    "lint-fix": "eslint --fix ."
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@babel/eslint-plugin": "^7.14.5",
+    "eslint-plugin-prettier": "^4.0.0",
     "mocha": "^9.1.0"
   }
 }
