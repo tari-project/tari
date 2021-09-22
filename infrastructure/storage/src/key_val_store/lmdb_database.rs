@@ -63,46 +63,50 @@ where
 {
     /// Inserts a key-value pair into the key-value database.
     fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
-        self.inner
-            .insert::<K, V>(&key, &value)
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+        self.inner.insert::<K, V>(&key, &value).map_err(Into::into)
     }
 
     /// Get the value corresponding to the provided key from the key-value database.
     fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError>
     where for<'t> V: serde::de::DeserializeOwned {
+        self.inner.get::<K, V>(key).map_err(Into::into)
+    }
+
+    /// Get the values corresponding to the provided keys from the key-value database.
+    fn get_many(&self, keys: &[K]) -> Result<Vec<V>, KeyValStoreError>
+    where for<'t> V: serde::de::DeserializeOwned {
         self.inner
-            .get::<K, V>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+            .with_read_transaction(|access| {
+                keys.iter()
+                    .filter_map(|k| match access.get::<K, V>(k) {
+                        Ok(Some(v)) => Some(Ok(v)),
+                        Ok(None) => None,
+                        Err(e) => Some(Err(e)),
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })?
+            .map_err(Into::into)
     }
 
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError> {
-        self.inner
-            .len()
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+        self.inner.len().map_err(Into::into)
     }
 
     /// Iterate over all the stored records and execute the function `f` for each pair in the key-value database.
     fn for_each<F>(&self, f: F) -> Result<(), KeyValStoreError>
     where F: FnMut(Result<(K, V), KeyValStoreError>) -> IterationResult {
-        self.inner
-            .for_each::<K, V, F>(f)
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+        self.inner.for_each::<K, V, F>(f).map_err(Into::into)
     }
 
     /// Checks whether a record exist in the key-value database that corresponds to the provided `key`.
     fn exists(&self, key: &K) -> Result<bool, KeyValStoreError> {
-        self.inner
-            .contains_key::<K>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+        self.inner.contains_key::<K>(key).map_err(Into::into)
     }
 
     /// Remove the record from the key-value database that corresponds with the provided `key`.
     fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
-        self.inner
-            .remove::<K>(key)
-            .map_err(|e| KeyValStoreError::DatabaseError(format!("{:?}", e)))
+        self.inner.remove::<K>(key).map_err(Into::into)
     }
 }
 
