@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
-use tari_p2p::{auto_update::AutoUpdateConfig, initialization::CommsConfig};
+use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -35,7 +35,7 @@ pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
 #[derive(Clone)]
 pub struct WalletConfig {
-    pub comms_config: CommsConfig,
+    pub comms_config: P2pConfig,
     pub factories: CryptoFactories,
     pub transaction_service_config: Option<TransactionServiceConfig>,
     pub output_manager_service_config: Option<OutputManagerServiceConfig>,
@@ -51,7 +51,7 @@ pub struct WalletConfig {
 impl WalletConfig {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        comms_config: CommsConfig,
+        comms_config: P2pConfig,
         factories: CryptoFactories,
         transaction_service_config: Option<TransactionServiceConfig>,
         output_manager_service_config: Option<OutputManagerServiceConfig>,
