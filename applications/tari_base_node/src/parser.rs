@@ -41,7 +41,12 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_core::{crypto::tari_utilities::hex::from_hex, proof_of_work::PowAlgorithm, tari_utilities::hex::Hex};
+use tari_core::{
+    crypto::tari_utilities::hex::from_hex,
+    proof_of_work::PowAlgorithm,
+    tari_utilities::{hex::Hex, ByteArray},
+};
+use tari_crypto::tari_utilities::hex;
 use tari_shutdown::Shutdown;
 
 /// Enum representing commands used by the basenode
@@ -515,20 +520,27 @@ impl Parser {
     }
 
     fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let node_id = match args
+        let (original_str, partial) = match args
             .next()
-            .map(parse_emoji_id_or_public_key_or_node_id)
+            .map(|s| {
+                parse_emoji_id_or_public_key_or_node_id(s)
+                    .map(either_to_node_id)
+                    .map(|n| (s.to_string(), n.to_vec()))
+                    .or_else(|| {
+                        let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
+                        Some((s.to_string(), bytes))
+                    })
+            })
             .flatten()
-            .map(either_to_node_id)
         {
             Some(n) => n,
             None => {
-                println!("Usage: get-peer [NodeId|PublicKey|EmojiId]");
+                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
                 return;
             },
         };
 
-        self.command_handler.get_peer(node_id)
+        self.command_handler.get_peer(partial, original_str)
     }
 
     /// Function to process the list-peers command

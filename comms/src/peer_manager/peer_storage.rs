@@ -36,6 +36,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{collections::HashMap, time::Duration};
+use tari_crypto::tari_utilities::ByteArray;
 use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
@@ -214,6 +215,23 @@ where DS: KeyValueStore<PeerId, Peer>
                 );
                 PeerManagerError::PeerNotFoundError
             })
+    }
+
+    pub fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
+        if partial.is_empty() || partial.len() > NodeId::BYTE_SIZE {
+            return Ok(Vec::new());
+        }
+
+        let keys = self
+            .node_id_index
+            .iter()
+            .filter(|(k, _)| {
+                let l = partial.len();
+                &k.as_bytes()[..l] == partial
+            })
+            .map(|(_, id)| *id)
+            .collect::<Vec<_>>();
+        self.peer_db.get_many(&keys).map_err(PeerManagerError::DatabaseError)
     }
 
     /// Find the peer with the provided PublicKey

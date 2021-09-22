@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::lmdb_store::LMDBError;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -34,4 +35,10 @@ pub enum KeyValStoreError {
     DeserializationError(String),
     #[error("The specified key did not exist in the key-val store")]
     KeyNotFound,
+}
+
+impl From<LMDBError> for KeyValStoreError {
+    fn from(e: LMDBError) -> Self {
+        KeyValStoreError::DatabaseError(format!("{:?}", e))
+    }
 }
