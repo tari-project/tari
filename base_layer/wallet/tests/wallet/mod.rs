@@ -53,7 +53,7 @@ use tari_core::transactions::{
     transaction::OutputFeatures,
     CryptoFactories,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -105,7 +105,7 @@ async fn create_wallet(
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
@@ -685,7 +685,7 @@ async fn test_import_utxo() {
     );
     let temp_dir = tempdir().unwrap();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
