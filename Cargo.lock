@@ -1685,6 +1685,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
+name = "hdrhistogram"
+version = "6.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d331ebcdbca4acbefe5da8c3299b2e246f198a8294cc5163354e743398b89d"
+dependencies = [
+ "base64 0.10.1",
+ "byteorder",
+ "crossbeam-channel 0.3.9",
+ "flate2",
+ "nom 4.2.3",
+ "num-traits 0.2.14",
+]
+
+[[package]]
 name = "heck"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3873,9 +3887,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.9.6"
+version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9204c41a1597a8c5af23c82d1c921cb01ec0a4c59e07a9c7306062829a3903f3"
+checksum = "b69f9a4c9740d74c5baa3fd2e547f9525fa8088a8a958e0ca2409a514e33f5fa"
 dependencies = [
  "block-buffer",
  "cfg-if 1.0.0",
@@ -4321,7 +4335,7 @@ dependencies = [
  "log 0.4.14",
  "multiaddr",
  "nom 5.1.2",
- "openssl",
+ "openssl-sys",
  "opentelemetry",
  "opentelemetry-jaeger",
  "pin-project 1.0.8",
@@ -4391,7 +4405,7 @@ dependencies = [
  "tokio 1.11.0",
  "tokio-stream",
  "tokio-test 0.4.2",
- "tower 0.3.1",
+ "tower 0.4.8",
  "tower-test",
  "ttl_cache",
 ]
@@ -5246,6 +5260,7 @@ checksum = "f60422bc7fefa2f3ec70359b8ff1caff59d785877eb70595904605bcc412470f"
 dependencies = [
  "futures-core",
  "futures-util",
+ "hdrhistogram",
  "indexmap",
  "pin-project 1.0.8",
  "rand 0.8.4",

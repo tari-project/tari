@@ -7,7 +7,7 @@ version = "0.18.6"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.10", path = "../../comms", default-features = false}
+tari_comms = { version = "^0.10", path = "../../comms", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.10", path = "../../comms/dht", default-features = false }
 tari_common_types = {path="../common_types"}
 tari_crypto = "0.11.1"
