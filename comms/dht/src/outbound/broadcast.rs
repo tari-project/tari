@@ -26,7 +26,7 @@ use crate::{
     broadcast_strategy::BroadcastStrategy,
     crypt,
     discovery::DhtDiscoveryRequester,
-    envelope::{datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
         message_params::FinalSendMessageParams,
@@ -34,6 +34,8 @@ use crate::{
         SendMessageResponse,
     },
     proto::envelope::{DhtMessageType, OriginMac},
+    version::DhtProtocolVersion,
+    DhtConfig,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -46,7 +48,7 @@ use futures::{
 };
 use log::*;
 use rand::rngs::OsRng;
-use std::{sync::Arc, task::Poll, time::Duration};
+use std::{sync::Arc, task::Poll};
 use tari_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
@@ -56,7 +58,7 @@ use tari_comms::{
 };
 use tari_crypto::{
     keys::PublicKey,
-    tari_utilities::{message_format::MessageFormat, ByteArray},
+    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
 };
 use tari_utilities::hex::Hex;
 use tokio::sync::oneshot;
@@ -69,6 +71,7 @@ pub struct BroadcastLayer {
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
+    protocol_version: DhtProtocolVersion,
 }
 
 impl BroadcastLayer {
@@ -76,14 +79,15 @@ impl BroadcastLayer {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
-        message_validity_window: Duration,
+        config: &DhtConfig,
     ) -> Self {
         BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(message_validity_window)
+            message_validity_window: chrono::Duration::from_std(config.saf_msg_validity)
                 .expect("message_validity_window is too large"),
+            protocol_version: config.protocol_version,
         }
     }
 }
@@ -98,6 +102,7 @@ impl<S> Layer<S> for BroadcastLayer {
             self.dht_requester.clone(),
             self.dht_discovery_requester.clone(),
             self.message_validity_window,
+            self.protocol_version,
         )
     }
 }
@@ -111,6 +116,7 @@ pub struct BroadcastMiddleware<S> {
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
+    protocol_version: DhtProtocolVersion,
 }
 
 impl<S> BroadcastMiddleware<S> {
@@ -120,6 +126,7 @@ impl<S> BroadcastMiddleware<S> {
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         message_validity_window: chrono::Duration,
+        protocol_version: DhtProtocolVersion,
     ) -> Self {
         Self {
             next_service: service,
@@ -127,6 +134,7 @@ impl<S> BroadcastMiddleware<S> {
             dht_discovery_requester,
             node_identity,
             message_validity_window,
+            protocol_version,
         }
     }
 }
@@ -153,6 +161,7 @@ where
                 self.dht_discovery_requester.clone(),
                 msg,
                 self.message_validity_window,
+                self.protocol_version,
             )
             .handle(),
         )
@@ -166,6 +175,7 @@ struct BroadcastTask<S> {
     dht_discovery_requester: DhtDiscoveryRequester,
     request: Option<DhtOutboundRequest>,
     message_validity_window: chrono::Duration,
+    protocol_version: DhtProtocolVersion,
 }
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
@@ -179,6 +189,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         dht_discovery_requester: DhtDiscoveryRequester,
         request: DhtOutboundRequest,
         message_validity_window: chrono::Duration,
+        protocol_version: DhtProtocolVersion,
     ) -> Self {
         Self {
             service,
@@ -187,6 +198,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             dht_discovery_requester,
             request: Some(request),
             message_validity_window,
+            protocol_version,
         }
     }
 
@@ -416,8 +428,17 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
         let dht_flags = encryption.flags() | extra_flags;
+        let expires_epochtime = expires.map(datetime_to_epochtime);
 
-        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(&encryption, force_origin, body)?;
+        let (ephemeral_public_key, origin_mac, body) = self.process_encryption(
+            &encryption,
+            force_origin,
+            &destination,
+            &dht_message_type,
+            dht_flags,
+            expires_epochtime,
+            body,
+        )?;
 
         if is_broadcast {
             self.add_to_dedup_cache(&body, self.node_identity.public_key().clone())
@@ -431,6 +452,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             let send_state = MessageSendState::new(tag, reply_rx);
             (
                 DhtOutboundMessage {
+                    protocol_version: self.protocol_version,
                     tag,
                     destination_node_id: node_id,
                     destination: destination.clone(),
@@ -474,10 +496,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn process_encryption(
         &self,
         encryption: &OutboundEncryption,
         include_origin: bool,
+        destination: &NodeDestination,
+        message_type: &DhtMessageType,
+        flags: DhtMessageFlags,
+        expires: Option<EpochTime>,
         body: Bytes,
     ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
@@ -489,8 +516,17 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
 
+                let mac_challenge = crypt::create_origin_mac_challenge_parts(
+                    self.protocol_version,
+                    &destination,
+                    message_type,
+                    flags,
+                    expires,
+                    Some(&e_pk),
+                    &encrypted_body,
+                );
                 // Sign the encrypted message
-                let origin_mac = create_origin_mac(&self.node_identity, &encrypted_body)?;
+                let origin_mac = create_origin_mac(&self.node_identity, mac_challenge)?;
                 // Encrypt and set the origin field
                 let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
                 Ok((
@@ -503,7 +539,16 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
-                    let origin_mac = create_origin_mac(&self.node_identity, &body)?;
+                    let mac_challenge = crypt::create_origin_mac_challenge_parts(
+                        self.protocol_version,
+                        destination,
+                        message_type,
+                        flags,
+                        expires,
+                        None,
+                        &body,
+                    );
+                    let origin_mac = create_origin_mac(&self.node_identity, mac_challenge)?;
                     Ok((None, Some(origin_mac.into()), body))
                 } else {
                     Ok((None, None, body))
@@ -513,9 +558,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     }
 }
 
-fn create_origin_mac(node_identity: &NodeIdentity, body: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
-    let signature = signature::sign(&mut OsRng, node_identity.secret_key().clone(), body)?;
-
+fn create_origin_mac(node_identity: &NodeIdentity, mac_challenge: Challenge) -> Result<Vec<u8>, DhtOutboundError> {
+    let signature = signature::sign_challenge(&mut OsRng, node_identity.secret_key().clone(), mac_challenge)?;
     let mac = OriginMac {
         public_key: node_identity.public_key().to_vec(),
         signature: signature.to_binary()?,
@@ -592,6 +636,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             chrono::Duration::seconds(10800),
+            DhtProtocolVersion::latest(),
         );
         assert_send_static_service(&service);
         let (reply_tx, _reply_rx) = oneshot::channel();
@@ -634,6 +679,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             chrono::Duration::seconds(10800),
+            DhtProtocolVersion::latest(),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -682,6 +728,7 @@ mod test {
             dht_requester,
             dht_discover_requester,
             chrono::Duration::seconds(10800),
+            DhtProtocolVersion::latest(),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 

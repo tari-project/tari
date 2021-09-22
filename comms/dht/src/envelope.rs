@@ -37,6 +37,7 @@ use thiserror::Error;
 
 // Re-export applicable protos
 pub use crate::proto::envelope::{dht_header::Destination, DhtEnvelope, DhtHeader, DhtMessageType};
+use crate::version::DhtProtocolVersion;
 
 /// Utility function that converts a `chrono::DateTime<Utc>` to a `prost::Timestamp`
 pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
@@ -70,6 +71,8 @@ pub enum DhtMessageError {
     InvalidOrigin,
     #[error("Invalid or unrecognised DHT message type")]
     InvalidMessageType,
+    #[error("Invalid or unsupported DHT protocol version {0}")]
+    InvalidProtocolVersion(u32),
     #[error("Invalid or unrecognised network type")]
     InvalidNetwork,
     #[error("Invalid or unrecognised DHT message flags")]
@@ -131,8 +134,7 @@ impl DhtMessageType {
 /// It is preferable to not to expose the generated prost structs publicly.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DhtMessageHeader {
-    pub major: u32,
-    pub minor: u32,
+    pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
     /// Encoded DhtOrigin. This can refer to the same peer that sent the message
     /// or another peer if the message is being propagated.
@@ -158,8 +160,8 @@ impl Display for DhtMessageHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "DhtMessageHeader (Dest:{}, Type:{:?}, Flags:{:?}, Trace:{})",
-            self.destination, self.message_type, self.flags, self.message_tag
+            "DhtMessageHeader ({}, Dest:{}, Type:{:?}, Flags:{:?}, Trace:{})",
+            self.version, self.destination, self.message_type, self.flags, self.message_tag
         )
     }
 }
@@ -184,10 +186,10 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         };
 
         let expires: Option<DateTime<Utc>> = header.expires.map(timestamp_to_datetime);
+        let version = DhtProtocolVersion::try_from((header.major, header.minor))?;
 
         Ok(Self {
-            major: header.major,
-            minor: header.minor,
+            version,
             destination,
             origin_mac: header.origin_mac,
             ephemeral_public_key,
@@ -214,8 +216,8 @@ impl From<DhtMessageHeader> for DhtHeader {
     fn from(header: DhtMessageHeader) -> Self {
         let expires = header.expires.map(epochtime_to_datetime);
         Self {
-            major: header.major,
-            minor: header.minor,
+            major: header.version.as_major(),
+            minor: header.version.as_minor(),
             ephemeral_public_key: header
                 .ephemeral_public_key
                 .as_ref()

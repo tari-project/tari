@@ -83,7 +83,8 @@ impl OutboundMessaging {
                 Ok(_) => {
                     event!(
                         Level::DEBUG,
-                        "Outbound messaging for peer has stopped because the stream was closed"
+                        "Outbound messaging for peer '{}' has stopped because the stream was closed",
+                        peer_node_id.short_str()
                     );
 
                     debug!(
@@ -94,8 +95,9 @@ impl OutboundMessaging {
                 },
                 Err(MessagingProtocolError::Inactivity) => {
                     event!(
-                        Level::ERROR,
-                        "Outbound messaging for peer has stopped because it was inactive"
+                        Level::DEBUG,
+                        "Outbound messaging for peer  '{}' has stopped because it was inactive",
+                        peer_node_id.short_str()
                     );
                     debug!(
                         target: LOG_TARGET,
