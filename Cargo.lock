@@ -4335,7 +4335,7 @@ dependencies = [
  "log 0.4.14",
  "multiaddr",
  "nom 5.1.2",
- "openssl",
+ "openssl-sys",
  "opentelemetry",
  "opentelemetry-jaeger",
  "pin-project 1.0.8",
