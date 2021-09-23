@@ -29,7 +29,7 @@ use tari_comms::{
     types::CommsPublicKey,
     CommsNode,
 };
-use tari_comms_dht::{envelope::DhtMessageHeader, Dht};
+use tari_comms_dht::{envelope::DhtMessageHeader, Dht, DhtProtocolVersion};
 use tari_p2p::{
     comms_connector::InboundDomainConnector,
     domain_message::DomainMessage,
@@ -77,8 +77,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
     );
     DomainMessage {
         dht_header: DhtMessageHeader {
-            major: Default::default(),
-            minor: Default::default(),
+            version: DhtProtocolVersion::latest(),
             ephemeral_public_key: None,
             origin_mac: Vec::new(),
             message_type: Default::default(),

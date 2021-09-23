@@ -115,6 +115,17 @@ impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HashmapDatabase<K, 
         self.get(key)
     }
 
+    /// Get the values corresponding to the provided keys from the key-value database.
+    fn get_many(&self, keys: &[K]) -> Result<Vec<V>, KeyValStoreError> {
+        keys.iter()
+            .filter_map(|k| match self.get(k) {
+                Ok(Some(v)) => Some(Ok(v)),
+                Ok(None) => None,
+                Err(e) => Some(Err(e)),
+            })
+            .collect()
+    }
+
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError> {
         self.len()

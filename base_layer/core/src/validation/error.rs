@@ -71,6 +71,8 @@ pub enum ValidationError {
     UnsortedOrDuplicateInput,
     #[error("Duplicate or unsorted output found in block body")]
     UnsortedOrDuplicateOutput,
+    #[error("Duplicate or unsorted kernel found in block body")]
+    UnsortedOrDuplicateKernel,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Contains an input with an invalid mined-height in body")]

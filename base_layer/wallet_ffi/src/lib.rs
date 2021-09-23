@@ -210,7 +210,7 @@ const LOG_TARGET: &str = "wallet_ffi";
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
-pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
+pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
 pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
 
 pub struct TariContacts(Vec<TariContact>);

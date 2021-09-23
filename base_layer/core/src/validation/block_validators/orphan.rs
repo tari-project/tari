@@ -81,10 +81,10 @@ impl OrphanValidation for OrphanBlockValidator {
             "Checking duplicate inputs and outputs on {}",
             block_id
         );
-        check_sorting_and_duplicates(&block.body)?;
+        check_sorting_and_duplicates(&block)?;
         trace!(
             target: LOG_TARGET,
-            "SV - No duplicate inputs or outputs for {} ",
+            "SV - No duplicate inputs / outputs for {} ",
             &block_id
         );
 

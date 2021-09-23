@@ -300,6 +300,13 @@ A node ID is a unique identifier that specifies the location of a [communication
 Tari communication network. The node ID can either be obtained from registration on the [Base Layer] or can be derived
 from the public identification key of a [communication node] or [communication client].
 
+## Non-fungible Token (NFT)
+
+[non fungible token]: #nft
+
+A Non-fungible token is a specific instance of a token issued as part of a [digital asset]. It is another name for a
+[digital asset token]. NFTs are contained within specially marked [UTXO]s on the Tari Base Layer.
+
 ## Orphan Pool
 
 [orphan pool]: #orphan-pool "A pool in the Mempool for unconfirmed transactions that attempt to spend non-existent UTXOs"

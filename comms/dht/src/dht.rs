@@ -40,6 +40,7 @@ use crate::{
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
     DedupLayer,
     DhtActorError,
+    DhtBuilder,
     DhtConfig,
 };
 use futures::Future;
@@ -71,6 +72,8 @@ pub enum DhtInitializationError {
     StoreAndForwardInitializationError(#[from] StoreAndForwardError),
     #[error("DhtActorInitializationError: {0}")]
     DhtActorInitializationError(#[from] DhtActorError),
+    #[error("Builder error: no outbound message sender set")]
+    BuilderNoOutboundMessageSender,
 }
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
@@ -102,7 +105,7 @@ pub struct Dht {
 }
 
 impl Dht {
-    pub async fn initialize(
+    pub(crate) async fn initialize(
         config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -151,6 +154,10 @@ impl Dht {
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
+    }
+
+    pub fn builder() -> DhtBuilder {
+        DhtBuilder::new()
     }
 
     /// Create a DHT RPC service
@@ -353,7 +360,7 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 self.dht_requester(),
                 self.discovery_service_requester(),
-                self.config.saf_msg_validity,
+                &self.config,
             ))
             .layer(MessageLoggingLayer::new(format!(
                 "Outbound [{}]",
@@ -421,6 +428,7 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{
         crypt,
         envelope::DhtMessageFlags,
@@ -434,7 +442,6 @@ mod test {
             make_node_identity,
             service_spy,
         },
-        DhtBuilder,
     };
     use std::{sync::Arc, time::Duration};
     use tari_comms::{
@@ -460,17 +467,17 @@ mod test {
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            out_tx,
-            connectivity,
-            shutdown.to_signal(),
-        )
-        .local_test()
-        .build()
-        .await
-        .unwrap();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -483,6 +490,7 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
@@ -510,16 +518,16 @@ mod test {
         let (out_tx, _out_rx) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            out_tx,
-            connectivity,
-            shutdown.to_signal(),
-        )
-        .build()
-        .await
-        .unwrap();
+        let dht = Dht::builder()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
 
         let (out_tx, mut out_rx) = mpsc::channel(10);
 
@@ -533,7 +541,9 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
+            false,
         );
+
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         let msg = {
@@ -560,16 +570,16 @@ mod test {
         let (oms_requester, oms_mock) = create_outbound_service_mock(1);
 
         // Send all outbound requests to the mock
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            oms_requester.get_mpsc_sender(),
-            connectivity,
-            shutdown.to_signal(),
-        )
-        .build()
-        .await
-        .unwrap();
+        let dht = Dht::builder()
+            .with_outbound_sender(oms_requester.get_mpsc_sender())
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
         let oms_mock_state = oms_mock.get_state();
         task::spawn(oms_mock.run());
 
@@ -588,6 +598,7 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
+            false,
         );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
@@ -618,16 +629,16 @@ mod test {
         let (out_tx, _) = mpsc::channel(10);
 
         let shutdown = Shutdown::new();
-        let dht = DhtBuilder::new(
-            Arc::clone(&node_identity),
-            peer_manager,
-            out_tx,
-            connectivity,
-            shutdown.to_signal(),
-        )
-        .build()
-        .await
-        .unwrap();
+        let dht = Dht::builder()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
 
         let spy = service_spy();
         let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
@@ -639,6 +650,7 @@ mod test {
             DhtMessageFlags::empty(),
             false,
             MessageTag::new(),
+            false,
         );
         dht_envelope.header.as_mut().map(|header| {
             header.message_type = DhtMessageType::SafStoredMessages as i32;

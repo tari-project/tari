@@ -154,7 +154,7 @@ pub fn create_genesis_block(
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
-    body.sort();
+    body.sort(header.version);
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
     let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
