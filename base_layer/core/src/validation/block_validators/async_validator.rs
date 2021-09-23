@@ -25,6 +25,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     crypto::tari_utilities::Hashable,
+    iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
@@ -40,10 +41,7 @@ use crate::{
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use std::{
-    cmp,
-    sync::{Arc, Mutex},
-};
+use std::{cmp, cmp::Ordering, thread, time::Instant};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tokio::task;
@@ -140,6 +138,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         kernels: Vec<TransactionKernel>,
     ) -> AbortOnDropJoinHandle<Result<KernelValidationData, ValidationError>> {
         let height = header.height;
+        let block_version = header.version;
+        let kernel_comparer = move |a: &TransactionKernel, b: &TransactionKernel| -> Ordering {
+            if block_version == 1 {
+                a.deprecated_cmp(b)
+            } else {
+                a.cmp(b)
+            }
+        };
+
         let total_kernel_offset = header.total_kernel_offset.clone();
         let total_reward = self.rules.calculate_coinbase_and_fees(height, &kernels);
         let total_offset = self
@@ -148,6 +155,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .commit_value(&total_kernel_offset, total_reward.as_u64());
 
         task::spawn_blocking(move || {
+            let timer = Instant::now();
             let mut kernel_sum = KernelSum {
                 sum: total_offset,
                 ..Default::default()
@@ -156,6 +164,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut coinbase_index = None;
             let mut max_kernel_timelock = 0;
             for (i, kernel) in kernels.iter().enumerate() {
+                if i > 0 &&
+                    matches!(
+                        kernel_comparer(kernel, &kernels[i - 1]),
+                        Ordering::Equal | Ordering::Less
+                    )
+                {
+                    return Err(ValidationError::UnsortedOrDuplicateKernel);
+                }
+
                 kernel.verify_signature()?;
 
                 if kernel.is_coinbase() {
@@ -188,6 +205,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
             let coinbase_index = coinbase_index.unwrap();
 
+            debug!(
+                target: LOG_TARGET,
+                "Validated {} kernel(s) in {:.2?}",
+                kernels.len(),
+                timer.elapsed()
+            );
             Ok(KernelValidationData {
                 kernels,
                 kernel_sum,
@@ -207,6 +230,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let commitment_factory = self.factories.commitment.clone();
         let db = self.db.inner().clone();
         task::spawn_blocking(move || {
+            let timer = Instant::now();
             let mut aggregate_input_key = PublicKey::default();
             let mut commitment_sum = Commitment::default();
             let mut not_found_inputs = Vec::new();
@@ -254,6 +278,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 return Err(ValidationError::UnknownInputs(not_found_inputs));
             }
 
+            debug!(
+                target: LOG_TARGET,
+                "Validated {} inputs(s) in {:.2?}",
+                inputs.len(),
+                timer.elapsed()
+            );
             Ok(InputValidationData {
                 inputs,
                 aggregate_input_key,
@@ -271,7 +301,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let height = header.height;
         let num_outputs = outputs.len();
         let concurrency = cmp::min(self.concurrency, num_outputs);
-        let queue = Arc::new(Mutex::new(outputs.into_iter().enumerate().collect::<Vec<_>>()));
+        let output_chunks = into_enumerated_batches(outputs, concurrency);
         let bypass_range_proof_verification = self.bypass_range_proof_verification;
         if bypass_range_proof_verification {
             warn!(target: LOG_TARGET, "Range proof verification will be bypassed!")
@@ -279,20 +309,28 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
         debug!(
             target: LOG_TARGET,
-            "Using {} worker(s) to validate #{} ({} output(s))", concurrency, height, num_outputs
+            "Using {} worker(s) to validate #{} ({} output(s))",
+            output_chunks.len(),
+            height,
+            num_outputs
         );
-        let mut output_tasks = (0..concurrency)
-            .map(|_| {
-                let queue = queue.clone();
+        let mut output_tasks = output_chunks
+            .into_iter()
+            .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
                     let mut commitment_sum = Commitment::default();
-                    let mut outputs = Vec::new();
                     let mut coinbase_index = None;
-                    while let Some((orig_idx, output)) = queue.lock().expect("lock poisoned").pop() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "{} output(s) queued for validation in {:?}",
+                        outputs.len(),
+                        thread::current().id()
+                    );
+                    for (orig_idx, output) in &outputs {
                         if output.is_coinbase() {
                             if coinbase_index.is_some() {
                                 warn!(
@@ -301,7 +339,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 );
                                 return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
                             }
-                            coinbase_index = Some(orig_idx);
+                            coinbase_index = Some(*orig_idx);
                         } else {
                             // Lets gather the output public keys and hashes.
                             // We should not count the coinbase tx here
@@ -315,7 +353,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
                         helpers::check_not_duplicate_txo(&*db, &output)?;
                         commitment_sum = &commitment_sum + &output.commitment;
-                        outputs.push((orig_idx, output));
                     }
 
                     Ok((outputs, aggregate_sender_offset, commitment_sum, coinbase_index))
@@ -328,6 +365,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut aggregate_offset_pubkey = PublicKey::default();
             let mut output_commitment_sum = Commitment::default();
             let mut coinbase_index = None;
+            let timer = Instant::now();
             while let Some(output_validation_result) = output_tasks.next().await {
                 let (outputs, agg_sender_offset, commitment_sum, cb_index) = output_validation_result??;
                 aggregate_offset_pubkey = aggregate_offset_pubkey + agg_sender_offset;
@@ -340,6 +378,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 }
                 valid_outputs.extend(outputs);
             }
+            debug!(
+                target: LOG_TARGET,
+                "Validated {} outputs(s) in {:.2?}",
+                valid_outputs.len(),
+                timer.elapsed()
+            );
 
             if coinbase_index.is_none() {
                 warn!(
@@ -429,4 +473,30 @@ struct InputValidationData {
     pub inputs: Vec<TransactionInput>,
     pub aggregate_input_key: PublicKey,
     pub commitment_sum: Commitment,
+}
+
+fn into_enumerated_batches<T>(mut items: Vec<T>, num_batches: usize) -> Vec<Vec<(usize, T)>> {
+    if num_batches <= 1 {
+        return vec![items.into_iter().enumerate().collect()];
+    }
+
+    let num_items = items.len();
+    let mut batch_size = num_items / num_batches;
+    if num_items % batch_size != 0 {
+        batch_size += 1;
+    }
+    let mut idx = 0;
+    NonOverlappingIntegerPairIter::new(0, num_items, batch_size)
+        .map(|(start, end)| {
+            let chunk_size = end - start;
+            items
+                .drain(..=chunk_size)
+                .map(|output| {
+                    let v = (idx, output);
+                    idx += 1;
+                    v
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }

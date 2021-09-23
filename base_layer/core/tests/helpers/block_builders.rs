@@ -154,7 +154,7 @@ pub fn create_genesis_block(
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
-    body.sort();
+    body.sort(header.version);
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
     let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();
@@ -346,7 +346,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
     let template = chain_block_with_coinbase(prev_block, txns, coinbase_utxo, coinbase_kernel, consensus_manager);
-    let mut block = db.prepare_block_merkle_roots(template)?;
+    let mut block = db.prepare_new_block(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     let res = db.add_block(Arc::new(block))?;
@@ -455,7 +455,7 @@ pub fn generate_block<B: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError> {
     let prev_block = blocks.last().unwrap();
     let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, &CryptoFactories::default()).0;
-    let new_block = db.prepare_block_merkle_roots(template)?;
+    let new_block = db.prepare_new_block(template)?;
     let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
@@ -478,7 +478,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
         &CryptoFactories::default(),
     )
     .0;
-    let mut new_block = db.prepare_block_merkle_roots(template)?;
+    let mut new_block = db.prepare_new_block(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.into());
@@ -505,7 +505,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         coinbase_kernel,
         consensus,
     );
-    let new_block = db.prepare_block_merkle_roots(template)?;
+    let new_block = db.prepare_new_block(template)?;
     let result = db.add_block(new_block.into())?;
     if let BlockAddResult::Ok(ref b) = result {
         blocks.push(b.as_ref().clone());

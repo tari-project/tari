@@ -181,16 +181,14 @@ fn transactions() {
     {
         let (users, db) = insert_all_users("transactions");
         // Test the `exists` and value retrieval functions
-        let res = db.with_read_transaction::<_, User>(|txn| {
+        db.with_read_transaction(|txn| {
             for user in users.iter() {
                 assert!(txn.exists(&user.id).unwrap());
                 let check: User = txn.get(&user.id).unwrap().unwrap();
                 assert_eq!(check, *user);
             }
-            Ok(None)
-        });
-        println!("{:?}", res);
-        assert!(res.unwrap().is_none());
+        })
+        .unwrap();
     }
     clean_up("transactions"); // In Windows file handles must be released before files can be deleted
 }

@@ -49,7 +49,14 @@ use crate::{
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::transaction::TransactionKernel,
-    validation::{DifficultyCalculator, HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
+    validation::{
+        helpers::calc_median_timestamp,
+        DifficultyCalculator,
+        HeaderValidation,
+        OrphanValidation,
+        PostOrphanBodyValidation,
+        ValidationError,
+    },
 };
 use croaring::Bitmap;
 use log::*;
@@ -59,7 +66,7 @@ use std::{
     collections::VecDeque,
     convert::TryFrom,
     mem,
-    ops::Bound,
+    ops::{Bound, RangeBounds},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
@@ -68,8 +75,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
-use tari_mmr::{MerkleMountainRange, MutableMmr};
-use uint::static_assertions::_core::ops::RangeBounds;
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -222,7 +228,6 @@ where B: BlockchainBackend
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
-
         Ok(self.consensus_manager.consensus_constants(height))
     }
 
@@ -640,10 +645,27 @@ where B: BlockchainBackend
         Ok(targets)
     }
 
-    pub fn prepare_block_merkle_roots(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
+    pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let NewBlockTemplate { header, mut body, .. } = template;
-        body.sort();
-        let header = BlockHeader::from(header);
+        body.sort(header.version);
+        let mut header = BlockHeader::from(header);
+        // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
+        // to increase the timestamp to be greater than the median timestamp
+        let height = header.height - 1;
+        let min_height = header.height.saturating_sub(
+            self.consensus_manager
+                .consensus_constants(header.height)
+                .get_median_timestamp_count() as u64,
+        );
+        let db = self.db_read_access()?;
+        let timestamps = fetch_headers(&*db, min_height, height)?
+            .iter()
+            .map(|h| h.timestamp)
+            .collect::<Vec<_>>();
+        let median_timestamp = calc_median_timestamp(&timestamps);
+        if median_timestamp > header.timestamp {
+            header.timestamp = median_timestamp.increase(1);
+        }
         let block = Block { header, body };
         let (mut block, roots) = self.calculate_mmr_roots(block)?;
         block.header.kernel_mr = roots.kernel_mr;
@@ -971,7 +993,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernels);
     let mut output_mmr = MutableMmr::<HashDigest, _>::new(outputs, deleted)?;
     let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(range_proofs);
-    let mut input_mmr = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create())?;
+    let mut input_mmr = MerkleMountainRange::<HashDigest, _>::new(PrunedHashSet::default());
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash())?;
@@ -1028,10 +1050,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
+    // TODO: #testnetreset clean up this code
+    let input_mr = if header.version == 1 {
+        MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
+    } else {
+        input_mmr.get_merkle_root()?
+    };
+
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
-        input_mr: input_mmr.get_merkle_root()?,
+        input_mr,
         output_mr: output_mmr.get_merkle_root()?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
         witness_mr: witness_mmr.get_merkle_root()?,

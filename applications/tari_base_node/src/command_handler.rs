@@ -406,12 +406,16 @@ impl CommandHandler {
         });
     }
 
-    pub fn get_peer(&self, node_id: NodeId) {
+    pub fn get_peer(&self, partial: Vec<u8>, original_str: String) {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_by_node_id(&node_id).await {
-                Ok(peer) => {
+            match peer_manager.find_all_starts_with(&partial).await {
+                Ok(peers) if peers.is_empty() => {
+                    println!("No peer matching '{}'", original_str);
+                },
+                Ok(peers) => {
+                    let peer = peers.first().unwrap();
                     let eid = EmojiId::from_pubkey(&peer.public_key);
                     println!("Emoji ID: {}", eid);
                     println!("Public Key: {}", peer.public_key);
@@ -537,7 +541,7 @@ impl CommandHandler {
     }
 
     pub fn dial_peer(&self, dest_node_id: NodeId) {
-        let mut connectivity = self.connectivity.clone();
+        let connectivity = self.connectivity.clone();
 
         self.executor.spawn(async move {
             let start = Instant::now();

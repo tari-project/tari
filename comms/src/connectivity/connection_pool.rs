@@ -48,7 +48,6 @@ pub struct PeerConnectionState {
 }
 
 impl PeerConnectionState {
-    #[inline]
     pub fn connection(&self) -> Option<&PeerConnection> {
         self.connection.as_ref()
     }
@@ -58,32 +57,20 @@ impl PeerConnectionState {
         self.connection().filter(|c| c.is_connected()).is_some()
     }
 
-    #[inline]
     pub fn connection_mut(&mut self) -> Option<&mut PeerConnection> {
         self.connection.as_mut()
     }
 
-    #[inline]
     pub fn into_connection(self) -> Option<PeerConnection> {
         self.connection
     }
 
-    #[inline]
     pub fn status(&self) -> ConnectionStatus {
         self.status
     }
 
-    #[inline]
     pub fn node_id(&self) -> &NodeId {
         &self.node_id
-    }
-
-    fn not_connected(node_id: NodeId) -> Self {
-        Self {
-            node_id,
-            connection: None,
-            status: ConnectionStatus::NotConnected,
-        }
     }
 
     fn connected(conn: PeerConnection) -> Self {
@@ -120,16 +107,6 @@ pub struct ConnectionPool {
 impl ConnectionPool {
     pub fn new() -> Self {
         Default::default()
-    }
-
-    pub fn insert(&mut self, node_id: NodeId) -> ConnectionStatus {
-        match self.connections.entry(node_id) {
-            Entry::Occupied(entry) => entry.get().status(),
-            Entry::Vacant(entry) => {
-                let node_id = entry.key().clone();
-                entry.insert(PeerConnectionState::not_connected(node_id)).status()
-            },
-        }
     }
 
     pub fn contains(&mut self, node_id: &NodeId) -> bool {
@@ -181,7 +158,9 @@ impl ConnectionPool {
     }
 
     pub fn get_inactive_connections_mut(&mut self, min_age: Duration) -> Vec<&mut PeerConnection> {
-        self.filter_connections_mut(|conn| conn.age() > min_age && conn.substream_count() == 0)
+        self.filter_connections_mut(|conn| {
+            conn.age() > min_age && conn.substream_count() == 0 && conn.handle_count() <= 1
+        })
     }
 
     pub(in crate::connectivity) fn filter_drain<P>(&mut self, mut predicate: P) -> Vec<PeerConnectionState>

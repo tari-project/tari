@@ -50,7 +50,6 @@ pub struct NewStoredMessage {
 impl NewStoredMessage {
     pub fn try_construct(message: DecryptedDhtMessage, priority: StoredMessagePriority) -> Option<Self> {
         let DecryptedDhtMessage {
-            version,
             authenticated_origin,
             decryption_result,
             dht_header,
@@ -63,7 +62,7 @@ impl NewStoredMessage {
         };
 
         Some(Self {
-            version: version.try_into().ok()?,
+            version: dht_header.version.as_major().try_into().ok()?,
             origin_pubkey: authenticated_origin.as_ref().map(|pk| pk.to_hex()),
             message_type: dht_header.message_type as i32,
             destination_pubkey: dht_header.destination.public_key().map(|pk| pk.to_hex()),

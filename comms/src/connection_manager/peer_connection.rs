@@ -39,10 +39,11 @@ use super::{
 use crate::{
     framing,
     framing::CanonicalFraming,
-    multiplexing::{Control, IncomingSubstreams, Substream, SubstreamCounter, Yamux},
+    multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     runtime,
+    utils::atomic_ref_counter::AtomicRefCounter,
 };
 use log::*;
 use multiaddr::Multiaddr;
@@ -63,8 +64,6 @@ use tracing::{self, span, Instrument, Level, Span};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
-const PEER_REQUEST_BUFFER_SIZE: usize = 64;
-
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[allow(clippy::too_many_arguments)]
@@ -83,7 +82,8 @@ pub fn create(
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
         peer_node_id.short_str()
     );
-    let (peer_tx, peer_rx) = mpsc::channel(PEER_REQUEST_BUFFER_SIZE);
+    // All requests are request/response, so a channel size of 1 is all that is needed
+    let (peer_tx, peer_rx) = mpsc::channel(1);
     let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed); // Monotonic
     let substream_counter = connection.substream_counter();
     let peer_conn = PeerConnection::new(
@@ -125,7 +125,7 @@ pub enum PeerConnectionRequest {
 pub type ConnectionId = usize;
 
 /// Request handle for an active peer connection
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct PeerConnection {
     id: ConnectionId,
     peer_node_id: NodeId,
@@ -134,7 +134,8 @@ pub struct PeerConnection {
     address: Arc<Multiaddr>,
     direction: ConnectionDirection,
     started_at: Instant,
-    substream_counter: SubstreamCounter,
+    substream_counter: AtomicRefCounter,
+    handle_counter: Arc<()>,
 }
 
 impl PeerConnection {
@@ -145,7 +146,7 @@ impl PeerConnection {
         peer_features: PeerFeatures,
         address: Multiaddr,
         direction: ConnectionDirection,
-        substream_counter: SubstreamCounter,
+        substream_counter: AtomicRefCounter,
     ) -> Self {
         Self {
             id,
@@ -156,6 +157,7 @@ impl PeerConnection {
             direction,
             started_at: Instant::now(),
             substream_counter,
+            handle_counter: Arc::new(()),
         }
     }
 
@@ -189,6 +191,10 @@ impl PeerConnection {
 
     pub fn substream_count(&self) -> usize {
         self.substream_counter.get()
+    }
+
+    pub fn handle_count(&self) -> usize {
+        Arc::strong_count(&self.handle_counter)
     }
 
     #[tracing::instrument("peer_connection::open_substream", skip(self))]
@@ -282,12 +288,14 @@ impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}, Age = {:.0?}",
+            "Id: {}, Node ID: {}, Direction: {}, Peer Address: {}, Age: {:.0?}, #Substreams: {}, #Refs: {}",
             self.id,
             self.peer_node_id.short_str(),
             self.direction,
             self.address,
             self.age(),
+            self.substream_count(),
+            self.handle_count()
         )
     }
 }
@@ -328,7 +336,7 @@ impl PeerConnectionActor {
             peer_node_id,
             direction,
             control: connection.get_yamux_control(),
-            incoming_substreams: connection.incoming(),
+            incoming_substreams: connection.into_incoming(),
             request_rx,
             event_notifier,
             our_supported_protocols,
@@ -339,7 +347,15 @@ impl PeerConnectionActor {
     pub async fn run(mut self) {
         loop {
             tokio::select! {
-                Some(request) = self.request_rx.recv() => self.handle_request(request).await,
+                maybe_request = self.request_rx.recv() => {
+                    match maybe_request {
+                        Some(request) => self.handle_request(request).await,
+                        None => {
+                            debug!(target: LOG_TARGET, "[{}] All peer connection handled dropped closing the connection", self);
+                            break;
+                        }
+                    }
+                },
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
@@ -356,12 +372,21 @@ impl PeerConnectionActor {
                         },
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
-                            let _ = self.disconnect(false).await;
                             break;
                         },
                     }
                 }
             }
+        }
+
+        if let Err(err) = self.disconnect(false).await {
+            warn!(
+                target: LOG_TARGET,
+                "[{}] Failed to politely close connection to peer '{}' because '{}'",
+                self,
+                self.peer_node_id.short_str(),
+                err
+            );
         }
         self.request_rx.close();
     }
@@ -404,7 +429,7 @@ impl PeerConnectionActor {
             .await?;
 
         self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
-            Box::new(self.peer_node_id.clone()),
+            self.peer_node_id.clone(),
             selected_protocol,
             stream,
         ))
@@ -457,22 +482,11 @@ impl PeerConnectionActor {
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
         if !silent {
-            self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(
-                self.peer_node_id.clone(),
-            )))
-            .await;
+            self.notify_event(ConnectionManagerEvent::PeerDisconnected(self.peer_node_id.clone()))
+                .await;
         }
 
-        if let Err(err) = self.control.close().await {
-            warn!(
-                target: LOG_TARGET,
-                "[{}] Failed to politely close connection to peer '{}' because '{}'",
-                self,
-                self.peer_node_id.short_str(),
-                err
-            );
-            return Err(err.into());
-        }
+        self.control.close().await?;
 
         debug!(
             target: LOG_TARGET,

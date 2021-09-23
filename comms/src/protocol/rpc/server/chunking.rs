@@ -87,7 +87,10 @@ impl ChunkedResponseIter {
             if self.num_chunks > 1 {
                 debug!(
                     target: LOG_TARGET,
-                    "Emitted {} chunks ({} bytes)", self.num_chunks, self.initial_payload_size
+                    "Emitted {} chunks (Avg.Size: {} bytes, Total: {} bytes)",
+                    self.num_chunks,
+                    self.initial_payload_size / self.num_chunks,
+                    self.initial_payload_size
                 );
             }
             return None;
@@ -129,7 +132,7 @@ impl ChunkedResponseIter {
         const BYTES_PER_MB: f32 = 1024.0 * 1024.0;
         let msg = format!(
             "The response size exceeded the maximum allowed payload size. Max = {:.4} MiB, Got = {:.4} MiB",
-            rpc::max_payload_size() as f32 / BYTES_PER_MB,
+            rpc::max_response_payload_size() as f32 / BYTES_PER_MB,
             self.message.payload.len() as f32 / BYTES_PER_MB,
         );
         warn!(target: LOG_TARGET, "{}", msg);
@@ -156,7 +159,7 @@ impl Iterator for ChunkedResponseIter {
         }
 
         // Edge case: the total message size cannot fit into the maximum allowed chunks
-        if self.remaining() > rpc::max_payload_size() {
+        if self.remaining() > rpc::max_response_payload_size() {
             if self.has_emitted_once {
                 return None;
             }
