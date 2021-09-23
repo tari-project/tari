@@ -394,7 +394,7 @@ EOF
           if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
             cargo build --lib --release --no-default-features > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
           else
-            cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
+            cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release --no-default-features > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
           fi
         else
           # Fix for lmdb-sys compilation for armv7 on Big Sur
@@ -405,7 +405,7 @@ EOF
             # shellcheck disable=SC2028
             echo "\t${CYAN}Extraction complete, continuing build ${NC}"
           fi
-          cargo build --lib --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
+          cargo build --lib --release --no-default-features > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
           if [ "${PLATFORMABI}" == "armv7-linux-androideabi" ]; then
             BACKTRACK=${PWD}
             # shellcheck disable=SC2028
@@ -416,7 +416,7 @@ EOF
           fi
         fi
       else
-        cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
+        cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release --no-default-features > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
       fi
       cp wallet.h "${DEPENDENCIES}/"
       rm -rf .cargo
