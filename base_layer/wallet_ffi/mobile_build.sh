@@ -79,7 +79,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   export PKG_CONFIG_PATH=${PKG_PATH}
   # shellcheck disable=SC2028
   echo "\t${CYAN}Building Wallet FFI${NC}"
-  cargo-lipo lipo --release > "${IOS_LOG_PATH}/cargo.txt" 2>&1
+  cargo-lipo lipo --release --no-default-features > "${IOS_LOG_PATH}/cargo.txt" 2>&1
   cd ../..
   cd target || exit
   # Copy the fat library (which contains symbols for all built iOS architectures) created by the lipo tool
@@ -392,7 +392,7 @@ EOF
       if [ "${MACHINE}" == "Mac" ]; then
         if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
           if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-            cargo build --lib --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
+            cargo build --lib --release --no-default-features > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
           else
             cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release > "${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt" 2>&1
           fi
