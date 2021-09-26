@@ -401,7 +401,7 @@ async fn configure_comms_and_dht(
 ///
 /// ## Returns
 /// Returns a File handle that must be retained to keep the file lock active.
-pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
+fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
     let file = File::create(lock_file_path)?;

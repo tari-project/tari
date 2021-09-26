@@ -242,7 +242,7 @@ mod test {
         let features = OutputFeatures::default();
         let amount = MicroTari(500);
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
@@ -259,7 +259,7 @@ mod test {
             ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
-        assert_eq!(data.tx_id, 15);
+        assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
             .commitment
@@ -289,7 +289,7 @@ mod test {
         let script = TariScript::default();
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do

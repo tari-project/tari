@@ -23,30 +23,31 @@
 use crate::{
     dan_layer::{
         models::{InstructionCaller, TokenId},
-        storage::AssetDataStore,
+        storage::AssetStore,
         template_command::{ExecutionResult, TemplateCommand},
     },
     digital_assets_error::DigitalAssetError,
 };
+use std::collections::VecDeque;
 
 pub struct EditableMetadataTemplate {}
 
 impl EditableMetadataTemplate {
     pub fn create_command(
         method: String,
-        args: Vec<Vec<u8>>,
+        mut args: VecDeque<Vec<u8>>,
         caller: InstructionCaller,
     ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match method.as_str() {
             "update" => {
                 let token_id = caller.owner_token_id().clone();
-                let metadata = args.first().ok_or_else(|| DigitalAssetError::MissingArgument {
+                let metadata = args.pop_front().ok_or_else(|| DigitalAssetError::MissingArgument {
                     argument_name: "metadata".to_string(),
                     position: 0,
                 })?;
                 // TODO: check for too many args
 
-                Ok(UpdateMetadataCommand::new(token_id, metadata.clone(), caller))
+                Ok(UpdateMetadataCommand::new(token_id, metadata, caller))
             },
             _ => Err(DigitalAssetError::UnknownMethod {
                 method_name: method.clone(),
@@ -69,10 +70,10 @@ impl UpdateMetadataCommand {
         }
     }
 }
+
 impl TemplateCommand for UpdateMetadataCommand {
-    fn try_execute(&self, data_store: &mut AssetDataStore) -> Result<ExecutionResult, DigitalAssetError> {
-        // TODO: put in concurrency check, perhaps nonce?
-        data_store.replace_metadata(&self.token_id, self.metadata.clone())?;
+    fn try_execute(&self, data_store: &mut dyn AssetStore) -> Result<ExecutionResult, DigitalAssetError> {
+        data_store.replace_metadata(&self.token_id, &self.metadata)?;
         Ok(ExecutionResult::Ok)
     }
 }

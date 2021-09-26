@@ -412,7 +412,7 @@ mod test {
         //     signal.clone(),
         //     events[3].clone(),
         // );
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
         task_a.await.unwrap();
         task_b.await.unwrap();
         // task_c.await.unwrap();

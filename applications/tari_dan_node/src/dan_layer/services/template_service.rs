@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{Instruction, InstructionCaller, InstructionId, TemplateId},
-        storage::{AssetDataStore, FileAssetDataStore},
+        storage::{AssetDataStore, AssetStore},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },
@@ -31,6 +31,7 @@ use crate::{
     types::PublicKey,
 };
 use async_trait::async_trait;
+use std::collections::VecDeque;
 
 // TODO: Better name needed
 #[async_trait]
@@ -38,21 +39,22 @@ pub trait TemplateService {
     async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError>;
 }
 
-pub struct ConcreteTemplateService<TAssetDataStore: AssetDataStore, TInstructionLog: InstructionLog> {
+pub struct ConcreteTemplateService<TAssetStore, TInstructionLog> {
     template_id: TemplateId,
     template_factory: TemplateFactory,
     instruction_log: TInstructionLog,
-    data_store: TAssetDataStore,
+    data_store: TAssetStore,
 }
 
 #[async_trait]
-impl<TAssetDataStore: AssetDataStore + Send, TInstructionLog: InstructionLog + Send> TemplateService
-    for ConcreteTemplateService<TAssetDataStore, TInstructionLog>
+impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> TemplateService
+    for ConcreteTemplateService<TAssetStore, TInstructionLog>
 {
     async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
+        // TODO: This is thread blocking
         self.execute(
             instruction.method().to_owned(),
-            instruction.args().to_owned(),
+            instruction.args().to_vec().into(),
             InstructionCaller {
                 owner_token_id: instruction.from_owner().to_owned(),
             },
@@ -62,10 +64,8 @@ impl<TAssetDataStore: AssetDataStore + Send, TInstructionLog: InstructionLog + S
     }
 }
 
-impl<TAssetDataStore: AssetDataStore, TInstructionLog: InstructionLog>
-    ConcreteTemplateService<TAssetDataStore, TInstructionLog>
-{
-    pub fn new(data_store: TAssetDataStore, instruction_log: TInstructionLog, template_id: TemplateId) -> Self {
+impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteTemplateService<TAssetStore, TInstructionLog> {
+    pub fn new(data_store: TAssetStore, instruction_log: TInstructionLog, template_id: TemplateId) -> Self {
         Self {
             template_factory: TemplateFactory {},
             instruction_log,
@@ -77,7 +77,7 @@ impl<TAssetDataStore: AssetDataStore, TInstructionLog: InstructionLog>
     pub fn execute(
         &mut self,
         method: String,
-        args: Vec<Vec<u8>>,
+        args: VecDeque<Vec<u8>>,
         caller: InstructionCaller,
         id: InstructionId,
     ) -> Result<(), DigitalAssetError> {
@@ -97,7 +97,7 @@ impl TemplateFactory {
         &self,
         template: TemplateId,
         method: String,
-        args: Vec<Vec<u8>>,
+        args: VecDeque<Vec<u8>>,
         caller: InstructionCaller,
     ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match template {

@@ -93,6 +93,7 @@ pub use configuration::{
 pub mod dir_utils;
 
 pub use logging::initialize_logging;
+pub mod file_lock;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";

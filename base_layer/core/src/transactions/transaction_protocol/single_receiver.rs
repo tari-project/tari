@@ -193,7 +193,7 @@ mod test {
         let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
         let script = TariScript::default();
         let info = SingleRoundSenderData {
-            tx_id: 500,
+            tx_id: 500.into(),
             amount: MicroTari(1500),
             public_excess: pub_xs,
             public_nonce: pub_rs.clone(),
@@ -205,7 +205,7 @@ mod test {
             public_commitment_nonce,
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
-        assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
+        assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
         let e = build_challenge(&(&pub_rs + &pubnonce), &m);
