@@ -74,7 +74,7 @@ const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
   wallet_get_num_confirmations_required: [u64, [walletRef, errPtr]],
   wallet_set_num_confirmations_required: ["void", [walletRef, u64, errPtr]],
   wallet_start_transaction_validation: [u64, [walletRef, errPtr]],
-  wallet_start_utxo_validation: [u64, [walletRef, errPtr]],
+  wallet_start_txo_validation: [u64, [walletRef, errPtr]],
   wallet_start_recovery: [bool, [walletRef, publicKeyRef, fn, errPtr]],
 });
 

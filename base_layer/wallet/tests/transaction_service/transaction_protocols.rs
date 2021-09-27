@@ -900,6 +900,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -923,6 +924,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -948,6 +950,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -985,6 +988,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1145,6 +1149,7 @@ async fn tx_validation_protocol_reorg() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1250,6 +1255,7 @@ async fn tx_validation_protocol_reorg() {
         connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());

@@ -276,9 +276,9 @@ where TBackend: OutputManagerBackend + 'static
                 .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
-            OutputManagerRequest::ValidateUtxos => self
-                .validate_outputs()
-                .map(OutputManagerResponse::UtxoValidationStarted),
+            OutputManagerRequest::ValidateUtxos => {
+                self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
+            },
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
                     .fetch_invalid_outputs()
@@ -330,6 +330,10 @@ where TBackend: OutputManagerBackend + 'static
                 .reinstate_cancelled_inbound_transaction(tx_id)
                 .await
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
+            OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned) => self
+                .set_coinbase_abandoned(tx_id, abandoned)
+                .await
+                .map(|_| OutputManagerResponse::CoinbaseAbandonedSet),
         }
     }
 
@@ -1001,6 +1005,11 @@ where TBackend: OutputManagerBackend + 'static
 
     pub async fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs().await?)
+    }
+
+    pub async fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
+        self.resources.db.set_coinbase_abandoned(tx_id, abandoned).await?;
+        Ok(())
     }
 
     async fn create_coin_split(

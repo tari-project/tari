@@ -195,9 +195,9 @@ try {
       let id = lib.wallet_start_transaction_validation(wallet, err);
       console.log("tx validation request id", id);
 
-      console.log("start utxo validation");
-      id = lib.wallet_start_utxo_validation(wallet, err);
-      console.log("utxo validation request id", id);
+      console.log("start txo validation");
+      id = lib.wallet_start_txo_validation(wallet, err);
+      console.log("txo validation request id", id);
     } catch (e) {
       console.error("validation error: ", e);
     }

@@ -543,12 +543,7 @@ class WalletFFI {
           "int*",
         ],
       ],
-      wallet_start_utxo_validation: ["uint64", [this.tari_wallet_ptr, "int*"]],
-      wallet_start_stxo_validation: ["uint64", [this.tari_wallet_ptr, "int*"]],
-      wallet_start_invalid_txo_validation: [
-        "uint64",
-        [this.tari_wallet_ptr, "int*"],
-      ],
+      wallet_start_txo_validation: ["uint64", [this.tari_wallet_ptr, "int*"]],
       wallet_start_transaction_validation: [
         "uint64",
         [this.tari_wallet_ptr, "int*"],
@@ -1817,32 +1812,12 @@ class WalletFFI {
     );
   }
 
-  static walletStartUtxoValidation(wallet) {
+  static walletStartTxoValidation(wallet) {
     return new Promise((resolve, reject) =>
-      this.#fn.wallet_start_utxo_validation.async(
+      this.#fn.wallet_start_txo_validation.async(
         wallet,
         this.error,
-        this.checkAsyncRes(resolve, reject, "walletStartUtxoValidation")
-      )
-    );
-  }
-
-  static walletStartStxoValidation(wallet) {
-    return new Promise((resolve, reject) =>
-      this.#fn.wallet_start_stxo_validation.async(
-        wallet,
-        this.error,
-        this.checkAsyncRes(resolve, reject, "walletStartStxoValidation")
-      )
-    );
-  }
-
-  static walletStartInvalidTxoValidation(wallet) {
-    return new Promise((resolve, reject) =>
-      this.#fn.wallet_start_invalid_txo_validation.async(
-        wallet,
-        this.error,
-        this.checkAsyncRes(resolve, reject, "walletStartInvalidTxoValidation")
+        this.checkAsyncRes(resolve, reject, "walletStartTxoValidation")
       )
     );
   }

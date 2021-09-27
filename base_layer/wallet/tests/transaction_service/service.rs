@@ -20,36 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
-
-use chrono::{Duration as ChronoDuration, Utc};
-use futures::{
-    channel::{mpsc, mpsc::Sender},
-    FutureExt,
-    SinkExt,
-};
-use prost::Message;
-use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
-};
-use tempfile::tempdir;
-use tokio::{
-    runtime,
-    runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
-};
-
 use crate::{
     support::{
         base_node_wallet_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
@@ -58,7 +28,21 @@ use crate::{
     },
     transaction_service::transaction_protocols::add_transaction_to_database,
 };
-use std::collections::HashMap;
+use chrono::{Duration as ChronoDuration, Utc};
+use futures::{
+    channel::{mpsc, mpsc::Sender},
+    FutureExt,
+    SinkExt,
+};
+use prost::Message;
+use rand::{rngs::OsRng, RngCore};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
+};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{PrivateKey, PublicKey, Signature},
@@ -108,6 +92,14 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey as SK},
+    script,
+    script::{ExecutionStack, TariScript},
+};
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -124,7 +116,7 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
-        service::OutputManagerService,
+        service::{Balance, OutputManagerService},
         storage::{
             database::OutputManagerDatabase,
             models::KnownOneSidedPaymentScript,
@@ -158,7 +150,13 @@ use tari_wallet::{
     },
     types::HashDigest,
 };
-use tokio::time::sleep;
+use tempfile::tempdir;
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+    sync::{broadcast, broadcast::channel},
+    time::sleep,
+};
 
 fn create_runtime() -> Runtime {
     Builder::new_multi_thread()
@@ -3278,6 +3276,362 @@ fn test_coinbase_generation_and_monitoring() {
     let tx = completed_txs.get(&tx_id2b).unwrap();
     assert_eq!(tx.status, TransactionStatus::MinedConfirmed);
     assert!(tx.valid);
+}
+
+#[test]
+fn test_coinbase_abandoned() {
+    let _ = env_logger::try_init();
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (connection, _temp_dir) = make_wallet_database_connection(None);
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        _,
+        _connectivity_mock_state,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        mut rpc_service_state,
+        _,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories, connection, None);
+    let mut alice_event_stream = alice_ts.get_event_stream();
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+
+    let block_height_a = 10;
+
+    // First we create un unmined coinbase and then abandon it
+    let fees1 = 1000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let tx1 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, block_height_a))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1);
+    let tx_id1 = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
+        location: TxLocationProto::from(TxLocation::InMempool) as i32,
+        block_hash: None,
+        confirmations: 0,
+        block_height: 0,
+    }];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses,
+        is_synced: true,
+        tip_hash: Some([5u8; 16].to_vec()),
+        height_of_longest_chain: block_height_a + TransactionServiceConfig::default().num_confirmations_required + 1,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response);
+
+    // Start the transaction protocols
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance.pending_incoming_balance, fees1 + reward1);
+
+    runtime
+        .block_on(alice_ts.validate_transactions())
+        .expect("Validation should start");
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        let mut count = 0usize;
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap() {
+                        if tx_id == &tx_id1  {
+                            count += 1;
+                        }
+                        if count == 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 1, "Expected a TransactionCancelled event");
+    });
+
+    let tx = runtime.block_on(alice_ts.get_completed_transaction(tx_id1)).unwrap();
+    assert_eq!(tx.status, TransactionStatus::Coinbase);
+    assert!(!tx.valid);
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance, Balance {
+        available_balance: MicroTari(0),
+        time_locked_balance: Some(MicroTari(0)),
+        pending_incoming_balance: MicroTari(0),
+        pending_outgoing_balance: MicroTari(0)
+    });
+
+    let invalid_txs = runtime.block_on(alice_output_manager.get_invalid_outputs()).unwrap();
+    assert!(invalid_txs.is_empty());
+
+    // Now we will make a coinbase that will be mined, reorged out and then reorged back in
+    let fees2 = 2000 * uT;
+    let reward2 = 2_000_000 * uT;
+    let block_height_b = 11;
+
+    let tx2 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, block_height_b))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 2);
+    let tx_id2 = transactions
+        .values()
+        .find(|tx| tx.amount == fees2 + reward2)
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees2 + reward2
+    );
+
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
+        location: TxLocationProto::from(TxLocation::Mined) as i32,
+        block_hash: Some([11u8; 16].to_vec()),
+        confirmations: 2,
+        block_height: block_height_b,
+    }];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses,
+        is_synced: true,
+        tip_hash: Some([13u8; 16].to_vec()),
+        height_of_longest_chain: block_height_b + 2,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response);
+
+    let mut block_headers = HashMap::new();
+    for i in 0..=(block_height_b + 2) {
+        let mut block_header = BlockHeader::new(1);
+        block_header.height = i;
+        block_headers.insert(i, block_header.clone());
+    }
+    rpc_service_state.set_blocks(block_headers);
+    runtime
+        .block_on(alice_ts.validate_transactions())
+        .expect("Validation should start");
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        let mut count = 0usize;
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    if let TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations:_, is_valid: _} = &*event.unwrap() {
+                        if tx_id == &tx_id2  {
+                            count += 1;
+                        }
+                        if count == 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 1, "Expected a TransactionMinedUnconfirmed event");
+    });
+
+    let tx = runtime.block_on(alice_ts.get_completed_transaction(tx_id2)).unwrap();
+    assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
+
+    // Now we create a reorg
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+    ];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses,
+        is_synced: true,
+        tip_hash: Some([12u8; 16].to_vec()),
+        height_of_longest_chain: block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response);
+
+    let mut block_headers = HashMap::new();
+    for i in 0..=(block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1) {
+        let mut block_header = BlockHeader::new(2);
+        block_header.height = i;
+        block_headers.insert(i, block_header.clone());
+    }
+    rpc_service_state.set_blocks(block_headers);
+    runtime
+        .block_on(alice_ts.validate_transactions())
+        .expect("Validation should start");
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        let mut count = 0usize;
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionBroadcast(tx_id) => {
+                            if tx_id == &tx_id2  {
+                                count += 1;
+                            }
+                        },
+                        TransactionEvent::TransactionCancelled(tx_id) => {
+                             if tx_id == &tx_id2  {
+                                count += 1;
+                            }
+                        },
+                        _ => (),
+                    }
+
+                    if count == 2 {
+                            break;
+                        }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(
+            count, 2,
+            "Expected a TransactionBroadcast and Transaction Cancelled event"
+        );
+    });
+
+    let tx = runtime.block_on(alice_ts.get_completed_transaction(tx_id2)).unwrap();
+    assert_eq!(tx.status, TransactionStatus::Coinbase);
+    assert!(!tx.valid);
+
+    let balance = runtime.block_on(alice_output_manager.get_balance()).unwrap();
+    assert_eq!(balance, Balance {
+        available_balance: MicroTari(0),
+        time_locked_balance: Some(MicroTari(0)),
+        pending_incoming_balance: MicroTari(0),
+        pending_outgoing_balance: MicroTari(0)
+    });
+
+    // Now reorg again and have tx2 be mined
+    let mut block_headers = HashMap::new();
+    for i in 0..=15 {
+        let mut block_header = BlockHeader::new(1);
+        block_header.height = i;
+        block_headers.insert(i, block_header.clone());
+    }
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&10).unwrap().hash()),
+            confirmations: 5,
+            block_height: 10,
+        },
+    ];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses,
+        is_synced: true,
+        tip_hash: Some([20u8; 16].to_vec()),
+        height_of_longest_chain: 20,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response);
+
+    runtime
+        .block_on(alice_ts.validate_transactions())
+        .expect("Validation should start");
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        let mut count = 0usize;
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionMined { tx_id, is_valid: _ }  => {
+                            if tx_id == &tx_id2  {
+                                count += 1;
+                            }
+                        },
+                        TransactionEvent::TransactionCancelled(tx_id) => {
+                             if tx_id == &tx_id1  {
+                                count += 1;
+                            }
+                        },
+                        _ => (),
+                    }
+
+                    if count == 2 {
+                            break;
+                        }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 2, "Expected a TransactionMined and TransactionCancelled event");
+    });
 }
 
 #[test]

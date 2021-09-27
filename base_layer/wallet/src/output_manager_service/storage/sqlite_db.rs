@@ -486,6 +486,31 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        debug!(target: LOG_TARGET, "set_coinbase_abandoned(TxID: {})", tx_id);
+
+        let status = if abandoned {
+            OutputStatus::AbandonedCoinbase as i32
+        } else {
+            OutputStatus::EncumberedToBeReceived as i32
+        };
+
+        diesel::update(
+            outputs::table.filter(
+                outputs::received_in_tx_id
+                    .eq(Some(tx_id as i64))
+                    .and(outputs::coinbase_block_height.is_not_null()),
+            ),
+        )
+        .set((outputs::status.eq(status),))
+        .execute(&(*conn))
+        .num_rows_affected_or_not_found(1)?;
+
+        Ok(())
+    }
+
     fn short_term_encumber_outputs(
         &self,
         tx_id: u64,
