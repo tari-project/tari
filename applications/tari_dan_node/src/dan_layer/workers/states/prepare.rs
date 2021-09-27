@@ -56,7 +56,7 @@ use std::{
     time::Instant,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
 where
@@ -135,7 +135,7 @@ where
                     }
 
                 },
-                _ = delay_for(timeout.saturating_sub(Instant::now() - started)) =>  {
+                _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
                     // TODO: perhaps this should be from the time the state was entered
                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                     break;
@@ -265,7 +265,7 @@ where
         payload_provider: &TPayloadProvider,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         // TODO: Artificial delay here to set the block time
-        delay_for(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(3)).await;
 
         let payload = payload_provider.create_payload()?;
         dbg!(&payload);

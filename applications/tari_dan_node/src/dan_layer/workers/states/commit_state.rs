@@ -41,7 +41,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 use std::{any::Any, collections::HashMap, marker::PhantomData, time::Instant};
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 // TODO: This is very similar to pre-commit state
 pub struct CommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
@@ -121,7 +121,7 @@ where
                               }
 
                               }
-                      _ = delay_for(timeout.saturating_sub(Instant::now() - started)) =>  {
+                      _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
                                     // TODO: perhaps this should be from the time the state was entered
                                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                                     break;
