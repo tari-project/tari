@@ -1588,6 +1588,7 @@ where
                     self.resources.connectivity_manager.clone(),
                     self.resources.config.clone(),
                     self.event_publisher.clone(),
+                    self.resources.output_manager_service.clone(),
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());

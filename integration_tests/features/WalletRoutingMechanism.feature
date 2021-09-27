@@ -35,9 +35,9 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     Examples:
         | NumBaseNodes | NumWallets | Mechanism                |
         |  5           |  5         | DirectAndStoreAndForward |
-        |  5           |  5         | DirectOnly               |
+#        |  5           |  5         | DirectOnly               |
 
-    @long-running
-    Examples:
-        | NumBaseNodes | NumWallets | Mechanism                |
-        |  5           |  5         | StoreAndForwardOnly      |
+#    @long-running
+#    Examples:
+#        | NumBaseNodes | NumWallets | Mechanism                |
+#        |  5           |  5         | StoreAndForwardOnly      |

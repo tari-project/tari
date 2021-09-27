@@ -20,13 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    config::TransactionServiceConfig,
-    error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
-    handle::{TransactionEvent, TransactionEventSender},
-    storage::{
-        database::{TransactionBackend, TransactionDatabase},
-        models::CompletedTransaction,
+use crate::{
+    output_manager_service::handle::OutputManagerHandle,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
+        handle::{TransactionEvent, TransactionEventSender},
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            models::{CompletedTransaction, TransactionStatus},
+        },
     },
 };
 use log::*;
@@ -60,6 +63,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend: TransactionBackend
     connectivity_requester: ConnectivityRequester,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
+    output_manager_handle: OutputManagerHandle,
 }
 
 #[allow(unused_variables)]
@@ -71,6 +75,7 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
         connectivity_requester: ConnectivityRequester,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
+        output_manager_handle: OutputManagerHandle,
     ) -> Self {
         Self {
             operation_id,
@@ -79,6 +84,7 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
             connectivity_requester,
             config,
             event_publisher,
+            output_manager_handle,
         }
     }
 
@@ -298,7 +304,6 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
                 }
             }
         }
-
         Ok((
             mined,
             unmined,
@@ -343,7 +348,7 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
 
     #[allow(clippy::ptr_arg)]
     async fn update_transaction_as_mined(
-        &self,
+        &mut self,
         tx: &CompletedTransaction,
         mined_in_block: &BlockHash,
         mined_height: u64,
@@ -374,12 +379,21 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
             })
         }
 
+        if tx.status == TransactionStatus::Coinbase {
+            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, false).await {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx.tx_id, e
+                );
+            };
+        }
+
         Ok(())
     }
 
     #[allow(clippy::ptr_arg)]
     async fn update_coinbase_as_abandoned(
-        &self,
+        &mut self,
         tx: &CompletedTransaction,
         mined_in_block: &BlockHash,
         mined_height: u64,
@@ -397,19 +411,35 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
             .await
             .for_protocol(self.operation_id)?;
 
+        if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, true).await {
+            warn!(
+                target: LOG_TARGET,
+                "Could not mark coinbase output for TxId: {} as abandoned: {}", tx.tx_id, e
+            );
+        };
+
         self.publish_event(TransactionEvent::TransactionCancelled(tx.tx_id));
 
         Ok(())
     }
 
     async fn update_transaction_as_unmined(
-        &self,
+        &mut self,
         tx: &CompletedTransaction,
     ) -> Result<(), TransactionServiceProtocolError> {
         self.db
             .set_transaction_as_unmined(tx.tx_id)
             .await
             .for_protocol(self.operation_id)?;
+
+        if tx.status == TransactionStatus::Coinbase {
+            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, false).await {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx.tx_id, e
+                );
+            };
+        }
 
         self.publish_event(TransactionEvent::TransactionBroadcast(tx.tx_id));
         Ok(())

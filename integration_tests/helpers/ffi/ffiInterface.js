@@ -383,12 +383,7 @@ class InterfaceFFI {
           this.intPtr,
         ],
       ],
-      wallet_start_utxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_stxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_invalid_txo_validation: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
+      wallet_start_txo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_start_transaction_validation: [
         this.ulonglong,
         [this.ptr, this.intPtr],
@@ -1426,24 +1421,10 @@ class InterfaceFFI {
     return result;
   }
 
-  static walletStartUtxoValidation(ptr) {
+  static walletStartTxoValidation(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_start_utxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartUtxoValidation`);
-    return result;
-  }
-
-  static walletStartStxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_stxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartStxoValidation`);
-    return result;
-  }
-
-  static walletStartInvalidTxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_invalid_txo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartInvalidUtxoValidation`);
+    let result = this.fn.wallet_start_txo_validation(ptr, error);
+    this.checkErrorResult(error, `walletStartTxoValidation`);
     return result;
   }
 

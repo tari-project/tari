@@ -69,6 +69,7 @@ pub enum OutputManagerRequest {
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     ReinstateCancelledInboundTx(TxId),
+    SetCoinbaseAbandoned(TxId, bool),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -106,6 +107,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
+            SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
         }
     }
 }
@@ -128,7 +130,7 @@ pub enum OutputManagerResponse {
     InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
-    UtxoValidationStarted(u64),
+    TxoValidationStarted(u64),
     Transaction((u64, Transaction, MicroTari, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
@@ -138,6 +140,7 @@ pub enum OutputManagerResponse {
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
     ReinstatedCancelledInboundTx,
+    CoinbaseAbandonedSet,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -385,7 +388,7 @@ impl OutputManagerHandle {
 
     pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
-            OutputManagerResponse::UtxoValidationStarted(request_key) => Ok(request_key),
+            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -498,6 +501,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_coinbase_abandoned(&mut self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned))
+            .await??
+        {
+            OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

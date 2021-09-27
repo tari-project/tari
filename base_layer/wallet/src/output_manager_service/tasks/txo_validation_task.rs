@@ -44,7 +44,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_shutdown::ShutdownSignal;
 
-const LOG_TARGET: &str = "wallet::output_service::txo_validation_task_v2";
+const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
 pub struct TxoValidationTask<TBackend: OutputManagerBackend + 'static> {
     base_node_pk: CommsPublicKey,
@@ -233,16 +233,16 @@ where TBackend: OutputManagerBackend + 'static
                 mined.len(),
                 unmined.len()
             );
-            for (tx, mined_height, mined_in_block, mmr_position) in &mined {
+            for (output, mined_height, mined_in_block, mmr_position) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {}",
-                    tx.commitment.to_hex(),
-                    tx.hash.to_hex(),
+                    output.commitment.to_hex(),
+                    output.hash.to_hex(),
                     mined_height,
                     tip_height
                 );
-                self.update_output_as_mined(&tx, mined_in_block, *mined_height, *mmr_position, tip_height)
+                self.update_output_as_mined(&output, mined_in_block, *mined_height, *mmr_position, tip_height)
                     .await?;
             }
         }
@@ -341,7 +341,7 @@ where TBackend: OutputManagerBackend + 'static
                     last_mined_output.commitment.to_hex()
                 );
                 self.db
-                    .set_output_as_unmined(last_mined_output.hash.clone())
+                    .set_output_to_unmined(last_mined_output.hash.clone())
                     .await
                     .for_protocol(self.operation_id)?;
             } else {

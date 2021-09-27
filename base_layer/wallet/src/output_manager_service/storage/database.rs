@@ -115,6 +115,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         block_height: u64,
     ) -> Result<(), OutputManagerStorageError>;
+    /// Set if a coinbase output is abandoned or not
+    fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -595,7 +597,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub async fn set_output_as_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
+    pub async fn set_output_to_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.set_output_to_unmined(hash))
             .await
@@ -620,6 +622,14 @@ where T: OutputManagerBackend + 'static
     pub async fn mark_output_as_unspent(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.mark_output_as_unspent(hash))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.set_coinbase_abandoned(tx_id, abandoned))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

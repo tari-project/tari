@@ -1371,14 +1371,18 @@ impl CompletedTransactionSql {
         is_confirmed: bool,
         conn: &SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
+        let status = if self.coinbase_block_height.is_some() && !is_valid {
+            TransactionStatus::Coinbase as i32
+        } else if is_confirmed {
+            TransactionStatus::MinedConfirmed as i32
+        } else {
+            TransactionStatus::MinedUnconfirmed as i32
+        };
+
         self.update(
             UpdateCompletedTransactionSql {
                 confirmations: Some(Some(num_confirmations as i64)),
-                status: Some(if is_confirmed {
-                    TransactionStatus::MinedConfirmed as i32
-                } else {
-                    TransactionStatus::MinedUnconfirmed as i32
-                }),
+                status: Some(status),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block)),
                 valid: Some(is_valid as i32),
