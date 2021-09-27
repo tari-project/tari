@@ -28,15 +28,17 @@ use crate::output_manager_service::{
 };
 use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
+use futures::join;
 use log::*;
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tari_common_types::types::{BlindingFactor, Commitment, PrivateKey};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
+use tokio::sync::oneshot;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
@@ -267,78 +269,137 @@ where T: OutputManagerBackend + 'static
     }
 
     pub async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let db_clone2 = self.db.clone();
-        let db_clone3 = self.db.clone();
-
-        let pending_txs = tokio::task::spawn_blocking(move || {
-            db_clone.fetch(&DbKey::AllPendingTransactionOutputs)?.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult(
-                    "Pending Transaction Outputs cannot be retrieved".to_string(),
-                )
-            })
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        let unspent_outputs = tokio::task::spawn_blocking(move || {
-            db_clone2.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
-                OutputManagerStorageError::UnexpectedResult("Unspent Outputs cannot be retrieved".to_string())
-            })
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        if let DbValue::UnspentOutputs(uo) = unspent_outputs {
-            if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
-                let available_balance = uo
-                    .iter()
-                    .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-                let time_locked_balance = if let Some(tip) = current_chain_tip {
-                    let time_locked_outputs = tokio::task::spawn_blocking(move || {
-                        db_clone3.fetch(&DbKey::TimeLockedUnspentOutputs(tip))?.ok_or_else(|| {
-                            OutputManagerStorageError::UnexpectedResult(
-                                "Time-locked Outputs cannot be retrieved".to_string(),
-                            )
-                        })
-                    })
-                    .await
-                    .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-                    if let DbValue::UnspentOutputs(time_locked_uo) = time_locked_outputs {
-                        Some(
-                            time_locked_uo
-                                .iter()
-                                .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
+        let mut balance_result = Balance::zero();
+        let mut balance_calc_successful = false;
+        {
+            let (pending_txs_tx, mut pending_txs_rx) =
+                oneshot::channel::<Result<Result<DbValue, OutputManagerStorageError>, OutputManagerStorageError>>();
+            let db_clone = self.db.clone();
+            let pending_txs_handle = tokio::spawn(async move {
+                let start_time = Instant::now();
+                let outputs = tokio::task::spawn_blocking(move || {
+                    db_clone.fetch(&DbKey::AllPendingTransactionOutputs)?.ok_or_else(|| {
+                        OutputManagerStorageError::UnexpectedResult(
+                            "Pending Transaction Outputs cannot be retrieved".to_string(),
                         )
+                    })
+                })
+                .await
+                .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()));
+                // TODO: Hansie remove trace log
+                trace!(
+                    target: LOG_TARGET,
+                    "Get balance: fetch Pending Transaction Outputs ({} ms)",
+                    start_time.elapsed().as_millis(),
+                );
+                if pending_txs_tx.send(outputs).is_err() {
+                    error!(
+                        target: LOG_TARGET,
+                        "{}", "Pending Transaction Outputs cannot be retrieved"
+                    );
+                };
+            });
+
+            let (unspent_outputs_tx, mut unspent_outputs_rx) =
+                oneshot::channel::<Result<Result<DbValue, OutputManagerStorageError>, OutputManagerStorageError>>();
+            let db_clone = self.db.clone();
+            let unspent_outputs_handle = tokio::spawn(async move {
+                let start_time = Instant::now();
+                let outputs = tokio::task::spawn_blocking(move || {
+                    db_clone.fetch(&DbKey::UnspentOutputs)?.ok_or_else(|| {
+                        OutputManagerStorageError::UnexpectedResult("Unspent Outputs cannot be retrieved".to_string())
+                    })
+                })
+                .await
+                .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()));
+                // TODO: Hansie remove trace log
+                trace!(
+                    target: LOG_TARGET,
+                    "Get balance: fetch Unspent Outputs ({} ms)",
+                    start_time.elapsed().as_millis(),
+                );
+                if unspent_outputs_tx.send(outputs).is_err() {
+                    error!(target: LOG_TARGET, "{}", "Unspent Outputs cannot be retrieved");
+                };
+            });
+
+            let _ = join!(pending_txs_handle, unspent_outputs_handle);
+            let pending_txs = pending_txs_rx.try_recv().map_err(|err| {
+                OutputManagerStorageError::UnexpectedResult(format!(
+                    "Pending Transaction Outputs cannot be retrieved ({})",
+                    err
+                ))
+            })???;
+            let unspent_outputs = unspent_outputs_rx.try_recv().map_err(|err| {
+                OutputManagerStorageError::UnexpectedResult(format!("Unspent Outputs cannot be retrieved ({})", err))
+            })???;
+
+            if let DbValue::UnspentOutputs(uo) = unspent_outputs {
+                if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
+                    let available_balance = uo
+                        .iter()
+                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                    drop(uo);
+                    let time_locked_balance = if let Some(tip) = current_chain_tip {
+                        let db_clone = self.db.clone();
+                        let start_time = Instant::now();
+                        let time_locked_outputs = tokio::task::spawn_blocking(move || {
+                            db_clone.fetch(&DbKey::TimeLockedUnspentOutputs(tip))?.ok_or_else(|| {
+                                OutputManagerStorageError::UnexpectedResult(
+                                    "Time-locked Outputs cannot be retrieved".to_string(),
+                                )
+                            })
+                        })
+                        .await
+                        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+                        // TODO: Hansie remove trace log
+                        trace!(
+                            target: LOG_TARGET,
+                            "Get balance: fetch Time-locked Outputs ({} ms)",
+                            start_time.elapsed().as_millis(),
+                        );
+                        if let DbValue::UnspentOutputs(time_locked_uo) = time_locked_outputs {
+                            let tlb = Some(
+                                time_locked_uo
+                                    .iter()
+                                    .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
+                            );
+                            drop(time_locked_uo);
+                            tlb
+                        } else {
+                            None
+                        }
                     } else {
                         None
+                    };
+                    let mut pending_incoming = MicroTari::from(0);
+                    let mut pending_outgoing = MicroTari::from(0);
+
+                    for v in pto.values() {
+                        pending_incoming += v
+                            .outputs_to_be_received
+                            .iter()
+                            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                        pending_outgoing += v
+                            .outputs_to_be_spent
+                            .iter()
+                            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
                     }
-                } else {
-                    None
-                };
-                let mut pending_incoming = MicroTari::from(0);
-                let mut pending_outgoing = MicroTari::from(0);
+                    drop(pto);
 
-                for v in pto.values() {
-                    pending_incoming += v
-                        .outputs_to_be_received
-                        .iter()
-                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-                    pending_outgoing += v
-                        .outputs_to_be_spent
-                        .iter()
-                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                    balance_result = Balance {
+                        available_balance,
+                        time_locked_balance,
+                        pending_incoming_balance: pending_incoming,
+                        pending_outgoing_balance: pending_outgoing,
+                    };
+                    balance_calc_successful = true;
                 }
-
-                return Ok(Balance {
-                    available_balance,
-                    time_locked_balance,
-                    pending_incoming_balance: pending_incoming,
-                    pending_outgoing_balance: pending_outgoing,
-                });
             }
         }
-
+        if balance_calc_successful {
+            return Ok(balance_result);
+        }
         Err(OutputManagerStorageError::UnexpectedResult(
             "Unexpected result from database backend".to_string(),
         ))
