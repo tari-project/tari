@@ -131,5 +131,5 @@ pub enum OutputStatus {
     ShortTermEncumberedToBeReceived,
     ShortTermEncumberedToBeSpent,
     SpentMinedUnconfirmed,
-    AbondonedCoinbase,
+    AbandonedCoinbase,
 }

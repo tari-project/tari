@@ -492,7 +492,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         debug!(target: LOG_TARGET, "set_coinbase_abandoned(TxID: {})", tx_id);
 
         let status = if abandoned {
-            OutputStatus::AbondonedCoinbase as i32
+            OutputStatus::AbandonedCoinbase as i32
         } else {
             OutputStatus::EncumberedToBeReceived as i32
         };
