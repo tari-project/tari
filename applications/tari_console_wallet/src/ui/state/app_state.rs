@@ -598,7 +598,7 @@ impl AppStateInner {
 
         match found {
             None => {
-                // In its not in the backend then make sure it is not left behind in the AppState
+                // If it's not in the backend then remove it from AppState
                 let _: Option<CompletedTransaction> = self
                     .data
                     .pending_txs
@@ -652,6 +652,8 @@ impl AppStateInner {
             },
         }
         self.refresh_balance().await?;
+        self.refresh_assets_state().await?;
+        self.refresh_tokens_state().await?;
         self.updated = true;
         Ok(())
     }
