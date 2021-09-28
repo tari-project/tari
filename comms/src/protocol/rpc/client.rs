@@ -40,7 +40,8 @@ use crate::{
         ProtocolId,
     },
     runtime::task,
-    Substream,
+    stream_id,
+    stream_id::StreamId,
 };
 use bytes::Bytes;
 use futures::{
@@ -63,6 +64,7 @@ use std::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, Mutex},
     time,
 };
@@ -78,11 +80,14 @@ pub struct RpcClient {
 
 impl RpcClient {
     /// Create a new RpcClient using the given framed substream and perform the RPC handshake.
-    pub async fn connect(
+    pub async fn connect<TSubstream>(
         config: RpcClientConfig,
-        framed: CanonicalFraming<Substream>,
+        framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
-    ) -> Result<Self, RpcError> {
+    ) -> Result<Self, RpcError>
+    where
+        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
+    {
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
@@ -230,7 +235,8 @@ where TClient: From<RpcClient> + NamedProtocolService
     }
 
     /// Negotiates and establishes a session to the peer's RPC service
-    pub async fn connect(self, framed: CanonicalFraming<Substream>) -> Result<TClient, RpcError> {
+    pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
+    where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static {
         RpcClient::connect(
             self.config,
             framed,
@@ -345,10 +351,10 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
     }
 }
 
-struct RpcClientWorker {
+struct RpcClientWorker<TSubstream> {
     config: RpcClientConfig,
     request_rx: mpsc::Receiver<ClientRequest>,
-    framed: CanonicalFraming<Substream>,
+    framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
     // sent determines the byte size. A u16 will be more than enough for the purpose
     next_request_id: u16,
@@ -358,11 +364,13 @@ struct RpcClientWorker {
     shutdown_signal: ShutdownSignal,
 }
 
-impl RpcClientWorker {
+impl<TSubstream> RpcClientWorker<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
+{
     pub(self) fn new(
         config: RpcClientConfig,
         request_rx: mpsc::Receiver<ClientRequest>,
-        framed: CanonicalFraming<Substream>,
+        framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
@@ -383,8 +391,8 @@ impl RpcClientWorker {
         String::from_utf8_lossy(&self.protocol_id)
     }
 
-    fn stream_id(&self) -> yamux::StreamId {
-        self.framed.get_ref().id()
+    fn stream_id(&self) -> stream_id::Id {
+        self.framed.stream_id()
     }
 
     #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
@@ -650,7 +658,7 @@ impl RpcClientWorker {
                             target: LOG_TARGET,
                             "(stream={}) Response receiver was dropped before the response/stream could complete for \
                              protocol {}, the stream will continue until completed",
-                            self.framed.get_ref().id(),
+                            self.stream_id(),
                             self.protocol_name()
                         );
                     } else {
@@ -731,13 +739,16 @@ pub enum ClientRequest {
     SendPing(oneshot::Sender<Result<Duration, RpcStatus>>),
 }
 
-struct RpcResponseReader<'a> {
-    framed: &'a mut CanonicalFraming<Substream>,
+struct RpcResponseReader<'a, TSubstream> {
+    framed: &'a mut CanonicalFraming<TSubstream>,
     config: RpcClientConfig,
     request_id: u16,
 }
-impl<'a> RpcResponseReader<'a> {
-    pub fn new(framed: &'a mut CanonicalFraming<Substream>, config: RpcClientConfig, request_id: u16) -> Self {
+
+impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin
+{
+    pub fn new(framed: &'a mut CanonicalFraming<TSubstream>, config: RpcClientConfig, request_id: u16) -> Self {
         Self {
             framed,
             config,
