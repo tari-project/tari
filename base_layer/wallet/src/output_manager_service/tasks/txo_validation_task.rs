@@ -19,23 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::output_manager_service::{
-    config::OutputManagerServiceConfig,
-    error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
-    handle::{OutputManagerEvent, OutputManagerEventSender},
-    storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbUnblindedOutput,
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
+        handle::{OutputManagerEvent, OutputManagerEventSender},
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
     },
 };
 use log::*;
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_common_types::types::BlockHash;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound},
-    types::CommsPublicKey,
-};
+use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -46,41 +45,42 @@ use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
-pub struct TxoValidationTask<TBackend: OutputManagerBackend + 'static> {
-    base_node_pk: CommsPublicKey,
+pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     operation_id: u64,
-    batch_size: usize,
     db: OutputManagerDatabase<TBackend>,
-    connectivity_requester: ConnectivityRequester,
+    connectivity: TWalletConnectivity,
     event_publisher: OutputManagerEventSender,
     config: OutputManagerServiceConfig,
 }
 
-impl<TBackend> TxoValidationTask<TBackend>
-where TBackend: OutputManagerBackend + 'static
+impl<TBackend, TWalletConnectivity> TxoValidationTask<TBackend, TWalletConnectivity>
+where
+    TBackend: OutputManagerBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        base_node_pk: CommsPublicKey,
         operation_id: u64,
-        batch_size: usize,
         db: OutputManagerDatabase<TBackend>,
-        connectivity_requester: ConnectivityRequester,
+        connectivity: TWalletConnectivity,
         event_publisher: OutputManagerEventSender,
         config: OutputManagerServiceConfig,
     ) -> Self {
         Self {
-            base_node_pk,
             operation_id,
-            batch_size,
             db,
-            connectivity_requester,
+            connectivity,
             event_publisher,
             config,
         }
     }
 
     pub async fn execute(mut self, _shutdown: ShutdownSignal) -> Result<u64, OutputManagerProtocolError> {
-        let mut base_node_client = self.create_base_node_client().await?;
+        let mut base_node_client = self
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .ok_or(OutputManagerError::Shutdown)
+            .for_protocol(self.operation_id)?;
 
         info!(
             target: LOG_TARGET,
@@ -112,7 +112,7 @@ where TBackend: OutputManagerBackend + 'static
             return Ok(());
         }
 
-        for batch in mined_outputs.chunks(self.batch_size) {
+        for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
                 target: LOG_TARGET,
                 "Asking base node for status of {} mmr_positions",
@@ -217,7 +217,7 @@ where TBackend: OutputManagerBackend + 'static
             .await
             .for_protocol(self.operation_id)?;
 
-        for batch in unconfirmed_outputs.chunks(self.batch_size) {
+        for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
             info!(
                 target: LOG_TARGET,
                 "Asking base node for location of {} unconfirmed outputs by hash",
@@ -248,22 +248,6 @@ where TBackend: OutputManagerBackend + 'static
         }
 
         Ok(())
-    }
-
-    async fn create_base_node_client(&mut self) -> Result<BaseNodeWalletRpcClient, OutputManagerProtocolError> {
-        let mut base_node_connection = self
-            .connectivity_requester
-            .dial_peer(self.base_node_pk.clone().into())
-            .await
-            .for_protocol(self.operation_id)?;
-        let wallet_client = base_node_connection
-            .connect_rpc_using_builder(
-                BaseNodeWalletRpcClient::builder().with_deadline(self.config.base_node_query_timeout),
-            )
-            .await
-            .for_protocol(self.operation_id)?;
-
-        Ok(wallet_client)
     }
 
     // returns the last header found still in the chain

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::support::{
-    base_node_wallet_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features, TestParams},
 };
@@ -30,10 +30,7 @@ use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
+    test_utils::node_identity::build_node_identity,
     types::CommsSecretKey,
 };
 use tari_core::{
@@ -68,6 +65,7 @@ use tari_wallet::{
         mock_base_node_service::MockBaseNodeService,
         service::BaseNodeState,
     },
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -92,12 +90,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     with_connection: bool,
 ) -> (
     OutputManagerHandle,
+    WalletConnectivityMock,
     Shutdown,
     TransactionServiceHandle,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-    ConnectivityManagerMockState,
     broadcast::Sender<Arc<BaseNodeEvent>>,
 ) {
     let shutdown = Shutdown::new();
@@ -120,9 +118,10 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-    let connectivity_mock_state = connectivity_mock.get_shared_state();
-    task::spawn(connectivity_mock.run());
+    let wallet_connectivity_mock = create_wallet_connectivity_mock();
+    // let (connectivity, connectivity_mock) = create_connectivity_mock();
+    // let connectivity_mock_state = connectivity_mock.get_shared_state();
+    // task::spawn(connectivity_mock.run());
 
     let service = BaseNodeWalletRpcMockService::new();
     let rpc_service_state = service.get_state();
@@ -135,10 +134,11 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     mock_server.serve();
 
     if with_connection {
-        let connection = mock_server
+        let mut connection = mock_server
             .create_connection(server_node_identity.to_peer(), protocol_name.into())
             .await;
-        connectivity_mock_state.add_active_connection(connection).await;
+
+        wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
@@ -155,7 +155,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
-        connectivity_manager,
+        wallet_connectivity_mock.clone(),
         CommsSecretKey::default(),
     )
     .await
@@ -166,12 +166,12 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     (
         output_manager_service_handle,
+        wallet_connectivity_mock,
         shutdown,
         ts_handle,
         mock_server,
         server_node_identity,
         rpc_service_state,
-        connectivity_mock_state,
         event_publisher_bns,
     )
 }
@@ -205,10 +205,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
     mock_base_node_service.set_base_node_state(height);
     task::spawn(mock_base_node_service.run());
-
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-    let _connectivity_mock_state = connectivity_mock.get_shared_state();
-    task::spawn(connectivity_mock.run());
+    let connectivity = create_wallet_connectivity_mock();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
@@ -225,7 +222,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
-        connectivity_manager,
+        connectivity,
         CommsSecretKey::default(),
     )
     .await
@@ -286,7 +283,7 @@ async fn fee_estimate() {
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let factories = CryptoFactories::default();
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
     oms.add_output(uo).await.unwrap();
@@ -530,7 +527,7 @@ async fn send_not_enough_funds() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
@@ -562,7 +559,7 @@ async fn send_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -608,7 +605,7 @@ async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -654,7 +651,7 @@ async fn cancel_transaction() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -694,7 +691,7 @@ async fn cancel_transaction() {
 //     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 //     let backend = OutputManagerSqliteDatabase::new(connection, None);
 //
-//     let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+//     let (mut oms,_, _shutdown, _, _, _,  _) = setup_output_manager_service(backend.clone(), true).await;
 //
 //     let value = MicroTari::from(5000);
 //     let (tx_id, sender_message) = generate_sender_transaction_message(value);
@@ -745,7 +742,7 @@ async fn test_get_balance() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let balance = oms.get_balance().await.unwrap();
 
@@ -794,7 +791,7 @@ async fn sending_transaction_with_short_term_clear() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
@@ -817,7 +814,7 @@ async fn sending_transaction_with_short_term_clear() {
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 
     drop(oms);
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
@@ -838,7 +835,7 @@ async fn sending_transaction_with_short_term_clear() {
     oms.confirm_pending_transaction(sender_tx_id).await.unwrap();
 
     drop(oms);
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.pending_outgoing_balance, available_balance);
@@ -849,7 +846,7 @@ async fn coin_split_with_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -878,7 +875,7 @@ async fn coin_split_no_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(25);
     let split_count = 15;
@@ -908,7 +905,7 @@ async fn handle_coinbase() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let reward1 = MicroTari::from(1000);
     let fees1 = MicroTari::from(500);
@@ -956,18 +953,21 @@ async fn test_txo_validation() {
 
     let (
         mut oms,
+        wallet_connectivity,
         _shutdown,
         _ts,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        _,
         base_node_service_event_publisher,
     ) = setup_output_manager_service(backend, true).await;
 
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
     let output1 = create_unblinded_output(
@@ -1410,7 +1410,7 @@ async fn test_oms_key_manager_discrepancy() {
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let (connectivity_manager, _connectivity_mock) = create_connectivity_mock();
+    let wallet_connectivity = create_wallet_connectivity_mock();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
@@ -1427,7 +1427,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants.clone(),
         shutdown.to_signal(),
         basenode_service_handle.clone(),
-        connectivity_manager.clone(),
+        wallet_connectivity.clone(),
         master_key1.clone(),
     )
     .await
@@ -1446,7 +1446,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants.clone(),
         shutdown.to_signal(),
         basenode_service_handle.clone(),
-        connectivity_manager.clone(),
+        wallet_connectivity.clone(),
         master_key1,
     )
     .await
@@ -1465,7 +1465,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
-        connectivity_manager,
+        wallet_connectivity,
         master_key2,
     )
     .await;

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::{
-    base_node_wallet_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::make_input,
 };
 use chrono::Utc;
@@ -29,13 +29,9 @@ use futures::StreamExt;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_comms::{
-    connectivity::ConnectivityRequester,
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
+    test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -66,6 +62,7 @@ use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
 use tari_wallet::{
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
@@ -87,6 +84,7 @@ use tari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
+    util::watch::Watch,
 };
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
@@ -101,26 +99,18 @@ pub enum TxProtocolTestConfig {
 pub async fn setup(
     config: TxProtocolTestConfig,
 ) -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase>,
-    ConnectivityManagerMockState,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-    broadcast::Sender<Duration>,
     Shutdown,
     TempDir,
     TransactionEventReceiver,
-    ConnectivityRequester,
+    WalletConnectivityMock,
 ) {
     let client_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-
-    let connectivity_mock_state = connectivity_mock.get_shared_state();
-
-    connectivity_mock.spawn();
 
     let service = BaseNodeWalletRpcMockService::new();
     let rpc_service_state = service.get_state();
@@ -128,15 +118,17 @@ pub async fn setup(
     let server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = server.as_protocol_name();
 
-    let mut mock_server = MockRpcServer::new(server, server_node_identity.clone());
+    let mut mock_rpc_server = MockRpcServer::new(server, server_node_identity.clone());
+    mock_rpc_server.serve();
 
-    mock_server.serve();
+    let wallet_connectivity = create_wallet_connectivity_mock();
 
     if config == TxProtocolTestConfig::WithConnection {
-        let connection = mock_server
+        let mut connection = mock_rpc_server
             .create_connection(server_node_identity.to_peer(), protocol_name.into())
             .await;
-        connectivity_mock_state.add_active_connection(connection).await;
+
+        wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
@@ -165,7 +157,7 @@ pub async fn setup(
         db,
         output_manager_service: output_manager_service_handle,
         outbound_message_service: outbound_message_requester,
-        connectivity_manager: connectivity_manager.clone(),
+        connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
         node_identity: client_node_identity,
         factories: CryptoFactories::default(),
@@ -177,20 +169,16 @@ pub async fn setup(
         shutdown_signal: shutdown.to_signal(),
     };
 
-    let (timeout_update_publisher, _) = broadcast::channel(20);
-
     (
         resources,
-        connectivity_mock_state,
         outbound_mock_state,
-        mock_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         shutdown,
         temp_dir,
         ts_event_receiver,
-        connectivity_manager,
+        wallet_connectivity,
     )
 }
 
@@ -247,28 +235,27 @@ pub async fn oms_reply_channel_task(
 async fn tx_broadcast_protocol_submit_success() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    let protocol = TransactionBroadcastProtocol::new(
-        2,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let timeout_watch = Watch::new(Duration::from_secs(1));
+
+    let protocol = TransactionBroadcastProtocol::new(2, resources.clone(), timeout_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Fails because there is no transaction in the database to be broadcast
@@ -279,16 +266,9 @@ async fn tx_broadcast_protocol_submit_success() {
     let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
     assert!(db_completed_tx.confirmations.is_none());
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_watch.get_receiver());
 
-    let _join_handle = task::spawn(protocol.execute());
+    task::spawn(protocol.execute());
 
     // Set Base Node response to be not synced but in mempool
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -339,30 +319,27 @@ async fn tx_broadcast_protocol_submit_success() {
 async fn tx_broadcast_protocol_submit_rejection() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_update_watch.get_receiver());
 
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
         accepted: false,
@@ -394,7 +371,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         tokio::select! {
             event = event_stream.recv() => {
                 if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
-                cancelled = true;
+                    cancelled = true;
                 }
             },
             () = &mut delay => {
@@ -413,18 +390,15 @@ async fn tx_broadcast_protocol_submit_rejection() {
 async fn tx_broadcast_protocol_restart_protocol_as_query() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
@@ -437,15 +411,16 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         height_of_longest_chain: 0,
     });
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
 
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_update_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Check if in mempool (its not)
@@ -502,34 +477,32 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let (
         mut resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
-        mut rpc_service_state,
-        timeout_update_publisher,
+        rpc_service_state,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
     resources.config.transaction_mempool_resubmission_window = Duration::from_secs(3);
     resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(6)));
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -552,8 +525,6 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         .wait_pop_submit_transaction_calls(2, Duration::from_secs(30))
         .await
         .unwrap();
-
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
 
     // Check that the protocol ends with rejection error
     if let Err(e) = join_handle.await.unwrap() {
@@ -589,80 +560,6 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     assert!(cancelled, "Should have cancelled transaction");
 }
 
-/// Test being unable to connect and then connection becoming available.
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_broadcast_protocol_connection_problem() {
-    let (
-        resources,
-        connectivity_mock_state,
-        _outbound_mock_state,
-        mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-        _,
-    ) = setup(TxProtocolTestConfig::WithoutConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-
-    let mut event_stream = resources.event_publisher.subscribe();
-
-    add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
-
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    // Check that the connection problem event was emitted at least twice
-    let delay = sleep(Duration::from_secs(10));
-    tokio::pin!(delay);
-    let mut connection_issues = 0;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-                if let TransactionEvent::TransactionBaseNodeConnectionProblem(_) = &*event.unwrap() {
-                connection_issues+=1;
-                }
-                if connection_issues >= 2 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(connection_issues >= 2, "Should have retried connection at least twice");
-
-    // Now we add the connection
-    let connection = mock_rpc_server
-        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
-        .await;
-    connectivity_mock_state.add_active_connection(connection).await;
-
-    // Check that the protocol ends with success
-    // Set Base Node response to be mined and confirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required as u64 + 1u64,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-    let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
-}
-
 /// Submit a transaction that is Already Mined for the submission, should end up being completed as the validation will
 /// deal with it
 #[tokio::test]
@@ -670,19 +567,15 @@ async fn tx_broadcast_protocol_connection_problem() {
 async fn tx_broadcast_protocol_submit_already_mined() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
     // Set Base Node to respond with AlreadyMined
@@ -692,14 +585,15 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         is_synced: true,
     });
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -737,23 +631,19 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let (
         mut resources,
-        connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
-        mut rpc_service_state,
-        timeout_update_publisher,
+        rpc_service_state,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        _,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
     resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(10)));
 
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::NotStored,
@@ -763,14 +653,15 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         height_of_longest_chain: 0,
     });
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1,
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1, resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -790,11 +681,10 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let mut new_mock_server = MockRpcServer::new(new_server, new_server_node_identity.clone());
     new_mock_server.serve();
 
-    let connection = new_mock_server
+    let mut connection = new_mock_server
         .create_connection(new_server_node_identity.to_peer(), protocol_name.into())
         .await;
-    connectivity_mock_state.add_active_connection(connection).await;
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     // Set new Base Node response to be accepted
     new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -806,9 +696,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     });
 
     // Change Base Node
-    base_node_update_publisher
-        .send(new_server_node_identity.public_key().clone())
-        .unwrap();
+    wallet_connectivity.notify_base_node_set(new_server_node_identity.to_peer());
 
     // Wait for 1 query
     let _ = new_rpc_service_state
@@ -839,18 +727,20 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        _timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        connectivity,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     add_transaction_to_database(
         1,
         1 * T,
@@ -893,11 +783,12 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 
     rpc_service_state.set_is_synced(false);
 
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+
     let protocol = TransactionValidationProtocol::new(
         1,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),
@@ -920,8 +811,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let protocol = TransactionValidationProtocol::new(
         2,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),
@@ -946,8 +836,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let protocol = TransactionValidationProtocol::new(
         3,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),
@@ -984,8 +873,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let protocol = TransactionValidationProtocol::new(
         4,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),
@@ -1008,17 +896,20 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 async fn tx_validation_protocol_reorg() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        _timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
-        connectivity,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     for i in 1..=5 {
         add_transaction_to_database(
@@ -1145,8 +1036,7 @@ async fn tx_validation_protocol_reorg() {
     let protocol = TransactionValidationProtocol::new(
         1,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),
@@ -1251,8 +1141,7 @@ async fn tx_validation_protocol_reorg() {
     let protocol = TransactionValidationProtocol::new(
         2,
         resources.db.clone(),
-        server_node_identity.public_key().clone(),
-        connectivity.clone(),
+        wallet_connectivity.clone(),
         resources.config.clone(),
         resources.event_publisher.clone(),
         resources.output_manager_service.clone(),

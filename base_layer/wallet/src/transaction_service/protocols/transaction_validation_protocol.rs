@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
@@ -39,11 +40,7 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::types::BlockHash;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound},
-    types::CommsPublicKey,
-};
+use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
@@ -56,23 +53,25 @@ use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
-pub struct TransactionValidationProtocol<TTransactionBackend: TransactionBackend + 'static> {
+pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
     operation_id: u64,
     db: TransactionDatabase<TTransactionBackend>,
-    base_node_pk: CommsPublicKey,
-    connectivity_requester: ConnectivityRequester,
+    connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
 
 #[allow(unused_variables)]
-impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationProtocol<TTransactionBackend> {
+impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
+where
+    TTransactionBackend: TransactionBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
+{
     pub fn new(
         operation_id: u64,
         db: TransactionDatabase<TTransactionBackend>,
-        base_node_pk: CommsPublicKey,
-        connectivity_requester: ConnectivityRequester,
+        connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
         output_manager_handle: OutputManagerHandle,
@@ -80,8 +79,7 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
         Self {
             operation_id,
             db,
-            base_node_pk,
-            connectivity_requester,
+            connectivity,
             config,
             event_publisher,
             output_manager_handle,
@@ -89,20 +87,14 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
     }
 
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        let mut base_node_connection = self
-            .connectivity_requester
-            .dial_peer(self.base_node_pk.clone().into())
+        let mut base_node_wallet_client = self
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
             .await
+            .ok_or(TransactionServiceError::Shutdown)
             .for_protocol(self.operation_id)?;
 
-        let mut base_node_wallet_client = base_node_connection
-            .connect_rpc_using_builder(
-                BaseNodeWalletRpcClient::builder().with_deadline(self.config.chain_monitoring_timeout),
-            )
-            .await
-            .for_protocol(self.operation_id)?;
-
-        self.check_for_reorgs(&mut base_node_wallet_client).await?;
+        self.check_for_reorgs(&mut *base_node_wallet_client).await?;
         info!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked"
@@ -116,7 +108,7 @@ impl<TTransactionBackend: TransactionBackend + 'static> TransactionValidationPro
 
         for batch in unmined_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
-                .query_base_node_for_transactions(batch, &mut base_node_wallet_client)
+                .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id)?;
             info!(

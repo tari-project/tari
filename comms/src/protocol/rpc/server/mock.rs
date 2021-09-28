@@ -234,7 +234,8 @@ where
         }
     }
 
-    /// Create a PeerConnection that can open a substream to this mock server.
+    /// Create a PeerConnection that can open a substream to this mock server, notifying the server of the given
+    /// protocol_id.
     pub async fn create_connection(&self, peer: Peer, protocol_id: ProtocolId) -> PeerConnection {
         let peer_node_id = peer.node_id.clone();
         let (_, our_conn_mock, peer_conn, _) = create_peer_connection_mock_pair(peer, self.our_node.to_peer()).await;

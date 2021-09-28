@@ -622,7 +622,7 @@ where
 
 async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_id: u32, tag: &str, fut: F) -> R {
     let t = Instant::now();
-    let span = span!(Level::TRACE, "rpc::internal::timing::{}::{}", request_id, tag);
+    let span = span!(Level::TRACE, "rpc::internal::timing", request_id, tag);
     let ret = fut.instrument(span).await;
     let elapsed = t.elapsed();
     trace!(

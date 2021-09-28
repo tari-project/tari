@@ -27,7 +27,10 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::{
+    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus},
+    PeerConnection,
+};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -60,6 +63,20 @@ use tari_core::{
     transactions::transaction::{Transaction, TransactionOutput},
 };
 use tokio::time::sleep;
+
+pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
+where T: From<RpcClient> + NamedProtocolService {
+    let framed = connection
+        .open_framed_substream(&T::PROTOCOL_NAME.into(), 1024 * 1024)
+        .await
+        .unwrap();
+
+    RpcClient::builder()
+        .with_protocol_id(T::PROTOCOL_NAME.into())
+        .connect(framed)
+        .await
+        .unwrap()
+}
 
 #[derive(Clone, Debug)]
 pub struct BaseNodeWalletRpcMockState {
@@ -174,7 +191,7 @@ impl BaseNodeWalletRpcMockState {
         *lock = response;
     }
 
-    pub fn set_response_delay(&mut self, delay: Option<Duration>) {
+    pub fn set_response_delay(&self, delay: Option<Duration>) {
         let mut lock = acquire_lock!(self.response_delay);
         *lock = delay;
     }
@@ -462,6 +479,9 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         &self,
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
+        // TODO: delay_lock is blocking any other RPC method from being called (as well as blocking an async task)
+        //       until this method returns.
+        //       Although this is sort of fine in tests it is probably unintentional
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             sleep(delay).await;
@@ -627,7 +647,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
 #[cfg(test)]
 mod test {
-    use crate::support::base_node_wallet_rpc::BaseNodeWalletRpcMockService;
+    use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
     use tari_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},

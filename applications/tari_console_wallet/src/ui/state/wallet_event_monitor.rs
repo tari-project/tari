@@ -26,6 +26,7 @@ use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::handle::TransactionEvent,
 };
@@ -62,6 +63,7 @@ impl WalletEventMonitor {
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
         let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
         let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
+        let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
         let mut software_update_notif = self
@@ -166,6 +168,13 @@ impl WalletEventMonitor {
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
+                    _ = base_node_changed.changed() => {
+                        let peer = base_node_changed.borrow().as_ref().cloned();
+                        if let Some(peer) = peer {
+                            self.trigger_base_node_peer_refresh(peer).await;
+                            self.trigger_balance_refresh();
+                        }
+                    }
                     result = base_node_events.recv() => {
                         match result {
                             Ok(msg) => {
@@ -173,10 +182,6 @@ impl WalletEventMonitor {
                                 match (*msg).clone() {
                                     BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
-                                    }
-                                    BaseNodeEvent::BaseNodePeerSet(peer) => {
-                                        self.trigger_base_node_peer_refresh(*peer).await;
-                                        self.trigger_balance_refresh();
                                     }
                                 }
                             },

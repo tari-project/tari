@@ -37,7 +37,8 @@ use futures::{Stream, StreamExt};
 use log::*;
 use tokio::sync::broadcast;
 
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
+use crate::connectivity_service::WalletConnectivityHandle;
+use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
@@ -209,7 +210,7 @@ where
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
             let result = TransactionService::new(
@@ -224,7 +225,7 @@ where
                 transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
-                connectivity_manager,
+                connectivity,
                 publisher,
                 node_identity,
                 factories,
