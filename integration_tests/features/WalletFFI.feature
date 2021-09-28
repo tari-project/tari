@@ -75,6 +75,8 @@ Feature: Wallet FFI
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    # flaky on circle CI
+    @flaky
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a base node BASE
         And I have wallet SENDER connected to base node BASE

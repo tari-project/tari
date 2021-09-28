@@ -1255,7 +1255,7 @@ When(
       expect(autoTransactionResult).to.equal(true);
       // If a block cannot be mined quickly enough (or the process has frozen), timeout.
       await withTimeout(
-        60 * 1000,
+        2 * 60 * 1000,
         this.mineBlock(name, parseInt(weight), (candidate) => {
           this.addTransactionOutput(
             tipHeight + i + 1 + 2,
@@ -3779,7 +3779,7 @@ When(
 
 Then(
   "I get a valid transfer response from stratum transcoder {word}",
-  { timeout: 20 * 1000 },
+  { timeout: 2 * 60 * 1000 },
   async function (transcoder) {
     const proxy = this.getProxy(transcoder);
     const transcoderClient = proxy.getClient();
