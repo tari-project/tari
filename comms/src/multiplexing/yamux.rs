@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionDirection, runtime};
+use crate::{
+    connection_manager::ConnectionDirection,
+    runtime,
+    stream_id,
+    stream_id::StreamId,
+    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
+};
 use futures::{task::Context, Stream};
 use std::{future::Future, io, pin::Pin, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -33,7 +39,6 @@ use tracing::{self, debug, error, event, Level};
 use yamux::Mode;
 
 // Reexport
-use crate::utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard};
 pub use yamux::ConnectionError;
 
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
@@ -207,9 +212,9 @@ pub struct Substream {
     counter_guard: AtomicRefCounterGuard,
 }
 
-impl Substream {
-    pub fn id(&self) -> yamux::StreamId {
-        self.stream.get_ref().id()
+impl StreamId for Substream {
+    fn stream_id(&self) -> stream_id::Id {
+        self.stream.get_ref().id().into()
     }
 }
 
@@ -230,6 +235,12 @@ impl tokio::io::AsyncWrite for Substream {
 
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
+    }
+}
+
+impl From<yamux::StreamId> for stream_id::Id {
+    fn from(id: yamux::StreamId) -> Self {
+        stream_id::Id::new(id.val())
     }
 }
 
