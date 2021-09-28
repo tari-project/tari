@@ -22,7 +22,8 @@
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest, watch::Watch},
+    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
+    util::watch::Watch,
 };
 use log::*;
 use std::{mem, time::Duration};
@@ -51,7 +52,7 @@ pub enum OnlineStatus {
 
 pub struct WalletConnectivityService {
     config: BaseNodeServiceConfig,
-    request_stream: mpsc::Receiver<WalletConnectivityRequest>,
+    request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
     connectivity: ConnectivityRequester,
     base_node_watch: watch::Receiver<Option<Peer>>,
     pools: Option<ClientPoolContainer>,
@@ -68,14 +69,14 @@ struct ClientPoolContainer {
 impl WalletConnectivityService {
     pub(super) fn new(
         config: BaseNodeServiceConfig,
-        request_stream: mpsc::Receiver<WalletConnectivityRequest>,
+        request_receiver: mpsc::Receiver<WalletConnectivityRequest>,
         base_node_watch: watch::Receiver<Option<Peer>>,
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
         Self {
             config,
-            request_stream,
+            request_receiver,
             connectivity,
             base_node_watch,
             pools: None,
@@ -101,7 +102,7 @@ impl WalletConnectivityService {
                     }
                 },
 
-                Some(req) = self.request_stream.recv() => {
+                Some(req) = self.request_receiver.recv() => {
                     self.handle_request(req).await;
                 },
 
@@ -248,7 +249,7 @@ impl WalletConnectivityService {
     }
 
     fn set_online_status(&self, status: OnlineStatus) {
-        let _ = self.online_status_watch.broadcast(status);
+        let _ = self.online_status_watch.send(status);
     }
 
     async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {

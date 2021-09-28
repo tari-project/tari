@@ -4830,6 +4830,7 @@ name = "tari_wallet"
 version = "0.10.0"
 dependencies = [
  "aes-gcm 0.8.0",
+ "async-trait",
  "bincode",
  "blake2",
  "chrono",

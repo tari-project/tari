@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,27 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::stream_id::{Id, StreamId};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use std::sync::Arc;
+use tokio::sync::watch;
 
-/// Tari comms canonical framing
-pub type CanonicalFraming<T> = Framed<T, LengthDelimitedCodec>;
+#[derive(Clone)]
+pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
 
-pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
-where T: AsyncRead + AsyncWrite + Unpin {
-    Framed::new(
-        stream,
-        LengthDelimitedCodec::builder()
-            .max_frame_length(max_frame_len)
-            .new_codec(),
-    )
-}
+impl<T> Watch<T> {
+    pub fn new(initial: T) -> Self {
+        let (tx, rx) = watch::channel(initial);
+        Self(Arc::new(tx), rx)
+    }
 
-impl<T> StreamId for CanonicalFraming<T>
-where T: StreamId
-{
-    fn stream_id(&self) -> Id {
-        self.get_ref().stream_id()
+    pub fn borrow(&self) -> watch::Ref<'_, T> {
+        self.receiver().borrow()
+    }
+
+    pub async fn changed(&mut self) {
+        if self.1.changed().await.is_err() {
+            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
+            panic!("watch internal receiver is dropped");
+        }
+    }
+
+    pub fn send(&self, item: T) {
+        // PANIC: broadcast becomes infallible because the receiver is owned in Watch and so the failure case is
+        // unreachable
+        if self.sender().send(item).is_err() {
+            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
+            panic!("watch internal receiver is dropped");
+        }
+    }
+
+    fn sender(&self) -> &watch::Sender<T> {
+        &self.0
+    }
+
+    pub fn receiver(&self) -> &watch::Receiver<T> {
+        &self.1
+    }
+
+    pub fn get_receiver(&self) -> watch::Receiver<T> {
+        self.receiver().clone()
     }
 }

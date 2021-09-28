@@ -386,7 +386,6 @@ pub async fn init_wallet(
             base_node_query_timeout: config.base_node_query_timeout,
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
             event_channel_size: config.output_manager_event_channel_size,
-            base_node_update_publisher_channel_size: config.base_node_update_publisher_channel_size,
             num_confirmations_required: config.transaction_num_confirmations_required,
             ..Default::default()
         }),

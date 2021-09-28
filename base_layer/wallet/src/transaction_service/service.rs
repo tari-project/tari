@@ -22,6 +22,7 @@
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{handle::OutputManagerHandle, TxId},
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -45,6 +46,7 @@ use crate::{
         },
     },
     types::HashDigest,
+    util::watch::Watch,
     utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
 };
 use chrono::{NaiveDateTime, Utc};
@@ -59,7 +61,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_common_types::types::PrivateKey;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
+use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     crypto::keys::SecretKey,
@@ -82,7 +84,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
-    sync::{broadcast, mpsc, mpsc::Sender, oneshot},
+    sync::{mpsc, mpsc::Sender, oneshot},
     task::JoinHandle,
 };
 
@@ -108,11 +110,9 @@ pub struct TransactionService<
     BNResponseStream,
     TBackend,
     TTxCancelledStream,
-    WBackend,
-> where
-    TBackend: TransactionBackend + 'static,
-    WBackend: WalletBackend + 'static,
-{
+    TWalletBackend,
+    TWalletConnectivity,
+> {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
     output_manager_service: OutputManagerHandle,
@@ -126,24 +126,30 @@ pub struct TransactionService<
     >,
     event_publisher: TransactionEventSender,
     node_identity: Arc<NodeIdentity>,
-    base_node_public_key: Option<CommsPublicKey>,
-    resources: TransactionServiceResources<TBackend>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<u64, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<u64>,
-    timeout_update_publisher: broadcast::Sender<Duration>,
-    base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
-    power_mode: PowerMode,
-    wallet_db: WalletDatabase<WBackend>,
+    timeout_update_watch: Watch<Duration>,
+    wallet_db: WalletDatabase<TWalletBackend>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, TTxCancelledStream, WBackend>
+impl<
+        TTxStream,
+        TTxReplyStream,
+        TTxFinalizedStream,
+        BNResponseStream,
+        TBackend,
+        TTxCancelledStream,
+        TWalletBackend,
+        TWalletConnectivity,
+    >
     TransactionService<
         TTxStream,
         TTxReplyStream,
@@ -151,7 +157,8 @@ impl<TTxStream, TTxReplyStream, TTxFinalizedStream, BNResponseStream, TBackend, 
         BNResponseStream,
         TBackend,
         TTxCancelledStream,
-        WBackend,
+        TWalletBackend,
+        TWalletConnectivity,
     >
 where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
@@ -160,12 +167,13 @@ where
     BNResponseStream: Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
     TBackend: TransactionBackend + 'static,
-    WBackend: WalletBackend + 'static,
+    TWalletBackend: WalletBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
         db: TransactionDatabase<TBackend>,
-        wallet_db: WalletDatabase<WBackend>,
+        wallet_db: WalletDatabase<TWalletBackend>,
         request_stream: Receiver<
             TransactionServiceRequest,
             Result<TransactionServiceResponse, TransactionServiceError>,
@@ -177,7 +185,7 @@ where
         transaction_cancelled_stream: TTxCancelledStream,
         output_manager_service: OutputManagerHandle,
         outbound_message_service: OutboundMessageRequester,
-        connectivity_manager: ConnectivityRequester,
+        connectivity: TWalletConnectivity,
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
@@ -190,7 +198,7 @@ where
             db: db.clone(),
             output_manager_service: output_manager_service.clone(),
             outbound_message_service,
-            connectivity_manager,
+            connectivity,
             event_publisher: event_publisher.clone(),
             node_identity: node_identity.clone(),
             factories,
@@ -198,10 +206,14 @@ where
 
             shutdown_signal,
         };
-        let (timeout_update_publisher, _) = broadcast::channel(20);
-        let (base_node_update_publisher, _) = broadcast::channel(20);
+        let power_mode = PowerMode::default();
+        let timeout = match power_mode {
+            PowerMode::Low => config.low_power_polling_timeout,
+            PowerMode::Normal => config.broadcast_monitoring_timeout,
+        };
+        let timeout_update_watch = Watch::new(timeout);
 
-        TransactionService {
+        Self {
             config,
             db,
             output_manager_service,
@@ -213,7 +225,6 @@ where
             request_stream: Some(request_stream),
             event_publisher,
             node_identity,
-            base_node_public_key: None,
             resources,
             pending_transaction_reply_senders: HashMap::new(),
             base_node_response_senders: HashMap::new(),
@@ -221,9 +232,7 @@ where
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
             active_transaction_broadcast_protocols: HashSet::new(),
-            timeout_update_publisher,
-            base_node_update_publisher,
-            power_mode: PowerMode::Normal,
+            timeout_update_watch,
             base_node_service,
             wallet_db,
             last_seen_tip_height: None,
@@ -316,11 +325,10 @@ where
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "{}, processed in {}ms",
                         event,
-                        finish.duration_since(start).as_millis()
+                        start.elapsed().as_millis()
                     );
                 },
                 // Incoming Transaction messages from the Comms layer
@@ -346,11 +354,10 @@ where
                         }
                         _ => (),
                     }
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Message, Trace: {}, processed in {}ms",
                         msg.dht_header.message_tag,
-                        finish.duration_since(start).as_millis(),
+                        start.elapsed().as_millis(),
                     );
                 },
                  // Incoming Transaction Reply messages from the Comms layer
@@ -377,11 +384,10 @@ where
                         },
                         Ok(_) => (),
                     }
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Reply Message, Trace: {}, processed in {}ms",
                         msg.dht_header.message_tag,
-                        finish.duration_since(start).as_millis(),
+                        start.elapsed().as_millis(),
                     );
                 },
                // Incoming Finalized Transaction messages from the Comms layer
@@ -415,11 +421,10 @@ where
                        },
                        Ok(_) => ()
                     }
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Finalized Message, Trace: {}, processed in {}ms",
                         msg.dht_header.message_tag.as_value(),
-                        finish.duration_since(start).as_millis(),
+                        start.elapsed().as_millis(),
                     );
                 },
                 // Incoming messages from the Comms layer
@@ -434,11 +439,10 @@ where
                         msg.dht_header.message_tag.as_value());
                         e
                     });
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "Handling Base Node Response, Trace: {}, processed in {}ms",
                         msg.dht_header.message_tag,
-                        finish.duration_since(start).as_millis(),
+                        start.elapsed().as_millis(),
                     );
                 }
                 // Incoming messages from the Comms layer
@@ -450,11 +454,10 @@ where
                     if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
                         warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
                     }
-                    let finish = Instant::now();
                     trace!(target: LOG_TARGET,
                         "Handling Transaction Cancelled message, Trace: {}, processed in {}ms",
                         msg.dht_header.message_tag,
-                        finish.duration_since(start).as_millis(),
+                        start.elapsed().as_millis(),
                     );
                 }
                 Some(join_result) = send_transaction_protocol_handles.next() => {
@@ -586,10 +589,6 @@ where
             TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
                 Box::new(self.db.get_any_transaction(tx_id).await?),
             )),
-            TransactionServiceRequest::SetBaseNodePublicKey(public_key) => {
-                self.set_base_node_public_key(public_key).await;
-                Ok(TransactionServiceResponse::BaseNodePublicKeySet)
-            },
             TransactionServiceRequest::ImportUtxo(value, source_public_key, message, maturity) => self
                 .add_utxo_import_transaction(value, source_public_key, message, maturity)
                 .await
@@ -682,7 +681,6 @@ where
                 }
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
-            BaseNodeEvent::BaseNodePeerSet(_peer) => (),
         }
     }
 
@@ -1518,25 +1516,6 @@ where
         }
     }
 
-    /// Add a base node public key to the list that will be used to broadcast transactions and monitor the base chain
-    /// for the presence of spendable outputs. If this is the first time the base node public key is set do the initial
-    /// mempool broadcast
-    async fn set_base_node_public_key(&mut self, base_node_public_key: CommsPublicKey) {
-        info!(
-            target: LOG_TARGET,
-            "Setting base node public key {} for service", base_node_public_key
-        );
-
-        self.base_node_public_key = Some(base_node_public_key.clone());
-        if let Err(e) = self.base_node_update_publisher.send(base_node_public_key) {
-            trace!(
-                target: LOG_TARGET,
-                "No subscribers to receive base node public key update: {:?}",
-                e
-            );
-        }
-    }
-
     async fn restart_transaction_negotiation_protocols(
         &mut self,
         send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1572,29 +1551,23 @@ where
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<u64, TransactionServiceError> {
-        if self.base_node_public_key.is_none() {
+        if !self.connectivity().is_base_node_set() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
         trace!(target: LOG_TARGET, "Starting transaction validation protocol");
         let id = OsRng.next_u64();
 
-        match self.base_node_public_key.clone() {
-            None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
-            Some(pk) => {
-                let protocol = TransactionValidationProtocol::new(
-                    id,
-                    self.resources.db.clone(),
-                    pk,
-                    self.resources.connectivity_manager.clone(),
-                    self.resources.config.clone(),
-                    self.event_publisher.clone(),
-                    self.resources.output_manager_service.clone(),
-                );
+        let protocol = TransactionValidationProtocol::new(
+            id,
+            self.resources.db.clone(),
+            self.resources.connectivity.clone(),
+            self.resources.config.clone(),
+            self.event_publisher.clone(),
+            self.resources.output_manager_service.clone(),
+        );
 
-                let join_handle = tokio::spawn(protocol.execute());
-                join_handles.push(join_handle);
-            },
-        }
+        let join_handle = tokio::spawn(protocol.execute());
+        join_handles.push(join_handle);
 
         Ok(id)
     }
@@ -1638,7 +1611,7 @@ where
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
-        if self.base_node_public_key.is_none() {
+        if !self.connectivity().is_base_node_set() {
             return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
 
@@ -1676,33 +1649,25 @@ where
             ));
         }
 
-        let timeout = match self.power_mode {
-            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
-            PowerMode::Low => self.config.low_power_polling_timeout,
-        };
-        match self.base_node_public_key.clone() {
-            None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
-            Some(pk) => {
-                // Check if the protocol has already been started
-                if self.active_transaction_broadcast_protocols.insert(tx_id) {
-                    let protocol = TransactionBroadcastProtocol::new(
-                        tx_id,
-                        self.resources.clone(),
-                        timeout,
-                        pk,
-                        self.timeout_update_publisher.subscribe(),
-                        self.base_node_update_publisher.subscribe(),
-                    );
-                    let join_handle = tokio::spawn(protocol.execute());
-                    join_handles.push(join_handle);
-                } else {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Transaction Broadcast Protocol (TxId: {}) already started",
-                        tx_id
-                    );
-                }
-            },
+        if !self.resources.connectivity.is_base_node_set() {
+            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
+        }
+
+        // Check if the protocol has already been started
+        if self.active_transaction_broadcast_protocols.insert(tx_id) {
+            let protocol = TransactionBroadcastProtocol::new(
+                tx_id,
+                self.resources.clone(),
+                self.timeout_update_watch.get_receiver(),
+            );
+            let join_handle = tokio::spawn(protocol.execute());
+            join_handles.push(join_handle);
+        } else {
+            trace!(
+                target: LOG_TARGET,
+                "Transaction Broadcast Protocol (TxId: {}) already started",
+                tx_id
+            );
         }
 
         Ok(())
@@ -1784,18 +1749,11 @@ where
     }
 
     async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
-        self.power_mode = mode;
         let timeout = match mode {
             PowerMode::Low => self.config.low_power_polling_timeout,
             PowerMode::Normal => self.config.broadcast_monitoring_timeout,
         };
-        if let Err(e) = self.timeout_update_publisher.send(timeout) {
-            trace!(
-                target: LOG_TARGET,
-                "Could not send Timeout update, no subscribers to receive. (Err {:?})",
-                e
-            );
-        }
+        self.timeout_update_watch.send(timeout);
 
         Ok(())
     }
@@ -1980,17 +1938,19 @@ where
             Some(_) => Err(TransactionServiceError::WalletRecoveryInProgress),
         }
     }
+
+    fn connectivity(&self) -> &TWalletConnectivity {
+        &self.resources.connectivity
+    }
 }
 
 /// This struct is a collection of the common resources that a protocol in the service requires.
 #[derive(Clone)]
-pub struct TransactionServiceResources<TBackend>
-where TBackend: TransactionBackend + 'static
-{
+pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
     pub outbound_message_service: OutboundMessageRequester,
-    pub connectivity_manager: ConnectivityRequester,
+    pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
@@ -2002,6 +1962,12 @@ where TBackend: TransactionBackend + 'static
 enum PowerMode {
     Low,
     Normal,
+}
+
+impl Default for PowerMode {
+    fn default() -> Self {
+        PowerMode::Normal
+    }
 }
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction

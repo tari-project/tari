@@ -22,8 +22,8 @@
 
 use crate::{
     support::{
-        base_node_wallet_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
         comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+        comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
         utils::{make_input, TestParams},
     },
     transaction_service::transaction_protocols::add_transaction_to_database,
@@ -237,31 +237,6 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
 /// streams for testing purposes.
 #[allow(clippy::type_complexity)]
 pub fn setup_transaction_service_no_comms(
-    runtime: &mut Runtime,
-    factories: CryptoFactories,
-    db_connection: WalletDbConnection,
-    config: Option<TransactionServiceConfig>,
-) -> (
-    TransactionServiceHandle,
-    OutputManagerHandle,
-    OutboundServiceMockState,
-    ConnectivityManagerMockState,
-    Sender<DomainMessage<proto::TransactionSenderMessage>>,
-    Sender<DomainMessage<proto::RecipientSignedMessage>>,
-    Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
-    Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
-    Sender<DomainMessage<proto::TransactionCancelledMessage>>,
-    Shutdown,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
-    Arc<NodeIdentity>,
-    BaseNodeWalletRpcMockState,
-    broadcast::Sender<Arc<BaseNodeEvent>>,
-) {
-    setup_transaction_service_no_comms_and_oms_backend(runtime, factories, db_connection, config)
-}
-
-#[allow(clippy::type_complexity)]
-pub fn setup_transaction_service_no_comms_and_oms_backend(
     runtime: &mut Runtime,
     factories: CryptoFactories,
     db_connection: WalletDbConnection,

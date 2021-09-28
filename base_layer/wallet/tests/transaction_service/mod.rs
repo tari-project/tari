@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod service;
+// TODO: These tests need to be rewritten to either be full integration tests (i.e. using the real wallet connectivity
+//       service) or changed to only test the component without building a full service stack
+// pub mod service;
 pub mod storage;
 pub mod transaction_protocols;

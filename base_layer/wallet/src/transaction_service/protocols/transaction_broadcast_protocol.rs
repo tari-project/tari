@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::TxId,
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
@@ -40,7 +41,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_common_types::types::Signature;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -49,153 +49,51 @@ use tari_core::{
     transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::broadcast, time::sleep};
+use tokio::{sync::watch, time::sleep};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
-pub struct TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
-{
+pub struct TransactionBroadcastProtocol<TBackend, TWalletConnectivity> {
     tx_id: TxId,
     mode: TxBroadcastMode,
-    resources: TransactionServiceResources<TBackend>,
-    timeout: Duration,
-    base_node_public_key: CommsPublicKey,
-    timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
-    base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    timeout_update_receiver: watch::Receiver<Duration>,
     last_rejection: Option<Instant>,
 }
 
-impl<TBackend> TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
+impl<TBackend, TWalletConnectivity> TransactionBroadcastProtocol<TBackend, TWalletConnectivity>
+where
+    TBackend: TransactionBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         tx_id: TxId,
-        resources: TransactionServiceResources<TBackend>,
-        timeout: Duration,
-        base_node_public_key: CommsPublicKey,
-        timeout_update_receiver: broadcast::Receiver<Duration>,
-        base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        timeout_update_receiver: watch::Receiver<Duration>,
     ) -> Self {
         Self {
             tx_id,
             mode: TxBroadcastMode::TransactionSubmission,
             resources,
-            timeout,
-            base_node_public_key,
-            timeout_update_receiver: Some(timeout_update_receiver),
-            base_node_update_receiver: Some(base_node_update_receiver),
+            timeout_update_receiver,
             last_rejection: None,
         }
     }
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        let mut timeout_update_receiver = self.timeout_update_receiver.take().ok_or_else(|| {
-            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-        })?;
-
-        let mut base_node_update_receiver = self.base_node_update_receiver.take().ok_or_else(|| {
-            TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-        })?;
-
         let mut shutdown = self.resources.shutdown_signal.clone();
+        let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
+        let mut timeout_update_receiver = self.timeout_update_receiver.clone();
+
         // Main protocol loop
         loop {
-            let base_node_node_id = NodeId::from_key(&self.base_node_public_key);
-            let mut connection: Option<PeerConnection> = None;
-
-            let delay = sleep(self.timeout);
-
-            debug!(
-                target: LOG_TARGET,
-                "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
-            );
-            tokio::select! {
-                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()) => {
-                    match dial_result {
-                        Ok(base_node_connection) => {
-                            connection = Some(base_node_connection);
-                        },
-                        Err(e) => {
-                            info!(target: LOG_TARGET, "Problem connecting to base node: {} for Transaction Broadcast Protocol (TxId: {})", e, self.tx_id);
-                            let _ = self
-                            .resources
-                            .event_publisher
-                            .send(Arc::new(TransactionEvent::TransactionBaseNodeConnectionProblem(
-                                self.tx_id,
-                            )))
-                            .map_err(|e| {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "Error sending event because there are no subscribers: {:?}",
-                                    e
-                                );
-                                e
-                            });
-                        },
-                    }
-                },
-                updated_timeout = timeout_update_receiver.recv() => {
-                    match updated_timeout {
-                        Ok(to) => {
-                            self.timeout = to;
-                             info!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
-                            );
-                        },
-                        Err(e) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) event 'updated_timeout' triggered with error: {:?}",
-                                self.tx_id,
-                                e,
-                            );
-                        }
-                    }
-                },
-                new_base_node = base_node_update_receiver.recv() => {
-                    match new_base_node {
-                        Ok(bn) => {
-                            self.base_node_public_key = bn;
-                             info!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
-                            );
-                            self.last_rejection = None;
-                            continue;
-                        },
-                        Err(e) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
-                                self.tx_id,
-                                e,
-                            );
-                        }
-                    }
-                }
-                _ = shutdown.wait() => {
-                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
-                    return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
-                },
-            }
-
-            let mut base_node_connection = match connection {
-                None => {
-                    tokio::select! {
-                        _ = delay.fuse() => {
-                            continue;
-                        },
-                        _ = shutdown.wait() => {
-                            info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
-                            return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
-                        },
-                    }
-                },
-                Some(c) => c,
-            };
+            let mut client = self
+                .resources
+                .connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .ok_or_else(|| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))?;
 
             let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id).await {
                 Ok(tx) => tx,
@@ -224,45 +122,15 @@ where TBackend: TransactionBackend + 'static
                 return Ok(self.tx_id);
             }
 
-            let mut client = match base_node_connection
-                .connect_rpc_using_builder(
-                    BaseNodeWalletRpcClient::builder()
-                        .with_deadline(self.resources.config.broadcast_monitoring_timeout)
-                        .with_handshake_timeout(self.resources.config.broadcast_monitoring_timeout),
-                )
-                .await
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(target: LOG_TARGET, "Problem establishing RPC connection: {}", e);
-                    delay.await;
-                    continue;
-                },
-            };
-
-            let delay = sleep(self.timeout);
             loop {
                 tokio::select! {
-                    new_base_node = base_node_update_receiver.recv() => {
-                        match new_base_node {
-                            Ok(bn) => {
-                                self.base_node_public_key = bn;
-                                 info!(
-                                    target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
-                                );
-                                self.last_rejection = None;
-                                continue;
-                            },
-                            Err(e) => {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
-                                    self.tx_id,
-                                    e,
-                                );
-                            }
-                        }
+                    _ = current_base_node_watcher.changed() => {
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, current_base_node_watcher.borrow()
+                            );
+                            self.last_rejection = None;
+                            continue;
                     },
                     result = self.query_or_submit_transaction(completed_tx.clone(), &mut client).fuse() => {
                         match self.mode {
@@ -280,25 +148,16 @@ where TBackend: TransactionBackend + 'static
                         }
                         // Wait out the remainder of the delay before proceeding with next loop
                         drop(client);
-                        delay.await;
+                        let delay = *timeout_update_receiver.borrow();
+                        sleep(delay).await;
                         break;
                     },
-                    updated_timeout = timeout_update_receiver.recv() => {
-                        if let Ok(to) = updated_timeout {
-                            self.timeout = to;
-                             info!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
-                            );
-                            break;
-                        } else {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol event 'updated_timeout' triggered (TxId: {}) ({:?})",
-                                self.tx_id,
-                                updated_timeout,
-                            );
-                        }
+                    _ = timeout_update_receiver.changed() => {
+                         info!(
+                            target: LOG_TARGET,
+                            "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, timeout_update_receiver.borrow()
+                        );
+                        break;
                     },
                     _ = shutdown.wait() => {
                         info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);

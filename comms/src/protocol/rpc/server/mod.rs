@@ -59,6 +59,7 @@ use crate::{
         ProtocolNotification,
         ProtocolNotificationRx,
     },
+    stream_id::StreamId,
     Bytes,
     Substream,
 };
@@ -402,7 +403,7 @@ where
         Self {
             logging_context_string: Arc::new(format!(
                 "stream_id: {}, peer: {}, protocol: {}",
-                framed.get_ref().id(),
+                framed.stream_id(),
                 node_id,
                 String::from_utf8_lossy(&protocol)
             )),
@@ -621,7 +622,7 @@ where
 
 async fn log_timing<R, F: Future<Output = R>>(context_str: Arc<String>, request_id: u32, tag: &str, fut: F) -> R {
     let t = Instant::now();
-    let span = span!(Level::TRACE, "rpc::internal::timing::{}::{}", request_id, tag);
+    let span = span!(Level::TRACE, "rpc::internal::timing", request_id, tag);
     let ret = fut.instrument(span).await;
     let elapsed = t.elapsed();
     trace!(

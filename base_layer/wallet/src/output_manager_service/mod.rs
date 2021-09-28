@@ -22,6 +22,7 @@
 
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -33,7 +34,7 @@ use crate::{
 use futures::future;
 use log::*;
 pub(crate) use master_key_manager::MasterKeyManager;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
+use tari_comms::types::CommsSecretKey;
 use tari_core::{
     consensus::{ConsensusConstantsBuilder, NetworkConsensus},
     transactions::CryptoFactories,
@@ -121,7 +122,7 @@ where T: OutputManagerBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -133,7 +134,7 @@ where T: OutputManagerBackend + 'static
                 constants,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
-                connectivity_manager,
+                connectivity,
                 master_secret_key,
             )
             .await

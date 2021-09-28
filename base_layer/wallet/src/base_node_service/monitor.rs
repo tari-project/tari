@@ -25,7 +25,7 @@ use crate::{
         handle::{BaseNodeEvent, BaseNodeEventSender},
         service::BaseNodeState,
     },
-    connectivity_service::WalletConnectivityHandle,
+    connectivity_service::WalletConnectivityInterface,
     error::WalletStorageError,
     storage::database::{WalletBackend, WalletDatabase},
 };
@@ -42,20 +42,24 @@ use tokio::{sync::RwLock, time};
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 
-pub struct BaseNodeMonitor<T> {
+pub struct BaseNodeMonitor<TBackend, TWalletConnectivity> {
     interval: Duration,
     state: Arc<RwLock<BaseNodeState>>,
-    db: WalletDatabase<T>,
-    wallet_connectivity: WalletConnectivityHandle,
+    db: WalletDatabase<TBackend>,
+    wallet_connectivity: TWalletConnectivity,
     event_publisher: BaseNodeEventSender,
 }
 
-impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
+impl<TBackend, TWalletConnectivity> BaseNodeMonitor<TBackend, TWalletConnectivity>
+where
+    TBackend: WalletBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
+{
     pub fn new(
         interval: Duration,
         state: Arc<RwLock<BaseNodeState>>,
-        db: WalletDatabase<T>,
-        wallet_connectivity: WalletConnectivityHandle,
+        db: WalletDatabase<TBackend>,
+        wallet_connectivity: TWalletConnectivity,
         event_publisher: BaseNodeEventSender,
     ) -> Self {
         Self {

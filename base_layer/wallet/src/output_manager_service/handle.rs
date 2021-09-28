@@ -29,7 +29,6 @@ use crate::output_manager_service::{
 use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
 use tari_common_types::types::PublicKey;
-use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionOutput, UnblindedOutput},
@@ -58,7 +57,6 @@ pub enum OutputManagerRequest {
     GetUnspentOutputs,
     GetInvalidOutputs,
     GetSeedWords,
-    SetBaseNodePublicKey(CommsPublicKey),
     ValidateUtxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
@@ -95,7 +93,6 @@ impl fmt::Display for OutputManagerRequest {
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             GetSeedWords => write!(f, "GetSeedWords"),
-            SetBaseNodePublicKey(k) => write!(f, "SetBaseNodePublicKey ({})", k),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
@@ -371,17 +368,6 @@ impl OutputManagerHandle {
     pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
             OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::SetBaseNodePublicKey(public_key))
-            .await??
-        {
-            OutputManagerResponse::BaseNodePublicKeySet => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

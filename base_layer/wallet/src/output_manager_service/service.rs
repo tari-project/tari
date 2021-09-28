@@ -22,6 +22,7 @@
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
@@ -50,10 +51,7 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    types::{CommsPublicKey, CommsSecretKey},
-};
+use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_core::{
     consensus::ConsensusConstants,
     transactions::{
@@ -84,18 +82,18 @@ const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
-pub struct OutputManagerService<TBackend>
-where TBackend: OutputManagerBackend + 'static
-{
-    resources: OutputManagerResources<TBackend>,
+pub struct OutputManagerService<TBackend, TWalletConnectivity> {
+    resources: OutputManagerResources<TBackend, TWalletConnectivity>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
 }
 
-impl<TBackend> OutputManagerService<TBackend>
-where TBackend: OutputManagerBackend + 'static
+impl<TBackend, TWalletConnectivity> OutputManagerService<TBackend, TWalletConnectivity>
+where
+    TBackend: OutputManagerBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -111,9 +109,9 @@ where TBackend: OutputManagerBackend + 'static
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
-        connectivity_manager: ConnectivityRequester,
+        connectivity: TWalletConnectivity,
         master_secret_key: CommsSecretKey,
-    ) -> Result<OutputManagerService<TBackend>, OutputManagerError> {
+    ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
         db.clear_short_term_encumberances().await?;
@@ -125,15 +123,14 @@ where TBackend: OutputManagerBackend + 'static
             db,
             transaction_service,
             factories,
-            base_node_public_key: None,
+            connectivity,
             event_publisher,
             master_key_manager: Arc::new(master_key_manager),
             consensus_constants,
-            connectivity_manager,
             shutdown_signal,
         };
 
-        Ok(OutputManagerService {
+        Ok(Self {
             resources,
             request_stream: Some(request_stream),
             base_node_service,
@@ -272,10 +269,6 @@ where TBackend: OutputManagerBackend + 'static
                 .get_seed_words(&self.resources.config.seed_word_language)
                 .await
                 .map(OutputManagerResponse::SeedWords),
-            OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk)
-                .await
-                .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
@@ -353,46 +346,41 @@ where TBackend: OutputManagerBackend + 'static
                 }
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
-            BaseNodeEvent::BaseNodePeerSet(_peer) => (),
         }
     }
 
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        match self.resources.base_node_public_key.as_ref() {
-            None => Err(OutputManagerError::NoBaseNodeKeysProvided),
-            Some(pk) => {
-                let id = OsRng.next_u64();
-                let utxo_validation = TxoValidationTask::new(
-                    pk.clone(),
-                    id,
-                    100,
-                    self.resources.db.clone(),
-                    self.resources.connectivity_manager.clone(),
-                    self.resources.event_publisher.clone(),
-                    self.resources.config.clone(),
-                );
-
-                let shutdown = self.resources.shutdown_signal.clone();
-
-                tokio::spawn(async move {
-                    match utxo_validation.execute(shutdown).await {
-                        Ok(id) => {
-                            info!(
-                                target: LOG_TARGET,
-                                "UTXO Validation Protocol (Id: {}) completed successfully", id
-                            );
-                        },
-                        Err(OutputManagerProtocolError { id, error }) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
-                            );
-                        },
-                    }
-                });
-                Ok(id)
-            },
+        if !self.resources.connectivity.is_base_node_set() {
+            return Err(OutputManagerError::NoBaseNodeKeysProvided);
         }
+        let id = OsRng.next_u64();
+        let utxo_validation = TxoValidationTask::new(
+            id,
+            self.resources.db.clone(),
+            self.resources.connectivity.clone(),
+            self.resources.event_publisher.clone(),
+            self.resources.config.clone(),
+        );
+
+        let shutdown = self.resources.shutdown_signal.clone();
+
+        tokio::spawn(async move {
+            match utxo_validation.execute(shutdown).await {
+                Ok(id) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "UTXO Validation Protocol (Id: {}) completed successfully", id
+                    );
+                },
+                Err(OutputManagerProtocolError { id, error }) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
+                    );
+                },
+            }
+        });
+        Ok(id)
     }
 
     /// Add an unblinded output to the unspent outputs list
@@ -976,22 +964,6 @@ where TBackend: OutputManagerBackend + 'static
         }
 
         Ok((utxos, require_change_output, utxos_total_value))
-    }
-
-    /// Set the base node public key to the list that will be used to check the status of UTXO's on the base chain. If
-    /// this is the first time the base node public key is set do the UTXO queries.
-    async fn set_base_node_public_key(
-        &mut self,
-        base_node_public_key: CommsPublicKey,
-    ) -> Result<(), OutputManagerError> {
-        info!(
-            target: LOG_TARGET,
-            "Setting base node public key {} for service", base_node_public_key
-        );
-
-        self.resources.base_node_public_key = Some(base_node_public_key);
-
-        Ok(())
     }
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {

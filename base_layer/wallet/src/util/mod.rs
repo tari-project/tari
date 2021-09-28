@@ -22,3 +22,4 @@
 
 pub mod diesel_ext;
 pub mod encryption;
+pub mod watch;

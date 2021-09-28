@@ -46,7 +46,6 @@ pub enum TransactionServiceRequest {
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
-    SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
@@ -74,7 +73,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
-            Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
             Self::SendOneSidedTransaction(k, v, _, msg) => {
                 f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
@@ -162,7 +160,6 @@ pub enum TransactionEvent {
     TransactionValidationFailure(u64),
     TransactionValidationAborted(u64),
     TransactionValidationDelayed(u64),
-    TransactionBaseNodeConnectionProblem(u64),
     Error(String),
 }
 
@@ -348,20 +345,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::AnyTransaction(t) => Ok(*t),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_base_node_public_key(
-        &mut self,
-        public_key: CommsPublicKey,
-    ) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetBaseNodePublicKey(public_key))
-            .await??
-        {
-            TransactionServiceResponse::BaseNodePublicKeySet => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

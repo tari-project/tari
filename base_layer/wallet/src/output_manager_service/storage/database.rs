@@ -170,9 +170,7 @@ pub enum WriteOperation {
 /// This structure holds an inner type that implements the `OutputManagerBackend` trait and contains the more complex
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
-pub struct OutputManagerDatabase<T>
-where T: OutputManagerBackend + 'static
-{
+pub struct OutputManagerDatabase<T> {
     db: Arc<T>,
 }
 
