@@ -467,9 +467,8 @@ A Tari Token Wallet is responsible for managing [Digital asset]s and [Tokens], a
 
 [transaction weight]: #transaction-weight "Transaction "
 
-The weight of a transaction / block measured in "grams". Block / transaction weight are defined in the same way:
-`weight = num_inputs * PER_INPUT_GRAMS + num_outputs * PER_OUTPUT_GRAMS + num_kernels * PER_KERNEL_GRAMS`
-where the capitalized values are hard-coded constants.
+The weight of a transaction / block measured in "grams". 
+See [Block / Transaction weight](./RFC-0110_BaseNodes.md#blocktransaction-weight) for more details.
 
 ## Unspent transaction outputs
 

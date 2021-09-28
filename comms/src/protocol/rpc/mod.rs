@@ -34,19 +34,25 @@ const RPC_CHUNKING_MAX_CHUNKS: usize = 16; // 16 x 256 Kib = 4 MiB max combined 
 const RPC_CHUNKING_THRESHOLD: usize = 256 * 1024;
 const RPC_CHUNKING_SIZE_LIMIT: usize = 384 * 1024;
 
-/// Convenience function that returns the maximum size for a single RPC message
-const fn max_message_size() -> usize {
+/// The maximum request payload size
+const fn max_request_size() -> usize {
+    RPC_MAX_FRAME_SIZE
+}
+
+/// The maximum size for a single RPC response message
+const fn max_response_size() -> usize {
     RPC_CHUNKING_MAX_CHUNKS * RPC_CHUNKING_THRESHOLD
 }
 
-const fn max_payload_size() -> usize {
+/// The maximum size for a single RPC response excluding overhead
+const fn max_response_payload_size() -> usize {
     // RpcResponse overhead is:
     // - 4 varint protobuf fields, each field ID is 1 byte
     // - 3 u32 fields, VarInt(u32::MAX) is 5 bytes
     // - 1 length varint for the payload, allow for 5 bytes to be safe (max_payload_size being technically too small is
     //   fine, being too large isn't)
     const MAX_HEADER_SIZE: usize = 4 + 4 * 5;
-    max_message_size() - MAX_HEADER_SIZE
+    max_response_size() - MAX_HEADER_SIZE
 }
 
 mod body;
