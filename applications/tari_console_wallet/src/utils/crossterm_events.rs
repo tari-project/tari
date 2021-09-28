@@ -70,8 +70,10 @@ impl CrosstermEvents {
                 ) {
                     Ok(true) => {
                         if let Ok(CEvent::Key(key)) = event::read() {
-                            if let Err(e) = tx.send(Event::Input(key)) {
-                                warn!(target: LOG_TARGET, "Error sending Tick event on MPSC channel: {}", e);
+                            if tx.send(Event::Input(key)).is_err() {
+                                info!(target: LOG_TARGET, "Tick event channel shutting down");
+                                // A send operation can only fail if the receiving end of a channel is disconnected.
+                                break;
                             }
                         }
                     },
@@ -81,8 +83,10 @@ impl CrosstermEvents {
                     },
                 }
                 if last_tick.elapsed() >= config.tick_rate {
-                    if let Err(e) = tx.send(Event::Tick) {
-                        warn!(target: LOG_TARGET, "Error sending Tick event on MPSC channel: {}", e);
+                    if tx.send(Event::Tick).is_err() {
+                        info!(target: LOG_TARGET, "Tick event channel shutting down");
+                        // A send operation can only fail if the receiving end of a channel is disconnected.
+                        break;
                     }
                     last_tick = Instant::now();
                 }
