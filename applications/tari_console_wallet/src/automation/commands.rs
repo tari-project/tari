@@ -691,11 +691,12 @@ pub async fn command_runner(
             RegisterAsset => {
                 println!("Registering asset.");
                 let name = parsed.args[0].to_string();
+                let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = manager.create_registration_transaction(name).await?;
                 let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
-                    .submit_transaction(tx_id, transaction, fee, 0.into(), "test o ramam".to_string())
+                    .submit_transaction(tx_id, transaction, fee, 0.into(), message)
                     .await?;
             },
             MintTokens => {
@@ -721,14 +722,15 @@ pub async fn command_runner(
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
-                println!("Found asset:{}", asset.name());
+                println!("Asset name: {}", asset.name());
 
+                let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
                 let (tx_id, transaction) = asset_manager
                     .create_minting_transaction(&public_key, asset.owner_commitment(), unique_ids)
                     .await?;
                 let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
-                    .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+                    .submit_transaction(tx_id, transaction, fee, 0.into(), message)
                     .await?;
             },
             CreateInitialCheckpoint => {
