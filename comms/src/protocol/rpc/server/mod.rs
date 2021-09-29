@@ -59,6 +59,7 @@ use crate::{
         ProtocolNotification,
         ProtocolNotificationRx,
     },
+    stream_id::StreamId,
     Bytes,
     Substream,
 };
@@ -402,7 +403,7 @@ where
         Self {
             logging_context_string: Arc::new(format!(
                 "stream_id: {}, peer: {}, protocol: {}",
-                framed.get_ref().id(),
+                framed.stream_id(),
                 node_id,
                 String::from_utf8_lossy(&protocol)
             )),
