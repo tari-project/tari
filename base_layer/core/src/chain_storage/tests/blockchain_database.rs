@@ -429,6 +429,6 @@ mod fetch_total_size_stats {
         let db = setup();
         let stats = db.fetch_total_size_stats().unwrap();
         // Returns one per db
-        assert_eq!(stats.sizes().len(), 19);
+        assert_eq!(stats.sizes().len(), 20);
     }
 }

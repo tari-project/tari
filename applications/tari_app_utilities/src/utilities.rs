@@ -76,6 +76,8 @@ pub enum ExitCodes {
     NoPassword,
     #[error("Tor connection is offline")]
     TorOffline,
+    #[error("Database is in inconsistent state: {0}")]
+    DbInconsistentState(String),
 }
 
 impl ExitCodes {
@@ -94,6 +96,29 @@ impl ExitCodes {
             Self::ConversionError(_) => 111,
             Self::IncorrectPassword | Self::NoPassword => 112,
             Self::TorOffline => 113,
+            Self::DbInconsistentState(_) => 115,
+        }
+    }
+
+    pub fn eprint_details(&self) {
+        use ExitCodes::*;
+        match self {
+            TorOffline => {
+                eprintln!("Unable to connect to the Tor control port.");
+                eprintln!(
+                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
+                     turned on.",
+                );
+                eprintln!("If you are unsure of what to do, use the following command to start the Tor proxy:");
+                eprintln!(
+                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
+                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
+                );
+            },
+
+            e => {
+                eprintln!("{}", e);
+            },
         }
     }
 }

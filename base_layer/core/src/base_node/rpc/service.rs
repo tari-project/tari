@@ -22,7 +22,6 @@
 use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
-    crypto::tari_utilities::Hashable,
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
@@ -47,7 +46,7 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
@@ -307,13 +306,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
-        for (pruned_output, spent) in (db
+        let utxos = db
             .fetch_utxos(message.output_hashes)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
-        .into_iter()
-        .flatten()
-        {
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .into_iter()
+            .flatten();
+        for (pruned_output, spent) in utxos {
             if let PrunedOutput::NotPruned { output } = pruned_output {
                 if !spent {
                     res.push(output);
@@ -396,15 +395,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             }
         }
 
-        let metadata = self
-            .db
-            .get_chain_metadata()
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-
         let deleted_bitmap = self
             .db
-            .fetch_complete_deleted_bitmap_at(metadata.best_block().clone())
+            .fetch_deleted_bitmap_at_tip()
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
@@ -416,8 +409,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 // TODO: in future, bitmap may support higher than u32
                 return Err(RpcStatus::bad_request("position must fit into a u32"));
             }
-            let pos = position.try_into().unwrap();
-            if deleted_bitmap.bitmap().contains(pos) {
+            let position = position as u32;
+            if deleted_bitmap.bitmap().contains(position) {
                 deleted_positions.push(position);
             } else {
                 not_deleted_positions.push(position);
@@ -429,20 +422,29 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         if message.include_deleted_block_data {
             let headers = self
                 .db
-                .fetch_headers_of_deleted_positions(deleted_positions.clone())
+                .fetch_header_hash_by_deleted_mmr_positions(deleted_positions.clone())
                 .await
                 .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-            for header in headers.iter() {
-                heights_deleted_at.push(header.height);
-                blocks_deleted_in.push(header.hash());
+
+            heights_deleted_at.reserve(headers.len());
+            blocks_deleted_in.reserve(headers.len());
+            for (height, hash) in headers.into_iter().flatten() {
+                heights_deleted_at.push(height);
+                blocks_deleted_in.push(hash);
             }
         }
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
-            deleted_positions,
-            not_deleted_positions,
+            deleted_positions: deleted_positions.into_iter().map(|v| v as u64).collect(),
+            not_deleted_positions: not_deleted_positions.into_iter().map(|v| v as u64).collect(),
             blocks_deleted_in,
             heights_deleted_at,
         }))
