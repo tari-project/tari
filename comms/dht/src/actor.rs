@@ -641,7 +641,7 @@ impl DhtActor {
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;

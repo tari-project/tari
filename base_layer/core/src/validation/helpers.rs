@@ -228,8 +228,8 @@ pub fn check_accounting_balance(
     block
         .body
         .validate_internal_consistency(
-            &offset,
-            &script_offset,
+            offset,
+            script_offset,
             bypass_range_proof_verification,
             total_coinbase,
             factories,
@@ -271,7 +271,7 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
         if item <= prev_item {
             return false;
         }
-        prev_item = &item;
+        prev_item = item;
     }
 
     true
@@ -314,12 +314,12 @@ impl<'a> KernelDeprecatedOrdWrapper<'a> {
 }
 impl PartialOrd for KernelDeprecatedOrdWrapper<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.kernel.deprecated_cmp(&other.kernel))
+        Some(self.kernel.deprecated_cmp(other.kernel))
     }
 }
 impl Ord for KernelDeprecatedOrdWrapper<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.kernel.deprecated_cmp(&other.kernel)
+        self.kernel.deprecated_cmp(other.kernel)
     }
 }
 

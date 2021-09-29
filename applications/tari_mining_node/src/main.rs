@@ -189,10 +189,10 @@ async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
 ) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_addr(&global);
+    let base_node_addr = config.base_node_addr(global);
     info!("Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
-    let wallet_addr = config.wallet_addr(&global);
+    let wallet_addr = config.wallet_addr(global);
     info!("Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
 

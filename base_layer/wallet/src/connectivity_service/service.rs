@@ -62,7 +62,6 @@ pub struct WalletConnectivityService {
 struct ClientPoolContainer {
     pub base_node_wallet_rpc_client: RpcClientPool<BaseNodeWalletRpcClient>,
     pub base_node_sync_rpc_client: RpcClientPool<BaseNodeSyncRpcClient>,
-    pub connection: PeerConnection,
 }
 
 impl WalletConnectivityService {
@@ -266,7 +265,6 @@ impl WalletConnectivityService {
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
             base_node_wallet_rpc_client: conn
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
-            connection: conn,
         });
         self.notify_pending_requests().await?;
         debug!(target: LOG_TARGET, "Successfully established RPC connection {}", peer);

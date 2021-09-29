@@ -197,8 +197,8 @@ impl StratumMiner {
         blob: String,
         difficulty: u64,
     ) -> Result<(), stratum::error::Error> {
-        let header_hex = hex::decode(blob)
-            .map_err(|_| stratum::error::Error::JsonError("Blob is not a valid hex value".to_string()))?;
+        let header_hex =
+            hex::decode(blob).map_err(|_| stratum::error::Error::Json("Blob is not a valid hex value".to_string()))?;
         let header: BlockHeader = serde_json::from_str(&String::from_utf8_lossy(&header_hex).to_string())?;
 
         let mut sd = self.shared_data.write().unwrap();
@@ -264,11 +264,8 @@ impl StratumMiner {
 
     pub fn wait_for_solver_shutdown(&self) {
         for r in self.solver_stopped_rxs.iter() {
-            while let Some(message) = r.iter().next() {
-                if let ControlMessage::SolverStopped(i) = message {
-                    debug!("Solver stopped: {}", i);
-                    break;
-                }
+            if let Some(ControlMessage::SolverStopped(i)) = r.iter().next() {
+                debug!("Solver stopped: {}", i);
             }
         }
     }

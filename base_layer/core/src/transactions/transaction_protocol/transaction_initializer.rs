@@ -204,7 +204,7 @@ impl SenderTransactionInitializer {
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
-            &output.metadata_signature.public_nonce(),
+            output.metadata_signature.public_nonce(),
             &commitment,
         );
         if !output.metadata_signature.verify_challenge(

@@ -25,13 +25,13 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 pub enum InterfaceError {
     #[error("An error has occurred due to one of the parameters being null: `{0}`")]
-    NullError(String),
+    Null(String),
     #[error("An error has occurred due to conversion failing for: `{0}`")]
-    ConversionError(String),
+    Conversion(String),
     #[error("An error has occurred due to validation failing for: `{0}`")]
-    InvalidHashError(String),
+    InvalidHash(String),
     #[error("An error has occurred due to difficulty being too low for share: `{0}`")]
-    LowDifficultyError(String),
+    LowDifficulty(String),
 }
 
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
@@ -45,19 +45,19 @@ pub struct StratumTranscoderError {
 impl From<InterfaceError> for StratumTranscoderError {
     fn from(v: InterfaceError) -> Self {
         match v {
-            InterfaceError::NullError(_) => Self {
+            InterfaceError::Null(_) => Self {
                 code: 1,
                 message: format!("{:?}", v),
             },
-            InterfaceError::ConversionError(_) => Self {
+            InterfaceError::Conversion(_) => Self {
                 code: 2,
                 message: format!("{:?}", v),
             },
-            InterfaceError::InvalidHashError(_) => Self {
+            InterfaceError::InvalidHash(_) => Self {
                 code: 3,
                 message: format!("{:?}", v),
             },
-            InterfaceError::LowDifficultyError(_) => Self {
+            InterfaceError::LowDifficulty(_) => Self {
                 code: 4,
                 message: format!("{:?}", v),
             },

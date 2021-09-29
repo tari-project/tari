@@ -770,7 +770,7 @@ where TBackend: OutputManagerBackend + 'static
             &spending_key.clone(),
             &script,
             &output_features,
-            &&sender_offset_private_key,
+            &sender_offset_private_key,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
