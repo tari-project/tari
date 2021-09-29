@@ -57,7 +57,7 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
+function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
   const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
@@ -112,6 +112,9 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
       "5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1",
     ];
   }
+  if (committee.length != 0) {
+    envs.TARI_DAN_NODE__LOCALNET__COMMITTEE = committee;
+  }
 
   return envs;
 }
@@ -131,9 +134,10 @@ function createEnv(
   options,
   peerSeeds = [],
   _txnSendingMechanism = "DirectAndStoreAndForward",
-  forceSyncPeers = []
+  forceSyncPeers = [],
+  committee = []
 ) {
-  const envs = baseEnvs(peerSeeds, forceSyncPeers);
+  const envs = baseEnvs(peerSeeds, forceSyncPeers, committee);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
 

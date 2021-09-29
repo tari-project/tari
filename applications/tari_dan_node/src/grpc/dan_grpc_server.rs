@@ -65,7 +65,7 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> dan_rpc::d
                 .map_err(|err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
             request.method.clone(),
             request.args.clone(),
-            TokenId(request.from.clone()),
+            TokenId(request.token_id.clone()),
             // TODO: put signature in here
             ComSig::default()
             // create_com_sig_from_bytes(&request.signature)

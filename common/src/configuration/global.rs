@@ -694,6 +694,22 @@ fn convert_node_config(
         .filter(|c| c.is_alphanumeric())
         .collect::<String>();
 
+    // Dan config
+    let key = config_string("dan_node", &net_str, "committee");
+    let committee = match cfg.get_array(&key) {
+        Ok(committee) => committee.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(..) => vec![],
+        },
+    };
+
+    let key = config_string("dan_node", &net_str, "phase_timeout");
+    let phase_timeout = optional(cfg.get_int(&key))?.unwrap_or(30) as u64;
+
+    let key = config_string("dan_node", &net_str, "template_id");
+    let template_id = optional(cfg.get_str(&key))?.unwrap_or_else(|| "EditableMetadata".to_string());
+
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -776,7 +792,7 @@ fn convert_node_config(
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
-        dan_node: DanNodeConfig::convert_if_present(cfg)?,
+        dan_node: DanNodeConfig::new(committee, phase_timeout, template_id).unwrap(),
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
