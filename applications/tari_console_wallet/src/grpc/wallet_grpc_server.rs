@@ -377,7 +377,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let fee = transaction.body.get_total_fee();
 
         let owner_commitments = transaction
             .body
@@ -386,7 +385,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), "test mint transaction".to_string())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
