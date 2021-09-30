@@ -1,19 +1,21 @@
 pub mod aggregated_body;
+
 mod crypto_factories;
+pub use crypto_factories::CryptoFactories;
+
+mod coinbase_builder;
+pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
+
+pub mod display_currency;
 pub mod fee;
 pub mod tari_amount;
 pub mod transaction;
-#[allow(clippy::op_ref)]
+
 pub mod transaction_protocol;
-
-pub use crypto_factories::*;
-
-pub mod types;
-// Re-export commonly used structs
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 
-#[macro_use]
-pub mod helpers;
+pub mod types;
+pub mod weight;
 
-mod coinbase_builder;
-pub use crate::transactions::coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
+#[macro_use]
+pub mod test_helpers;

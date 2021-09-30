@@ -28,8 +28,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::HistoricalBlock,
+    blocks::{Block, BlockHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::PowAlgorithm,
     transactions::transaction::TransactionKernel,
 };

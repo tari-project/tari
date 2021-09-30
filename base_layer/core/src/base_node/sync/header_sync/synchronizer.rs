@@ -23,8 +23,8 @@
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockSyncConfig},
-    blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock, ChainHeader},
+    blocks::{BlockHeader, ChainBlock, ChainHeader},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{

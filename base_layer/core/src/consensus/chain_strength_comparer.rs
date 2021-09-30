@@ -1,4 +1,4 @@
-use crate::chain_storage::ChainHeader;
+use crate::blocks::ChainHeader;
 use std::{cmp::Ordering, fmt::Debug};
 
 pub trait ChainStrengthComparer: Debug {

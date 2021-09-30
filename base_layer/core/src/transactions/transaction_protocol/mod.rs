@@ -80,6 +80,8 @@
 //!   end
 //! </div>
 
+// #![allow(clippy::op_ref)]
+
 pub mod proto;
 pub mod recipient;
 pub mod sender;

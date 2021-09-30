@@ -22,8 +22,7 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{Block, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
-    chain_storage::{BlockHeaderAccumulatedData, HistoricalBlock},
+    blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     proof_of_work::ProofOfWork,
 };
 use std::convert::{TryFrom, TryInto};

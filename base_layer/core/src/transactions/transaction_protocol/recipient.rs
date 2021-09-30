@@ -215,8 +215,8 @@ mod test {
         crypto::script::TariScript,
         transactions::{
             crypto_factories::CryptoFactories,
-            helpers::TestParams,
             tari_amount::*,
+            test_helpers::TestParams,
             transaction::OutputFeatures,
             transaction_protocol::{
                 build_challenge,

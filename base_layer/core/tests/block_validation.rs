@@ -35,15 +35,8 @@ use rand::{rngs::OsRng, RngCore};
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::{Block, BlockHeaderValidationError, BlockValidationError},
-    chain_storage::{
-        BlockHeaderAccumulatedData,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainBlock,
-        ChainStorageError,
-        Validators,
-    },
+    blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     crypto::tari_utilities::hex::Hex,
     proof_of_work::{
@@ -56,8 +49,8 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
-        helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         tari_amount::{uT, T},
+        test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         transaction::OutputFeatures,
         CryptoFactories,
     },

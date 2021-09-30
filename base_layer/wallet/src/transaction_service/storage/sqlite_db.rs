@@ -1508,8 +1508,8 @@ mod test {
 
     use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
     use tari_core::transactions::{
-        helpers::{create_unblinded_output, TestParams},
         tari_amount::MicroTari,
+        test_helpers::{create_unblinded_output, TestParams},
         transaction::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
@@ -1520,6 +1520,7 @@ mod test {
 
     use crate::{
         storage::sqlite_utilities::WalletDbConnection,
+        test_utils::create_consensus_constants,
         transaction_service::storage::{
             database::{DbKey, TransactionBackend},
             models::{
@@ -1554,7 +1555,8 @@ mod test {
 
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
 
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionProtocol::builder(1, constants);
         let test_params = TestParams::new();
         let input = create_unblinded_output(
             TariScript::default(),
@@ -1565,7 +1567,7 @@ mod test {
         let amount = MicroTari::from(10_000);
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroTari::from(177))
+            .with_fee_per_gram(MicroTari::from(177 / 5))
             .with_offset(PrivateKey::random(&mut OsRng))
             .with_private_nonce(PrivateKey::random(&mut OsRng))
             .with_amount(0, amount)

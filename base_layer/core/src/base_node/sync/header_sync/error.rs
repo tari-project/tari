@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
+use crate::{blocks::BlockError, chain_storage::ChainStorageError, validation::ValidationError};
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -63,4 +63,7 @@ pub enum BlockHeaderSyncError {
     InvalidProtocolResponse(String),
     #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken { actual: String, expected: String },
+
+    #[error("Block error: {0}")]
+    BlockError(#[from] BlockError),
 }

@@ -20,9 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        CompleteDeletedBitmap,
+        DeletedBitmap,
+        HistoricalBlock,
+        NewBlockTemplate,
+    },
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, CompleteDeletedBitmap},
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
@@ -34,12 +44,8 @@ use crate::{
         utxo_mined_info::UtxoMinedInfo,
         BlockAddResult,
         BlockchainBackend,
-        ChainBlock,
-        ChainHeader,
         DbBasicStats,
         DbTotalSizeStats,
-        DeletedBitmap,
-        HistoricalBlock,
         HorizonData,
         MmrTree,
         Optional,

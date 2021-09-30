@@ -46,7 +46,10 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari},
+    weight::TransactionWeight,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
@@ -462,6 +465,19 @@ impl AppState {
             self.update_cache().await;
         }
     }
+
+    pub fn get_default_fee_per_gram(&self) -> MicroTari {
+        use Network::*;
+        // TODO: TBD
+        match self.node_config.network {
+            MainNet => MicroTari(5),
+            LocalNet => MicroTari(5),
+            Ridcully => MicroTari(25),
+            Stibbons => MicroTari(25),
+            Weatherwax => MicroTari(25),
+            Igor => MicroTari(5),
+        }
+    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -497,6 +513,16 @@ impl AppStateInner {
         }
     }
 
+    pub fn get_transaction_weight(&self) -> TransactionWeight {
+        *self
+            .wallet
+            .network
+            .create_consensus_constants()
+            .last()
+            .unwrap()
+            .transaction_weight()
+    }
+
     pub async fn refresh_full_transaction_state(&mut self) -> Result<(), UiError> {
         let mut pending_transactions: Vec<CompletedTransaction> = Vec::new();
         pending_transactions.extend(
@@ -523,7 +549,7 @@ impl AppStateInner {
         });
         self.data.pending_txs = pending_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from(tx.clone()))
+            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
             .collect();
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
@@ -555,7 +581,7 @@ impl AppStateInner {
 
         self.data.completed_txs = completed_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from(tx.clone()))
+            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
             .collect();
         self.updated = true;
         Ok(())
@@ -598,7 +624,8 @@ impl AppStateInner {
                     });
             },
             Some(tx) => {
-                let tx = CompletedTransactionInfo::from(CompletedTransaction::from(tx));
+                let tx =
+                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight());
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && !tx.cancelled {
                         self.data.pending_txs[index] = tx;
@@ -862,42 +889,42 @@ pub struct CompletedTransactionInfo {
     pub outputs_count: usize,
 }
 
-impl From<CompletedTransaction> for CompletedTransactionInfo {
-    fn from(completed_transaction: CompletedTransaction) -> Self {
-        let excess_signature = if completed_transaction.transaction.body.kernels().is_empty() {
-            "".to_string()
-        } else {
-            completed_transaction.transaction.body.kernels()[0]
-                .excess_sig
-                .get_signature()
-                .to_hex()
-        };
-
+impl CompletedTransactionInfo {
+    pub fn from_completed_transaction(tx: CompletedTransaction, transaction_weighting: &TransactionWeight) -> Self {
+        let excess_signature = tx
+            .transaction
+            .first_kernel_excess_sig()
+            .map(|s| s.get_signature().to_hex())
+            .unwrap_or_default();
+        let is_coinbase = tx.is_coinbase();
+        let weight = tx.transaction.calculate_weight(transaction_weighting);
+        let inputs_count = tx.transaction.body.inputs().len();
+        let outputs_count = tx.transaction.body.outputs().len();
         Self {
-            tx_id: completed_transaction.tx_id,
-            source_public_key: completed_transaction.source_public_key.clone(),
-            destination_public_key: completed_transaction.destination_public_key.clone(),
-            amount: completed_transaction.amount,
-            fee: completed_transaction.fee,
+            tx_id: tx.tx_id,
+            source_public_key: tx.source_public_key.clone(),
+            destination_public_key: tx.destination_public_key.clone(),
+            amount: tx.amount,
+            fee: tx.fee,
             excess_signature,
-            maturity: completed_transaction
+            maturity: tx
                 .transaction
                 .body
                 .outputs()
                 .first()
                 .map(|o| o.features.maturity)
-                .unwrap_or_else(|| 0),
-            status: completed_transaction.status.clone(),
-            message: completed_transaction.message.clone(),
-            timestamp: completed_transaction.timestamp,
-            cancelled: completed_transaction.cancelled,
-            direction: completed_transaction.direction.clone(),
-            valid: completed_transaction.valid,
-            mined_height: completed_transaction.mined_height,
-            is_coinbase: completed_transaction.is_coinbase(),
-            weight: completed_transaction.transaction.calculate_weight(),
-            inputs_count: completed_transaction.transaction.body.inputs().len(),
-            outputs_count: completed_transaction.transaction.body.outputs().len(),
+                .unwrap_or(0),
+            status: tx.status,
+            message: tx.message,
+            timestamp: tx.timestamp,
+            cancelled: tx.cancelled,
+            direction: tx.direction,
+            valid: tx.valid,
+            mined_height: tx.mined_height,
+            is_coinbase,
+            weight,
+            inputs_count,
+            outputs_count,
         }
     }
 }

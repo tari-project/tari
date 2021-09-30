@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::transactions::display_currency::display_currency;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
-
-use crate::transactions::helpers::display_currency;
 use std::{
     fmt::{Display, Error, Formatter},
     iter::Sum,
@@ -62,9 +61,9 @@ pub const uT: MicroTari = MicroTari(1);
 pub const T: MicroTari = MicroTari(1_000_000);
 
 // You can only add or subtract µT from µT
-newtype_ops! { [MicroTari] {add sub} {:=} Self Self }
-newtype_ops! { [MicroTari] {add sub} {:=} &Self &Self }
-newtype_ops! { [MicroTari] {add sub} {:=} Self &Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} Self Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} Self &Self }
 
 // Multiplication and division only makes sense when µT is multiplied/divided by a scalar
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }

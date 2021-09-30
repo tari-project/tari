@@ -31,15 +31,12 @@
 #[macro_use]
 extern crate bitflags;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod consensus;
 #[cfg(feature = "base_node")]
 pub mod iterators;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod proof_of_work;
 #[cfg(feature = "base_node")]
 pub mod validation;
