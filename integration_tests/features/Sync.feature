@@ -103,6 +103,7 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
+  @flaky @broken
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
     And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5

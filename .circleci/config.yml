@@ -97,6 +97,9 @@ commands:
     description: Run cucumber scenarios
     steps:
       - run:
+          name: node -v
+          command: node -v
+      - run:
           name: npm ci
           command: cd integration_tests && npm ci
       - run:
@@ -126,7 +129,7 @@ commands:
       - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky"
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky and not @broken"
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
