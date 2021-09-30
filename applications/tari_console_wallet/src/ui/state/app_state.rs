@@ -877,6 +877,10 @@ pub struct CompletedTransactionInfo {
     pub direction: TransactionDirection,
     pub valid: bool,
     pub mined_height: Option<u64>,
+    pub is_coinbase: bool,
+    pub weight: u64,
+    pub inputs_count: usize,
+    pub outputs_count: usize,
 }
 
 impl From<CompletedTransaction> for CompletedTransactionInfo {
@@ -892,8 +896,8 @@ impl From<CompletedTransaction> for CompletedTransactionInfo {
 
         Self {
             tx_id: completed_transaction.tx_id,
-            source_public_key: completed_transaction.source_public_key,
-            destination_public_key: completed_transaction.destination_public_key,
+            source_public_key: completed_transaction.source_public_key.clone(),
+            destination_public_key: completed_transaction.destination_public_key.clone(),
             amount: completed_transaction.amount,
             fee: completed_transaction.fee,
             excess_signature,
@@ -904,13 +908,17 @@ impl From<CompletedTransaction> for CompletedTransactionInfo {
                 .first()
                 .map(|o| o.features.maturity)
                 .unwrap_or_else(|| 0),
-            status: completed_transaction.status,
-            message: completed_transaction.message,
+            status: completed_transaction.status.clone(),
+            message: completed_transaction.message.clone(),
             timestamp: completed_transaction.timestamp,
             cancelled: completed_transaction.cancelled,
-            direction: completed_transaction.direction,
+            direction: completed_transaction.direction.clone(),
             valid: completed_transaction.valid,
             mined_height: completed_transaction.mined_height,
+            is_coinbase: completed_transaction.is_coinbase(),
+            weight: completed_transaction.transaction.calculate_weight(),
+            inputs_count: completed_transaction.transaction.body.inputs().len(),
+            outputs_count: completed_transaction.transaction.body.outputs().len(),
         }
     }
 }

@@ -316,15 +316,13 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = Span::styled(format!("{}", tx.amount), Style::default().fg(Color::White));
-            let fee_details = if tx.is_coinbase() {
+            let fee_details = if tx.is_coinbase {
                 Span::raw("")
             } else {
                 Span::styled(
                     format!(
                         " (weight: {}g, #inputs: {}, #outputs: {})",
-                        tx.transaction.calculate_weight(),
-                        tx.transaction.body.inputs().len(),
-                        tx.transaction.body.outputs().len()
+                        tx.weight, tx.inputs_count, tx.outputs_count
                     ),
                     Style::default().fg(Color::Gray),
                 )
