@@ -493,10 +493,10 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         tx: Transaction,
-        fee: MicroTari,
         amount: MicroTari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
+        let fee = tx.body.get_total_fee();
         match self
             .handle
             .call(TransactionServiceRequest::SubmitSelfSendTransaction(

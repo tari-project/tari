@@ -170,11 +170,11 @@ pub async fn coin_split(
         _ => Err(CommandError::Argument),
     }?;
 
-    let (tx_id, tx, fee, amount) = output_service
+    let (tx_id, tx, amount) = output_service
         .create_coin_split(amount_per_split, num_splits as usize, MicroTari(100), None)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+        .submit_transaction(tx_id, tx, amount, "Coin split".into())
         .await?;
 
     Ok(tx_id)
@@ -694,9 +694,8 @@ pub async fn command_runner(
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = manager.create_registration_transaction(name).await?;
-                let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
-                    .submit_transaction(tx_id, transaction, fee, 0.into(), message)
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
             MintTokens => {
@@ -728,9 +727,8 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_minting_transaction(&public_key, asset.owner_commitment(), unique_ids)
                     .await?;
-                let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
-                    .submit_transaction(tx_id, transaction, fee, 0.into(), message)
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
             CreateInitialCheckpoint => {
@@ -759,12 +757,10 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_initial_asset_checkpoint(&public_key, &merkle_root)
                     .await?;
-                let fee = transaction.body.get_total_fee();
                 let _result = transaction_service
                     .submit_transaction(
                         tx_id,
                         transaction,
-                        fee,
                         0.into(),
                         "test initial asset checkpoint transaction".to_string(),
                     )

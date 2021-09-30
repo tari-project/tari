@@ -1316,7 +1316,7 @@ where TBackend: OutputManagerBackend + 'static
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(TxId, Transaction, MicroTari, MicroTari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         trace!(
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."
@@ -1425,7 +1425,7 @@ where TBackend: OutputManagerBackend + 'static
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
-        Ok((tx_id, tx, fee, utxos_total_value))
+        Ok((tx_id, tx, utxos_total_value))
     }
 
     /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows

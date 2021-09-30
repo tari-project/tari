@@ -428,8 +428,8 @@ async fn test_utxo_selection_no_chain_metadata() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // coin split uses the "Largest" selection strategy
-    let (_, _, fee, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
-    assert_eq!(fee, MicroTari::from(820));
+    let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
+    assert_eq!(tx.body.get_total_fee(), MicroTari::from(820));
     assert_eq!(utxos_total_value, MicroTari::from(10_000));
 
     // test that largest utxo was encumbered
@@ -496,9 +496,9 @@ async fn test_utxo_selection_with_chain_metadata() {
     assert!(matches!(err, OutputManagerError::NotEnoughFunds));
 
     // test coin split is maturity aware
-    let (_, _, fee, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
+    let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
     assert_eq!(utxos_total_value, MicroTari::from(6_000));
-    assert_eq!(fee, MicroTari::from(820));
+    assert_eq!(tx.get_total_fee(), MicroTari::from(820));
 
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -1164,13 +1164,16 @@ async fn coin_split_with_change() {
 
     let fee_per_gram = MicroTari::from(25);
     let split_count = 8;
-    let (_tx_id, coin_split_tx, fee, amount) = oms
+    let (_tx_id, coin_split_tx, amount) = oms
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
         .await
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 2);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
-    assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 2, split_count + 1));
+    assert_eq!(
+        coin_split_tx.body.get_total_fee(),
+        Fee::calculate(fee_per_gram, 1, 2, split_count + 1)
+    );
     assert_eq!(amount, val2 + val3);
 }
 
@@ -1194,13 +1197,16 @@ async fn coin_split_no_change() {
     assert!(oms.add_output(uo2).await.is_ok());
     assert!(oms.add_output(uo3).await.is_ok());
 
-    let (_tx_id, coin_split_tx, fee, amount) = oms
+    let (_tx_id, coin_split_tx, amount) = oms
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
         .await
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 3);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count);
-    assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 3, split_count));
+    assert_eq!(
+        coin_split_tx.body.get_total_fee(),
+        Fee::calculate(fee_per_gram, 1, 3, split_count)
+    );
     assert_eq!(amount, val1 + val2 + val3);
 }
 
