@@ -114,7 +114,7 @@ impl Stream for Miner {
                 "Starting {} mining threads for target difficulty {}",
                 self.num_threads, self.target_difficulty
             );
-            self.start_threads(&ctx);
+            self.start_threads(ctx);
             return Poll::Pending;
         } else if self.num_threads == 0 {
             error!("Cannot mine: no mining threads");
@@ -127,7 +127,7 @@ impl Stream for Miner {
         // Non blocking select from all miner's receiver channels
         let mut sel = Select::new();
         for rx in self.channels.iter() {
-            sel.recv(&rx);
+            sel.recv(rx);
         }
         let report = match sel.try_select() {
             Ok(oper) => {

@@ -90,7 +90,7 @@ impl ReorgPoolStorage {
         }
 
         for tx_key in &removed_tx_keys {
-            self.txs_by_signature.remove(&tx_key);
+            self.txs_by_signature.remove(tx_key);
             trace!(
                 target: LOG_TARGET,
                 "Removed double spend tx from reorg pool: {}",

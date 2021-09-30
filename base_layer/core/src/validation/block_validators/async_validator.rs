@@ -351,7 +351,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             output.verify_range_proof(&range_proof_prover)?;
                         }
 
-                        helpers::check_not_duplicate_txo(&*db, &output)?;
+                        helpers::check_not_duplicate_txo(&*db, output)?;
                         commitment_sum = &commitment_sum + &output.commitment;
                     }
 
@@ -424,7 +424,7 @@ impl<B: BlockchainBackend + 'static> BlockSyncBodyValidation for BlockValidator<
         );
 
         let constants = self.rules.consensus_constants(block.header.height);
-        helpers::check_block_weight(&block, &constants)?;
+        helpers::check_block_weight(&block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
         let block = self.validate_block_body(block).await?;

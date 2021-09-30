@@ -462,10 +462,10 @@ impl TransactionInput {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         let challenge = TransactionInput::build_script_challenge(
-            &self.script_signature.public_nonce(),
+            self.script_signature.public_nonce(),
             &self.script,
             &self.input_data,
-            &public_script_key,
+            public_script_key,
             &self.commitment,
         );
         if self
@@ -610,7 +610,7 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &self.metadata_signature.public_nonce(),
+            self.metadata_signature.public_nonce(),
             &self.commitment,
         );
         if !self.metadata_signature.verify_challenge(
@@ -717,11 +717,11 @@ impl TransactionOutput {
             Some(partial_nonce) => &nonce_commitment + partial_nonce,
         };
         let value = PrivateKey::from(value.as_u64());
-        let commitment = PedersenCommitmentFactory::default().commit(&spending_key, &value);
+        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            &script,
-            &output_features,
-            &sender_offset_public_key,
+            script,
+            output_features,
+            sender_offset_public_key,
             &nonce_commitment,
             &commitment,
         );
@@ -753,7 +753,7 @@ impl TransactionOutput {
             spending_key,
             script,
             output_features,
-            &sender_offset_public_key,
+            sender_offset_public_key,
             Some(partial_commitment_nonce),
             None,
         )

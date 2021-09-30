@@ -199,13 +199,11 @@ where T: BlockchainBackend + 'static
                 let mut headers = Vec::with_capacity(MAX_HEADERS_PER_RESPONSE as usize);
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
                     match self.blockchain_db.fetch_header(starting_block.height + i as u64).await {
-                        Ok(header) => {
-                            if let Some(header) = header {
-                                let hash = header.hash();
-                                headers.push(header);
-                                if hash == stopping_hash {
-                                    break;
-                                }
+                        Ok(Some(header)) => {
+                            let hash = header.hash();
+                            headers.push(header);
+                            if hash == stopping_hash {
+                                break;
                             }
                         },
                         Err(err) => {
@@ -217,6 +215,7 @@ where T: BlockchainBackend + 'static
                             );
                             return Err(err.into());
                         },
+                        _ => error!(target: LOG_TARGET, "Could not fetch header: None"),
                     }
                 }
 

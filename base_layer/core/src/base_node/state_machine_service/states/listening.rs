@@ -434,7 +434,7 @@ mod test {
         assert_eq!(best_network_metadata.height_of_longest_chain(), network_tip_height);
         assert_eq!(best_network_metadata.best_block(), &block_hash1);
         assert_eq!(best_network_metadata.accumulated_difficulty(), accumulated_difficulty1);
-        let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
+        let sync_peers = select_sync_peers(local_tip_height, best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 3);
         sync_peers.iter().find(|p| p.node_id == node_id1).unwrap();
         sync_peers.iter().find(|p| p.node_id == node_id3).unwrap();

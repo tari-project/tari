@@ -191,7 +191,7 @@ When(
 
 Then(
   "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
-  { timeout: 120 * 1000 },
+  { timeout: 180 * 1000 },
   async function (wallet_name, count) {
     let wallet = this.getWallet(wallet_name);
     let broadcast = wallet.getOutboundTransactions();

@@ -280,8 +280,8 @@ impl DhtConnectivity {
             .cloned()
             .partition::<Vec<_>, _>(|n| new_neighbours.contains(n));
         // Only retain the peers that aren't already added
-        new_neighbours.retain(|n| !intersection.contains(&n));
-        self.neighbours.retain(|n| intersection.contains(&n));
+        new_neighbours.retain(|n| !intersection.contains(n));
+        self.neighbours.retain(|n| intersection.contains(n));
 
         info!(
             target: LOG_TARGET,
@@ -340,7 +340,7 @@ impl DhtConnectivity {
                 .drain(..)
                 .partition::<Vec<_>, _>(|n| random_peers.contains(n));
             // Remove the peers that we want to keep from the `random_peers` to be added
-            random_peers.retain(|n| !intersection.contains(&n));
+            random_peers.retain(|n| !intersection.contains(n));
             self.random_pool = intersection;
             debug!(
                 target: LOG_TARGET,
@@ -481,7 +481,7 @@ impl DhtConnectivity {
             let exclude = self.get_pool_peers();
             match self.fetch_random_peers(1, &exclude).await?.pop() {
                 Some(new_peer) => {
-                    self.remove_connection_handle(&current_peer);
+                    self.remove_connection_handle(current_peer);
                     if let Some(pos) = self.random_pool.iter().position(|n| n == current_peer) {
                         self.random_pool.remove(pos);
                     }
@@ -508,7 +508,7 @@ impl DhtConnectivity {
             let exclude = self.get_pool_peers();
             match self.fetch_neighbouring_peers(1, &exclude).await?.pop() {
                 Some(node_id) => {
-                    self.remove_connection_handle(&current_peer);
+                    self.remove_connection_handle(current_peer);
                     if let Some(pos) = self.neighbours.iter().position(|n| n == current_peer) {
                         self.neighbours.remove(pos);
                     }
@@ -626,7 +626,7 @@ impl DhtConnectivity {
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;

@@ -188,7 +188,7 @@ async fn test_wallet() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -200,7 +200,7 @@ async fn test_wallet() {
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
     let bob_wallet = create_wallet(
-        &bob_db_tempdir.path(),
+        bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
@@ -344,7 +344,7 @@ async fn test_wallet() {
 
     let mut shutdown_a = Shutdown::new();
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -370,7 +370,7 @@ async fn test_wallet() {
     // Test the partial db backup in this test so that we can work with the data generated during the test
     let mut shutdown_a = Shutdown::new();
     let alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -427,7 +427,7 @@ async fn test_do_not_overwrite_master_key() {
     let mut shutdown = Shutdown::new();
     let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
     let wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -443,7 +443,7 @@ async fn test_do_not_overwrite_master_key() {
     let shutdown = Shutdown::new();
     let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
     match create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -459,7 +459,7 @@ async fn test_do_not_overwrite_master_key() {
     // make sure we can create a new wallet with recovery key if the db file does not exist
     let dir = tempdir().unwrap();
     let _wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -477,7 +477,7 @@ async fn test_sign_message() {
 
     let shutdown = Shutdown::new();
     let mut wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -535,7 +535,7 @@ fn test_store_and_forward_send_tx() {
 
     let mut alice_wallet = alice_runtime
         .block_on(create_wallet(
-            &alice_db_tempdir.path(),
+            alice_db_tempdir.path(),
             "alice_db",
             factories.clone(),
             shutdown_a.to_signal(),
@@ -546,7 +546,7 @@ fn test_store_and_forward_send_tx() {
 
     let bob_wallet = bob_runtime
         .block_on(create_wallet(
-            &bob_db_tempdir.path(),
+            bob_db_tempdir.path(),
             "bob_db",
             factories.clone(),
             shutdown_b.to_signal(),
@@ -558,7 +558,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories.clone(),
             shutdown_c.to_signal(),
@@ -614,7 +614,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories,
             shutdown_c2.to_signal(),

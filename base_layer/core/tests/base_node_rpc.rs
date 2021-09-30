@@ -182,7 +182,7 @@ async fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(&block0.block(), vec![tx1.clone()], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
     base_node

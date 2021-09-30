@@ -152,7 +152,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
             TxStorageResponse::NotStored => "Not stored",
         };
-        fmt.write_str(&storage)
+        fmt.write_str(storage)
     }
 }
 

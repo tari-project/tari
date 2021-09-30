@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 futures = { version = "^0.3.1", features = ["async-await"] }
 rand = "0.8"
-tari_crypto = "0.11.1"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 serde = { version = "1.0.106", features = ["derive"] }
 tokio = { version = "1.11", features = ["time", "sync"] }
 lazy_static = "1.4.0"

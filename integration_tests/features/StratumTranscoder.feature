@@ -1,7 +1,7 @@
 @stratum-transcoder
 Feature: Stratum Transcoder
 
-  @critical @flaky
+  @critical @flaky @broken
   Scenario: Transcoder Functionality Test
     Given I have a seed node NODE
     And I have wallet WALLET1 connected to all seed nodes

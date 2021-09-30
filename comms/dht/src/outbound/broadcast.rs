@@ -518,7 +518,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
                 let mac_challenge = crypt::create_origin_mac_challenge_parts(
                     self.protocol_version,
-                    &destination,
+                    destination,
                     message_type,
                     flags,
                     expires,

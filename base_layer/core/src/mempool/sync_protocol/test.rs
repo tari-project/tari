@@ -147,13 +147,13 @@ async fn synchronise() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 8);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     let transactions = get_snapshot(&mempool1);
     assert_eq!(transactions.len(), 8);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 }
 
 #[tokio::test]
@@ -182,13 +182,13 @@ async fn duplicate_set() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     let transactions = get_snapshot(&mempool1);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 }
 
 #[tokio::test]
@@ -219,8 +219,8 @@ async fn responder() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     // We cannot be sure that the mempool1 contains all the transactions at this point because the initiator protocol
     // can complete before the responder has inserted the final transaction. There is currently no mechanism to know

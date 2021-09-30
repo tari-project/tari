@@ -108,7 +108,7 @@ impl ConsensusManager {
             if c.effective_from_height() > height {
                 break;
             }
-            constants = &c
+            constants = c
         }
         constants
     }
@@ -202,7 +202,7 @@ impl ConsensusManagerBuilder {
 
         let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
-            &self.consensus_constants[0].emission_decay,
+            self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].emission_tail,
         );
         let inner = ConsensusManagerInner {

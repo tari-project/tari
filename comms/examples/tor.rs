@@ -153,7 +153,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
         .unwrap();
-    let peer_database = datastore.get_handle(&"peerdb").unwrap();
+    let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let (inbound_tx, inbound_rx) = mpsc::channel(10);
