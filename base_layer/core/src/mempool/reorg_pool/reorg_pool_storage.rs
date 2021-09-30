@@ -131,11 +131,4 @@ impl ReorgPoolStorage {
     pub fn snapshot(&mut self) -> Vec<Arc<Transaction>> {
         self.txs_by_signature.iter().map(|(_, tx)| tx).cloned().collect()
     }
-
-    /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&mut self) -> u64 {
-        self.txs_by_signature
-            .iter()
-            .fold(0, |weight, (_, tx)| weight + tx.calculate_weight())
-    }
 }

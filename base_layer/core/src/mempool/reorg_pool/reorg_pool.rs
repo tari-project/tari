@@ -132,15 +132,6 @@ impl ReorgPool {
             .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .snapshot())
     }
-
-    /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self) -> Result<u64, ReorgPoolError> {
-        Ok(self
-            .pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .calculate_weight())
-    }
 }
 
 impl Clone for ReorgPool {

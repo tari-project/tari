@@ -219,18 +219,13 @@ impl MempoolStorage {
         Ok(self.unconfirmed_pool.len())
     }
 
-    // Returns the total weight of all transactions stored in the Mempool.
-    fn calculate_weight(&self) -> Result<u64, MempoolError> {
-        Ok(self.unconfirmed_pool.calculate_weight() + self.reorg_pool.calculate_weight()?)
-    }
-
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&self) -> Result<StatsResponse, MempoolError> {
         Ok(StatsResponse {
             total_txs: self.len()?,
             unconfirmed_txs: self.unconfirmed_pool.len(),
             reorg_txs: self.reorg_pool.len()?,
-            total_weight: self.calculate_weight()?,
+            total_weight: self.unconfirmed_pool.calculate_weight(),
         })
     }
 
