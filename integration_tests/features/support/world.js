@@ -1,6 +1,7 @@
 const { setWorldConstructor, After, BeforeAll } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
+const DanNodeProcess = require("../../helpers/danNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -18,6 +19,7 @@ class CustomWorld {
     this.checkAutoTransactions = true;
     this.seeds = {};
     this.nodes = {};
+    this.dan_nodes = {};
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
@@ -69,6 +71,16 @@ class CustomWorld {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
   }
 
+  createDanNode(name, options) {
+    return new DanNodeProcess(name, false, options, this.logFilePathBaseNode);
+  }
+
+  async createAndAddDanNode(name) {
+    const node = this.createDanNode(name);
+    await node.init();
+    await this.addDanNode(name, node);
+  }
+
   async createAndAddNode(name, addresses) {
     const node = this.createNode(name);
     if (Array.isArray(addresses)) {
@@ -78,6 +90,11 @@ class CustomWorld {
     }
     await node.startNew();
     await this.addNode(name, node);
+  }
+
+  async addDanNode(name, process) {
+    this.dan_nodes[name] = process;
+    // this.clients[name] = await process.createGrpcClient();
   }
 
   async addNode(name, process) {
@@ -233,7 +250,7 @@ class CustomWorld {
   }
 
   getNode(name) {
-    const node = this.nodes[name] || this.seeds[name];
+    const node = this.nodes[name] || this.seeds[name] || this.dan_nodes[name];
     if (!node) {
       throw new Error(`Node not found with name '${name}'`);
     }
@@ -355,6 +372,11 @@ BeforeAll({ timeout: 1200000 }, async function () {
   console.log("Compiling base node...");
   await baseNode.init();
   await baseNode.compile();
+
+  const danNode = new DanNodeProcess("compile");
+  console.log("Compiling dan node...");
+  await danNode.init();
+  await danNode.compile();
 
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");

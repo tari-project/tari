@@ -550,3 +550,12 @@ transcoder_host_address = "127.0.0.1:7879"
 # mining_pool_address = "miningcore.tarilabs.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
+
+[dan_node]
+# Override common.network for base node
+# network = "weatherwax"
+
+[dan_node.weatherwax]
+# committee = ["pubkey_1", "pubkey_2"] # cannot be of zero size
+# phase_timeout = 30
+# template_id = "EditableMetadata"

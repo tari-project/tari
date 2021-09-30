@@ -22,7 +22,8 @@ tari_mmr = {path = "../../base_layer/mmr"}
 thiserror = "^1.0.20"
 log = { version = "0.4.8", features = ["std"] }
 anyhow = "1.0.32"
-tokio = { version="0.2.10", features = ["macros", "sync", "time"]}
+tokio = { version="1.10", features = ["macros", "time"]}
+tokio-stream = { version = "0.1.7", features = ["sync"] }
 tonic = "0.5.2"
 prost = "0.8"
 prost-types = "0.8"

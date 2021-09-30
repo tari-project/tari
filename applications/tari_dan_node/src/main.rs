@@ -37,7 +37,8 @@ use std::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
-use tokio::{runtime, stream::StreamExt, task};
+use tokio::{runtime, task};
+use tokio_stream::StreamExt;
 use tonic::transport::Server;
 
 use crate::{
@@ -97,12 +98,8 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 }
 
 fn build_runtime() -> Result<Runtime, ExitCodes> {
-    let mut builder = runtime::Builder::new();
-    builder
-        .threaded_scheduler()
-        .enable_all()
-        .build()
-        .map_err(|e| ExitCodes::UnknownError)
+    let mut builder = runtime::Builder::new_multi_thread();
+    builder.enable_all().build().map_err(|e| ExitCodes::UnknownError)
 }
 
 async fn run_dan_node<TMempoolService: MempoolService + Clone + Send>(
