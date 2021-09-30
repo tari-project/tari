@@ -73,7 +73,7 @@ impl OrphanValidation for OrphanBlockValidator {
         };
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
-        check_block_weight(&block, &self.rules.consensus_constants(height))?;
+        check_block_weight(block, self.rules.consensus_constants(height))?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
         trace!(
@@ -81,7 +81,7 @@ impl OrphanValidation for OrphanBlockValidator {
             "Checking duplicate inputs and outputs on {}",
             block_id
         );
-        check_sorting_and_duplicates(&block)?;
+        check_sorting_and_duplicates(block)?;
         trace!(
             target: LOG_TARGET,
             "SV - No duplicate inputs / outputs for {} ",

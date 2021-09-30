@@ -86,7 +86,7 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput) {
     let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), TestParamsHelpers::new(), val);
     (
-        utxo.as_transaction_input(&factory)
+        utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
         utxo,
     )
@@ -105,7 +105,7 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
         value,
     );
     (
-        utxo.as_transaction_input(&factory)
+        utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
         utxo,
     )

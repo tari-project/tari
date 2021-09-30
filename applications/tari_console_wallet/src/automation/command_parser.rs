@@ -218,7 +218,7 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
     let now = Utc::now();
     let start_time = if start_time != "now" {
-        parse_date_string(&start_time, now, Dialect::Uk).map_err(ParseError::Date)?
+        parse_date_string(start_time, now, Dialect::Uk).map_err(ParseError::Date)?
     } else {
         now
     };

@@ -61,7 +61,7 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
         while let Some(stream) = conn2_state.next_incoming_substream().await {
             notif_tx
                 .send(ProtocolNotification::new(
-                    ProtocolId::from_static(&GreetingClient::PROTOCOL_NAME),
+                    ProtocolId::from_static(GreetingClient::PROTOCOL_NAME),
                     ProtocolEvent::NewInboundSubstream(conn2.peer_node_id().clone(), stream),
                 ))
                 .await

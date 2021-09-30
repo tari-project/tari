@@ -93,7 +93,7 @@ l9smp8LtJcXkw4cNgE4MB9VKdx+NhdbvWemt7ccldeL22hmyS24=
         let verifier = SignedMessageVerifier::new(maintainers().collect());
         let signer = verifier.verify_signature(&sig, MESSAGE).unwrap();
 
-        let (maintainer, _) = pgp::SignedPublicKey::from_string(&MAINTAINERS[3]).unwrap();
+        let (maintainer, _) = pgp::SignedPublicKey::from_string(MAINTAINERS[3]).unwrap();
         assert_eq!(*signer, maintainer);
     }
 

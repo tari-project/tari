@@ -223,7 +223,7 @@ impl DhtDiscoveryService {
         public_key: &CommsPublicKey,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<Peer, DhtDiscoveryError> {
-        let node_id = self.validate_raw_node_id(&public_key, &discovery_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(public_key, &discovery_msg.node_id)?;
 
         let addresses = discovery_msg
             .addresses
@@ -237,7 +237,7 @@ impl DhtDiscoveryService {
         let peer = self
             .peer_manager
             .add_or_update_online_peer(
-                &public_key,
+                public_key,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discovery_msg.peer_features),

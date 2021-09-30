@@ -1328,14 +1328,11 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
     tx_reply.public_spend_key = pub_key;
     runtime
-        .block_on(alice_tx_ack_sender.send(create_dummy_message(
-            wrong_tx_id.into(),
-            &bob_node_identity.public_key(),
-        )))
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(wrong_tx_id.into(), bob_node_identity.public_key())))
         .unwrap();
 
     runtime
-        .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply.into(), &bob_node_identity.public_key())))
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(tx_reply.into(), bob_node_identity.public_key())))
         .unwrap();
 
     runtime.block_on(async {
@@ -1434,7 +1431,7 @@ fn finalize_tx_with_incorrect_pubkey() {
     let msg = stp.build_single_round_message().unwrap();
     let tx_message = create_dummy_message(
         TransactionSenderMessage::Single(Box::new(msg)).into(),
-        &bob_node_identity.public_key(),
+        bob_node_identity.public_key(),
     );
 
     runtime.block_on(alice_tx_sender.send(tx_message)).unwrap();
@@ -1560,7 +1557,7 @@ fn finalize_tx_with_missing_output() {
     let msg = stp.build_single_round_message().unwrap();
     let tx_message = create_dummy_message(
         TransactionSenderMessage::Single(Box::new(msg)).into(),
-        &bob_node_identity.public_key(),
+        bob_node_identity.public_key(),
     );
 
     runtime.block_on(alice_tx_sender.send(tx_message)).unwrap();
@@ -1599,7 +1596,7 @@ fn finalize_tx_with_missing_output() {
     runtime
         .block_on(alice_tx_finalized.send(create_dummy_message(
             finalized_transaction_message,
-            &bob_node_identity.public_key(),
+            bob_node_identity.public_key(),
         )))
         .unwrap();
 
@@ -2116,7 +2113,7 @@ fn test_transaction_cancellation() {
     let tx_id2 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
     runtime
-        .block_on(alice_tx_sender.send(create_dummy_message(proto_message, &bob_node_identity.public_key())))
+        .block_on(alice_tx_sender.send(create_dummy_message(proto_message, bob_node_identity.public_key())))
         .unwrap();
 
     runtime.block_on(async {
@@ -2187,7 +2184,7 @@ fn test_transaction_cancellation() {
     let tx_id3 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
     runtime
-        .block_on(alice_tx_sender.send(create_dummy_message(proto_message, &bob_node_identity.public_key())))
+        .block_on(alice_tx_sender.send(create_dummy_message(proto_message, bob_node_identity.public_key())))
         .unwrap();
 
     runtime.block_on(async {
@@ -2232,7 +2229,7 @@ fn test_transaction_cancellation() {
 
     let proto_message = proto::TransactionCancelledMessage { tx_id: tx_id3 };
     runtime
-        .block_on(alice_tx_cancelled_sender.send(create_dummy_message(proto_message, &bob_node_identity.public_key())))
+        .block_on(alice_tx_cancelled_sender.send(create_dummy_message(proto_message, bob_node_identity.public_key())))
         .unwrap();
 
     runtime.block_on(async {
@@ -2845,7 +2842,7 @@ fn test_restarting_transaction_protocols() {
     assert!(runtime.block_on(bob_ts.restart_transaction_protocols()).is_ok());
 
     runtime
-        .block_on(bob_tx_reply.send(create_dummy_message(alice_reply.into(), &alice_identity.public_key())))
+        .block_on(bob_tx_reply.send(create_dummy_message(alice_reply.into(), alice_identity.public_key())))
         .unwrap();
 
     runtime.block_on(async {

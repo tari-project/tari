@@ -250,7 +250,7 @@ impl NetworkTab {
         let (public_address, style) = match self.base_node_edit_mode {
             BaseNodeInputMode::PublicKey => (self.address_field.clone(), Style::default()),
             BaseNodeInputMode::Address => (self.address_field.clone(), Style::default().fg(Color::Magenta)),
-            _ => (display_address(&peer), Style::default()),
+            _ => (display_address(peer), Style::default()),
         };
 
         let address_input = Paragraph::new(public_address)

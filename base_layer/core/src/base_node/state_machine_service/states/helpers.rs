@@ -45,15 +45,15 @@ pub enum BaseNodeRequestError {
     // #[error("No sync peers error")]
     // NoSyncPeers,
     #[error("Chain storage error: `{0}`")]
-    ChainStorageError(#[from] ChainStorageError),
+    ChainStorage(#[from] ChainStorageError),
     #[error("Peer manager error: `{0}`")]
-    PeerManagerError(#[from] PeerManagerError),
+    PeerManager(#[from] PeerManagerError),
     #[error("Connectivity error: `{0}`")]
-    ConnectivityError(#[from] ConnectivityError),
+    Connectivity(#[from] ConnectivityError),
     #[error("Comms interface error: `{0}`")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
+    CommsInterface(#[from] CommsInterfaceError),
     #[error("PowError: `{0}`")]
-    PowError(#[from] PowError),
+    Pow(#[from] PowError),
 }
 
 /// Configuration for the Sync Peer Selection and Banning.

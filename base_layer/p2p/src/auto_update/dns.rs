@@ -258,7 +258,7 @@ mod test {
                 config: AutoUpdateConfig::get_test_defaults(),
             };
             let spec = updater
-                .check_for_updates(ApplicationType::BaseNode, &"linux-x86_64", &"1.0.0".parse().unwrap())
+                .check_for_updates(ApplicationType::BaseNode, "linux-x86_64", &"1.0.0".parse().unwrap())
                 .await
                 .unwrap();
             assert!(spec.is_none());
@@ -275,7 +275,7 @@ mod test {
                 config: AutoUpdateConfig::get_test_defaults(),
             };
             let spec = updater
-                .check_for_updates(ApplicationType::BaseNode, &"linux-x86_64", &"1.0.0".parse().unwrap())
+                .check_for_updates(ApplicationType::BaseNode, "linux-x86_64", &"1.0.0".parse().unwrap())
                 .await
                 .unwrap()
                 .unwrap();

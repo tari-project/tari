@@ -142,7 +142,7 @@ fn async_add_new_block() {
         .map(|t| t.deref().clone())
         .collect();
     let new_block = chain_block_with_new_coinbase(
-        &blocks.last().unwrap(),
+        blocks.last().unwrap(),
         txns,
         &consensus_manager,
         &CryptoFactories::default(),

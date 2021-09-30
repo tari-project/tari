@@ -474,7 +474,7 @@ impl ConnectivityManagerActor {
                         delayed_close(existing_conn.clone(), self.config.connection_tie_break_linger);
                         self.publish_event(ConnectivityEvent::PeerConnectionWillClose(node_id, direction));
                     },
-                    Some(existing_conn) if self.tie_break_existing_connection(existing_conn, &new_conn) => {
+                    Some(existing_conn) if self.tie_break_existing_connection(existing_conn, new_conn) => {
                         debug!(
                             target: LOG_TARGET,
                             "Tie break: (Peer = {}) Keep new {} connection, Disconnect existing {} connection",
@@ -509,7 +509,7 @@ impl ConnectivityManagerActor {
 
         let (node_id, mut new_status, connection) = match event {
             PeerDisconnected(node_id) => {
-                self.connection_stats.remove(&node_id);
+                self.connection_stats.remove(node_id);
                 (&*node_id, ConnectionStatus::Disconnected, None)
             },
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),

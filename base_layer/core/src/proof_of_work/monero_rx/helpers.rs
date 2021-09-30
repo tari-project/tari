@@ -42,7 +42,7 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not
 /// contain valid Monero PoW data.
 pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory) -> Result<Difficulty, MergeMineError> {
-    let monero_pow_data = verify_header(&header)?;
+    let monero_pow_data = verify_header(header)?;
     debug!(target: LOG_TARGET, "Valid Monero data: {:?}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
@@ -50,7 +50,7 @@ pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory)
 }
 
 fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
-    let hash = vm.calculate_hash(&input)?;
+    let hash = vm.calculate_hash(input)?;
     debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
     let difficulty = little_endian_difficulty(&hash);
     Ok((difficulty, hash))

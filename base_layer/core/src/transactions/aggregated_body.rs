@@ -335,7 +335,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError> {
         self.verify_kernel_signatures()?;
 
-        let total_offset = factories.commitment.commit_value(&tx_offset, total_reward.0);
+        let total_offset = factories.commitment.commit_value(tx_offset, total_reward.0);
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
 
         if !bypass_range_proof_verification {
@@ -343,7 +343,7 @@ impl AggregateBody {
         }
         self.verify_metadata_signatures()?;
 
-        let script_offset_g = PublicKey::from_secret_key(&script_offset);
+        let script_offset_g = PublicKey::from_secret_key(script_offset);
         self.validate_script_offset(script_offset_g, &factories.commitment)
     }
 
@@ -434,7 +434,7 @@ impl AggregateBody {
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
-            if !o.verify_range_proof(&range_proof_service)? {
+            if !o.verify_range_proof(range_proof_service)? {
                 return Err(TransactionError::ValidationError(
                     "Range proof could not be verified".into(),
                 ));

@@ -712,11 +712,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone()
-                    .addresses
-                    .first()
-                    .ok_or(UiError::NoAddressError)?
-                    .to_string(),
+                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
 
@@ -730,7 +726,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -740,11 +736,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone()
-                    .addresses
-                    .first()
-                    .ok_or(UiError::NoAddressError)?
-                    .to_string(),
+                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
 
@@ -767,7 +759,7 @@ impl AppStateInner {
             .db
             .set_client_key_value(
                 CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
-                peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
 
@@ -775,7 +767,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
+            peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
         );
 
         Ok(())
@@ -786,7 +778,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.first().ok_or(UiError::NoAddressError)?.to_string(),
+                previous.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
 

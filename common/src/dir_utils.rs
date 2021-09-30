@@ -92,7 +92,7 @@ mod test {
         );
 
         assert!(!std::path::Path::new(&dir.display().to_string()).exists());
-        dir_utils::create_data_directory(Some(&dir)).unwrap();
+        dir_utils::create_data_directory(Some(dir)).unwrap();
         assert!(std::path::Path::new(&dir.display().to_string()).exists());
     }
 

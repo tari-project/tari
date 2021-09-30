@@ -136,7 +136,7 @@ impl TestBlockchain {
 
     pub fn tip(&self) -> &BlockProxy {
         let tip = self.store.fetch_tip_header().unwrap();
-        self.get_block_by_hash(&tip.hash()).unwrap()
+        self.get_block_by_hash(tip.hash()).unwrap()
     }
 
     pub fn get_block(&self, name: &str) -> Option<&BlockProxy> {
