@@ -689,14 +689,14 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
         K: AsLmdbBytes + ?Sized,
         for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
-        let val = self.access.get(&self.db, key).to_opt();
+        let val = self.access.get(self.db, key).to_opt();
         LMDBReadTransaction::convert_value(val)
     }
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let res: error::Result<&Ignore> = self.access.get(&self.db, key);
+        let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
@@ -728,21 +728,21 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         V: serde::Serialize,
     {
         let buf = Self::convert_value(value)?;
-        self.access.put(&self.db, key, &buf, put::Flags::empty())?;
+        self.access.put(self.db, key, &buf, put::Flags::empty())?;
         Ok(())
     }
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let res: error::Result<&Ignore> = self.access.get(&self.db, key);
+        let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
 
     pub fn delete<K>(&mut self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        Ok(self.access.del_key(&self.db, key)?)
+        Ok(self.access.del_key(self.db, key)?)
     }
 
     fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>

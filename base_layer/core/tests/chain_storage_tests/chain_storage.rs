@@ -91,12 +91,12 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let mut header1 = BlockHeader::from_previous(&genesis_block.header());
+    let mut header1 = BlockHeader::from_previous(genesis_block.header());
 
     header1.kernel_mmr_size += 1;
     header1.output_mmr_size += 1;
 
-    let chain1 = create_chain_header(header1.clone(), &genesis_block.accumulated_data());
+    let chain1 = create_chain_header(header1.clone(), genesis_block.accumulated_data());
 
     store.insert_valid_headers(vec![chain1.clone()]).unwrap();
     let mut header2 = BlockHeader::from_previous(&header1);
@@ -967,7 +967,7 @@ fn handle_reorg_failure_recovery() {
         }
         orphan1_outputs.push(block_utxos);
 
-        let template = chain_block(&orphan1_blocks.last().unwrap().block(), txns, &consensus_manager);
+        let template = chain_block(orphan1_blocks.last().unwrap().block(), txns, &consensus_manager);
         let mut block = orphan1_store.prepare_new_block(template).unwrap();
         block.header.nonce = OsRng.next_u64();
         block.header.height += 1;

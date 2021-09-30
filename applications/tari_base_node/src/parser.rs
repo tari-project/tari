@@ -145,7 +145,7 @@ impl Parser {
         }
 
         let mut args = command_str.split_whitespace();
-        match args.next().unwrap_or(&"help").parse() {
+        match args.next().unwrap_or("help").parse() {
             Ok(command) => {
                 self.process_command(command, args, shutdown);
             },
@@ -693,7 +693,7 @@ impl Parser {
                 self.print_help(BaseNodeCommand::HeaderStats);
                 "No end height provided".to_string()
             })
-            .and_then(|arg| u64::from_str(&arg).map_err(|err| err.to_string())));
+            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
 
         let filename = args.next().unwrap_or("header-data.csv").to_string();
 

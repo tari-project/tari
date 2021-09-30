@@ -74,7 +74,7 @@ fn header_iter_fetch_in_chunks() {
         header.kernel_mmr_size = 2 + i;
         header.output_mmr_size = 4001 + i;
 
-        let chain_header = create_chain_header(header, &prev.accumulated_data());
+        let chain_header = create_chain_header(header, prev.accumulated_data());
         acc.push(chain_header);
         acc
     });

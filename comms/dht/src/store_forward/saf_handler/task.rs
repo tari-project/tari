@@ -429,13 +429,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         // Check that the destination is either undisclosed, for us or for our network region
-        Self::check_destination(&config, &peer_manager, &node_identity, &dht_header).await?;
+        Self::check_destination(config, peer_manager, node_identity, &dht_header).await?;
         // Check that the message has not already been received.
         Self::check_duplicate(&mut self.dht_requester, &message.body, source_peer.public_key.clone()).await?;
 
         // Attempt to decrypt the message (if applicable), and deserialize it
         let (authenticated_pk, decrypted_body) =
-            Self::authenticate_and_decrypt_if_required(&node_identity, &dht_header, &message.body)?;
+            Self::authenticate_and_decrypt_if_required(node_identity, &dht_header, &message.body)?;
 
         let mut inbound_msg =
             DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);

@@ -47,8 +47,8 @@ pub enum MetricWrite {
 
 #[derive(Debug)]
 pub enum MetricRead {
-    MessagesReceivedGetTimeseries(NodeId, oneshot::Sender<TimeSeries<()>>),
-    MessagesReceivedRateExceeding((usize, Duration), oneshot::Sender<Vec<(NodeId, f32)>>),
+    GetMessagesReceivedTimeseries(NodeId, oneshot::Sender<TimeSeries<()>>),
+    ExceedingMessagesReceivedRate((usize, Duration), oneshot::Sender<Vec<(NodeId, f32)>>),
     MessagesReceivedTotalCountInTimespan(Duration, oneshot::Sender<usize>),
 }
 
@@ -165,10 +165,10 @@ impl MetricsCollector {
     fn handle_read(&mut self, query: MetricRead) {
         use MetricRead::*;
         match query {
-            MessagesReceivedGetTimeseries(node_id, reply) => {
+            GetMessagesReceivedTimeseries(node_id, reply) => {
                 let _ = reply.send(self.state.message_received_get_timeseries(&node_id));
             },
-            MessagesReceivedRateExceeding((counts, timespan), reply) => {
+            ExceedingMessagesReceivedRate((counts, timespan), reply) => {
                 let _ = reply.send(self.state.message_received_get_nodes_exceeding(counts, timespan));
             },
             MessagesReceivedTotalCountInTimespan(timespan, reply) => {
@@ -291,7 +291,7 @@ impl MetricsCollectorHandle {
     pub async fn get_messages_received_timeseries(&mut self, node_id: NodeId) -> Result<TimeSeries<()>, MetricsError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.inner
-            .send(MetricOp::Read(MetricRead::MessagesReceivedGetTimeseries(
+            .send(MetricOp::Read(MetricRead::GetMessagesReceivedTimeseries(
                 node_id, reply_tx,
             )))
             .await?;
@@ -306,7 +306,7 @@ impl MetricsCollectorHandle {
     ) -> Result<Vec<(NodeId, f32)>, MetricsError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.inner
-            .send(MetricOp::Read(MetricRead::MessagesReceivedRateExceeding(
+            .send(MetricOp::Read(MetricRead::ExceedingMessagesReceivedRate(
                 (counts, timespan),
                 reply_tx,
             )))

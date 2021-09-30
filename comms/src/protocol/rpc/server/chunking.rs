@@ -227,28 +227,23 @@ mod test {
     #[test]
     fn it_emits_a_single_message() {
         let iter = create(RPC_CHUNKING_SIZE_LIMIT - 1);
-        let msgs = iter.collect::<Vec<_>>();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(iter.count(), 1);
 
         let iter = create(RPC_CHUNKING_SIZE_LIMIT);
-        let msgs = iter.collect::<Vec<_>>();
-        assert_eq!(msgs.len(), 1);
+        assert_eq!(iter.count(), 1);
     }
 
     #[test]
     fn it_emits_an_expected_number_of_chunks() {
         let iter = create(RPC_CHUNKING_THRESHOLD * 2);
-        let msgs = iter.collect::<Vec<_>>();
-        assert_eq!(msgs.len(), 2);
+        assert_eq!(iter.count(), 2);
 
         let diff = RPC_CHUNKING_SIZE_LIMIT - RPC_CHUNKING_THRESHOLD;
         let iter = create(RPC_CHUNKING_THRESHOLD * 2 + diff);
-        let msgs = iter.collect::<Vec<_>>();
-        assert_eq!(msgs.len(), 2);
+        assert_eq!(iter.count(), 2);
 
         let iter = create(RPC_CHUNKING_THRESHOLD * 2 + diff + 1);
-        let msgs = iter.collect::<Vec<_>>();
-        assert_eq!(msgs.len(), 3);
+        assert_eq!(iter.count(), 3);
     }
 
     #[test]

@@ -173,7 +173,7 @@ where DS: KeyValueStore<PeerId, Peer>
     pub fn delete_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
-            .get(&node_id)
+            .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peer_db
             .delete(&peer_key)
@@ -206,7 +206,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         self.peer_db
-            .get(&peer_key)
+            .get(peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .ok_or_else(|| {
                 warn!(
@@ -430,7 +430,7 @@ where DS: KeyValueStore<PeerId, Peer>
     pub fn unban_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
-            .get(&node_id)
+            .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer = self
             .peer_db
@@ -491,7 +491,7 @@ where DS: KeyValueStore<PeerId, Peer>
     pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
         let peer_key = *self
             .node_id_index
-            .get(&node_id)
+            .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
@@ -510,7 +510,7 @@ where DS: KeyValueStore<PeerId, Peer>
     pub fn add_net_address(&mut self, node_id: &NodeId, net_address: &Multiaddr) -> Result<(), PeerManagerError> {
         let peer_key = *self
             .node_id_index
-            .get(&node_id)
+            .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db
@@ -533,7 +533,7 @@ where DS: KeyValueStore<PeerId, Peer>
     ) -> Result<Option<Vec<u8>>, PeerManagerError> {
         let peer_key = *self
             .node_id_index
-            .get(&node_id)
+            .get(node_id)
             .ok_or(PeerManagerError::PeerNotFoundError)?;
         let mut peer: Peer = self
             .peer_db

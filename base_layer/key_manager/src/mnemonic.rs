@@ -64,7 +64,7 @@ impl MnemonicLanguage {
     /// Detects the mnemonic language of a specific word by searching all defined mnemonic word lists
     pub fn from(mnemonic_word: &str) -> Result<MnemonicLanguage, MnemonicError> {
         for language in MnemonicLanguage::iterator() {
-            if find_mnemonic_index_from_word(mnemonic_word, &language).is_ok() {
+            if find_mnemonic_index_from_word(mnemonic_word, language).is_ok() {
                 return Ok((*language).clone());
             }
         }
@@ -178,7 +178,7 @@ pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
 pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
     let mut bits: Vec<bool> = Vec::new();
     for curr_word in mnemonic_seq {
-        match find_mnemonic_index_from_word(curr_word, &language) {
+        match find_mnemonic_index_from_word(curr_word, language) {
             Ok(index) => {
                 let curr_bits = uint_to_bits(index, 11);
                 bits.extend(curr_bits.iter().cloned());

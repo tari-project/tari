@@ -39,7 +39,7 @@ pub fn create_temporary_data_path() -> PathBuf {
 pub fn with_temp_dir<F, R>(f: F) -> R
 where F: FnOnce(&Path) -> R {
     let tmp = Builder::new().prefix("tari-test").tempdir().unwrap();
-    let r = f(&tmp.path());
+    let r = f(tmp.path());
     drop(tmp);
     r
 }

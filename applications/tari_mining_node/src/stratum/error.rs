@@ -22,27 +22,27 @@
 //
 #[derive(Debug)]
 pub enum Error {
-    ConnectionError(String),
-    RequestError(String),
+    Connection(String),
+    Request(String),
     // ResponseError(String),
-    JsonError(String),
-    GeneralError(String),
+    Json(String),
+    General(String),
 }
 
 impl From<serde_json::error::Error> for Error {
     fn from(error: serde_json::error::Error) -> Self {
-        Error::JsonError(format!("Failed to parse JSON: {:?}", error))
+        Error::Json(format!("Failed to parse JSON: {:?}", error))
     }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {
     fn from(error: std::sync::PoisonError<T>) -> Self {
-        Error::GeneralError(format!("Failed to get lock: {:?}", error))
+        Error::General(format!("Failed to get lock: {:?}", error))
     }
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for Error {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
-        Error::GeneralError(format!("Failed to send to a channel: {:?}", error))
+        Error::General(format!("Failed to send to a channel: {:?}", error))
     }
 }

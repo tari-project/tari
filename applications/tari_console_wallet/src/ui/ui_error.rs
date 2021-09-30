@@ -11,13 +11,13 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum UiError {
     #[error(transparent)]
-    TransactionServiceError(#[from] TransactionServiceError),
+    TransactionService(#[from] TransactionServiceError),
     #[error(transparent)]
-    OutputManagerError(#[from] OutputManagerError),
+    OutputManager(#[from] OutputManagerError),
     #[error(transparent)]
-    ContactsServiceError(#[from] ContactsServiceError),
+    ContactsService(#[from] ContactsServiceError),
     #[error(transparent)]
-    ConnectivityError(#[from] ConnectivityError),
+    Connectivity(#[from] ConnectivityError),
     #[error(transparent)]
     HexError(#[from] HexError),
     #[error(transparent)]
@@ -29,7 +29,7 @@ pub enum UiError {
     #[error("Could not convert string into Net Address")]
     AddressParseError,
     #[error("Peer did not include an address")]
-    NoAddressError,
+    NoAddress,
     #[error("Channel send error: `{0}`")]
     SendError(String),
 }

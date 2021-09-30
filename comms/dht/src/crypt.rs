@@ -56,7 +56,7 @@ pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8
     let mut cipher_text = cipher_text.to_vec();
 
     let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(&key, &nonce);
+    let mut cipher = ChaCha20::new(key, nonce);
 
     cipher.apply_keystream(cipher_text.as_mut_slice());
 
@@ -70,7 +70,7 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>
     let nonce_ga = Nonce::from_slice(&nonce);
 
     let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(&key, &nonce_ga);
+    let mut cipher = ChaCha20::new(key, nonce_ga);
 
     // Cloning the plain text to avoid a caller thinking we have encrypted in place and losing the integral nonce added
     // below
