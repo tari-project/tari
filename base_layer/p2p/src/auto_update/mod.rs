@@ -75,7 +75,7 @@ pub async fn check_for_updates(
     let hashes_sig_url = config.hashes_sig_url.clone();
     let dns_update = dns::DnsSoftwareUpdate::connect(config).await?;
 
-    match dns_update.check_for_updates(app, &arch, version).await? {
+    match dns_update.check_for_updates(app, arch, version).await? {
         Some(update_spec) => {
             log::debug!(
                 target: LOG_TARGET,

@@ -115,7 +115,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     #[tracing::instrument(name = "socks:tor_resolve", skip(self))]
     pub async fn tor_resolve(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
         // Tor resolve does not return the port back
-        let (dns, rest) = multiaddr_split_first(&address);
+        let (dns, rest) = multiaddr_split_first(address);
         let mut resolved = self.execute_command(Command::TorResolve, &dns.into()).await?;
         resolved.pop();
         for r in rest {

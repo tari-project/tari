@@ -93,8 +93,8 @@ pub fn make_dht_header(
             &DhtMessageType::None,
             flags,
             None,
-            Some(&e_pk),
-            &message,
+            Some(e_pk),
+            message,
         );
         origin_mac = make_valid_origin_mac(node_identity, challenge);
         if flags.is_encrypted() {

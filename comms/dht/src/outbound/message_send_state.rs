@@ -287,8 +287,9 @@ mod test {
     #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_percentage_success() {
-        let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
-        let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+        let (states, mut reply_txs) = repeat_with(|| create_send_state())
+            .take(10)
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
         reply_txs
             .drain(..4)
@@ -303,8 +304,9 @@ mod test {
     #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_n_timeout() {
-        let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
-        let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+        let (states, mut reply_txs) = repeat_with(|| create_send_state())
+            .take(10)
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
         reply_txs
             .drain(..4)
@@ -316,8 +318,9 @@ mod test {
         assert_eq!(failed.len(), 4);
 
         // test that it returns after the timeout
-        let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
-        let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+        let (states, mut reply_txs) = repeat_with(|| create_send_state())
+            .take(10)
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
         reply_txs.drain(..4).for_each(|mut tx| tx.reply_success());
         reply_txs
@@ -332,8 +335,9 @@ mod test {
     #[runtime::test]
     #[allow(clippy::redundant_closure)]
     async fn wait_all() {
-        let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
-        let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
+        let (states, mut reply_txs) = repeat_with(|| create_send_state())
+            .take(10)
+            .unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
         reply_txs
             .drain(..4)

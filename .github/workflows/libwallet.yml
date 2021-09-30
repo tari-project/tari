@@ -45,13 +45,13 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           target: aarch64-apple-ios
           components: rustfmt
           override: true
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           target: x86_64-apple-ios
           components: rustfmt
           override: true

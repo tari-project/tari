@@ -1169,7 +1169,7 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), C
         block_hash.to_hex()
     );
     if block.header().pow_algo() == PowAlgorithm::Monero {
-        let monero_seed = MoneroPowData::from_header(&block.header())
+        let monero_seed = MoneroPowData::from_header(block.header())
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .randomx_key;
         txn.insert_monero_seed_height(monero_seed.to_vec(), block.height());
@@ -1658,7 +1658,7 @@ fn reorganize_chain<T: BlockchainBackend>(
         let block_hash_hex = block.accumulated_data().hash.to_hex();
         txn.delete_orphan(block.accumulated_data().hash.clone());
         let chain_metadata = backend.fetch_chain_metadata()?;
-        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend, &chain_metadata) {
+        if let Err(e) = block_validator.validate_body_for_valid_orphan(block, backend, &chain_metadata) {
             warn!(
                 target: LOG_TARGET,
                 "Orphan block {} ({}) failed validation during chain reorg: {:?}",

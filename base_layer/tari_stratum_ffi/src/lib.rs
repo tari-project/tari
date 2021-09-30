@@ -60,7 +60,7 @@ pub unsafe extern "C" fn public_key_hex_validate(hex: *const c_char, error_out: 
     let native;
 
     if hex.is_null() {
-        error = StratumTranscoderError::from(InterfaceError::NullError("hex".to_string())).code;
+        error = StratumTranscoderError::from(InterfaceError::Null("hex".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     } else {
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn inject_nonce(hex: *const c_char, nonce: c_ulonglong, er
     let native;
 
     if hex.is_null() {
-        error = StratumTranscoderError::from(InterfaceError::NullError("hex".to_string())).code;
+        error = StratumTranscoderError::from(InterfaceError::Null("hex".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         ptr::null()
     } else {
@@ -115,14 +115,14 @@ pub unsafe extern "C" fn inject_nonce(hex: *const c_char, nonce: c_ulonglong, er
                         CString::into_raw(result)
                     },
                     Err(_) => {
-                        error = StratumTranscoderError::from(InterfaceError::ConversionError("block".to_string())).code;
+                        error = StratumTranscoderError::from(InterfaceError::Conversion("block".to_string())).code;
                         ptr::swap(error_out, &mut error as *mut c_int);
                         ptr::null()
                     },
                 }
             },
             Err(_) => {
-                error = StratumTranscoderError::from(InterfaceError::ConversionError("hex".to_string())).code;
+                error = StratumTranscoderError::from(InterfaceError::Conversion("hex".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 ptr::null()
             },
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn share_difficulty(hex: *const c_char, error_out: *mut c_
     let block_hex_string;
 
     if hex.is_null() {
-        error = StratumTranscoderError::from(InterfaceError::NullError("hex".to_string())).code;
+        error = StratumTranscoderError::from(InterfaceError::Null("hex".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     } else {
@@ -166,14 +166,14 @@ pub unsafe extern "C" fn share_difficulty(hex: *const c_char, error_out: *mut c_
                     difficulty.as_u64()
                 },
                 Err(_) => {
-                    error = StratumTranscoderError::from(InterfaceError::ConversionError("block".to_string())).code;
+                    error = StratumTranscoderError::from(InterfaceError::Conversion("block".to_string())).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
                     0
                 },
             }
         },
         Err(_) => {
-            error = StratumTranscoderError::from(InterfaceError::ConversionError("hex".to_string())).code;
+            error = StratumTranscoderError::from(InterfaceError::Conversion("hex".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },
@@ -213,7 +213,7 @@ pub unsafe extern "C" fn share_validate(
     let block_hash_string;
 
     if hex.is_null() {
-        error = StratumTranscoderError::from(InterfaceError::NullError("hex".to_string())).code;
+        error = StratumTranscoderError::from(InterfaceError::Null("hex".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
     } else {
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn share_validate(
     }
 
     if hash.is_null() {
-        error = StratumTranscoderError::from(InterfaceError::NullError("hash".to_string())).code;
+        error = StratumTranscoderError::from(InterfaceError::Null("hash".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
     } else {
@@ -247,26 +247,25 @@ pub unsafe extern "C" fn share_validate(
                             result = 1;
                         } else {
                             // Difficulty not reached
-                            error = StratumTranscoderError::from(InterfaceError::LowDifficultyError(block_hash_string))
-                                .code;
+                            error = StratumTranscoderError::from(InterfaceError::LowDifficulty(block_hash_string)).code;
                             ptr::swap(error_out, &mut error as *mut c_int);
                         }
                         result
                     } else {
-                        error = StratumTranscoderError::from(InterfaceError::InvalidHashError(block_hash_string)).code;
+                        error = StratumTranscoderError::from(InterfaceError::InvalidHash(block_hash_string)).code;
                         ptr::swap(error_out, &mut error as *mut c_int);
                         2
                     }
                 },
                 Err(_) => {
-                    error = StratumTranscoderError::from(InterfaceError::ConversionError("block".to_string())).code;
+                    error = StratumTranscoderError::from(InterfaceError::Conversion("block".to_string())).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
                     2
                 },
             }
         },
         Err(_) => {
-            error = StratumTranscoderError::from(InterfaceError::ConversionError("hex".to_string())).code;
+            error = StratumTranscoderError::from(InterfaceError::Conversion("hex".to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             2
         },

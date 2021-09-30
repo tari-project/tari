@@ -1,4 +1,3 @@
-#![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
 // #![allow(elided_lifetimes_in_paths)]
 
 //! Conditionally dispatch requests to the inner service based on the result of

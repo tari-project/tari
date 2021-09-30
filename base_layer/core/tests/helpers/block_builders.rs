@@ -88,7 +88,7 @@ pub fn create_coinbase(
 
     let unblinded_output =
         create_unblinded_output(script!(Nop), OutputFeatures::create_coinbase(maturity_height), p, value);
-    let output = unblinded_output.as_transaction_output(&factories).unwrap();
+    let output = unblinded_output.as_transaction_output(factories).unwrap();
 
     (output, kernel, unblinded_output)
 }
@@ -178,7 +178,7 @@ pub fn create_genesis_block_with_coinbase_value(
     coinbase_value: MicroTari,
     consensus_constants: &ConsensusConstants,
 ) -> (ChainBlock, UnblindedOutput) {
-    let (template, output) = genesis_template(&factories, coinbase_value, consensus_constants);
+    let (template, output) = genesis_template(factories, coinbase_value, consensus_constants);
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     let hash = block.hash();
@@ -205,14 +205,14 @@ pub fn create_genesis_block_with_utxos(
     values: &[MicroTari],
     consensus_constants: &ConsensusConstants,
 ) -> (ChainBlock, Vec<UnblindedOutput>) {
-    let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
+    let (mut template, coinbase) = genesis_template(factories, 100_000_000.into(), consensus_constants);
     let script = script!(Nop);
     let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let p = TestParams::new();
         let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
         secrets.push(unblinded_output.clone());
-        let output = unblinded_output.as_transaction_output(&factories).unwrap();
+        let output = unblinded_output.as_transaction_output(factories).unwrap();
         template.body.add_output(output);
         secrets
     });
@@ -258,7 +258,7 @@ pub fn chain_block_with_coinbase(
     coinbase_kernel: TransactionKernel,
     consensus: &ConsensusManager,
 ) -> NewBlockTemplate {
-    let mut header = BlockHeader::from_previous(&prev_block.header());
+    let mut header = BlockHeader::from_previous(prev_block.header());
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     NewBlockTemplate::from_block(
@@ -285,11 +285,11 @@ pub fn chain_block_with_new_coinbase(
         .iter()
         .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
-        &factories,
+        factories,
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
-    let mut header = BlockHeader::from_previous(&prev_block.header());
+    let mut header = BlockHeader::from_previous(prev_block.header());
     header.height = height;
     header.version = consensus_manager
         .consensus_constants(header.height)
@@ -341,7 +341,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += txns.iter().fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
-        &factories,
+        factories,
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
@@ -472,7 +472,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_new_coinbase(
-        &blocks.last().unwrap(),
+        blocks.last().unwrap(),
         transactions,
         consensus,
         &CryptoFactories::default(),
@@ -499,7 +499,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
     consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_coinbase(
-        &blocks.last().unwrap(),
+        blocks.last().unwrap(),
         transactions,
         coinbase_utxo,
         coinbase_kernel,

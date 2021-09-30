@@ -1003,9 +1003,9 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek-ng"
-version = "4.0.1"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "574d8b2cd0bae5434fd50d53280f8299d95557a978686555880aaf5b8f4f81e9"
+checksum = "b2d05dbe571a5f832174d536b65101025c33693189830372032c005af68cbaec"
 dependencies = [
  "byteorder",
  "digest",
@@ -4108,9 +4108,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "subtle-ng"
-version = "2.4.1"
+version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8049cf85f0e715d6af38dde439cb0ccb91f67fb9f5f63c80f8b43e48356e1a3f"
+checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "supercow"
@@ -4254,9 +4254,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bulletproofs"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c04fe42cf122b2b5a77f1f4e20562e05c422efddb2ede470d7d8988cc2bf3a7"
+version = "4.1.0"
+source = "git+https://github.com/tari-project/bulletproofs?branch=main#40bb86219bb22b9a31a3938d6547036505f49e66"
 dependencies = [
  "byteorder",
  "clear_on_drop",
@@ -4523,9 +4522,8 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b9ce61aed22e369ec3ad4dae46c0a19858fe29ad8bea03d4632b69be1cb09a"
+version = "0.11.2"
+source = "git+https://github.com/tari-project/tari-crypto.git?branch=main#75a6456a48d1f6dc36e58f49a215a3e9f0c465ab"
 dependencies = [
  "base64 0.10.1",
  "blake2",

@@ -98,7 +98,7 @@ impl TraitInfoCollector {
                                     .expect("Invalid syntax for #[rpc(...)] attribute");
                                 match ident.to_string().as_str() {
                                     "method" => {
-                                        info.method_num = extract_u32(&ident, &name_value.lit)?;
+                                        info.method_num = extract_u32(ident, &name_value.lit)?;
                                         self.validate_method_num(ident, info.method_num)?;
                                         if info.method_num == 0 {
                                             return Err(syn_error!(
