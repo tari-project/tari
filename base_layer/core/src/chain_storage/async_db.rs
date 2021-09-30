@@ -37,6 +37,7 @@ use crate::{
         DbBasicStats,
         DbTotalSizeStats,
         DbTransaction,
+        DeletedBitmap,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -235,7 +236,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
 
-    make_async_fn!(fetch_headers_of_deleted_positions(mmr_position: Vec<u64>) -> Vec<BlockHeader>, "fetch_headers_of_deleted_positions");
+    make_async_fn!(fetch_deleted_bitmap_at_tip() -> DeletedBitmap, "fetch_deleted_bitmap_at_tip");
+
+    make_async_fn!(fetch_header_hash_by_deleted_mmr_positions(mmr_positions: Vec<u32>) -> Vec<Option<(u64, HashOutput)>>, "fetch_headers_of_deleted_positions");
 
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 

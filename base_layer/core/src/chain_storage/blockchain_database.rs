@@ -38,6 +38,7 @@ use crate::{
         ChainHeader,
         DbBasicStats,
         DbTotalSizeStats,
+        DeletedBitmap,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -945,58 +946,21 @@ where B: BlockchainBackend
         ))
     }
 
-    // TODO Update this method to make use of a (mmr_position, block_height) index in the lmdb backend instead of a
-    // linear search
-    pub fn fetch_headers_of_deleted_positions(
-        &self,
-        mut mmr_positions: Vec<u64>,
-    ) -> Result<Vec<BlockHeader>, ChainStorageError> {
+    pub fn fetch_deleted_bitmap_at_tip(&self) -> Result<DeletedBitmap, ChainStorageError> {
         let db = self.db_read_access()?;
+        db.fetch_deleted_bitmap()
+    }
 
+    pub fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
         if mmr_positions.is_empty() {
             return Ok(Vec::new());
         }
 
-        let chain_metadata = db.fetch_chain_metadata()?;
-        let mut height = chain_metadata.height_of_longest_chain();
-
-        mmr_positions.sort_unstable();
-
-        let mut headers = Vec::with_capacity(mmr_positions.len());
-
-        let mut target = mmr_positions.pop().expect("mmr_positions cannot be empty here");
-
-        loop {
-            if target > u32::MAX as u64 {
-                // TODO: in future, bitmap may support higher than u32
-                return Err(ChainStorageError::InvalidArguments {
-                    func: "fetch_header_of_deleted_position",
-                    arg: "mmr_positions",
-                    message: "mmr_positions should fit into u32".into(),
-                });
-            }
-            if db
-                .fetch_block_accumulated_data_by_height(height)
-                .or_not_found("BlockAccumulatedData", "height", height.to_string())?
-                .deleted()
-                .contains(target as u32)
-            {
-                headers.push(fetch_header(&(*db), height)?);
-                if let Some(pos) = mmr_positions.pop() {
-                    target = pos;
-                } else {
-                    break;
-                }
-            }
-
-            if height > 0 {
-                height -= 1;
-            } else {
-                break;
-            }
-        }
-
-        Ok(headers)
+        let db = self.db_read_access()?;
+        db.fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
     }
 
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {

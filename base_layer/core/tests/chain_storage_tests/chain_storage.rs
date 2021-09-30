@@ -1771,60 +1771,65 @@ fn fetch_deleted_position_block_hash() {
         from: vec![outputs[0][0].clone()],
         to: vec![11 * T, 12 * T, 13 * T, 14 * T]
     )];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap()
+    .assert_added();
     // Block 2
     let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(3),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap()
+    .assert_added();
     // Blocks 3 - 12 so we can test the search in the bottom and top half
     for i in 0..10 {
-        assert!(generate_new_block_with_achieved_difficulty(
+        generate_new_block_with_achieved_difficulty(
             &mut store,
             &mut blocks,
             &mut outputs,
             vec![],
             Difficulty::from(4 + i),
-            &consensus_manager
+            &consensus_manager,
         )
-        .is_ok());
+        .unwrap()
+        .assert_added();
     }
     // Block 13
     let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(30),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap()
+    .assert_added();
     // Block 14
     let txs = vec![txn_schema!(from: vec![outputs[13][0].clone()], to: vec![1 * T])];
-    assert!(generate_new_block_with_achieved_difficulty(
+    generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
         &mut outputs,
         txs,
         Difficulty::from(50),
-        &consensus_manager
+        &consensus_manager,
     )
-    .is_ok());
+    .unwrap()
+    .assert_added();
 
     let block1_hash = store.fetch_header(1).unwrap().unwrap().hash();
     let block2_hash = store.fetch_header(2).unwrap().unwrap().hash();
@@ -1838,11 +1843,13 @@ fn fetch_deleted_position_block_hash() {
         .to_vec();
 
     let headers = store
-        .fetch_headers_of_deleted_positions(deleted_positions.iter().map(|p| *p as u64).collect())
+        .fetch_header_hash_by_deleted_mmr_positions(deleted_positions)
         .unwrap();
+    let mut headers = headers.into_iter().map(Option::unwrap).collect::<Vec<_>>();
+    headers.sort_by(|(a, _), (b, _)| a.cmp(b));
 
-    assert_eq!(headers[0].hash(), block14_hash);
-    assert_eq!(headers[1].hash(), block13_hash);
-    assert_eq!(headers[2].hash(), block2_hash);
-    assert_eq!(headers[3].hash(), block1_hash);
+    assert_eq!(headers[3], (14, block14_hash));
+    assert_eq!(headers[2], (13, block13_hash));
+    assert_eq!(headers[1], (2, block2_hash));
+    assert_eq!(headers[0], (1, block1_hash));
 }

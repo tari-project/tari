@@ -168,4 +168,10 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns total size information about each internal database. This call may be very slow and will obtain a read
     /// lock for the duration.
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError>;
+
+    /// Returns a (block height/hash) tuple for each mmr position of the height it was spent, or None if it is not spent
+    fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError>;
 }

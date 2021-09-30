@@ -369,6 +369,16 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_total_size_stats()
     }
+
+    fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
+    }
 }
 
 pub fn create_chained_blocks(
