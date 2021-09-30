@@ -199,7 +199,7 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(stats.total_txs, 0);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
-    assert_eq!(stats.total_weight, 30);
+    assert_eq!(stats.total_weight, 0);
 }
 
 #[tokio::test]
