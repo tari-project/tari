@@ -3,11 +3,11 @@ on:
   pull_request:
     types: [opened]
 
-name: Integration Tests
+name: CI
 
 jobs:
-  integration-tests:
-    name: Integration Tests
+  integration:
+    name: integration
     runs-on: ubuntu-20.04
     steps:
       - name: checkout
