@@ -238,6 +238,10 @@ impl CompletedTransaction {
             mined_height: None,
         }
     }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.status == TransactionStatus::Coinbase
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
