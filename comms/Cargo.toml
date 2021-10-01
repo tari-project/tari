@@ -65,6 +65,6 @@ tempfile = "3.1.0"
 tari_common = { version = "^0.10", path = "../common", features = ["build"] }
 
 [features]
-bundled_openssl = ["openssl-sys/vendored"]
+c_integration = []
 avx2 = ["tari_crypto/avx2"]
 rpc = ["tower-make"]

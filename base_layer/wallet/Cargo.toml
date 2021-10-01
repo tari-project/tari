@@ -55,6 +55,6 @@ env_logger = "0.7.1"
 prost = "0.8.0"
 
 [features]
-default=["bundled_sqlite"]
+c_integration = []
 avx2 = ["tari_crypto/avx2", "tari_core/avx2"]
 bundled_sqlite = ["libsqlite3-sys"]
