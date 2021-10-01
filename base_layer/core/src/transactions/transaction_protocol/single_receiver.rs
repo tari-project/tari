@@ -193,7 +193,7 @@ mod test {
         let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
         let script = TariScript::default();
         let info = SingleRoundSenderData {
-            tx_id: 500,
+            tx_id: 500.into(),
             amount: MicroTari(1500),
             public_excess: pub_xs,
             public_nonce: pub_rs.clone(),

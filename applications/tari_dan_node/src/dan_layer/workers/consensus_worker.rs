@@ -360,7 +360,7 @@ mod test {
         })
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
@@ -412,7 +412,7 @@ mod test {
         //     signal.clone(),
         //     events[3].clone(),
         // );
-        shutdown.trigger().unwrap();
+        shutdown.trigger();
         task_a.await.unwrap();
         task_b.await.unwrap();
         // task_c.await.unwrap();

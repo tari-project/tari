@@ -1566,7 +1566,7 @@ mod test {
         let factory = PedersenCommitmentFactory::default();
 
         let i = test_params.create_unblinded_output(Default::default());
-        let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
+        let output = i.as_transaction_output(&CryptoFactories::default(), false).unwrap();
         let input = i.as_transaction_input(&factory).unwrap();
         assert_eq!(output.hash(), input.output_hash());
     }
@@ -1605,14 +1605,14 @@ mod test {
             ..Default::default()
         });
         let script = unblinded_output1.script.clone();
-        let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
+        let tx_output1 = unblinded_output1.as_transaction_output(&factories, false).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
         let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
             value: (2u64.pow(32) + 1u64).into(),
             ..Default::default()
         });
-        let tx_output2 = unblinded_output2.as_transaction_output(&factories);
+        let tx_output2 = unblinded_output2.as_transaction_output(&factories, false);
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1655,17 +1655,17 @@ mod test {
         let factories = CryptoFactories::new(32);
         let unblinded_output = test_params.create_unblinded_output(Default::default());
 
-        let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        let mut tx_output = unblinded_output.as_transaction_output(&factories, false).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
         tx_output.script = TariScript::default();
         assert!(tx_output.verify_metadata_signature().is_err());
 
-        tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        tx_output = unblinded_output.as_transaction_output(&factories, false).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
         tx_output.features = OutputFeatures::create_coinbase(0);
         assert!(tx_output.verify_metadata_signature().is_err());
 
-        tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+        tx_output = unblinded_output.as_transaction_output(&factories, false).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
         tx_output.sender_offset_public_key = PublicKey::default();
         assert!(tx_output.verify_metadata_signature().is_err());
@@ -1882,7 +1882,7 @@ mod test {
             ..Default::default()
         });
         let output = unblinded_output
-            .as_rewindable_transaction_output(&factories, &rewind_data)
+            .as_rewindable_transaction_output(&factories, &rewind_data, false)
             .unwrap();
 
         assert_eq!(

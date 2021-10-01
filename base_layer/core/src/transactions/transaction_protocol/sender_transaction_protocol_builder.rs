@@ -61,7 +61,7 @@ use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
-/// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
+/// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
 /// # use crate::SenderTransactionProtocol;
@@ -604,7 +604,7 @@ mod test {
             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
-                sender_transaction_protocol_builder::SenderTransactionInitializer,
+                sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
                 TransactionProtocolError,
             },
         },
@@ -618,7 +618,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Start the builder
-        let builder = SenderTransactionInitializer::new(0);
+        let builder = SenderTransactionProtocolBuilder::new(0);
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
@@ -692,7 +692,7 @@ mod test {
             MicroTari(500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionProtocolBuilder::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -734,7 +734,7 @@ mod test {
             ..Default::default()
         });
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionProtocolBuilder::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -772,7 +772,7 @@ mod test {
             MicroTari(500),
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionProtocolBuilder::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -798,7 +798,7 @@ mod test {
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionProtocolBuilder::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -829,7 +829,7 @@ mod test {
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionProtocolBuilder::new(0);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -860,7 +860,7 @@ mod test {
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(2);
+        let mut builder = SenderTransactionProtocolBuilder::new(2);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -914,7 +914,7 @@ mod test {
             MicroTari(1500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(1);
+        let mut builder = SenderTransactionProtocolBuilder::new(1);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
@@ -965,7 +965,7 @@ mod test {
         // Start the builder
         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
         let weight = MicroTari(30);
-        let mut builder = SenderTransactionInitializer::new(1);
+        let mut builder = SenderTransactionProtocolBuilder::new(1);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)

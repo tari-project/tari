@@ -734,7 +734,7 @@ mod test {
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        match (*tx).tx_id {
+        match (*tx).tx_id.as_u64() {
             3 => lock.tx_cancellation_callback_called_inbound = true,
             4 => lock.tx_cancellation_callback_called_completed = true,
             5 => lock.tx_cancellation_callback_called_outbound = true,
@@ -785,7 +785,7 @@ mod test {
         let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
-            1u64,
+            1.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             rtp,
@@ -794,7 +794,7 @@ mod test {
             Utc::now().naive_utc(),
         );
         let completed_tx = CompletedTransaction::new(
-            2u64,
+            2.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             MicroTari::from(100),
@@ -814,7 +814,7 @@ mod test {
         );
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(
-            3u64,
+            3.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             23 * uT,
@@ -825,32 +825,32 @@ mod test {
             false,
         );
         let inbound_tx_cancelled = InboundTransaction {
-            tx_id: 4u64,
+            tx_id: 4.into(),
             ..inbound_tx.clone()
         };
         let completed_tx_cancelled = CompletedTransaction {
-            tx_id: 5u64,
+            tx_id: 5.into(),
             ..completed_tx.clone()
         };
 
         runtime
-            .block_on(db.add_pending_inbound_transaction(1u64, inbound_tx))
+            .block_on(db.add_pending_inbound_transaction(1.into(), inbound_tx))
             .unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(2u64, completed_tx))
+            .block_on(db.insert_completed_transaction(2.into(), completed_tx))
             .unwrap();
         runtime
-            .block_on(db.add_pending_inbound_transaction(4u64, inbound_tx_cancelled))
+            .block_on(db.add_pending_inbound_transaction(4.into(), inbound_tx_cancelled))
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(4u64)).unwrap();
+        runtime.block_on(db.cancel_pending_transaction(4.into())).unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled))
+            .block_on(db.insert_completed_transaction(5.into(), completed_tx_cancelled))
             .unwrap();
-        runtime.block_on(db.cancel_completed_transaction(5u64)).unwrap();
+        runtime.block_on(db.cancel_completed_transaction(5.into())).unwrap();
         runtime
-            .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx))
+            .block_on(db.add_pending_outbound_transaction(3.into(), outbound_tx))
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(3u64)).unwrap();
+        runtime.block_on(db.cancel_pending_transaction(3.into())).unwrap();
 
         let (tx_sender, tx_receiver) = broadcast::channel(20);
         let (oms_sender, oms_receiver) = broadcast::channel(20);
@@ -883,66 +883,67 @@ mod test {
         runtime.spawn(callback_handler.start());
 
         tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64)))
+            .send(Arc::new(TransactionEvent::ReceivedTransaction(1.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2u64)))
+            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2u64)))
+            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionBroadcast(2u64)))
+            .send(Arc::new(TransactionEvent::TransactionBroadcast(2.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionMined(2u64)))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(2u64, 22u64)))
+            .send(Arc::new(TransactionEvent::TransactionMined(2.into())))
             .unwrap();
 
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2u64, true)))
+            .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(2.into(), 22u64)))
+            .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2.into(), true)))
             .unwrap();
         tx_sender
             .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
-                2u64, true,
+                2.into(),
+                true,
             )))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(3u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(3.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(4u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(4.into())))
             .unwrap();
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(5.into())))
             .unwrap();
 
         oms_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
-                1u64,
+                1,
                 TxoValidationType::Unspent,
             )))
             .unwrap();
 
         oms_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
-                1u64,
+                1,
                 TxoValidationType::Spent,
             )))
             .unwrap();
 
         oms_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
-                1u64,
+                1,
                 TxoValidationType::Invalid,
             )))
             .unwrap();
 
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1.into())))
             .unwrap();
 
         oms_sender
@@ -967,7 +968,7 @@ mod test {
             .unwrap();
 
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationFailure(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationFailure(1.into())))
             .unwrap();
 
         oms_sender
@@ -992,7 +993,7 @@ mod test {
             .unwrap();
 
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationAborted(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationAborted(1.into())))
             .unwrap();
 
         oms_sender
@@ -1017,7 +1018,7 @@ mod test {
             .unwrap();
 
         tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1.into())))
             .unwrap();
 
         dht_sender

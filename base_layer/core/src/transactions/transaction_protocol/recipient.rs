@@ -242,7 +242,7 @@ mod test {
         let features = OutputFeatures::default();
         let amount = MicroTari(500);
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
@@ -289,7 +289,7 @@ mod test {
         let script = TariScript::default();
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do

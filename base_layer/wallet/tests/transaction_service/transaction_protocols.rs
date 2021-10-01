@@ -42,6 +42,7 @@ use tari_core::{
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::{uT, MicroTari, T},
+        transaction_protocol::TxId,
         CryptoFactories,
     },
     txn_schema,
@@ -53,7 +54,6 @@ use tari_wallet::{
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
-        TxId,
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
@@ -249,7 +249,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
     let protocol = TransactionBroadcastProtocol::new(
-        2,
+        2.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -261,13 +261,13 @@ async fn tx_broadcast_protocol_submit_success_i() {
     // Fails because there is no transaction in the database to be broadcast
     assert!(join_handle.await.unwrap().is_err());
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert!(db_completed_tx.confirmations.is_none());
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -316,7 +316,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
         .unwrap();
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
 
     // Set Base Node response to be mined but unconfirmed
@@ -334,7 +334,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
         .unwrap();
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedUnconfirmed);
     assert_eq!(db_completed_tx.confirmations, Some(1));
 
@@ -364,7 +364,7 @@ async fn tx_broadcast_protocol_submit_success_i() {
         }
     }
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
 
     // Set base node response to mined and confirmed and synced
@@ -378,10 +378,10 @@ async fn tx_broadcast_protocol_submit_success_i() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
     assert_eq!(
         db_completed_tx.confirmations,
@@ -446,10 +446,10 @@ async fn tx_broadcast_protocol_submit_rejection() {
     let mut event_stream = resources.event_publisher.subscribe();
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -476,7 +476,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     }
 
     // Check transaction is cancelled in db
-    let db_completed_tx = resources.db.get_completed_transaction(1).await;
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await;
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
@@ -518,7 +518,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     // Set Base Node query response to be not stored, as if the base node does not have the tx in its pool
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -530,7 +530,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     });
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -579,10 +579,10 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
 }
 
@@ -606,10 +606,10 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let mut event_stream = resources.event_publisher.subscribe();
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -665,7 +665,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     }
 
     // Check transaction is cancelled in db
-    let db_completed_tx = resources.db.get_completed_transaction(1).await;
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await;
     assert!(db_completed_tx.is_err());
 
     // Check that the appropriate events were emitted
@@ -707,10 +707,10 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -773,7 +773,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
     }
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedUnconfirmed);
 
     // Set base node response to mined and confirmed
@@ -802,10 +802,10 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
 }
 
@@ -829,10 +829,10 @@ async fn tx_broadcast_protocol_connection_problem() {
 
     let mut event_stream = resources.event_publisher.subscribe();
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -879,7 +879,7 @@ async fn tx_broadcast_protocol_connection_problem() {
         height_of_longest_chain: 0,
     });
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 }
 
 /// Submit a transaction that is Already Mined for the submission, the subsequent query should confirm the transaction
@@ -900,7 +900,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     // Set Base Node to respond with AlreadyMined
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -910,7 +910,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     });
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -941,10 +941,10 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
     assert_eq!(
         db_completed_tx.mined_height,
@@ -970,10 +970,10 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1, 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
 
     let protocol = TransactionBroadcastProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         Duration::from_secs(1),
         server_node_identity.public_key().clone(),
@@ -1046,10 +1046,10 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), 1);
+    assert_eq!(result.unwrap(), TxId::from(1));
 
     // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1).await.unwrap();
+    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
 }
 
@@ -1074,7 +1074,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     let (_timeout_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1082,7 +1082,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     )
     .await;
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1090,7 +1090,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     )
     .await;
     add_transaction_to_database(
-        3,
+        3.into(),
         3 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1098,7 +1098,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     )
     .await;
     add_transaction_to_database(
-        4,
+        4.into(),
         4 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1117,7 +1117,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     rpc_service_state.set_is_synced(false);
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
@@ -1172,7 +1172,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
     let (_timeout_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1189,7 +1189,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
     });
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
@@ -1237,7 +1237,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
     let (_timeout_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1255,7 +1255,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
     });
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
@@ -1310,7 +1310,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1319,7 +1319,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     .await;
 
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1328,7 +1328,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     .await;
 
     add_transaction_to_database(
-        3,
+        3.into(),
         3 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1337,7 +1337,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     .await;
 
     add_transaction_to_database(
-        4,
+        4.into(),
         4 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1346,7 +1346,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     .await;
 
     add_transaction_to_database(
-        5,
+        5.into(),
         5 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1355,7 +1355,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     .await;
 
     add_transaction_to_database(
-        6,
+        6.into(),
         6 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1375,7 +1375,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(10),
@@ -1441,7 +1441,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     let (_timeout_update_publisher, _) = broadcast::channel(20);
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1450,7 +1450,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     .await;
 
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1459,7 +1459,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     .await;
 
     add_transaction_to_database(
-        3,
+        3.into(),
         3 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1468,7 +1468,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     .await;
 
     add_transaction_to_database(
-        4,
+        4.into(),
         4 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1477,7 +1477,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     .await;
 
     add_transaction_to_database(
-        5,
+        5.into(),
         5 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1486,7 +1486,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     .await;
 
     add_transaction_to_database(
-        6,
+        6.into(),
         6 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1506,7 +1506,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(10),
@@ -1565,7 +1565,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     let (_timeout_update_publisher, _) = broadcast::channel(20);
     let mut event_stream = resources.event_publisher.subscribe();
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1574,7 +1574,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     .await;
 
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1595,7 +1595,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(5),
@@ -1668,7 +1668,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1676,7 +1676,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     )
     .await;
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         false,
         Some(TransactionStatus::MinedConfirmed),
@@ -1684,7 +1684,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     )
     .await;
     add_transaction_to_database(
-        3,
+        3.into(),
         3 * T,
         true,
         Some(TransactionStatus::MinedConfirmed),
@@ -1703,7 +1703,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     rpc_service_state.set_is_synced(false);
 
     let protocol = TransactionValidationProtocol::new(
-        1,
+        1.into(),
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),

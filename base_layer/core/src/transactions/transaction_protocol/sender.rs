@@ -150,8 +150,8 @@ pub struct SenderTransactionProtocol {
 }
 
 impl SenderTransactionProtocol {
-    /// Begin constructing a new transaction. All the up-front data is collected via the `SenderTransactionInitializer`
-    /// builder function
+    /// Begin constructing a new transaction. All the up-front data is collected via the
+    /// `SenderTransactionProtocolBuilder` builder function
     pub fn builder(num_recipients: usize) -> SenderTransactionProtocolBuilder {
         SenderTransactionProtocolBuilder::new(num_recipients)
     }

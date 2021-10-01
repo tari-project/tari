@@ -325,7 +325,7 @@ mod test {
     };
     use tokio::time::Duration;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn basic_test_as_leader() {
         // let mut inbound = mock_inbound();
         // let mut sender = inbound.create_sender();

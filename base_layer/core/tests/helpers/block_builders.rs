@@ -88,7 +88,7 @@ pub fn create_coinbase(
 
     let unblinded_output =
         create_unblinded_output(script!(Nop), OutputFeatures::create_coinbase(maturity_height), p, value);
-    let output = unblinded_output.as_transaction_output(factories).unwrap();
+    let output = unblinded_output.as_transaction_output(&factories, false).unwrap();
 
     (output, kernel, unblinded_output)
 }
@@ -216,7 +216,7 @@ pub fn create_genesis_block_with_utxos(
         let p = TestParams::new();
         let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
         secrets.push(unblinded_output.clone());
-        let output = unblinded_output.as_transaction_output(factories).unwrap();
+        let output = unblinded_output.as_transaction_output(&factories, false).unwrap();
         template.body.add_output(output);
         secrets
     });

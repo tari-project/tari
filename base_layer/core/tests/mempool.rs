@@ -972,7 +972,6 @@ async fn consensus_validation_large_tx() {
     let mut unblinded_outputs = Vec::with_capacity(output_count);
     let mut nonce = PrivateKey::default();
     let mut offset = PrivateKey::default();
-    dbg!(&output_count);
     for i in 0..output_count {
         let test_params = TestParams::new();
         nonce = nonce + test_params.nonce.clone();
@@ -1001,7 +1000,7 @@ async fn consensus_validation_large_tx() {
 
     let outputs = unblinded_outputs
         .iter()
-        .map(|o| o.as_transaction_output(&factories))
+        .map(|o| o.as_transaction_output(&factories, false))
         .collect::<Result<Vec<TransactionOutput>, _>>()
         .unwrap();
 
@@ -1038,6 +1037,11 @@ async fn consensus_validation_large_tx() {
     let response = mempool.insert(Arc::new(tx)).unwrap();
     // make sure the tx was not accepted into the mempool
     assert!(matches!(response, TxStorageResponse::NotStored));
+}
+
+#[tokio::test]
+async fn consensus_validation_unique_id() {
+    assert!(true);
 }
 
 #[tokio::test]

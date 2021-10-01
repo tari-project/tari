@@ -53,11 +53,35 @@ impl PartialEq for TxId {
     }
 }
 
+impl PartialEq<u64> for TxId {
+    fn eq(&self, other: &u64) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl PartialEq<TxId> for u64 {
+    fn eq(&self, other: &TxId) -> bool {
+        self.eq(&other.0)
+    }
+}
+
 impl Eq for TxId {}
 
 impl From<u64> for TxId {
     fn from(s: u64) -> Self {
         Self(s)
+    }
+}
+
+impl From<usize> for TxId {
+    fn from(s: usize) -> Self {
+        Self(s as u64)
+    }
+}
+
+impl From<i32> for TxId {
+    fn from(s: i32) -> Self {
+        Self(s as u64)
     }
 }
 

@@ -37,6 +37,7 @@ use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::MicroTari,
     transaction::OutputFeatures,
+    transaction_protocol::TxId,
     CryptoFactories,
 };
 use tari_wallet::output_manager_service::{
@@ -84,7 +85,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut pending_txs = Vec::new();
     for i in 0..3 {
         let mut pending_tx = PendingTransactionOutputs {
-            tx_id: OsRng.next_u64(),
+            tx_id: TxId::new_random(),
             outputs_to_be_spent: vec![],
             outputs_to_be_received: vec![],
             timestamp: Utc::now().naive_utc() -
@@ -115,7 +116,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         pending_txs.push(pending_tx);
     }
 
-    let outputs = runtime.block_on(db.fetch_sorted_unspent_outputs()).unwrap();
+    let outputs = runtime.block_on(db.fetch_all_unspent_outputs()).unwrap();
     assert_eq!(unspent_outputs, outputs);
 
     let p_tx = runtime.block_on(db.fetch_all_pending_transaction_outputs()).unwrap();
@@ -213,9 +214,9 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
     let total_encumbered = outputs[0].clone().unblinded_output.value + outputs[1].clone().unblinded_output.value;
     runtime
-        .block_on(db.encumber_outputs(2, outputs_to_encumber, vec![uo_change.clone()]))
+        .block_on(db.encumber_outputs(2.into(), outputs_to_encumber, vec![uo_change.clone()]))
         .unwrap();
-    runtime.block_on(db.confirm_encumbered_outputs(2)).unwrap();
+    runtime.block_on(db.confirm_encumbered_outputs(2.into())).unwrap();
 
     available_balance -= total_encumbered;
     pending_incoming_balance += uo_change.unblinded_output.value;
@@ -242,7 +243,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
     runtime
         .block_on(db.accept_incoming_pending_transaction(
-            5,
+            5.into(),
             DbUnblindedOutput::from_unblinded_output(output, &factories).unwrap(),
             None,
         ))
@@ -442,7 +443,7 @@ pub async fn test_short_term_encumberance() {
     // Add a pending tx
     let mut available_balance = MicroTari(0);
     let mut pending_tx = PendingTransactionOutputs {
-        tx_id: OsRng.next_u64(),
+        tx_id: TxId::new_random(),
         outputs_to_be_spent: vec![],
         outputs_to_be_received: vec![],
         timestamp: Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(120_000_000)).unwrap(),
@@ -538,7 +539,7 @@ pub async fn test_no_duplicate_outputs() {
 
     // add a pending transaction with the same duplicate output
     let pending_tx = PendingTransactionOutputs {
-        tx_id: OsRng.next_u64(),
+        tx_id: TxId::new_random(),
         outputs_to_be_spent: vec![],
         outputs_to_be_received: vec![uo],
         timestamp: Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(120_000_000)).unwrap(),
