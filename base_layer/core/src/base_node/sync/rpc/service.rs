@@ -36,29 +36,56 @@ use crate::{
     },
 };
 use log::*;
-use std::cmp;
+use std::{
+    cmp,
+    sync::{Arc, Weak},
+};
 use tari_comms::{
+    peer_manager::NodeId,
     protocol::rpc::{Request, Response, RpcStatus, Streaming},
     utils,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::mpsc, task};
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
 use tracing::{instrument, span, Instrument, Level};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
+    active_sessions: RwLock<Vec<Weak<NodeId>>>,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     pub fn new(db: AsyncBlockchainDb<B>) -> Self {
-        Self { db }
+        Self {
+            db,
+            active_sessions: RwLock::new(Vec::new()),
+        }
     }
 
     #[inline]
     fn db(&self) -> AsyncBlockchainDb<B> {
         self.db.clone()
+    }
+
+    pub async fn try_add_exclusive_session(&self, peer: NodeId) -> Result<Arc<NodeId>, RpcStatus> {
+        let mut lock = self.active_sessions.write().await;
+        *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
+        debug!(target: LOG_TARGET, "Number of active sync sessions: {}", lock.len());
+
+        if lock.iter().any(|p| p.upgrade().filter(|p| **p == peer).is_some()) {
+            return Err(RpcStatus::forbidden(
+                "Existing sync session found for this client. Only a single session is permitted",
+            ));
+        }
+
+        let token = Arc::new(peer);
+        lock.push(Arc::downgrade(&token));
+        Ok(token)
     }
 }
 
@@ -116,20 +143,26 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             "Initiating block sync with peer `{}` from height {} to {}", peer_node_id, start, end,
         );
 
+        let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         // Number of blocks to load and push to the stream before loading the next batch
-        const BATCH_SIZE: usize = 4;
+        const BATCH_SIZE: usize = 2;
         let (tx, rx) = mpsc::channel(BATCH_SIZE);
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
         task::spawn(
             async move {
+                // Move token into this task
+                let session_token = session_token;
                 let iter = NonOverlappingIntegerPairIter::new(start, end + 1, BATCH_SIZE);
                 for (start, end) in iter {
                     if tx.is_closed() {
                         break;
                     }
 
-                    debug!(target: LOG_TARGET, "Sending blocks #{} - #{}", start, end);
+                    debug!(
+                        target: LOG_TARGET,
+                        "Sending blocks #{} - #{} to '{}'", start, end, session_token
+                    );
                     let blocks = db
                         .fetch_blocks(start..=end)
                         .await
@@ -162,7 +195,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                 debug!(
                     target: LOG_TARGET,
-                    "Block sync round complete for peer `{}`.", peer_node_id,
+                    "Block sync round complete for peer `{}`.", session_token,
                 );
             }
             .instrument(span),
@@ -208,10 +241,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             chunk_size
         );
 
+        let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
         let (tx, rx) = mpsc::channel(chunk_size);
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
         task::spawn(
             async move {
+                // Move token into this task
+                let session_token = session_token;
                 let iter = NonOverlappingIntegerPairIter::new(
                     start_header.height + 1,
                     start_header.height.saturating_add(count).saturating_add(1),
@@ -247,7 +283,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                 debug!(
                     target: LOG_TARGET,
-                    "Header sync round complete for peer `{}`.", peer_node_id,
+                    "Header sync round complete for peer `{}`.", session_token,
                 );
             }
             .instrument(span),

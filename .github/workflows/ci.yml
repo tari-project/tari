@@ -54,6 +54,8 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            openssl \
+            libsqlite3-dev \
             clang-10 \
             pkg-config \
             git \
@@ -119,6 +121,8 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            openssl \
+            libsqlite3-dev \
             pkg-config \
             git \
             cmake \
