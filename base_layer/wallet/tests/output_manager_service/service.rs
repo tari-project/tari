@@ -684,56 +684,34 @@ async fn cancel_transaction() {
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), num_outputs);
 }
 
-// TODO Redo this test when decided how to handle the reinstatement of a cancelled received transaction
+#[tokio::test]
+async fn cancel_transaction_and_reinstate_inbound_tx() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-// #[tokio::test]
-// async fn cancel_transaction_and_reinstate_inbound_tx() {
-//     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-//     let backend = OutputManagerSqliteDatabase::new(connection, None);
-//
-//     let (mut oms,_, _shutdown, _, _, _,  _) = setup_output_manager_service(backend.clone(), true).await;
-//
-//     let value = MicroTari::from(5000);
-//     let (tx_id, sender_message) = generate_sender_transaction_message(value);
-//     let _rtp = oms.get_recipient_transaction(sender_message).await.unwrap();
-//     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-//
-//     let pending_txs = oms.get_pending_transactions().await.unwrap();
-//
-//     assert_eq!(pending_txs.len(), 1);
-//
-//     let output = pending_txs
-//         .get(&tx_id)
-//         .unwrap()
-//         .outputs_to_be_received
-//         .first()
-//         .unwrap()
-//         .clone();
-//
-//     oms.cancel_transaction(tx_id).await.unwrap();
-//
-//     let cancelled_output = backend
-//         .fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound))
-//         .unwrap()
-//         .unwrap();
-//
-//     if let DbValue::AnyOutputs(o) = cancelled_output {
-//         let o = o.first().expect("Should be one output in here");
-//         assert_eq!(o.commitment, output.commitment);
-//     } else {
-//         panic!("Should have found cancelled output");
-//     }
-//
-//     assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 0);
-//
-//     oms.reinstate_cancelled_inbound_transaction(tx_id).await.unwrap();
-//
-//     assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
-//
-//     let balance = oms.get_balance().await.unwrap();
-//
-//     assert_eq!(balance.pending_incoming_balance, value);
-// }
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+
+    let value = MicroTari::from(5000);
+    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let _rtp = oms.get_recipient_transaction(sender_message).await.unwrap();
+    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
+
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.pending_incoming_balance, value);
+
+    oms.cancel_transaction(tx_id).await.unwrap();
+
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+
+    oms.reinstate_cancelled_inbound_transaction_outputs(tx_id)
+        .await
+        .unwrap();
+
+    let balance = oms.get_balance().await.unwrap();
+
+    assert_eq!(balance.pending_incoming_balance, value);
+}
 
 #[tokio::test]
 async fn test_get_balance() {

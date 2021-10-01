@@ -117,6 +117,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
     /// Set if a coinbase output is abandoned or not
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
+    /// Reinstate a cancelled inbound output
+    fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -499,6 +501,14 @@ where T: OutputManagerBackend + 'static
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.reinstate_cancelled_inbound_output(tx_id))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

@@ -731,6 +731,22 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let outputs = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::CancelledInbound, &conn)?;
+
+        for o in outputs {
+            o.update(
+                UpdateOutput {
+                    status: Some(OutputStatus::EncumberedToBeReceived),
+                    ..Default::default()
+                },
+                &(*conn),
+            )?;
+        }
+        Ok(())
+    }
+
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
