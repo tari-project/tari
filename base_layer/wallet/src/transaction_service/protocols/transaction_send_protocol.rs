@@ -641,21 +641,19 @@ where
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     // now wait for discovery to complete
                     match rx.await {
-                        Ok(send_msg_response) => {
-                            if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
-                                );
-                                direct_send_result = wait_on_dial(
-                                    send_states,
-                                    self.id,
-                                    self.dest_pubkey.clone(),
-                                    "Transaction",
-                                    self.resources.config.direct_send_timeout,
-                                )
-                                .await;
-                            }
+                        Ok(SendMessageResponse::Queued(send_states)) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
+                            );
+                            direct_send_result = wait_on_dial(
+                                send_states,
+                                self.id,
+                                self.dest_pubkey.clone(),
+                                "Transaction",
+                                self.resources.config.direct_send_timeout,
+                            )
+                            .await;
                         },
                         Err(e) => {
                             warn!(
@@ -663,6 +661,10 @@ where
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
                         },
+                        _ => warn!(
+                            target: LOG_TARGET,
+                            "Empty message received waiting for Discovery to complete TxId: {}", self.id,
+                        ),
                     }
                 },
             },

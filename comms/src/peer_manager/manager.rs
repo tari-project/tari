@@ -122,7 +122,7 @@ impl PeerManager {
         addresses: Vec<Multiaddr>,
         peer_features: PeerFeatures,
     ) -> Result<Peer, PeerManagerError> {
-        match self.find_by_public_key(&pubkey).await {
+        match self.find_by_public_key(pubkey).await {
             Ok(mut peer) => {
                 peer.connection_stats.set_connection_success();
                 peer.addresses = addresses.into();
@@ -143,7 +143,7 @@ impl PeerManager {
                 ))
                 .await?;
 
-                self.find_by_public_key(&pubkey).await
+                self.find_by_public_key(pubkey).await
             },
             Err(err) => Err(err),
         }
@@ -151,7 +151,7 @@ impl PeerManager {
 
     /// Get a peer matching the given node ID
     pub async fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
-        match self.peer_storage.read().await.direct_identity_node_id(&node_id) {
+        match self.peer_storage.read().await.direct_identity_node_id(node_id) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),
@@ -163,7 +163,7 @@ impl PeerManager {
         &self,
         public_key: &CommsPublicKey,
     ) -> Result<Option<Peer>, PeerManagerError> {
-        match self.peer_storage.read().await.direct_identity_public_key(&public_key) {
+        match self.peer_storage.read().await.direct_identity_public_key(public_key) {
             Ok(peer) => Ok(Some(peer)),
             Err(PeerManagerError::PeerNotFoundError) | Err(PeerManagerError::BannedPeer) => Ok(None),
             Err(err) => Err(err),

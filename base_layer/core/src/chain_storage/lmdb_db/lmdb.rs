@@ -78,7 +78,7 @@ where
 {
     let val_buf = serialize(val)?;
     trace!(target: LOG_TARGET, "LMDB: {} bytes inserted", val_buf.len());
-    match txn.access().put(&db, key, &val_buf, put::NOOVERWRITE) {
+    match txn.access().put(db, key, &val_buf, put::NOOVERWRITE) {
         Ok(_) => Ok(()),
         Err(lmdb_zero::Error::Code(lmdb_zero::error::KEYEXIST)) => Err(ChainStorageError::KeyExists {
             table_name,
@@ -114,7 +114,7 @@ where
     V: Serialize,
 {
     let val_buf = serialize(val)?;
-    txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+    txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
                 return ChainStorageError::DbResizeRequired;
@@ -135,7 +135,7 @@ where
     V: Serialize,
 {
     let val_buf = serialize(val)?;
-    txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+    txn.access().put(db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         if let lmdb_zero::Error::Code(code) = &e {
             if *code == lmdb_zero::error::MAP_FULL {
                 return ChainStorageError::DbResizeRequired;
@@ -160,7 +160,7 @@ where
     K: AsLmdbBytes + ?Sized,
 {
     txn.access()
-        .del_key(&db, key)
+        .del_key(db, key)
         .or_not_found(table_name, "<unknown>", to_hex(key.as_lmdb_bytes()))?;
     Ok(())
 }
@@ -175,7 +175,7 @@ where
     K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    txn.access().del_item(&db, key, &serialize(value)?)?;
+    txn.access().del_item(db, key, &serialize(value)?)?;
     Ok(())
 }
 
@@ -219,7 +219,7 @@ where
     V: DeserializeOwned,
 {
     let access = txn.access();
-    match access.get(&db, key).to_opt() {
+    match access.get(db, key).to_opt() {
         Ok(None) => Ok(None),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
@@ -290,7 +290,7 @@ where V: DeserializeOwned {
 pub fn lmdb_exists<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
 where K: AsLmdbBytes + ?Sized {
     let access = txn.access();
-    match access.get::<K, [u8]>(&db, key).to_opt() {
+    match access.get::<K, [u8]>(db, key).to_opt() {
         Ok(None) => Ok(false),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not read from lmdb: {:?}", e);
@@ -301,7 +301,7 @@ where K: AsLmdbBytes + ?Sized {
 }
 
 pub fn lmdb_len(txn: &ConstTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
-    let stats = txn.db_stat(&db).map_err(|e| {
+    let stats = txn.db_stat(db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not read length from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;

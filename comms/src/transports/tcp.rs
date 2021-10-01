@@ -56,13 +56,13 @@ impl TcpTransport {
     // #[doc("Sets `SO_SNDBUF` i.e. the size of the send buffer.")]
     // setter_mut!(set_send_buffer_size, send_buffer_size, Option<usize>);
 
-    #[doc("Sets `IP_TTL` i.e. the TTL of packets sent from this socket.")]
+    // #[doc("Sets `IP_TTL` i.e. the TTL of packets sent from this socket.")]
     setter_mut!(set_ttl, ttl, Option<u32>);
 
     // #[doc("Sets `SO_KEEPALIVE` i.e. the interval to send keepalive probes, or None to disable.")]
     // setter_mut!(set_keepalive, keepalive, Option<Option<Duration>>);
 
-    #[doc("Sets `TCP_NODELAY` i.e disable Nagle's algorithm if set to true.")]
+    // #[doc("Sets `TCP_NODELAY` i.e disable Nagle's algorithm if set to true.")]
     setter_mut!(set_nodelay, nodelay, Option<bool>);
 
     /// Create a new TcpTransport

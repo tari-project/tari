@@ -69,7 +69,7 @@ pub async fn create(
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
         .unwrap();
-    let peer_database = datastore.get_handle(&"peerdb").unwrap();
+    let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let mut protocols = Protocols::new();

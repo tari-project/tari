@@ -140,7 +140,7 @@ impl RandomXFactoryInner {
             }
         }
 
-        let vm = RandomXVMInstance::create(&key, self.flags)?;
+        let vm = RandomXVMInstance::create(key, self.flags)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 

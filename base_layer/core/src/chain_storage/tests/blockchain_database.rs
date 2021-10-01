@@ -363,7 +363,7 @@ mod add_block {
             schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![500 * T])]);
         let mut prev_utxo = tx_outputs[0].clone();
 
-        let (block, _) = create_next_block(&prev_block, txns);
+        let (block, _) = create_next_block(prev_block, txns);
         db.add_block(block.clone()).unwrap().assert_added();
 
         let prev_block = block;

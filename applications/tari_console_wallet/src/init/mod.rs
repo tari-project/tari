@@ -313,7 +313,7 @@ pub async fn init_wallet(
         node_features,
     ));
 
-    let transport_type = create_transport_type(&config);
+    let transport_type = create_transport_type(config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);

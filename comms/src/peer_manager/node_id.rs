@@ -252,7 +252,7 @@ impl NodeId {
 
     /// Calculate the distance between the current node id and the provided node id using the XOR metric
     pub fn distance(&self, node_id: &NodeId) -> NodeDistance {
-        NodeDistance::from_node_ids(&self, &node_id)
+        NodeDistance::from_node_ids(self, node_id)
     }
 
     /// Find and return the indices of the K nearest neighbours from the provided node id list
@@ -438,7 +438,7 @@ mod test {
         assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
         // Ensure node id is different to original public key
         let mut pk_array: [u8; 32] = [0; 32];
-        pk_array.copy_from_slice(&pk.as_bytes());
+        pk_array.copy_from_slice(pk.as_bytes());
         assert_ne!(node_id.0.to_vec(), pk_array.to_vec());
     }
 

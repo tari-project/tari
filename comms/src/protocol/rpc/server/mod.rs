@@ -66,6 +66,7 @@ use crate::{
 use futures::{stream, SinkExt, StreamExt};
 use prost::Message;
 use std::{
+    borrow::Cow,
     future::Future,
     sync::Arc,
     time::{Duration, Instant},
@@ -539,7 +540,11 @@ where
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "RPC service was not able to complete within the deadline ({:.0?}). Request aborted.", deadline
+                    "RPC service was not able to complete within the deadline ({:.0?}). Request aborted for peer '{}' \
+                     ({}).",
+                    deadline,
+                    self.node_id,
+                    self.protocol_name()
                 );
                 return Ok(());
             },
@@ -550,7 +555,13 @@ where
                 self.process_body(request_id, deadline, body).await?;
             },
             Err(err) => {
-                debug!(target: LOG_TARGET, "Service returned an error: {}", err);
+                debug!(
+                    target: LOG_TARGET,
+                    "(peer: {}, protocol: {}) Service returned an error: {}",
+                    self.node_id,
+                    self.protocol_name(),
+                    err
+                );
                 let resp = proto::rpc::RpcResponse {
                     request_id,
                     status: err.as_code(),
@@ -563,6 +574,10 @@ where
         }
 
         Ok(())
+    }
+
+    fn protocol_name(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(&self.protocol)
     }
 
     async fn process_body(

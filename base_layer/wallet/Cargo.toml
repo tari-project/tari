@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.10.0"
+version = "0.10.1"
 edition = "2018"
 
 [dependencies]
@@ -11,7 +11,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { version = "^0.10", path = "../../base_layer/common_types" }
 tari_comms = { version = "^0.10", path = "../../comms" }
 tari_comms_dht = { version = "^0.10", path = "../../comms/dht" }
-tari_crypto = "0.11.1"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_key_manager = { version = "^0.10", path = "../key_manager" }
 tari_p2p = { version = "^0.10", path = "../p2p", features = ["auto-update"] }
 tari_service_framework = { version = "^0.10", path = "../service_framework" }
@@ -56,6 +56,6 @@ env_logger = "0.7.1"
 prost = "0.8.0"
 
 [features]
-default=["bundled_sqlite"]
+c_integration = []
 avx2 = ["tari_crypto/avx2", "tari_core/avx2"]
 bundled_sqlite = ["libsqlite3-sys"]

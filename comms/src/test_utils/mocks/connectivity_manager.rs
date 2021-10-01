@@ -153,7 +153,7 @@ impl ConnectivityManagerMockState {
         self.with_state(|state| {
             let peer = conn.peer_node_id();
             state.active_conns.insert(peer.clone(), conn.clone());
-            if let Some(replies) = state.pending_conns.remove(&peer) {
+            if let Some(replies) = state.pending_conns.remove(peer) {
                 replies.into_iter().for_each(|reply| {
                     reply.send(Ok(conn.clone())).unwrap();
                 });

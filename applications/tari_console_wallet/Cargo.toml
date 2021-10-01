@@ -1,12 +1,12 @@
 [package]
 name = "tari_console_wallet"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
 [dependencies]
 tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
-tari_crypto = "0.11.1"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = { path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities", features = ["wallet"] }
 tari_comms = { path = "../../comms" }

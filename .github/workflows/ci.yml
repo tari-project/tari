@@ -19,7 +19,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           components: clippy, rustfmt
           override: true
       - name: cargo fmt
@@ -54,6 +54,8 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            openssl \
+            libsqlite3-dev \
             clang-10 \
             pkg-config \
             git \
@@ -84,7 +86,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           components: clippy, rustfmt
           override: true
 
@@ -119,6 +121,8 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            openssl \
+            libsqlite3-dev \
             pkg-config \
             git \
             cmake \
@@ -131,7 +135,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           components: clippy, rustfmt
           override: true
 

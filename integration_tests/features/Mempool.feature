@@ -1,6 +1,7 @@
 @mempool
 Feature: Mempool
 
+  @flaky
   Scenario: Transactions are propagated through a network
     #
     # The randomness of the TX1 propagation can result in this test not passing.
@@ -17,6 +18,7 @@ Feature: Mempool
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
+  @flaky
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -33,7 +35,7 @@ Feature: Mempool
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
-  @flaky
+  @flaky @broken
   Scenario: Clear out mempool
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes

@@ -90,7 +90,7 @@ impl FromStr for SeedPeer {
         let mut parts = s.split("::").map(|s| s.trim());
         let public_key = parts
             .next()
-            .and_then(|s| CommsPublicKey::from_hex(&s).ok())
+            .and_then(|s| CommsPublicKey::from_hex(s).ok())
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
         let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
         if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
@@ -142,7 +142,7 @@ mod test {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
                           onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
 
-            let seed = SeedPeer::from_str(&sample).unwrap();
+            let seed = SeedPeer::from_str(sample).unwrap();
             assert_eq!(
                 seed.public_key.to_hex(),
                 "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"

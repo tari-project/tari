@@ -77,7 +77,7 @@ pub trait ConfigWriter: ConfigPath + serde::ser::Serialize {
     /// with values overloaded from `overload_key_prefix()`.
     fn merge_into(&self, config: &mut Config) -> Result<(), ConfigurationError> {
         use serde::de::Deserialize;
-        let overload = Self::overload_key_prefix(&config)?;
+        let overload = Self::overload_key_prefix(config)?;
         let key = match overload.as_deref() {
             Some(v) => v,
             None => Self::main_key_prefix(),

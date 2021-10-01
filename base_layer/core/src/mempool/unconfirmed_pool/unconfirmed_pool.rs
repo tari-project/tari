@@ -187,7 +187,7 @@ impl UnconfirmedPool {
             let mut potential_transactions_to_insert = HashMap::new();
             let mut potential_transactions_to_remove_and_recheck = Vec::new();
             self.get_all_dependant_transactions(
-                &prioritized_transaction,
+                prioritized_transaction,
                 &mut potential_transactions_to_insert,
                 &mut potential_transactions_to_remove_and_recheck,
                 &selected_txs,
@@ -221,7 +221,7 @@ impl UnconfirmedPool {
                 "Removing transaction with key {} from unconfirmed pool because it needs re-evaluation",
                 key.get_signature().to_hex()
             );
-            self.delete_transaction(&key);
+            self.delete_transaction(key);
         }
         let results = RetrieveResults {
             retrieved_transactions: selected_txs.into_values().collect(),
@@ -241,7 +241,7 @@ impl UnconfirmedPool {
         for dependant_output in &transaction.depended_output_hashes {
             match self.txs_by_output.get(dependant_output) {
                 Some(signatures) => {
-                    let highest_signature = self.find_highest_priority_transaction(&signatures)?;
+                    let highest_signature = self.find_highest_priority_transaction(signatures)?;
                     if !already_selected_txs.contains_key(&highest_signature) {
                         let dependant_transaction = self
                             .txs_by_signature
@@ -397,7 +397,7 @@ impl UnconfirmedPool {
                 "Removing transaction with key {} from unconfirmed pool",
                 tx_key.get_signature().to_hex()
             );
-            if let Some(transaction) = self.delete_transaction(&tx_key) {
+            if let Some(transaction) = self.delete_transaction(tx_key) {
                 removed_txs.push(transaction);
             }
         }

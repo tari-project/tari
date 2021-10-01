@@ -59,7 +59,7 @@ impl Display for TxSubmissionRejectionReason {
             TxSubmissionRejectionReason::ValidationFailed => "Validation Failed",
             TxSubmissionRejectionReason::None => "None",
         };
-        fmt.write_str(&response)
+        fmt.write_str(response)
     }
 }
 
@@ -150,7 +150,7 @@ impl Display for TxLocation {
             TxLocation::InMempool => "In Mempool",
             TxLocation::Mined => "Mined",
         };
-        fmt.write_str(&response)
+        fmt.write_str(response)
     }
 }
 

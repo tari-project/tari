@@ -537,8 +537,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
     let metadata_sig =
-        TransactionOutput::create_final_metadata_signature(&value, &keys.k, &script, &features, &offset_keys.k)
-            .unwrap();
+        TransactionOutput::create_final_metadata_signature(&value, &keys.k, script, &features, &offset_keys.k).unwrap();
 
     let utxo = TransactionOutput::new(
         features,

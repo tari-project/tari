@@ -658,11 +658,11 @@ impl Display for DbKey {
             DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
             DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
             DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
-            DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
-            DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
-            DbKey::KnownOneSidedPaymentScripts => f.write_str(&"Known claiming scripts"),
-            DbKey::AnyOutputByCommitment(_) => f.write_str(&"AnyOutputByCommitment"),
-            DbKey::OutputsByTxIdAndStatus(_, _) => f.write_str(&"OutputsByTxIdAndStatus"),
+            DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
+            DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),
+            DbKey::KnownOneSidedPaymentScripts => f.write_str("Known claiming scripts"),
+            DbKey::AnyOutputByCommitment(_) => f.write_str("AnyOutputByCommitment"),
+            DbKey::OutputsByTxIdAndStatus(_, _) => f.write_str("OutputsByTxIdAndStatus"),
         }
     }
 }
@@ -676,9 +676,9 @@ impl Display for DbValue {
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
             DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
-            DbValue::KnownOneSidedPaymentScripts(_) => f.write_str(&"Known claiming scripts"),
-            DbValue::AnyOutput(_) => f.write_str(&"Any Output"),
-            DbValue::AnyOutputs(_) => f.write_str(&"Any Outputs"),
+            DbValue::KnownOneSidedPaymentScripts(_) => f.write_str("Known claiming scripts"),
+            DbValue::AnyOutput(_) => f.write_str("Any Output"),
+            DbValue::AnyOutputs(_) => f.write_str("Any Outputs"),
         }
     }
 }
