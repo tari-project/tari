@@ -1384,7 +1384,7 @@ where
                         );
                         self.db.uncancel_pending_transaction(tx_id).await?;
                         self.output_manager_service
-                            .reinstate_cancelled_inbound_transaction(tx_id)
+                            .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                             .await?;
 
                         self.restart_receive_transaction_protocol(tx_id, source_pubkey.clone(), join_handles);

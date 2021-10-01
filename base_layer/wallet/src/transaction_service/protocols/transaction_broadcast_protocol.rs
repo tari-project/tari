@@ -125,10 +125,12 @@ where
             loop {
                 tokio::select! {
                     _ = current_base_node_watcher.changed() => {
-                             info!(
-                                target: LOG_TARGET,
-                                "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, current_base_node_watcher.borrow()
-                            );
+                            if let Some(peer) = &*current_base_node_watcher.borrow() {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {} (NodeID: {})", self.tx_id, peer.public_key, peer.node_id
+                                );
+                            }
                             self.last_rejection = None;
                             continue;
                     },

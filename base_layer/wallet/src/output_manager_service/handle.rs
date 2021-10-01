@@ -480,7 +480,10 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub async fn reinstate_cancelled_inbound_transaction_outputs(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ReinstateCancelledInboundTx(tx_id))

@@ -320,7 +320,7 @@ where
                 .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
             OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
-                .reinstate_cancelled_inbound_transaction(tx_id)
+                .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                 .await
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
             OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned) => self
@@ -816,25 +816,10 @@ where
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
     /// cancelled.
-    async fn reinstate_cancelled_inbound_transaction(&mut self, _tx_id: TxId) -> Result<(), OutputManagerError> {
-        // TODO: is this still needed?
-        unimplemented!("Still needed?");
-        // self.resources.db.reinstate_inbound_output(tx_id).await?;
-        //
-        // self.resources
-        //     .db
-        //     .add_pending_transaction_outputs(PendingTransactionOutputs {
-        //         tx_id,
-        //         outputs_to_be_spent: Vec::new(),
-        //         outputs_to_be_received: Vec::new(),
-        //         timestamp: Utc::now().naive_utc(),
-        //         coinbase_block_height: None,
-        //     })
-        //     .await?;
-        //
-        // self.confirm_encumberance(tx_id).await?;
+    async fn reinstate_cancelled_inbound_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.reinstate_cancelled_inbound_output(tx_id).await?;
 
-        // Ok(())
+        Ok(())
     }
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
