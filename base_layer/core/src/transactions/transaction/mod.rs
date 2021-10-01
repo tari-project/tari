@@ -1612,7 +1612,7 @@ mod test {
             value: (2u64.pow(32) + 1u64).into(),
             ..Default::default()
         });
-        let tx_output2 = unblinded_output2.as_transaction_output(&factories, false);
+        let tx_output2 = unblinded_output2.as_transaction_output(&factories, true);
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(

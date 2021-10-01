@@ -429,13 +429,13 @@ mod test {
     #[test]
     fn weatherwax_genesis_sanity_check() {
         let block = get_weatherwax_genesis_block();
-        assert_eq!(block.block().body.outputs().len(), 4001);
+        assert_eq!(block.block().body.outputs().len(), 1);
 
         let factories = CryptoFactories::default();
         let coinbase = block.block().body.outputs().first().unwrap();
         assert!(coinbase.is_coinbase());
         coinbase.verify_range_proof(&factories.range_proof).unwrap();
-        assert_eq!(block.block().body.kernels().len(), 2);
+        assert_eq!(block.block().body.kernels().len(), 1);
         for kernel in block.block().body.kernels() {
             kernel.verify_signature().unwrap();
         }

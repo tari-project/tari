@@ -425,10 +425,10 @@ impl SenderTransactionProtocolBuilder {
             .map(|o| {
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
                     // TODO: Should proof be verified?
-                    o.as_rewindable_transaction_output(factories, rewind_data, false)
+                    o.as_rewindable_transaction_output(factories, rewind_data, true)
                 } else {
                     // TODO: Should proof be verified
-                    o.as_transaction_output(factories, false)
+                    o.as_transaction_output(factories, true)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
@@ -450,7 +450,7 @@ impl SenderTransactionProtocolBuilder {
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
                 // TODO: Should proof be verified?
-                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, false) {
+                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, true) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());
@@ -458,7 +458,7 @@ impl SenderTransactionProtocolBuilder {
                 }
             } else {
                 // TODO: Should proof be verified?
-                match change_unblinded_output.as_transaction_output(factories, false) {
+                match change_unblinded_output.as_transaction_output(factories, true) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());
@@ -960,11 +960,11 @@ mod test {
             script.clone(),
             OutputFeatures::default(),
             p.clone(),
-            (1u64.pow(32) + 1u64).into(),
+            (2u64.pow(32) + 1u64).into(),
         );
         // Start the builder
-        let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
-        let weight = MicroTari(30);
+        let (utxo1, input1) = create_test_input((2u64.pow(32) + 2_000_000u64).into(), 0, &factories.commitment);
+        let fee_per_gram = MicroTari(30);
         let mut builder = SenderTransactionProtocolBuilder::new(1);
         builder
             .with_lock_height(1234)
@@ -973,9 +973,9 @@ mod test {
             .with_output(output, p.sender_offset_private_key.clone())
             .unwrap()
             .with_input(utxo1, input1)
-            .with_amount(0, MicroTari(9800))
+            .with_amount(0, MicroTari(2_000))
             .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(weight)
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 0,
                 script.clone(),
