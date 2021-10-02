@@ -1,10 +1,10 @@
 [package]
-name = "tari_dan_node"
+name = "tari_validator_node"
 authors = ["The Tari Development Community"]
-description = "The tari digital assets network node implementation"
+description = "The Tari validator node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.8.11"
+version = "0.10.1"
 edition = "2018"
 
 [dependencies]
@@ -13,7 +13,7 @@ tari_crypto = "0.11.1"
 tari_test_utils = "0.8.1"
 tari_app_utilities = {path ="../tari_app_utilities"}
 tari_common = {path = "../../common"}
-tari_comms = {path = "../../comms"}
+tari_comms = {path = "../../comms" }
 tari_service_framework = { path= "../../base_layer/service_framework"}
 tari_p2p = {path = "../../base_layer/p2p"}
 tari_comms_dht = {path= "../../comms/dht"}

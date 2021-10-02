@@ -19,33 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
+pub(crate) mod validator_node_grpc_server;
 
-package tari.dan.rpc;
-
-service DanNode {
-    rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
-    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
-}
-
-message GetTokenDataRequest {
-  bytes asset_pub_key = 1;
-  bytes unique_id = 2;
-}
-
-message GetTokenDataResponse {
-
-}
-
-message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated bytes args = 3;
-    bytes token_id = 4;
-    bytes signature = 5;
-    uint64 id = 6;
-}
-
-message ExecuteInstructionResponse {
-    string status = 1;
+pub mod validator_node_rpc {
+    tonic::include_proto!("tari.validator_node.rpc");
 }

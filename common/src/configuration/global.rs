@@ -167,11 +167,8 @@ fn convert_node_config(
 ) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.as_str();
 
-    let key = config_string("base_node", net_str, "data_dir");
-    let data_dir: PathBuf = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
+    let key = config_string("common", net_str, "data_dir");
+    let data_dir: PathBuf = cfg.get_str(&key).unwrap_or(net_str.to_string()).into();
 
     let key = config_string("base_node", net_str, "db_type");
     let db_type = cfg

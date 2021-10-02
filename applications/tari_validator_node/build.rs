@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .build_server(true)
         .format(false)
-        .compile(&["proto/dan_node.proto"], &["proto"])?;
+        .compile(&["proto/validator_node.proto"], &["proto"])?;
 
     tari_common::build::ProtobufCompiler::new()
         .proto_paths(&["src/p2p/proto"])

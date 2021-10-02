@@ -27,7 +27,7 @@ mod grpc;
 mod p2p;
 mod types;
 
-use crate::grpc::dan_grpc_server::DanGrpcServer;
+use crate::grpc::validator_node_grpc_server::ValidatorNodeGrpcServer;
 use anyhow;
 use futures::FutureExt;
 use log::*;
@@ -47,7 +47,7 @@ use crate::{
         dan_node::DanNode,
         services::{ConcreteMempoolService, MempoolService, MempoolServiceHandle},
     },
-    grpc::dan_rpc::dan_node_server::DanNodeServer,
+    grpc::validator_node_rpc::validator_node_server::ValidatorNodeServer,
 };
 use std::sync::{Arc, Mutex};
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
@@ -88,7 +88,7 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
     let mempool_service = MempoolServiceHandle::new(Arc::new(Mutex::new(ConcreteMempoolService::new())));
 
-    let grpc_server = DanGrpcServer::new(mempool_service.clone());
+    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone());
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);
     // task::spawn(run_grpc(grpc_server, grpc_addr,  shutdown.to_signal()));
 
@@ -112,14 +112,14 @@ async fn run_dan_node<TMempoolService: MempoolService + Clone + Send>(
 }
 
 async fn run_grpc<TMempoolService: MempoolService + Clone + Sync + Send + 'static>(
-    grpc_server: DanGrpcServer<TMempoolService>,
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
-        .add_service(DanNodeServer::new(grpc_server))
+        .add_service(ValidatorNodeServer::new(grpc_server))
         .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
         .await
         .map_err(|err| {
