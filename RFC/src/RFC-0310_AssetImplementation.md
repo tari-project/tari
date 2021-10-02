@@ -98,7 +98,7 @@ Note: `unique_id` is not always required to be a public key
 **New Consensus Rule**
 
 If a UTXO is received in the mempool or block with the `MINT` bit set in the flags, the containing transaction or block is valid only if 
-no other UTXO exists in the unspent set with the same `unique_id` and `parent_public_key`. 
+no other UTXO exists in the unspent set with the same `unique_id`,  `parent_public_key` pair. 
 
 **New Consensus Rule**
 
