@@ -40,7 +40,7 @@ use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -50,7 +50,13 @@ use tokio::time::Duration;
 async fn main() -> Result<(), anyhow::Error> {
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
-    let config = MergeMiningProxyConfig::from(config);
+    let config = match MergeMiningProxyConfig::try_from(config) {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("Invalid config: {}", msg);
+            return Ok(());
+        },
+    };
     let addr = config.proxy_host_address;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))

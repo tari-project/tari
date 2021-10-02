@@ -25,31 +25,15 @@ use config::Config;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct DanNodeConfig {
+pub struct ValidatorNodeConfig {
     pub committee: Vec<String>,
     pub phase_timeout: u64,
     pub template_id: String,
 }
 
-impl DanNodeConfig {
-    pub fn new(
-        committee: Vec<String>,
-        phase_timeout: u64,
-        template_id: String,
-    ) -> Result<Option<DanNodeConfig>, ConfigurationError> {
-        if committee.len() == 0 {
-            Ok(None)
-        } else {
-            Ok(Some(DanNodeConfig {
-                committee,
-                phase_timeout,
-                template_id,
-            }))
-        }
-    }
-
-    pub fn convert_if_present(cfg: Config) -> Result<Option<DanNodeConfig>, ConfigurationError> {
-        let section: DanNodeConfig = match cfg.get("dan_node") {
+impl ValidatorNodeConfig {
+    pub fn convert_if_present(cfg: Config) -> Result<Option<ValidatorNodeConfig>, ConfigurationError> {
+        let section: Self = match cfg.get("validator_node") {
             Ok(s) => s,
             Err(e) => {
                 dbg!(e);

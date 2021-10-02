@@ -125,7 +125,7 @@ impl DanNode {
 
         let dan_config = self
             .config
-            .dan_node
+            .validator_node
             .as_ref()
             .ok_or(ExitCodes::ConfigError("Missing dan section".to_string()))?;
 

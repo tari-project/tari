@@ -4790,38 +4790,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_dan_node"
-version = "0.8.11"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytecodec",
- "clap",
- "digest",
- "futures 0.3.16",
- "log 0.4.14",
- "patricia_tree",
- "prost",
- "prost-types",
- "serde_json",
- "tari_app_utilities",
- "tari_common",
- "tari_comms",
- "tari_comms_dht",
- "tari_crypto 0.11.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "tari_mmr",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_test_utils 0.8.1",
- "thiserror",
- "tokio 1.11.0",
- "tokio-stream",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
 name = "tari_infra_derive"
 version = "0.10.1"
 dependencies = [
@@ -5121,6 +5089,38 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "tari_validator_node"
+version = "0.10.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytecodec",
+ "clap",
+ "digest",
+ "futures 0.3.16",
+ "log 0.4.14",
+ "patricia_tree",
+ "prost",
+ "prost-types",
+ "serde_json",
+ "tari_app_utilities",
+ "tari_common",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_crypto 0.11.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tari_mmr",
+ "tari_p2p",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_test_utils 0.8.1",
+ "thiserror",
+ "tokio 1.11.0",
+ "tokio-stream",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]
