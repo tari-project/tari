@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -46,6 +46,7 @@ use crate::{
     },
     types::{HashDigest, ValidationRetryStrategy},
     utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
+    OperationId,
 };
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;

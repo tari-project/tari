@@ -35,6 +35,7 @@ impl InstructionSetHash {
 }
 
 // TODO: Implement hash properly
+#[allow(clippy::derive_hash_xor_eq)]
 #[derive(Clone, Debug, Hash)]
 pub struct InstructionSet {
     hash: InstructionSetHash,

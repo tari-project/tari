@@ -27,6 +27,8 @@ use crate::{
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 
+// TODO: fix hash derive
+#[allow(clippy::derive_hash_xor_eq)]
 #[derive(Clone, Debug, Hash)]
 pub struct Instruction {
     asset_id: PublicKey,

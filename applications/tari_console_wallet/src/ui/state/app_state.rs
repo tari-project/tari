@@ -77,7 +77,7 @@ use crate::{
 };
 use std::collections::VecDeque;
 use tari_core::transactions::transaction_protocol::TxId;
-use tari_wallet::{assets::Asset, tokens::Token};
+use tari_wallet::{assets::Asset, output_manager_service::handle::OutputManagerHandle, tokens::Token};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 

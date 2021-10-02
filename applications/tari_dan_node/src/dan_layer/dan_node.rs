@@ -70,7 +70,7 @@ use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_crypto::tari_utilities::hex::{Hex, HexError};
 use tari_p2p::{
     comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
-    initialization::{spawn_comms_using_transport, CommsConfig, P2pInitializer},
+    initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
     tari_message::TariMessageType,
     transport::{TorConfig, TransportType},
 };
@@ -199,8 +199,8 @@ impl DanNode {
         Ok((handles, peer_message_subscriptions))
     }
 
-    fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> CommsConfig {
-        CommsConfig {
+    fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> P2pConfig {
+        P2pConfig {
             network: self.config.network,
             node_identity: node_identity.clone(),
             transport_type: self.create_transport_type(),
