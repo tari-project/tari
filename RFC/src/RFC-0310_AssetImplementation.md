@@ -87,7 +87,7 @@ Note: this replaces some information in [RFC-0311](RFC-0311_AssetTemplates.md)
 | asset_registration.creator_sig | bytes(64) (32 Nonce + 32 sig) | A signature of the UTXO's `commitment` and `script` using the public key in `unique_id` to prove this registration was created in this UTXO |
 | asset_registration.checkpoint_unique_id | bytes(32) | A reference to the unique id reserved for checkpoint UTXOs. Optional |
 | asset_registration.checkpoint_frequency | uint32 | The frequency, in sidechain blocks (or other measure of time the sidechain uses) in which checkpoints are created |
-| mint.issuer_proof | bytes(96) (64 nonce + 32 sig) | A _ComSig_ proof proving that the owner of the UTXO containing the asset registration created this token 
+| mint.issuer_proof | bytes(96) (32 nonce + 64 sig) | A _ComSig_ proof proving that the owner of the UTXO containing the asset registration created this token 
 | checkpoint.merkle_root | bytes(32) | Merkle root of the sidechain data. The format and meaning of this data is specific to the sidechain implementation |
 
 
