@@ -195,6 +195,7 @@ where
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
+                wallet_database.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(

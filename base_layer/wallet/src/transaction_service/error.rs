@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{output_manager_service::error::OutputManagerError, transaction_service::storage::database::DbKey};
+use crate::{
+    error::WalletStorageError,
+    output_manager_service::error::OutputManagerError,
+    transaction_service::storage::database::DbKey,
+};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -100,6 +104,8 @@ pub enum TransactionServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Transaction storage error: `{0}`")]
     TransactionStorageError(#[from] TransactionStorageError),
+    #[error("Wallet storage error: `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
     #[error("Invalid message error: `{0}`")]
     InvalidMessageError(String),
     #[error("Transaction error: `{0}`")]
@@ -140,6 +146,8 @@ pub enum TransactionServiceError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Transaction Service Error: `{0}`")]
     ServiceError(String),
+    #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
+    WalletRecoveryInProgress,
 }
 
 #[derive(Debug, Error)]

@@ -243,6 +243,7 @@ impl BlockTemplateProtocol<'_> {
 }
 
 /// Private convenience container struct for new template data
+#[allow(dead_code)]
 struct NewBlockTemplateData {
     pub template: grpc::NewBlockTemplate,
     pub miner_data: grpc::MinerData,

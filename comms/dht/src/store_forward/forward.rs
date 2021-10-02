@@ -174,7 +174,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             ..
         } = message;
 
-        if self.destination_matches_source(&dht_header.destination, &source_peer) {
+        if self.destination_matches_source(&dht_header.destination, source_peer) {
             // TODO: #banheuristic - the origin of this message was the destination. Two things are wrong here:
             //       1. The origin/destination should not have forwarded this (the destination node didnt do
             //          this destination_matches_source check)
@@ -218,14 +218,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             (Some(node_id), Some(true)) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Forwarding SAF message directly to node: {}, Tag#{}", node_id, dht_header.message_tag
+                    "Forwarding SAF message directly to node: {}, {}", node_id, dht_header.message_tag
                 );
                 send_params.direct_or_closest_connected(node_id.clone(), excluded_peers);
             },
             _ => {
                 debug!(
                     target: LOG_TARGET,
-                    "Not storing this SAF message for {}, propagating it. Tag#{}",
+                    "Propagating SAF message for {}, propagating it. {}",
                     dht_header.destination,
                     dht_header.message_tag
                 );
@@ -274,7 +274,8 @@ mod test {
         let mut service = ForwardLayer::new(oms, true).layer(spy.to_service::<PipelineError>());
 
         let node_identity = make_node_identity();
-        let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false, false);
         let msg = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(Vec::new()),
             Some(node_identity.public_key().clone()),
@@ -298,6 +299,7 @@ mod test {
             &make_node_identity(),
             sample_body.to_vec(),
             DhtMessageFlags::empty(),
+            false,
             false,
         );
         let header = inbound_msg.dht_header.clone();

@@ -155,27 +155,29 @@ class InterfaceFFI {
         [this.ptr, this.intPtr],
       ],
       completed_transaction_destroy: [this.void, [this.ptr]],
-      //completed_transaction_get_excess: [
-      //this.tari_excess_ptr,
-      //  [this.tari_completed_transaction_ptr, this.intPtr],
-      //],
-      //completed_transaction_get_public_nonce: [
-      // this.tari_excess_public_nonce_ptr,
-      //  [this.tari_completed_transaction_ptr, this.intPtr],
-      //],
-      //completed_transaction_get_signature: [
-      //  this.tari_excess_signature_ptr,
-      //  [this.tari_completed_transaction_ptr, this.intPtr],
-      //],
-      // excess_destroy: [this.void, [this.tari_excess_ptr]],
-      // nonce_destroy: [this.void, [this.tari_excess_public_nonce_ptr]],
-      // signature_destroy: [this.void, [this.tari_excess_signature_ptr]],
+      completed_transaction_get_transaction_kernel: [
+        this.ptr,
+        [this.ptr, this.intPtr],
+      ],
       completed_transactions_get_length: [this.uint, [this.ptr, this.intPtr]],
       completed_transactions_get_at: [
         this.ptr,
         [this.ptr, this.uint, this.intPtr],
       ],
       completed_transactions_destroy: [this.void, [this.ptr]],
+      transaction_kernel_get_excess_hex: [
+        this.stringPtr,
+        [this.ptr, this.intPtr],
+      ],
+      transaction_kernel_get_excess_public_nonce_hex: [
+        this.stringPtr,
+        [this.ptr, this.intPtr],
+      ],
+      transaction_kernel_get_excess_signature_hex: [
+        this.stringPtr,
+        [this.ptr, this.intPtr],
+      ],
+      transaction_kernel_destroy: [this.void, [this.ptr]],
       pending_outbound_transaction_get_transaction_id: [
         this.ulonglong,
         [this.ptr, this.intPtr],
@@ -847,76 +849,54 @@ class InterfaceFFI {
     return result;
   }
 
+  static completedTransactionGetKernel(ptr) {
+    let error = this.initError();
+    let result = this.fn.completed_transaction_get_transaction_kernel(
+      ptr,
+      error
+    );
+    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    return result;
+  }
+
   static completedTransactionDestroy(ptr) {
     this.fn.completed_transaction_destroy(ptr);
   }
 
   //endregion
 
-  /*
-  //Flagged as design flaw in the FFI lib
-
-  static completedTransactionGetExcess(transaction) {
-    return new Promise((resolve, reject) =>
-      this.fn.completed_transaction_get_excess.async(
-        transaction,
-        this.error,
-        this.checkAsyncRes(resolve, reject, "completedTransactionGetExcess")
-      )
-    );
+  //region TransactionKernel
+  static transactionKernelGetExcess(ptr) {
+    let error = this.initError();
+    let result = this.fn.transaction_kernel_get_excess_hex(ptr, error);
+    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    return result;
   }
 
-  static completedTransactionGetPublicNonce(transaction) {
-    return new Promise((resolve, reject) =>
-      this.fn.completed_transaction_get_public_nonce.async(
-        transaction,
-        this.error,
-        this.checkAsyncRes(
-          resolve,
-          reject,
-          "completedTransactionGetPublicNonce"
-        )
-      )
+  static transactionKernelGetExcessPublicNonce(ptr) {
+    let error = this.initError();
+    let result = this.fn.transaction_kernel_get_excess_public_nonce_hex(
+      ptr,
+      error
     );
+    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    return result;
   }
 
-  static completedTransactionGetSignature(transaction) {
-    return new Promise((resolve, reject) =>
-      this.fn.completed_transaction_get_signature.async(
-        transaction,
-        this.error,
-        this.checkAsyncRes(resolve, reject, "completedTransactionGetSignature")
-      )
+  static transactionKernelGetExcessSigntature(ptr) {
+    let error = this.initError();
+    let result = this.fn.transaction_kernel_get_excess_signature_hex(
+      ptr,
+      error
     );
+    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    return result;
   }
 
-  static excessDestroy(excess) {
-    return new Promise((resolve, reject) =>
-      this.fn.excess_destroy.async(
-        excess,
-        this.checkAsyncRes(resolve, reject, "excessDestroy")
-      )
-    );
+  static transactionKernelDestroy(ptr) {
+    this.fn.transaction_kernel_destroy(ptr);
   }
-
-  static nonceDestroy(nonce) {
-    return new Promise((resolve, reject) =>
-      this.fn.nonce_destroy.async(
-        nonce,
-        this.checkAsyncRes(resolve, reject, "nonceDestroy")
-      )
-    );
-  }
-
-  static signatureDestroy(signature) {
-    return new Promise((resolve, reject) =>
-      this.fn.signature_destroy.async(
-        signature,
-        this.checkAsyncRes(resolve, reject, "signatureDestroy")
-      )
-    );
-  }
-  */
+  //endRegion
 
   //region CompletedTransactions (List)
   static completedTransactionsGetLength(ptr) {

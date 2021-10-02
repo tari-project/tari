@@ -5,7 +5,7 @@ const helpers = require("./helpers");
 const WalletProcess = require("integration_tests/helpers/walletProcess");
 
 const RECOVERY_COMPLETE_REGEXP = /Recovery complete! Scanned = (\d+) in/;
-const RECOVERY_WORTH_REGEXP = /worth ([0-9\.]+) (µ?T)/;
+const RECOVERY_WORTH_REGEXP = /worth ([0-9.]+) (µ?T)/;
 const FAILURE_REGEXP =
   /Attempt (\d+)\/(\d+): Failed to complete wallet recovery/;
 
@@ -81,17 +81,17 @@ async function run(options = {}) {
       process: wallet.ps,
       outputStream: logfile,
       onData: (data) => {
-        let successLog = data.match(RECOVERY_COMPLETE_REGEXP);
-        let recoveredAmount = data.match(RECOVERY_WORTH_REGEXP);
-        if (successLog && recoveredAmount) {
-          let recoveredAmount = parseInt(recoveredAmount[1]);
-          if (recoveredAmount[2] === "T") {
+        let scannedMatch = data.match(RECOVERY_COMPLETE_REGEXP);
+        let recoveredAmountMatch = data.match(RECOVERY_WORTH_REGEXP);
+        if (scannedMatch && recoveredAmountMatch) {
+          let recoveredAmount = parseInt(recoveredAmountMatch[1]);
+          if (recoveredAmountMatch[2] === "T") {
             // convert to micro tari
             recoveredAmount *= 1000000;
           }
           return {
-            height: parseInt(height[1]),
-            recoveredAmount: parseInt(recoveredAmount[1]),
+            numScanned: parseInt(scannedMatch[1]),
+            recoveredAmount,
           };
         }
 
@@ -114,13 +114,13 @@ async function run(options = {}) {
 
     await wallet.stop();
 
-    const block_rate = recoveryResult.height / timeDiffMinutes;
+    const scannedRate = recoveryResult.numScanned / timeDiffMinutes;
 
     return {
       identity: id,
-      height: recoveryResult.height,
+      numScanned: recoveryResult.numScanned,
       timeDiffMinutes,
-      blockRate: block_rate.toFixed(2),
+      scannedRate: scannedRate.toFixed(2),
       recoveredAmount: recoveryResult.recoveredAmount,
     };
   } catch (err) {

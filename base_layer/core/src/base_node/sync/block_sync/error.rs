@@ -46,4 +46,6 @@ pub enum BlockSyncError {
     ValidationError(#[from] ValidationError),
     #[error("Failed to ban peer: {0}")]
     FailedToBan(ConnectivityError),
+    #[error("Failed to construct valid chain block")]
+    FailedToConstructChainBlock,
 }

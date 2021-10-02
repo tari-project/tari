@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "asciichart": "^1.5.25",
-    "base-node-grpc-client": "git://github.com/tari-project/base_node_grpc_client.git#mb-add-nft-data",
+    "base-node-grpc-client": "file:../../clients/base_node_grpc_client",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
     "express": "~4.16.1",

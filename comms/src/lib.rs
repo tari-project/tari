@@ -39,6 +39,7 @@ pub use multiplexing::Substream;
 
 mod noise;
 mod proto;
+mod stream_id;
 
 pub mod backoff;
 pub mod bounded_executor;

@@ -3,11 +3,11 @@ on:
   pull_request:
     types: [opened]
 
-name: Integration Tests
+name: CI
 
 jobs:
-  integration-tests:
-    name: Integration Tests
+  integration:
+    name: integration
     runs-on: ubuntu-20.04
     steps:
       - name: checkout
@@ -23,7 +23,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-05-09
+          toolchain: nightly-2021-08-17
           components: clippy, rustfmt
           override: true
       - name: dependencies
@@ -31,6 +31,7 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libssl-dev \
+            clang-10 \
             pkg-config \
             git \
             cmake \
@@ -39,9 +40,9 @@ jobs:
             libc++abi-dev \
             libprotobuf-dev \
             protobuf-compiler
-          cargo install cargo2junit
       - name: npm ci and lint
         run: |
+          node -v
           cd integration_tests
           npm ci
           npm run check-fmt
@@ -52,23 +53,23 @@ jobs:
           cargo build --release --bin tari_console_wallet
           cargo build --release --bin tari_merge_mining_proxy
           cargo build --release --bin tari_mining_node
+          cargo build --release --bin tari_stratum_transcoder
+          cargo build --release --package tari_wallet_ffi
       - name: run cucumber scenarios
         run: |
           cd integration_tests
           mkdir -p cucumber_output
-          node_modules/.bin/cucumber-js --tags "@broken" --format json:cucumber_output/tests.cucumber
-          node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky" --format json:cucumber_output/tests.cucumber
-      - name: report
-        uses: deblockt/cucumber-report-annotations-action@v1.7
-        with:
-          access-token: ${{ secrets.GITHUB_TOKEN }}
-          path: "integration_tests/cucumber_output/tests.cucumber"
-      - name: run flaky/broken cucumber scenarios (always pass)
+          node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky and not @broken"
+      - name: generate report
         run: |
           cd integration_tests
-          node_modules/.bin/cucumber-js --tags "not @long-running and (@broken or @flaky)" --format json:cucumber_output/broken-tests.cucumber || true
-      - name: flaky report
-        uses: deblockt/cucumber-report-annotations-action@v1.7
-        with:
-          access-token: ${{ secrets.GITHUB_TOKEN }}
-          path: "integration_tests/cucumber_output/broken-tests.cucumber"
+          node ./generate_report.js
+      - name: run ffi wallet cucumber scenarios
+        run: |
+          cd integration_tests
+          mkdir -p cucumber_output
+          node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
+      - name: generate ffi report
+        run: |
+          cd integration_tests
+          node ./generate_report.js "cucumber_output/tests_ffi.cucumber" "temp/reports/cucumber_ffi_report.html"

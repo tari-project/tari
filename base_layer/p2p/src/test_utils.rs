@@ -30,6 +30,7 @@ use tari_comms::{
 use tari_comms_dht::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
+    DhtProtocolVersion,
 };
 
 macro_rules! unwrap_oms_send_msg {
@@ -59,8 +60,7 @@ pub fn make_node_identity() -> Arc<NodeIdentity> {
 
 pub fn make_dht_header(trace: MessageTag) -> DhtMessageHeader {
     DhtMessageHeader {
-        major: 0,
-        minor: 0,
+        version: DhtProtocolVersion::latest(),
         destination: NodeDestination::Unknown,
         origin_mac: Vec::new(),
         ephemeral_public_key: None,

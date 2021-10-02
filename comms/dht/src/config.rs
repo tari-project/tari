@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
+use crate::{network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl, version::DhtProtocolVersion};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
+    /// The major protocol version to use. Default: DhtProtocolVersion::latest()
+    pub protocol_version: DhtProtocolVersion,
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
     pub database_url: DbConnectionUrl,
     /// The size of the buffer (channel) which holds pending outbound message requests.
@@ -109,7 +111,7 @@ pub struct DhtConfig {
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
     /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
     /// peers that were previously tried.
-    /// Default: 24 hours
+    /// Default: 2 hours
     pub offline_peer_cooldown: Duration,
 }
 
@@ -142,6 +144,7 @@ impl Default for DhtConfig {
     fn default() -> Self {
         // NB: please remember to update field comments to reflect these defaults
         Self {
+            protocol_version: DhtProtocolVersion::latest(),
             num_neighbouring_nodes: 8,
             num_random_nodes: 4,
             propagation_factor: 4,

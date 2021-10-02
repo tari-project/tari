@@ -1,10 +1,12 @@
 // features/support/steps.js
 const assert = require("assert");
 const { Given, When, Then } = require("cucumber");
+const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const expect = require("chai").expect;
+
 const {
   waitFor,
   waitForPredicate,
@@ -13,7 +15,6 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
-  waitForIterate,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -1254,7 +1255,7 @@ When(
       expect(autoTransactionResult).to.equal(true);
       // If a block cannot be mined quickly enough (or the process has frozen), timeout.
       await withTimeout(
-        60 * 1000,
+        2 * 60 * 1000,
         this.mineBlock(name, parseInt(weight), (candidate) => {
           this.addTransactionOutput(
             tipHeight + i + 1 + 2,
@@ -1289,7 +1290,8 @@ When(
   { timeout: 600 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
-    await miningNode.init(numBlocks, null, 1, 100000, null, null);
+    // Don't wait for sync before mining
+    await miningNode.init(numBlocks, null, 1, 100000, false, null);
     await miningNode.startNew();
   }
 );
@@ -1432,7 +1434,7 @@ When(
       null,
       (block) => {
         this.addTransactionOutput(
-          tipHeight + 2,
+          tipHeight + 1 + 2,
           block.originalTemplate.coinbase
         );
         this.saveBlock(blockName, block);
@@ -3564,536 +3566,264 @@ When(
   }
 );
 
-//region FFI
 When(
-  "I have ffi wallet {word} connected to base node {word}",
+  "I have a stratum transcoder {word} connected to {word} and {word}",
   { timeout: 20 * 1000 },
-  async function (name, node) {
-    let wallet = await this.createAndAddFFIWallet(name);
-    let peer = this.nodes[node].peerAddress().split("::");
-    wallet.addBaseNodePeer(peer[0], peer[1]);
-  }
-);
-
-Then(
-  "I want to get emoji id of ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  async function (name) {
-    let wallet = this.getWallet(name);
-    let emoji_id = wallet.identifyEmoji();
-    console.log(emoji_id);
-    expect(emoji_id.length).to.be.equal(
-      22 * 3, // 22 emojis, 3 bytes per one emoji
-      `Emoji id has wrong length : ${emoji_id}`
+  async function (transcoder, node, wallet) {
+    const baseNode = this.getNode(node);
+    const walletNode = this.getWallet(wallet);
+    const stratum_transcoder = new StratumTranscoderProcess(
+      transcoder,
+      baseNode.getGrpcAddress(),
+      walletNode.getGrpcAddress(),
+      this.logFilePathProxy
     );
+    await stratum_transcoder.startNew();
+    this.addProxy(transcoder, stratum_transcoder);
   }
 );
 
 When(
-  "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
+  "I call getinfo from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (amount, sender, receiver, fee) {
-    let ffi_wallet = this.getWallet(sender);
-    let result = ffi_wallet.sendTransaction(
-      this.getWalletPubkey(receiver),
-      amount,
-      fee,
-      `Send from ffi ${sender} to ${receiver} at fee ${fee}`
-    );
-    console.log(result);
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    await transcoderClient.getInfo();
+  }
+);
+
+Then(
+  "I get a valid getinfo response from stratum transcoder {word}",
+  { timeout: 20 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(resp);
+    expect(resp["result"]).to.be.an("object");
+    expect(resp["result"]["best_block"]).to.be.not.undefined;
+    expect(resp["result"]["blockchain_version"]).to.be.not.undefined;
+    expect(resp["result"]["height_of_longest_chain"]).to.be.not.undefined;
+    expect(resp["result"]["initial_sync_achieved"]).to.be.not.undefined;
+    expect(resp["result"]["local_height"]).to.be.not.undefined;
+    expect(resp["result"]["lock_height"]).to.be.not.undefined;
+    expect(resp["result"]["max_block_interval"]).to.be.not.undefined;
+    expect(resp["result"]["max_weight"]).to.be.not.undefined;
+    expect(resp["result"]["min_diff"]).to.be.not.undefined;
+    expect(resp["result"]["tip_height"]).to.be.not.undefined;
+  }
+);
+
+function check_stratum_header_response(resp) {
+  expect(resp["result"]).to.be.an("object");
+  expect(resp["result"]["blockheader"]).to.be.an("object");
+  expect(resp["result"]["blockheader"]["depth"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["difficulty"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["block_size"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["hash"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["height"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["major_version"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["minor_version"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["nonce"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["num_txes"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["orphan_status"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["prev_hash"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["reward"]).to.be.not.undefined;
+  expect(resp["result"]["blockheader"]["timestamp"]).to.be.not.undefined;
+  expect(resp["status"]).to.be.not.undefined;
+}
+
+When(
+  "I call getblocktemplate from stratum transcoder {word}",
+  { timeout: 20 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    await transcoderClient.getBlockTemplate();
+  }
+);
+
+Then(
+  "I get a valid getblocktemplate response from stratum transcoder {word}",
+  { timeout: 20 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(await transcoderClient.getLastResponse());
+    expect(resp["result"]).to.be.an("object");
+    expect(resp["result"]["blockheader_blob"]).to.be.not.undefined;
+    expect(resp["result"]["blocktemplate_blob"]).to.be.not.undefined;
+    expect(resp["result"]["difficulty"]).to.be.not.undefined;
+    expect(resp["result"]["expected_reward"]).to.be.not.undefined;
+    expect(resp["result"]["height"]).to.be.not.undefined;
+    expect(resp["result"]["prev_hash"]).to.be.not.undefined;
   }
 );
 
 When(
-  "I set passphrase {word} of ffi wallet {word}",
+  "I call getblockheaderbyhash from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (passphrase, name) {
-    let wallet = this.getWallet(name);
-    wallet.applyEncryption(passphrase);
-  }
-);
-
-Then(
-  "I have {int} received and {int} send transaction in ffi wallet {word}",
-  { timeout: 120 * 1000 },
-  async function (received, send, name) {
-    let wallet = this.getWallet(name);
-    let completed = wallet.getCompletedTxs();
-    let inbound = 0;
-    let outbound = 0;
-    let length = completed.getLength();
-    let inboundTxs = wallet.getInboundTxs();
-    inbound += inboundTxs.getLength();
-    inboundTxs.destroy();
-    let outboundTxs = wallet.getOutboundTxs();
-    outbound += outboundTxs.getLength();
-    outboundTxs.destroy();
-    for (let i = 0; i < length; i++) {
-      {
-        let tx = completed.getAt(i);
-        if (tx.isOutbound()) {
-          outbound++;
-        } else {
-          inbound++;
-        }
-        tx.destroy();
-      }
-    }
-    completed.destroy();
-
-    expect(outbound, "Outbound transaction count mismatch").to.be.equal(send);
-    expect(inbound, "Inbound transaction count mismatch").to.be.equal(received);
-  }
-);
-
-Then(
-  "ffi wallet {word} has {int} broadcast transaction",
-  { timeout: 120 * 1000 },
-  async function (name, count) {
-    let wallet = this.getWallet(name);
-    let broadcast = await wallet.getBroadcastTransactionsCount();
-    let retries = 1;
-    const retries_limit = 24;
-    while (broadcast != count && retries <= retries_limit) {
-      await sleep(5000);
-      broadcast = await wallet.getBroadcastTransactionsCount();
-      ++retries;
-    }
-    expect(broadcast, "Number of broadcasted messages mismatch").to.be.equal(
-      count
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    //use last retrieved header data for this
+    let resp = await transcoderClient.getLastResponse();
+    await transcoderClient.getBlockHeaderByHash(
+      resp["result"]["blockheader"]["hash"]
     );
+  }
+);
+
+Then(
+  "I get a valid getblockheaderbyhash response from stratum transcoder {word}",
+  { timeout: 20 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(resp);
+    check_stratum_header_response(resp);
   }
 );
 
 When(
-  "I add contact with alias {word} and pubkey {word} to ffi wallet {word}",
+  "I call getblockheaderbyheight from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (alias, wallet_name, ffi_wallet_name) {
-    let ffi_wallet = this.getWallet(ffi_wallet_name);
-    ffi_wallet.addContact(alias, this.getWalletPubkey(wallet_name));
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    //use last retrieved header data for this
+    let resp = await transcoderClient.getLastResponse();
+    await transcoderClient.getBlockHeaderByHeight(
+      resp["result"]["blockheader"]["height"]
+    );
   }
 );
 
 Then(
-  "I have contact with alias {word} and pubkey {word} in ffi wallet {word}",
+  "I get a valid getblockheaderbyheight response from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (alias, wallet_name, ffi_wallet_name) {
-    let wallet = this.getWalletPubkey(wallet_name);
-    let ffi_wallet = this.getWallet(ffi_wallet_name);
-    let contacts = ffi_wallet.getContactList();
-    let length = contacts.getLength();
-    let found = false;
-    for (let i = 0; i < length; i++) {
-      {
-        let contact = contacts.getAt(i);
-        let hex = contact.getPubkeyHex();
-        if (wallet === hex) {
-          found = true;
-        }
-        contact.destroy();
-      }
-    }
-    contacts.destroy();
-    expect(found).to.be.equal(true);
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(resp);
+    check_stratum_header_response(resp);
   }
 );
 
 When(
-  "I remove contact with alias {word} from ffi wallet {word}",
+  "I call getlastblockheader from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (alias, wallet_name) {
-    let ffi_wallet = this.getWallet(wallet_name);
-    let contacts = ffi_wallet.getContactList();
-    let length = contacts.getLength();
-    for (let i = 0; i < length; i++) {
-      {
-        let contact = contacts.getAt(i);
-        let calias = contact.getAlias();
-        if (alias === calias) {
-          ffi_wallet.removeContact(contact);
-        }
-        contact.destroy();
-      }
-    }
-    contacts.destroy();
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    await transcoderClient.getLastBlockHeader();
   }
 );
 
 Then(
-  "I don't have contact with alias {word} in ffi wallet {word}",
+  "I get a valid getlastblockheader response from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (alias, wallet_name) {
-    let ffi_wallet = this.getWallet(wallet_name);
-    let contacts = ffi_wallet.getContactList();
-    let length = contacts.getLength();
-    let found = false;
-    for (let i = 0; i < length; i++) {
-      {
-        let contact = contacts.getAt(i);
-        let calias = contact.getAlias();
-        if (alias === calias) {
-          found = true;
-        }
-        contact.destroy();
-      }
-    }
-    contacts.destroy();
-    expect(found).to.be.equal(false);
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(resp);
+    check_stratum_header_response(resp);
   }
 );
 
 When(
-  "I set base node {word} for ffi wallet {word}",
-  function (node, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
-    let peer = this.nodes[node].peerAddress().split("::");
-    wallet.addBaseNodePeer(peer[0], peer[1]);
-  }
-);
-
-Then(
-  "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
-  { timeout: 120 * 1000 },
-  async function (wallet_name, count) {
-    let wallet = this.getWallet(wallet_name);
-    let broadcast = wallet.getOutboundTransactions();
-    let length = broadcast.getLength();
-    broadcast.destroy();
-    let retries = 1;
-    const retries_limit = 24;
-    while (length != count && retries <= retries_limit) {
-      await sleep(5000);
-      broadcast = wallet.getOutboundTransactions();
-      length = broadcast.getLength();
-      broadcast.destroy();
-      ++retries;
-    }
-    expect(length, "Number of pending messages mismatch").to.be.equal(count);
-  }
-);
-
-Then(
-  "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction",
-  async function (wallet_name, count) {
-    const wallet = this.getWallet(wallet_name);
-    let txs = wallet.getOutboundTransactions();
-    let cancelled = 0;
-    for (let i = 0; i < txs.getLength(); i++) {
-      let tx = txs.getAt(i);
-      let cancellation = wallet.cancelPendingTransaction(tx.getTransactionID());
-      tx.destroy();
-      if (cancellation) {
-        cancelled++;
-      }
-    }
-    txs.destroy();
-    expect(cancelled).to.be.equal(count);
-  }
-);
-
-Given(
-  /I have a ffi wallet (.*) connected to base node (.*)/,
+  "I call getbalance from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  async function (walletName, nodeName) {
-    let ffi_wallet = await this.createAndAddFFIWallet(walletName, null);
-    let peer = this.nodes[nodeName].peerAddress().split("::");
-    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    await transcoderClient.getBalance();
   }
 );
 
 Then(
-  "I recover wallet {word} into ffi wallet {word} from seed words on node {word}",
+  "I get a valid getbalance response from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  async function (wallet_name, ffi_wallet_name, node) {
-    let wallet = this.getWallet(wallet_name);
-    const seed_words_text = wallet.getSeedWords();
-    await wallet.stop();
-    await sleep(1000);
-    let ffi_wallet = await this.createAndAddFFIWallet(
-      ffi_wallet_name,
-      seed_words_text
-    );
-    let peer = this.nodes[node].peerAddress().split("::");
-    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
-    ffi_wallet.startRecovery(peer[0]);
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(await transcoderClient.getLastResponse());
+    expect(resp["result"]).to.be.an("object");
+    expect(resp["result"]["available_balance"]).to.be.not.undefined;
+    expect(resp["result"]["pending_incoming_balance"]).to.be.not.undefined;
+    expect(resp["result"]["pending_outgoing_balance"]).to.be.not.undefined;
   }
 );
-
-Then(
-  "Check callbacks for finished inbound tx on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    expect(wallet.receivedTransaction).to.be.greaterThanOrEqual(1);
-    expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
-    wallet.clearCallbackCounters();
-  }
-);
-
-Then(
-  "Check callbacks for finished outbound tx on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    expect(wallet.receivedTransactionReply).to.be.greaterThanOrEqual(1);
-    expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
-    wallet.clearCallbackCounters();
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to receive (.*) transaction/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " + wallet_name + " to receive " + amount + " transaction(s)"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getCounters().received >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    if (!(wallet.getCounters().received >= amount)) {
-      console.log("Counter not adequate!");
-    } else {
-      console.log(wallet.getCounters());
-    }
-    expect(wallet.getCounters().received >= amount).to.equal(true);
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to receive (.*) finalization/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " +
-        wallet_name +
-        " to receive " +
-        amount +
-        " transaction finalization(s)"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getCounters().finalized >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    if (!(wallet.getCounters().finalized >= amount)) {
-      console.log("Counter not adequate!");
-    } else {
-      console.log(wallet.getCounters());
-    }
-    expect(wallet.getCounters().finalized >= amount).to.equal(true);
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to receive (.*) broadcast/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " +
-        wallet_name +
-        " to receive " +
-        amount +
-        " transaction broadcast(s)"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getCounters().broadcast >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    if (!(wallet.getCounters().broadcast >= amount)) {
-      console.log("Counter not adequate!");
-    } else {
-      console.log(wallet.getCounters());
-    }
-    expect(wallet.getCounters().broadcast >= amount).to.equal(true);
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to receive (.*) mined/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " +
-        wallet_name +
-        " to receive " +
-        amount +
-        " transaction mined"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getCounters().mined >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    if (!(wallet.getCounters().mined >= amount)) {
-      console.log("Counter not adequate!");
-    } else {
-      console.log(wallet.getCounters());
-    }
-    expect(wallet.getCounters().mined >= amount).to.equal(true);
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to receive at least (.*) SAF message/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " +
-        wallet_name +
-        " to receive at least " +
-        amount +
-        " SAF messages(s)"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getCounters().saf >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    if (!(wallet.getCounters().saf >= amount)) {
-      console.log("Counter not adequate!");
-    } else {
-      console.log(wallet.getCounters());
-    }
-    expect(wallet.getCounters().saf >= amount).to.equal(true);
-  }
-);
-
-Then(
-  /I wait for ffi wallet (.*) to have at least (.*) uT/,
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
-    console.log(
-      "Waiting for " + wallet_name + " balance to be at least " + amount + " uT"
-    );
-
-    await waitForIterate(
-      () => {
-        return wallet.getBalance().available >= amount;
-      },
-      true,
-      1000,
-      700
-    );
-
-    let balance = wallet.getBalance().available;
-
-    if (!(balance >= amount)) {
-      console.log("Balance not adequate!");
-    }
-
-    expect(balance >= amount).to.equal(true);
-  }
-);
-
-Then(
-  "I wait for recovery of ffi wallet {word} to finish",
-  { timeout: 600 * 1000 },
-  function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    while (!wallet.recoveryFinished) {
-      sleep(1000).then();
-    }
-  }
-);
-
-When(/I start ffi wallet (.*)/, async function (walletName) {
-  let wallet = this.getWallet(walletName);
-  await wallet.startNew(null, null);
-});
 
 When(
-  /I restart ffi wallet (.*) connected to base node (.*)/,
-  async function (walletName, node) {
-    let wallet = this.getWallet(walletName);
-    await wallet.restart();
-    let peer = this.nodes[node].peerAddress().split("::");
-    wallet.addBaseNodePeer(peer[0], peer[1]);
+  "I call transfer from stratum transcoder {word} using the public key of {word}, {word} and amount {int} uT each",
+  { timeout: 50 * 1000 },
+  async function (transcoder, wallet1, wallet2, amountEach) {
+    let walletPK1 = this.getWalletPubkey(wallet1);
+    let walletPK2 = this.getWalletPubkey(wallet2);
+    let destinations = [
+      { address: walletPK1, amount: amountEach },
+      { address: walletPK2, amount: amountEach },
+    ];
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    await transcoderClient.transferFunds(destinations);
   }
 );
 
 Then(
-  "I want to get public key of ffi wallet {word}",
+  "I get a valid transfer response from stratum transcoder {word}",
+  { timeout: 2 * 60 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    expect(resp["result"]).to.be.an("object");
+    expect(resp["result"]["transaction_results"]).to.be.an("array");
+    let results = resp["result"]["transaction_results"];
+    for (let i = 0; i < results.length; i++) {
+      console.log("Transaction result (" + i + "):");
+      console.log(results[i]);
+      expect(results[i]["transaction_id"]).to.be.not.undefined;
+      expect(results[i]["address"]).to.be.not.undefined;
+      expect(results[i]["is_success"]).to.be.not.undefined;
+      expect(results[i]["failure_message"]).to.be.not.undefined;
+      expect(results[i]["is_success"]).to.be.equal(true);
+    }
+  }
+);
+
+When(
+  "I call submitblock from stratum transcoder {word}",
   { timeout: 20 * 1000 },
-  function (name) {
-    let wallet = this.getWallet(name);
-    let public_key = wallet.identify();
-    expect(public_key.length).to.be.equal(
-      64,
-      `Public key has wrong length : ${public_key}`
-    );
-  }
-);
-
-When(/I stop ffi wallet (.*)/, function (walletName) {
-  let wallet = this.getWallet(walletName);
-  wallet.stop();
-  wallet.resetCounters();
-});
-
-Then(
-  "I start STXO validation on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    await wallet.startStxoValidation();
-    while (!wallet.getStxoValidationStatus().stxo_validation_complete) {
-      await sleep(1000);
-    }
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    //use last retrieved blocktemplate_blob for this, this can be done as target difficulty = 1 for tests
+    let resp = await transcoderClient.getLastResponse();
+    await transcoderClient.submitBlock(resp["result"]["blocktemplate_blob"]);
   }
 );
 
 Then(
-  "I start UTXO validation on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
-    await wallet.startUtxoValidation();
-    while (!wallet.getUtxoValidationStatus().utxo_validation_complete) {
-      await sleep(1000);
-    }
+  "I get a valid submitblock response from stratum transcoder {word}",
+  { timeout: 20 * 1000 },
+  async function (transcoder) {
+    const proxy = this.getProxy(transcoder);
+    const transcoderClient = proxy.getClient();
+    let resp = await transcoderClient.getLastResponse();
+    console.log(resp);
+    expect(resp["result"]).to.be.an("object");
+    expect(resp["result"]["status"]).to.be.not.undefined;
+    expect(resp["result"]["untrusted"]).to.be.not.undefined;
+    expect(resp["result"]["status"]).to.be.equal("OK");
+    expect(resp["result"]["untrusted"]).to.be.equal(false);
   }
 );
 

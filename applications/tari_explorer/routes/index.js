@@ -10,7 +10,7 @@ router.get('/', async function (req, res, next) {
   let from = parseInt(req.query.from || 0)
   let limit = parseInt(req.query.limit || '20')
 
-  let tipInfo = await client.getTipInfo({})
+    let tipInfo = await client.getTipInfo({})
 
     console.log("Getting headers");
   // Algo split
@@ -33,49 +33,49 @@ router.get('/', async function (req, res, next) {
     }
     arr[3] += 1
 
-  }
-  const algoSplit = {
-    monero10: monero[0],
-    monero20: monero[1],
-    monero50: monero[2],
-    monero100: monero[3],
-    sha10: sha[0],
-    sha20: sha[1],
-    sha50: sha[2],
-    sha100: sha[3]
-  }
+    }
+    const algoSplit = {
+      monero10: monero[0],
+      monero20: monero[1],
+      monero50: monero[2],
+      monero100: monero[3],
+      sha10: sha[0],
+      sha20: sha[1],
+      sha50: sha[2],
+      sha100: sha[3]
+    }
 
   console.log(algoSplit);
-  // Get one more header than requested so we can work out the difference in MMR_size
-  let headers = await client.listHeaders({ from_height: from, num_headers: limit + 1 })
-  for (var i = headers.length - 2; i >= 0; i--) {
-    headers[i].kernels = headers[i].kernel_mmr_size - headers[i + 1].kernel_mmr_size
-    headers[i].outputs = headers[i].output_mmr_size - headers[i + 1].output_mmr_size
-  }
-  let lastHeader = headers[headers.length - 1]
-  if (lastHeader.height === '0') {
-    // If the block is the genesis block, then the MMR sizes are the values to use
-    lastHeader.kernels = lastHeader.kernel_mmr_size
-    lastHeader.outputs = lastHeader.output_mmr_size
-  } else {
-    // Otherwise remove the last one, as we don't want to show it
-    headers.splice(headers.length - 1, 1)
-  }
-
-  // console.log(headers);
-  let firstHeight = parseInt(headers[0].height || '0')
-
-  // --  mempool
-  let mempool = await client.getMempoolTransactions({})
-
-  for (let i = 0; i < mempool.length; i++) {
-    let sum = 0
-    for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
-      sum += parseInt(mempool[i].transaction.body.kernels[j].fee)
+    // Get one more header than requested so we can work out the difference in MMR_size
+    let headers = await client.listHeaders({ from_height: from, num_headers: limit + 1 })
+    for (var i = headers.length - 2; i >= 0; i--) {
+      headers[i].kernels = headers[i].kernel_mmr_size - headers[i + 1].kernel_mmr_size
+      headers[i].outputs = headers[i].output_mmr_size - headers[i + 1].output_mmr_size
     }
-    mempool[i].transaction.body.total_fees = sum
-  }
-  res.render('index', {
+    let lastHeader = headers[headers.length - 1]
+    if (lastHeader.height === '0') {
+      // If the block is the genesis block, then the MMR sizes are the values to use
+      lastHeader.kernels = lastHeader.kernel_mmr_size
+      lastHeader.outputs = lastHeader.output_mmr_size
+    } else {
+      // Otherwise remove the last one, as we don't want to show it
+      headers.splice(headers.length - 1, 1)
+    }
+
+    // console.log(headers);
+    let firstHeight = parseInt(headers[0].height || '0')
+
+    // --  mempool
+    let mempool = await client.getMempoolTransactions({})
+
+    for (let i = 0; i < mempool.length; i++) {
+      let sum = 0
+      for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
+        sum += parseInt(mempool[i].transaction.body.kernels[j].fee)
+      }
+      mempool[i].transaction.body.total_fees = sum
+    }
+    res.render('index', {
     title: 'Blocks',
     tipInfo: tipInfo,
     mempool: mempool,

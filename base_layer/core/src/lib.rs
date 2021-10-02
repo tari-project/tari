@@ -20,16 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make tokio::select! work
-#![recursion_limit = "512"]
-#![feature(shrink_to)]
-// #![cfg_attr(not(debug_assertions), deny(unused_variables))]
-// #![cfg_attr(not(debug_assertions), deny(unused_imports))]
-// #![cfg_attr(not(debug_assertions), deny(dead_code))]
-// #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-// #![deny(unused_must_use)]
-// #![deny(unreachable_patterns)]
-// #![deny(unknown_lints)]
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 
 #[macro_use]
 extern crate bitflags;

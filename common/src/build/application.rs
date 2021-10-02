@@ -100,7 +100,7 @@ fn extract_manifest() -> Result<Manifest, anyhow::Error> {
     let cargo_path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml");
     let cargo = fs::read(cargo_path)?;
     let cargo = std::str::from_utf8(&cargo)?;
-    let manifest = toml::from_str(&cargo)?;
+    let manifest = toml::from_str(cargo)?;
     Ok(manifest)
 }
 

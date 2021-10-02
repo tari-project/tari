@@ -33,6 +33,7 @@ use crate::base_node::{
     },
     sync::SyncPeers,
 };
+use randomx_rs::RandomXFlag;
 use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{peer_manager::NodeId, PeerConnection};
@@ -239,6 +240,8 @@ impl Display for StateInfo {
 pub struct StatusInfo {
     pub bootstrapped: bool,
     pub state_info: StateInfo,
+    pub randomx_vm_cnt: usize,
+    pub randomx_vm_flags: RandomXFlag,
 }
 
 impl StatusInfo {
@@ -246,6 +249,8 @@ impl StatusInfo {
         Self {
             bootstrapped: false,
             state_info: StateInfo::StartUp,
+            randomx_vm_cnt: 0,
+            randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
         }
     }
 }

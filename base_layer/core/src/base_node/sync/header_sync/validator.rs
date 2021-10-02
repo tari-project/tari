@@ -213,7 +213,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         match self
             .consensus_rules
             .chain_strength_comparer()
-            .compare(&our_header, their_header)
+            .compare(our_header, their_header)
         {
             Ordering::Less => Ok(()),
             Ordering::Greater | Ordering::Equal => Err(BlockHeaderSyncError::WeakerChain),
@@ -317,11 +317,11 @@ mod test {
             let (mut validator, _, tip) = setup_with_headers(1).await;
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
-            let next = BlockHeader::from_previous(&tip.header());
+            let next = BlockHeader::from_previous(tip.header());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
-            let next = BlockHeader::from_previous(&tip.header());
+            let next = BlockHeader::from_previous(tip.header());
             validator.validate(next).unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }

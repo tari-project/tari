@@ -314,8 +314,7 @@ impl TryFrom<proto::types::AggregateBody> for AggregateBody {
         let inputs = try_convert_all(body.inputs)?;
         let outputs = try_convert_all(body.outputs)?;
         let kernels = try_convert_all(body.kernels)?;
-        let mut body = AggregateBody::new(inputs, outputs, kernels);
-        body.sort();
+        let body = AggregateBody::new(inputs, outputs, kernels);
         Ok(body)
     }
 }

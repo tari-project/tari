@@ -16,7 +16,7 @@ message RpcRequest {
     uint64 deadline = 4;
 
     // The message payload
-    bytes message = 10;
+    bytes payload = 10;
 }
 
 // Message type for all RPC responses
@@ -29,7 +29,7 @@ message RpcResponse {
     uint32 flags = 3;
 
     // The message payload. If the status is non-zero, this contains additional error details.
-    bytes message = 10;
+    bytes payload = 10;
 }
 
 // Message sent by the client when negotiating an RPC session. A server may close the substream if it does

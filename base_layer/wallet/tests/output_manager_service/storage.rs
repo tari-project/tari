@@ -556,12 +556,8 @@ pub async fn test_no_duplicate_outputs() {
         },
         Err(e) => {
             // sqlite db storage should not even allow the pending tx, since it adds a duplicate in the outputs table
-            if let OutputManagerStorageError::DieselError(e) = e {
-                if let DatabaseError(db_err, _) = e {
-                    assert!(matches!(db_err, DatabaseErrorKind::UniqueViolation));
-                } else {
-                    panic!("Unexpected database error type: {}", e);
-                }
+            if let OutputManagerStorageError::DieselError(DatabaseError(db_err, _)) = e {
+                assert!(matches!(db_err, DatabaseErrorKind::UniqueViolation));
             } else {
                 panic!("Unexpected output manager storage error type: {}", e);
             }

@@ -142,14 +142,14 @@ fn async_add_new_block() {
         .map(|t| t.deref().clone())
         .collect();
     let new_block = chain_block_with_new_coinbase(
-        &blocks.last().unwrap(),
+        blocks.last().unwrap(),
         txns,
         &consensus_manager,
         &CryptoFactories::default(),
     )
     .0;
 
-    let new_block = db.prepare_block_merkle_roots(new_block).unwrap();
+    let new_block = db.prepare_new_block(new_block).unwrap();
 
     test_async(|rt| {
         let db = AsyncBlockchainDb::new(db);

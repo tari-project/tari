@@ -24,17 +24,16 @@ use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectivityConfig {
-    /// This factor is used to calculate the threshold to transition connectivity to an online state.
-    /// To change the status to ONLINE, this must be true: `num_connected >= num_peers * min_connectivity`
-    /// Default: 30%
-    pub min_connectivity: f32,
+    /// The minimum number of connected nodes before connectivity is transitioned to ONLINE
+    /// Default: 1
+    pub min_connectivity: usize,
     /// Interval to check the connection pool, including reaping inactive connections and retrying failed managed peer
-    /// connections. Default: 30s
+    /// connections. Default: 60s
     pub connection_pool_refresh_interval: Duration,
     /// True if connection reaping is enabled, otherwise false (default: true)
     pub is_connection_reaping_enabled: bool,
     /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
-    /// established from being reaped due to inactivity.
+    /// established from being reaped due to inactivity. Default: 20 minutes
     pub reaper_min_inactive_age: Duration,
     /// The number of connection failures before a peer is considered offline
     /// Default: 1
@@ -47,9 +46,9 @@ pub struct ConnectivityConfig {
 impl Default for ConnectivityConfig {
     fn default() -> Self {
         Self {
-            min_connectivity: 0.3,
-            connection_pool_refresh_interval: Duration::from_secs(30),
-            reaper_min_inactive_age: Duration::from_secs(60),
+            min_connectivity: 1,
+            connection_pool_refresh_interval: Duration::from_secs(60),
+            reaper_min_inactive_age: Duration::from_secs(20 * 60),
             is_connection_reaping_enabled: true,
             max_failures_mark_offline: 2,
             connection_tie_break_linger: Duration::from_secs(2),

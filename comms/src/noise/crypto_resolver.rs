@@ -96,11 +96,11 @@ impl Dh for CommsDiffieHellman {
     }
 
     fn pubkey(&self) -> &[u8] {
-        &self.public_key.as_bytes()
+        self.public_key.as_bytes()
     }
 
     fn privkey(&self) -> &[u8] {
-        &self.secret_key.as_bytes()
+        self.secret_key.as_bytes()
     }
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), ()> {
@@ -149,7 +149,7 @@ mod test {
         let expected_shared = CommsPublicKey::shared_secret(&secret_key2, &public_key);
 
         let mut out = [0; 32];
-        dh.dh(&public_key2.as_bytes(), &mut out).unwrap();
+        dh.dh(public_key2.as_bytes(), &mut out).unwrap();
         let shared = CommsPublicKey::from_bytes(&out).unwrap();
 
         assert_eq!(shared, expected_shared);

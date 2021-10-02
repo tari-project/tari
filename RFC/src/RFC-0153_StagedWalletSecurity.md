@@ -1,4 +1,4 @@
-# RFC-0151/StagedWalletSecurity
+# RFC-0153/StagedWalletSecurity
 
 ## Staged Wallet Security
 
@@ -32,9 +32,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
-"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
 shown here.
 
 ## Disclaimer
@@ -53,7 +53,7 @@ The focus is on mobile wallets, but the strategy described here is equally appli
 
 ## Related Requests for Comment
 
-* [RFC-0150: Wallets](RFC-0150_Wallets.md)
+- [RFC-0150: Wallets](RFC-0150_Wallets.md)
 
 ## Description
 
@@ -65,12 +65,12 @@ experience.
 A common theme: I want to play with some new wallet X that I saw advertised somewhere, so I download it and run it.
 But first I get several screens that
 
-* ask me to review my seed phrase,
-* ask me to write down my seed phrase,
-* prevent typical "skip this" tricks like taking a screenshot,
-* ask to confirm if I've written down my seed phrase,
-* force me to write a test, either by supplying a random sample of my seed phrase, or by getting me to type in the
-whole thing.
+- ask me to review my seed phrase,
+- ask me to write down my seed phrase,
+- prevent typical "skip this" tricks like taking a screenshot,
+- ask to confirm if I've written down my seed phrase,
+- force me to write a test, either by supplying a random sample of my seed phrase, or by getting me to type in the
+  whole thing.
 
 After all this, I play with the wallet a bit, and then typically, I uninstall it.
 
@@ -116,7 +116,6 @@ convenient time".
 If the user elects _not_ to save the phrase, the message pops up again periodically. Once per day, or when the balance
 increases -- whichever is less frequent -- is sufficient without being too intrusive.
 
-
 #### Stage 1b - simple wallet backups
 
 Users are used to storing their data in the cloud. Although this practice is frowned upon by crypto purists, for small
@@ -149,7 +148,6 @@ Wallet authors MAY choose to exclude Stage 1b from the staged security protocol.
 
 As usual, the user MUST be able to configure `STAGE_TWO_THRESHOLD_BALANCE` to suit their particular needs.
 
-
 #### Stage 2 - full wallet backups
 
 Once a user has a significant balance (over `STAGE_TWO_THRESHOLD_BALANCE`), Stage 2 is active. Stage 2 entails a full,
@@ -166,7 +164,6 @@ transaction.
 
 When migrating from Stage 1 to Stage 2, the Stage 1b backups SHOULD be deleted.
 
-
 #### Stage 3 - Sweep to cold wallet
 
 Above a given limit -- user-defined, or the default `MAX_HOT_WALLET_BALANCE`, the user should be prompted to transfer
@@ -182,7 +179,5 @@ sweep transaction to the blockchain.
 
 #### Security hygiene
 
-* From stage 1 onwards Users should be asked periodically whether they still have their seed phrase written down.
+- From stage 1 onwards Users should be asked periodically whether they still have their seed phrase written down.
   Once every two months is sufficient.
-
-

@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::{Challenge, CommsPublicKey};
-use blake2::digest::FixedOutput;
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
@@ -30,28 +29,22 @@ use tari_crypto::{
     tari_utilities::message_format::MessageFormat,
 };
 
-pub fn sign<R, B>(
+pub fn sign_challenge<R>(
     rng: &mut R,
     secret_key: <CommsPublicKey as PublicKey>::K,
-    body: B,
+    challenge: Challenge,
 ) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
 where
     R: CryptoRng + Rng,
-    B: AsRef<[u8]>,
 {
-    let challenge = Challenge::new().chain(body).finalize_fixed();
     let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
-    SchnorrSignature::sign(secret_key, nonce, challenge.as_slice())
+    SchnorrSignature::sign(secret_key, nonce, &challenge.finalize())
 }
 
-/// Verify that the signature is valid for the message body
-pub fn verify<B>(public_key: &CommsPublicKey, signature: &[u8], body: B) -> bool
-where B: AsRef<[u8]> {
+/// Verify that the signature is valid for the challenge
+pub fn verify_challenge(public_key: &CommsPublicKey, signature: &[u8], challenge: Challenge) -> bool {
     match SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature) {
-        Ok(signature) => {
-            let challenge = Challenge::new().chain(body).finalize_fixed();
-            signature.verify_challenge(public_key, challenge.as_slice())
-        },
+        Ok(signature) => signature.verify_challenge(public_key, &challenge.finalize()),
         Err(_) => false,
     }
 }

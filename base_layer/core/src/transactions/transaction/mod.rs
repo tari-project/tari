@@ -57,6 +57,7 @@ use crate::transactions::{
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
 };
+use std::ops::Shl;
 use tari_common_types::types::{
     BlindingFactor,
     Challenge,
@@ -494,6 +495,12 @@ impl UnblindedOutput {
         factories: &CryptoFactories,
         verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -508,12 +515,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 
@@ -523,6 +525,12 @@ impl UnblindedOutput {
         rewind_data: &RewindData,
         verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
@@ -544,12 +552,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if verify_proof && !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 }
@@ -673,10 +676,10 @@ impl TransactionInput {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         let challenge = TransactionInput::build_script_challenge(
-            &self.script_signature.public_nonce(),
+            self.script_signature.public_nonce(),
             &self.script,
             &self.input_data,
-            &public_script_key,
+            public_script_key,
             &self.commitment,
         );
         if self
@@ -697,6 +700,11 @@ impl TransactionInput {
         let key = self.run_script()?;
         self.validate_script_signature(&key, factory)?;
         Ok(key)
+    }
+
+    /// Returns true if this input is mature at the given height, otherwise false
+    pub fn is_mature_at(&self, block_height: u64) -> bool {
+        self.features.maturity <= block_height
     }
 
     /// Returns the hash of the output data contained in this input.
@@ -816,7 +824,7 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &self.metadata_signature.public_nonce(),
+            self.metadata_signature.public_nonce(),
             &self.commitment,
         );
         if !self.metadata_signature.verify_challenge(
@@ -923,11 +931,11 @@ impl TransactionOutput {
             Some(partial_nonce) => &nonce_commitment + partial_nonce,
         };
         let value = PrivateKey::from(value.as_u64());
-        let commitment = PedersenCommitmentFactory::default().commit(&spending_key, &value);
+        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            &script,
-            &output_features,
-            &sender_offset_public_key,
+            script,
+            output_features,
+            sender_offset_public_key,
             &nonce_commitment,
             &commitment,
         );
@@ -959,7 +967,7 @@ impl TransactionOutput {
             spending_key,
             script,
             output_features,
-            &sender_offset_public_key,
+            sender_offset_public_key,
             Some(partial_commitment_nonce),
             None,
         )
@@ -1131,7 +1139,7 @@ impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -1146,6 +1154,83 @@ pub struct TransactionKernel {
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
     pub excess_sig: Signature,
+}
+
+impl TransactionKernel {
+    pub fn is_coinbase(&self) -> bool {
+        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+    }
+
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+        let excess = self.excess.as_public_key();
+        let r = self.excess_sig.get_public_nonce();
+        let m = TransactionMetadata {
+            lock_height: self.lock_height,
+            fee: self.fee,
+        };
+        let c = build_challenge(r, &m);
+        if self.excess_sig.verify_challenge(excess, &c) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying kernel signature".to_string(),
+            ))
+        }
+    }
+
+    /// This method was used to sort kernels. It has been replaced, and will be removed in future
+    pub fn deprecated_cmp(&self, other: &Self) -> Ordering {
+        self.features
+            .cmp(&other.features)
+            .then(self.fee.cmp(&other.fee))
+            .then(self.lock_height.cmp(&other.lock_height))
+            .then(self.excess.cmp(&other.excess))
+            .then(self.excess_sig.cmp(&other.excess_sig))
+    }
+}
+
+impl Hashable for TransactionKernel {
+    /// Produce a canonical hash for a transaction kernel. The hash is given by
+    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    fn hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(&[self.features.bits])
+            .chain(u64::from(self.fee).to_le_bytes())
+            .chain(self.lock_height.to_le_bytes())
+            .chain(self.excess.as_bytes())
+            .chain(self.excess_sig.get_public_nonce().as_bytes())
+            .chain(self.excess_sig.get_signature().as_bytes())
+            .finalize()
+            .to_vec()
+    }
+}
+
+impl Display for TransactionKernel {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let msg = format!(
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            self.fee,
+            self.lock_height,
+            self.features,
+            self.excess.to_hex(),
+            self.excess_sig
+                .to_json()
+                .unwrap_or_else(|_| "Failed to serialize signature".into()),
+        );
+        fmt.write_str(&msg)
+    }
+}
+
+impl PartialOrd for TransactionKernel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.excess_sig.partial_cmp(&other.excess_sig)
+    }
+}
+
+impl Ord for TransactionKernel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.excess_sig.cmp(&other.excess_sig)
+    }
 }
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
@@ -1220,59 +1305,9 @@ impl Default for KernelBuilder {
     }
 }
 
-impl TransactionKernel {
-    pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        let excess = self.excess.as_public_key();
-        let r = self.excess_sig.get_public_nonce();
-        let m = TransactionMetadata {
-            lock_height: self.lock_height,
-            fee: self.fee,
-        };
-        let c = build_challenge(r, &m);
-        if self.excess_sig.verify_challenge(excess, &c) {
-            Ok(())
-        } else {
-            Err(TransactionError::InvalidSignatureError(
-                "Verifying kernel signature".to_string(),
-            ))
-        }
-    }
-}
-
-impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel. The hash is given by
-    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(&[self.features.bits])
-            .chain(u64::from(self.fee).to_le_bytes())
-            .chain(self.lock_height.to_le_bytes())
-            .chain(self.excess.as_bytes())
-            .chain(self.excess_sig.get_public_nonce().as_bytes())
-            .chain(self.excess_sig.get_signature().as_bytes())
-            .finalize()
-            .to_vec()
-    }
-}
-
-impl Display for TransactionKernel {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let msg = format!(
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
-            self.fee,
-            self.lock_height,
-            self.features,
-            self.excess.to_hex(),
-            self.excess_sig
-                .to_json()
-                .unwrap_or_else(|_| "Failed to serialize signature".into()),
-        );
-        fmt.write_str(&msg)
-    }
-}
-
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
+#[derive(Default)]
 pub struct KernelSum {
     pub sum: Commitment,
     pub fees: MicroTari,
@@ -1305,12 +1340,10 @@ impl Transaction {
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
         script_offset: BlindingFactor,
-    ) -> Transaction {
-        let mut body = AggregateBody::new(inputs, outputs, kernels);
-        body.sort();
-        Transaction {
+    ) -> Self {
+        Self {
             offset,
-            body,
+            body: AggregateBody::new(inputs, outputs, kernels),
             script_offset,
         }
     }
@@ -1369,10 +1402,7 @@ impl Transaction {
 
     /// Returns the maximum time lock of the kernels inside of the transaction
     pub fn max_kernel_timelock(&self) -> u64 {
-        self.body
-            .kernels()
-            .iter()
-            .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+        self.body.max_kernel_timelock()
     }
 
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
@@ -1510,14 +1540,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use rand::{self, rngs::OsRng};
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::ExecutionStack,
-    };
-
     use crate::{
         transactions::{
             helpers,
@@ -1527,7 +1549,14 @@ mod test {
         },
         txn_schema,
     };
+    use rand::{self, rngs::OsRng};
     use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        ristretto::pedersen::PedersenCommitmentFactory,
+        script,
+        script::ExecutionStack,
+    };
 
     use super::*;
 
@@ -1588,7 +1617,9 @@ mod test {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionError::ValidationError("Range proof could not be verified".to_string())
+                TransactionError::ValidationError(
+                    "Value provided is outside the range allowed by the range proof".to_string()
+                )
             ),
         }
 

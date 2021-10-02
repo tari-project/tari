@@ -85,7 +85,7 @@ impl LMDBConfig {
 
 impl Default for LMDBConfig {
     fn default() -> Self {
-        Self::new_from_mb(64, 16, 4)
+        Self::new_from_mb(16, 16, 4)
     }
 }
 
@@ -412,7 +412,7 @@ impl LMDBStore {
         );
 
         if size_left_bytes <= config.resize_threshold_bytes {
-            env.set_mapsize(env_info.mapsize + config.grow_size_bytes)?;
+            Self::resize(env, config)?;
             debug!(
                 target: LOG_TARGET,
                 "({}) LMDB size used {:?} MB, environment space left {:?} MB, increased by {:?} MB",
@@ -422,6 +422,31 @@ impl LMDBStore {
                 config.grow_size_bytes / BYTES_PER_MB,
             );
         }
+        Ok(())
+    }
+
+    /// Grows the LMDB environment by the configured amount
+    ///
+    /// # Safety
+    /// This may only be called if no write transactions are active in the current process. Note that the library does
+    /// not check for this condition, the caller must ensure it explicitly.
+    ///
+    /// http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5
+    pub unsafe fn resize(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
+        let env_info = env.info()?;
+        let current_mapsize = env_info.mapsize;
+        env.set_mapsize(current_mapsize + config.grow_size_bytes)?;
+        let env_info = env.info()?;
+        let new_mapsize = env_info.mapsize;
+        debug!(
+            target: LOG_TARGET,
+            "({}) LMDB MB, mapsize was grown from {:?} MB to {:?} MB, increased by {:?} MB",
+            env.path()?.to_str()?,
+            current_mapsize / BYTES_PER_MB,
+            new_mapsize / BYTES_PER_MB,
+            config.grow_size_bytes / BYTES_PER_MB,
+        );
+
         Ok(())
     }
 }
@@ -442,8 +467,7 @@ impl LMDBDatabase {
         K: AsLmdbBytes + ?Sized,
         V: Serialize,
     {
-        const MAX_RESIZES: usize = 3;
-
+        const MAX_RESIZES: usize = 5;
         let value = LMDBWriteTransaction::convert_value(value)?;
         for _ in 0..MAX_RESIZES {
             match self.write(key, &value) {
@@ -456,7 +480,7 @@ impl LMDBDatabase {
                     // SAFETY: We know that there are no open transactions at this point because ...
                     // TODO: we don't guarantee this here but it works because the caller does this.
                     unsafe {
-                        LMDBStore::resize_if_required(&self.env, &self.env_config)?;
+                        LMDBStore::resize(&self.env, &self.env_config)?;
                     }
                 },
                 Err(e) => return Err(e.into()),
@@ -605,18 +629,13 @@ impl LMDBDatabase {
     }
 
     /// Create a read-only transaction on the current database and execute the instructions given in the closure. The
-    /// transaction is automatically committed when the closure goes out of scope. You may provide the results of the
-    /// transaction to the calling scope by populating a `Vec<V>` with the results of `txn.get(k)`. Otherwise, if the
-    /// results are not needed, or you did not call `get`, just return `Ok(None)`.
-    pub fn with_read_transaction<F, V>(&self, f: F) -> Result<Option<Vec<V>>, LMDBError>
-    where
-        V: serde::de::DeserializeOwned,
-        F: FnOnce(LMDBReadTransaction) -> Result<Option<Vec<V>>, LMDBError>,
-    {
+    /// transaction is automatically committed when the closure goes out of scope.
+    pub fn with_read_transaction<F, R>(&self, f: F) -> Result<R, LMDBError>
+    where F: FnOnce(LMDBReadTransaction) -> R {
         let txn = ReadTransaction::new(self.env.clone())?;
         let access = txn.access();
         let wrapper = LMDBReadTransaction { db: &self.db, access };
-        f(wrapper)
+        Ok(f(wrapper))
     }
 
     /// Create a transaction with write access on the current table.
@@ -670,14 +689,14 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
         K: AsLmdbBytes + ?Sized,
         for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
-        let val = self.access.get(&self.db, key).to_opt();
+        let val = self.access.get(self.db, key).to_opt();
         LMDBReadTransaction::convert_value(val)
     }
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let res: error::Result<&Ignore> = self.access.get(&self.db, key);
+        let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
@@ -709,21 +728,21 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
         V: serde::Serialize,
     {
         let buf = Self::convert_value(value)?;
-        self.access.put(&self.db, key, &buf, put::Flags::empty())?;
+        self.access.put(self.db, key, &buf, put::Flags::empty())?;
         Ok(())
     }
 
     /// Checks whether a key exists in this database
     pub fn exists<K>(&self, key: &K) -> Result<bool, LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        let res: error::Result<&Ignore> = self.access.get(&self.db, key);
+        let res: error::Result<&Ignore> = self.access.get(self.db, key);
         let res = res.to_opt()?.is_some();
         Ok(res)
     }
 
     pub fn delete<K>(&mut self, key: &K) -> Result<(), LMDBError>
     where K: AsLmdbBytes + ?Sized {
-        Ok(self.access.del_key(&self.db, key)?)
+        Ok(self.access.del_key(self.db, key)?)
     }
 
     fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>

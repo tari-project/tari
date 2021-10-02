@@ -152,21 +152,19 @@ pub async fn send_transaction_reply_direct(
                 }
                 // now wait for discovery to complete
                 match rx.await {
-                    Ok(send_msg_response) => {
-                        if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery of {} completed for TxID: {}", inbound_transaction.source_public_key, tx_id
-                            );
-                            direct_send_result = wait_on_dial(
-                                send_states,
-                                tx_id,
-                                inbound_transaction.source_public_key.clone(),
-                                "Transaction Reply",
-                                direct_send_timeout,
-                            )
-                            .await;
-                        }
+                    Ok(SendMessageResponse::Queued(send_states)) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Discovery of {} completed for TxID: {}", inbound_transaction.source_public_key, tx_id
+                        );
+                        direct_send_result = wait_on_dial(
+                            send_states,
+                            tx_id,
+                            inbound_transaction.source_public_key.clone(),
+                            "Transaction Reply",
+                            direct_send_timeout,
+                        )
+                        .await;
                     },
                     Err(e) => {
                         debug!(
@@ -174,6 +172,10 @@ pub async fn send_transaction_reply_direct(
                             "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
                         );
                     },
+                    _ => debug!(
+                        target: LOG_TARGET,
+                        "Empty message received waiting for Discovery to complete TxId: {}", tx_id
+                    ),
                 }
             },
         },

@@ -146,7 +146,7 @@ pub struct ConfigBootstrap {
     pub miner_min_diff: Option<u64>,
     #[structopt(long, alias = "max-difficulty")]
     pub miner_max_diff: Option<u64>,
-    #[structopt(long, alias = "tracing")]
+    #[structopt(long, aliases = &["tracing", "enable-tracing"])]
     pub tracing_enabled: bool,
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]
@@ -318,7 +318,7 @@ impl ConfigBootstrap {
     /// Set up application-level logging using the Log4rs configuration file
     /// based on supplied CLI arguments
     pub fn initialize_logging(&self) -> Result<(), ConfigError> {
-        if initialize_logging(&self.log_config) {
+        if initialize_logging(&self.log_config, &self.base_path) {
             Ok(())
         } else {
             Err(ConfigError::new("Failed to initialize logging", None))
@@ -514,7 +514,7 @@ mod test {
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
         let mut bootstrap =
-            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create-id"])
+            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", data_path.as_str(), "--init", "--create-id"])
                 .expect("failed to process arguments");
 
         // Initialize bootstrap dirs
@@ -525,16 +525,6 @@ mod test {
         let log_config_exists = std::path::Path::new(&bootstrap.log_config).exists();
         // Load and apply configuration file
         let cfg = load_configuration(&bootstrap);
-
-        // Change current dir to test dir so logging can be initialized there and test data can be cleaned up
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        if std::env::set_current_dir(&dir).is_err() {
-            println!(
-                "Logging initialized in {}, could not initialize in {}.",
-                &current_dir.display(),
-                &dir.display()
-            );
-        };
 
         // Initialize logging
         let logging_initialized = bootstrap.initialize_logging().is_ok();
@@ -547,16 +537,6 @@ mod test {
         let log_other_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/base-node/other.log")
             .exists();
-
-        // Change back to current dir
-        if std::env::set_current_dir(&current_dir).is_err() {
-            println!(
-                "Working directory could not be changed back to {} after logging has been initialized. New working \
-                 directory is {}",
-                &current_dir.display(),
-                &std::env::current_dir().unwrap_or_default().display()
-            );
-        };
 
         // Cleanup test data
         if std::path::Path::new(&data_path.as_str()).exists() {

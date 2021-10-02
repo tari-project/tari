@@ -1339,18 +1339,17 @@ struct KeyManagerStateUpdateSql {
 
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let encrypted_master_key = encrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
-        let encrypted_branch_seed =
-            encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().as_bytes().to_vec())?;
+        let encrypted_master_key = encrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
+        let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().into_bytes())?;
         self.master_key = encrypted_master_key;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let decrypted_master_key = decrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
+        let decrypted_master_key = decrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
         let decrypted_branch_seed =
-            decrypt_bytes_integral_nonce(&cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
+            decrypt_bytes_integral_nonce(cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
         self.master_key = decrypted_master_key;
         self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
             .map_err(|_| Error)?
@@ -1500,12 +1499,12 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
 
 impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        self.private_key = encrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
+        self.private_key = encrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        self.private_key = decrypt_bytes_integral_nonce(&cipher, self.private_key.clone())?;
+        self.private_key = decrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
         Ok(())
     }
 }

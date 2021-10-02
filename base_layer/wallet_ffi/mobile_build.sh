@@ -79,13 +79,19 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   export PKG_CONFIG_PATH=${PKG_PATH}
   # shellcheck disable=SC2028
   echo "\t${CYAN}Building Wallet FFI${NC}"
-  cargo-lipo lipo --release > "${IOS_LOG_PATH}/cargo.txt" 2>&1
+  cargo build --lib --release --target=x86_64-apple-ios > "${IOS_LOG_PATH}/cargo_ios_x86_64.txt" 2>&1
+  cargo build --lib --release --target=aarch64-apple-ios > "${IOS_LOG_PATH}/cargo_ios_aarch64.txt" 2>&1
   cd ../..
   cd target || exit
-  # Copy the fat library (which contains symbols for all built iOS architectures) created by the lipo tool
-  # XCode will select the relevant set of symbols to be included in the mobile application depending on which arch is built
+  mkdir -p universal/release
   cd universal || exit
   cd release || exit
+  # Create the fat library from the thin ones.
+  cp "../../x86_64-apple-ios/release/libtari_wallet_ffi.a" "${PWD}/libtari_wallet_ffi_x86_64.a"
+  cp "../../aarch64-apple-ios/release/libtari_wallet_ffi.a" "${PWD}/libtari_wallet_ffi_aarch64.a"
+  lipo -create libtari_wallet_ffi_x86_64.a libtari_wallet_ffi_aarch64.a -output libtari_wallet_ffi.a
+  # Copy the fat library (which contains symbols for all built iOS architectures) created by the lipo tool
+  # XCode will select the relevant set of symbols to be included in the mobile application depending on which arch is built
   cp libtari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/"
   cd ../../.. || exit
   rm -rf target

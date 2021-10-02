@@ -59,8 +59,15 @@ use tari_core::{
     tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tokio::{runtime, sync::watch};
+use tari_p2p::{
+    auto_update::SoftwareUpdaterHandle,
+    services::liveness::{LivenessEvent, LivenessHandle},
+};
+use tokio::{
+    runtime,
+    sync::{broadcast, watch},
+    time,
+};
 
 pub enum StatusOutput {
     Log,
@@ -77,6 +84,7 @@ pub struct CommandHandler {
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
+    liveness: LivenessHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
@@ -85,7 +93,7 @@ pub struct CommandHandler {
 
 impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
-        CommandHandler {
+        Self {
             executor,
             config: ctx.config(),
             blockchain_db: ctx.blockchain_db().into(),
@@ -95,6 +103,7 @@ impl CommandHandler {
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
+            liveness: ctx.liveness(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
@@ -114,10 +123,8 @@ impl CommandHandler {
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
-            let version = format!("v{}", consts::APP_VERSION_NUMBER);
-            status_line.add_field("", version);
-            let network = format!("{}", config.network);
-            status_line.add_field("", network);
+            status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
+            status_line.add_field("", config.network);
             status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
@@ -178,6 +185,15 @@ impl CommandHandler {
                 ),
             );
 
+            status_line.add_field(
+                "RandomX",
+                format!(
+                    "#{} with flags {:?}",
+                    state_info.borrow().randomx_vm_cnt,
+                    state_info.borrow().randomx_vm_flags
+                ),
+            );
+
             let target = "base_node::app::status";
             match output {
                 StatusOutput::Full => {
@@ -221,6 +237,10 @@ impl CommandHandler {
     pub fn print_version(&self) {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
+        println!("Avx2: {}", match cfg!(feature = "avx2") {
+            true => "enabled",
+            false => "disabled",
+        });
 
         if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
             println!(
@@ -386,12 +406,16 @@ impl CommandHandler {
         });
     }
 
-    pub fn get_peer(&self, node_id: NodeId) {
+    pub fn get_peer(&self, partial: Vec<u8>, original_str: String) {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_by_node_id(&node_id).await {
-                Ok(peer) => {
+            match peer_manager.find_all_starts_with(&partial).await {
+                Ok(peers) if peers.is_empty() => {
+                    println!("No peer matching '{}'", original_str);
+                },
+                Ok(peers) => {
+                    let peer = peers.first().unwrap();
                     let eid = EmojiId::from_pubkey(&peer.public_key);
                     println!("Emoji ID: {}", eid);
                     println!("Public Key: {}", peer.public_key);
@@ -517,7 +541,7 @@ impl CommandHandler {
     }
 
     pub fn dial_peer(&self, dest_node_id: NodeId) {
-        let mut connectivity = self.connectivity.clone();
+        let connectivity = self.connectivity.clone();
 
         self.executor.spawn(async move {
             let start = Instant::now();
@@ -533,6 +557,42 @@ impl CommandHandler {
                 },
             }
         });
+    }
+
+    pub fn ping_peer(&self, dest_node_id: NodeId) {
+        let mut liveness = self.liveness.clone();
+
+        self.executor.spawn(time::timeout(Duration::from_secs(30), async move {
+            println!("🏓 Pinging peer...");
+            let mut liveness_events = liveness.get_event_stream();
+
+            match liveness.send_ping(dest_node_id.clone()).await {
+                Ok(_) => loop {
+                    match liveness_events.recv().await {
+                        Ok(event) =>
+                        {
+                            #[allow(clippy::single_match)]
+                            match &*event {
+                                LivenessEvent::ReceivedPong(pong) => {
+                                    if pong.node_id == dest_node_id {
+                                        println!("🏓️ Pong received, latency in is {}ms!", pong.latency.unwrap_or(0));
+                                        break;
+                                    }
+                                },
+                                _ => {},
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        },
+                        _ => {},
+                    }
+                },
+                Err(err) => {
+                    println!("📞  Could not send ping: {}", err);
+                },
+            }
+        }));
     }
 
     pub fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
@@ -641,7 +701,7 @@ impl CommandHandler {
                         "Age",
                         "Role",
                         "User Agent",
-                        "Chain Height",
+                        "Info",
                     ]);
                     for conn in conns {
                         let peer = peer_manager
@@ -649,14 +709,10 @@ impl CommandHandler {
                             .await
                             .expect("Unexpected peer database error or peer not found");
 
-                        let chain_height = if let Some(metadata) = peer
+                        let chain_height = peer
                             .get_metadata(1)
                             .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                        {
-                            Some(format!("Height = #{}", metadata.metadata.height_of_longest_chain()))
-                        } else {
-                            None
-                        };
+                            .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
 
                         table.add_row(row![
                             peer.node_id,
@@ -674,7 +730,11 @@ impl CommandHandler {
                             Some(peer.user_agent)
                                 .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
                                 .unwrap(),
-                            chain_height.unwrap_or_default(),
+                            format!(
+                                "substreams: {}{}",
+                                conn.substream_count(),
+                                chain_height.map(|s| format!(", {}", s)).unwrap_or_default()
+                            ),
                         ]);
                     }
 

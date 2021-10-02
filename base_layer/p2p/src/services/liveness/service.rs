@@ -48,7 +48,7 @@ use tari_comms_dht::{
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
-use tokio::time;
+use tokio::{time, time::MissedTickBehavior};
 use tokio_stream::wrappers;
 
 /// Service responsible for testing Liveness of Peers.
@@ -101,10 +101,11 @@ where
         pin_mut!(request_stream);
 
         let mut ping_tick = match self.config.auto_ping_interval {
-            Some(interval) => Either::Left(wrappers::IntervalStream::new(time::interval_at(
-                (Instant::now() + interval).into(),
-                interval,
-            ))),
+            Some(interval) => {
+                let mut interval = time::interval_at((Instant::now() + interval).into(), interval);
+                interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                Either::Left(wrappers::IntervalStream::new(interval))
+            },
             None => Either::Right(futures::stream::iter(iter::empty())),
         };
 
@@ -321,6 +322,7 @@ mod test {
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
+        DhtProtocolVersion,
     };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
@@ -434,8 +436,7 @@ mod test {
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
-                major: 0,
-                minor: 0,
+                version: DhtProtocolVersion::latest(),
                 destination: Default::default(),
                 origin_mac: Vec::new(),
                 ephemeral_public_key: None,

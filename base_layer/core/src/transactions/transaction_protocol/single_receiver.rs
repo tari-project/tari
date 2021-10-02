@@ -95,11 +95,11 @@ impl SingleReceiverTransactionProtocol {
     ) -> Result<TransactionOutput, TPE> {
         let commitment = factories
             .commitment
-            .commit_value(&spending_key, sender_info.amount.into());
+            .commit_value(spending_key, sender_info.amount.into());
 
         let proof = if let Some(rewind_data) = rewind_data {
             factories.range_proof.construct_proof_with_rewind_key(
-                &spending_key,
+                spending_key,
                 sender_info.amount.into(),
                 &rewind_data.rewind_key,
                 &rewind_data.rewind_blinding_key,
@@ -108,7 +108,7 @@ impl SingleReceiverTransactionProtocol {
         } else {
             factories
                 .range_proof
-                .construct_proof(&spending_key, sender_info.amount.into())?
+                .construct_proof(spending_key, sender_info.amount.into())?
         };
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(

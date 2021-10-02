@@ -53,6 +53,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     task,
     time,
+    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -267,6 +268,7 @@ impl DhtActor {
         let mut pending_jobs = FuturesUnordered::new();
 
         let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
+        dedup_cache_trim_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {
@@ -639,7 +641,7 @@ impl DhtActor {
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;
@@ -852,7 +854,8 @@ mod test {
         let dedup_cache_db = actor.msg_hash_dedup_cache.clone();
         // The cleanup ticker starts when the actor is spawned; the first cleanup event will fire fairly soon after the
         // task is running on a thread. To remove this race condition, we trim the cache in the test.
-        dedup_cache_db.trim_entries().await.unwrap();
+        let num_trimmed = dedup_cache_db.trim_entries().await.unwrap();
+        assert_eq!(num_trimmed, 10);
         actor.spawn();
 
         // Verify that the last half of the signatures are still present in the cache

@@ -41,7 +41,12 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_core::{crypto::tari_utilities::hex::from_hex, proof_of_work::PowAlgorithm, tari_utilities::hex::Hex};
+use tari_core::{
+    crypto::tari_utilities::hex::from_hex,
+    proof_of_work::PowAlgorithm,
+    tari_utilities::{hex::Hex, ByteArray},
+};
+use tari_crypto::tari_utilities::hex;
 use tari_shutdown::Shutdown;
 
 /// Enum representing commands used by the basenode
@@ -57,6 +62,7 @@ pub enum BaseNodeCommand {
     GetPeer,
     ListPeers,
     DialPeer,
+    PingPeer,
     ResetOfflinePeers,
     RewindBlockchain,
     BanPeer,
@@ -139,7 +145,7 @@ impl Parser {
         }
 
         let mut args = command_str.split_whitespace();
-        match args.next().unwrap_or(&"help").parse() {
+        match args.next().unwrap_or("help").parse() {
             Ok(command) => {
                 self.process_command(command, args, shutdown);
             },
@@ -190,6 +196,9 @@ impl Parser {
             },
             DialPeer => {
                 self.process_dial_peer(args);
+            },
+            PingPeer => {
+                self.process_ping_peer(args);
             },
             DiscoverPeer => {
                 self.process_discover_peer(args);
@@ -294,6 +303,9 @@ impl Parser {
             },
             DialPeer => {
                 println!("Attempt to connect to a known peer");
+            },
+            PingPeer => {
+                println!("Send a ping to a known peer and wait for a pong reply");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
@@ -508,20 +520,27 @@ impl Parser {
     }
 
     fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let node_id = match args
+        let (original_str, partial) = match args
             .next()
-            .map(parse_emoji_id_or_public_key_or_node_id)
+            .map(|s| {
+                parse_emoji_id_or_public_key_or_node_id(s)
+                    .map(either_to_node_id)
+                    .map(|n| (s.to_string(), n.to_vec()))
+                    .or_else(|| {
+                        let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
+                        Some((s.to_string(), bytes))
+                    })
+            })
             .flatten()
-            .map(either_to_node_id)
         {
             Some(n) => n,
             None => {
-                println!("Usage: get-peer [NodeId|PublicKey|EmojiId]");
+                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
                 return;
             },
         };
 
-        self.command_handler.get_peer(node_id)
+        self.command_handler.get_peer(partial, original_str)
     }
 
     /// Function to process the list-peers command
@@ -541,12 +560,30 @@ impl Parser {
             Some(n) => n,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
-                println!("discover-peer [hex public key or emoji id]");
+                println!("dial-peer [hex public key or emoji id]");
                 return;
             },
         };
 
         self.command_handler.dial_peer(dest_node_id)
+    }
+
+    /// Function to process the dial-peer command
+    fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let dest_node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("ping-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.command_handler.ping_peer(dest_node_id)
     }
 
     /// Function to process the ban-peer command
@@ -656,7 +693,7 @@ impl Parser {
                 self.print_help(BaseNodeCommand::HeaderStats);
                 "No end height provided".to_string()
             })
-            .and_then(|arg| u64::from_str(&arg).map_err(|err| err.to_string())));
+            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
 
         let filename = args.next().unwrap_or("header-data.csv").to_string();
 

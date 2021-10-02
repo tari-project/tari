@@ -86,7 +86,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<Commitment, ValidationError> {
         let chain_header = backend.fetch_chain_header_by_height(height)?;
         let offset = &chain_header.accumulated_data().total_kernel_offset;
-        Ok(self.factories.commitment.commit(&offset, &0u64.into()))
+        Ok(self.factories.commitment.commit(offset, &0u64.into()))
     }
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {

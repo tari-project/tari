@@ -30,7 +30,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
-    transactions::tari_amount::MicroTari,
+    transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
 };
 use std::{convert::TryFrom, sync::Arc};
 use tari_common::configuration::Network;
@@ -103,7 +103,7 @@ impl ConsensusManager {
             if c.effective_from_height() > height {
                 break;
             }
-            constants = &c
+            constants = c
         }
         constants
     }
@@ -121,10 +121,10 @@ impl ConsensusManager {
         )
     }
 
-    /// Creates a total_coinbase offset containing all fees for the validation from block
-    pub fn calculate_coinbase_and_fees(&self, block: &Block) -> MicroTari {
-        let coinbase = self.emission_schedule().block_reward(block.header.height);
-        coinbase + block.calculate_fees()
+    /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
+    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroTari {
+        let coinbase = self.emission_schedule().block_reward(height);
+        kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 
     pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
@@ -172,7 +172,7 @@ impl ConsensusManagerBuilder {
     }
 
     /// Adds in a custom consensus constants to be used
-    pub fn with_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
+    pub fn add_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
         self.consensus_constants.push(consensus_constants);
         self
     }
@@ -197,7 +197,7 @@ impl ConsensusManagerBuilder {
 
         let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
-            &self.consensus_constants[0].emission_decay,
+            self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].emission_tail,
         );
         let inner = ConsensusManagerInner {

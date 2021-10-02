@@ -36,7 +36,6 @@ use tari_comms::{
         node_identity::build_node_identity,
     },
     types::CommsSecretKey,
-    Substream,
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
@@ -97,7 +96,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     OutputManagerHandle,
     Shutdown,
     TransactionServiceHandle,
-    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>, Substream>,
+    MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
     ConnectivityManagerMockState,
@@ -1471,13 +1470,11 @@ async fn test_utxo_stxo_invalid_txo_validation() {
     let mut success = false;
     loop {
         tokio::select! {
-            event = event_stream.recv() => {
-                if let Ok(msg) = event {
-                        if let OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) = (*msg).clone() {
-                               success = true;
-                               break;
-                            };
-                }
+            Ok(msg) = event_stream.recv() => {
+                if let OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) = (*msg).clone() {
+                    success = true;
+                    break;
+                };
             },
             () = &mut delay => {
                 break;
@@ -1571,14 +1568,12 @@ async fn test_base_node_switch_during_validation() {
     let mut abort = false;
     loop {
         tokio::select! {
-            event = event_stream.recv() => {
-            if let Ok(msg) = event {
-                   if let OutputManagerEvent::TxoValidationAborted(_,_) = (*msg).clone() {
-                       abort = true;
-                       break;
-                    }
-                 }
-            },
+            Ok(msg) = event_stream.recv() => {
+                if let OutputManagerEvent::TxoValidationAborted(_,_) = (*msg).clone() {
+                    abort = true;
+                    break;
+                }
+            }
             () = &mut delay => {
                 break;
             },

@@ -25,7 +25,7 @@ use crate::{
     storage::{DbConnection, StorageError},
 };
 use chrono::{NaiveDateTime, Utc};
-use diesel::{dsl, result::DatabaseErrorKind, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
@@ -90,27 +90,22 @@ impl DedupCacheDatabase {
 
     /// Trims the dedup cache to the configured limit by removing the oldest entries
     pub async fn trim_entries(&self) -> Result<usize, StorageError> {
-        let capacity = self.capacity;
+        let capacity = self.capacity as i64;
         self.connection
             .with_connection_async(move |conn| {
                 let mut num_removed = 0;
                 let msg_count = dedup_cache::table
                     .select(dsl::count(dedup_cache::id))
-                    .first::<i64>(conn)? as usize;
+                    .first::<i64>(conn)?;
                 // Hysteresis added to minimize database impact
                 if msg_count > capacity {
                     let remove_count = msg_count - capacity;
-                    num_removed = diesel::delete(dedup_cache::table)
-                        .filter(
-                            dedup_cache::id.eq_any(
-                                dedup_cache::table
-                                    .select(dedup_cache::id)
-                                    .order_by(dedup_cache::last_hit_at.asc())
-                                    .limit(remove_count as i64)
-                                    .get_results::<i32>(conn)?,
-                            ),
-                        )
-                        .execute(conn)?;
+                    num_removed = diesel::sql_query(
+                        "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC \
+                         LIMIT $1)",
+                    )
+                    .bind::<sql_types::BigInt, _>(remove_count)
+                    .execute(conn)?;
                 }
                 debug!(
                     target: LOG_TARGET,

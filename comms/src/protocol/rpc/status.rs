@@ -90,6 +90,13 @@ impl RpcStatus {
         }
     }
 
+    pub fn forbidden<T: ToString>(details: T) -> Self {
+        Self {
+            code: RpcStatusCode::Forbidden,
+            details: details.to_string(),
+        }
+    }
+
     /// Returns a closure that logs the given error and returns a generic general error that does not leak any
     /// potentially sensitive error information. Use this function with map_err to catch "miscellaneous" errors.
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
@@ -118,7 +125,7 @@ impl RpcStatus {
         &self.details
     }
 
-    pub fn details_bytes(&self) -> Vec<u8> {
+    pub fn to_details_bytes(&self) -> Vec<u8> {
         self.details.as_bytes().to_vec()
     }
 
@@ -155,7 +162,7 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
 
         RpcStatus {
             code: status_code,
-            details: String::from_utf8_lossy(&resp.message).to_string(),
+            details: String::from_utf8_lossy(&resp.payload).to_string(),
         }
     }
 }
@@ -186,6 +193,8 @@ pub enum RpcStatusCode {
     NotFound = 7,
     /// RPC protocol error
     ProtocolError = 8,
+    /// RPC forbidden error
+    Forbidden = 9,
     // The following status represents anything that is not recognised (i.e not one of the above codes).
     /// Unrecognised RPC status code
     InvalidRpcStatusCode,
@@ -217,6 +226,8 @@ impl From<u32> for RpcStatusCode {
             5 => MalformedResponse,
             6 => General,
             7 => NotFound,
+            8 => ProtocolError,
+            9 => Forbidden,
             _ => InvalidRpcStatusCode,
         }
     }
@@ -238,6 +249,8 @@ mod test {
         assert_eq!(RpcStatusCode::from(Timeout as u32), Timeout);
         assert_eq!(RpcStatusCode::from(NotFound as u32), NotFound);
         assert_eq!(RpcStatusCode::from(InvalidRpcStatusCode as u32), InvalidRpcStatusCode);
+        assert_eq!(RpcStatusCode::from(ProtocolError as u32), ProtocolError);
+        assert_eq!(RpcStatusCode::from(Forbidden as u32), Forbidden);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
     }
 }
