@@ -278,6 +278,14 @@ function combineTwoTariKeys(key1, key2) {
 const byteArrayToHex = (bytes) =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
+const convertHexStringToVec = (string) =>
+  string.match(/.{2}/g).map((x) => parseInt(x, 16));
+
+const convertStringToVec = (string) =>
+  Array(string.length)
+    .fill()
+    .map((_, i) => string.charCodeAt(i));
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -294,6 +302,8 @@ module.exports = {
   withTimeout,
   combineTwoTariKeys,
   byteArrayToHex,
+  convertHexStringToVec,
+  convertStringToVec,
   waitForPredicate,
   waitForIterate,
   NO_CONNECTION,

@@ -121,6 +121,7 @@ class WalletProcess {
           (this.recoverWallet &&
             data.toString().match(/Initializing logging according/))
         ) {
+          this.recoverWallet = false;
           resolve(ps);
         }
       });

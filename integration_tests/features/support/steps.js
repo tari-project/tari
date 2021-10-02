@@ -15,6 +15,7 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
+  byteArrayToHex,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -701,7 +702,7 @@ Given(
 );
 
 Given(
-  /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
+  /I have mining node (.*) connected to (?:base|seed) node (.*) and wallet (.*)/,
   async function (miner, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = await this.getOrCreateWallet(wallet);
@@ -1292,7 +1293,7 @@ When(
 );
 
 When(
-  /mining node (.*) mines (\d+) blocks$/,
+  /mining node (.*) mines (\d+) blocks?$/,
   { timeout: 600 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
@@ -3897,6 +3898,97 @@ Then(
       await sleep(5000);
     }
     expect(success).to.be.true;
+  }
+);
+
+Then(
+  "I register asset {word} on wallet {word} via command line",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    let output = await wallet_run_command(
+      wallet,
+      `register-asset ${asset_name}`
+    );
+    console.log(output?.buffer);
+    expect(output?.buffer).to.have.string("Registering asset");
+  }
+);
+
+Then(
+  "I register asset {word} on wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const public_key = await walletClient.registerAsset(asset_name);
+    console.log(`Asset ${asset_name} registered with public key ${public_key}`);
+  }
+);
+
+Then(
+  "I have asset {word} on wallet {word} with status {word}",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name, status) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    expect(
+      assets.some(
+        (asset) =>
+          asset.name === asset_name &&
+          asset.registration_output_status.toUpperCase() === status
+      )
+    ).to.be.true;
+  }
+);
+
+Then(
+  "I mint tokens {string} for asset {word} on wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (token_names, asset_name, wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    const tokens = token_names.split(" ");
+    await walletClient.mintTokens(asset.public_key, tokens);
+  }
+);
+
+Then(
+  "I mint tokens {string} for asset {word} on wallet {word} via command line",
+  { timeout: 20 * 1000 },
+  async function (token_names, asset_name, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    let output = await wallet_run_command(
+      wallet,
+      `mint-tokens ${byteArrayToHex(asset.public_key)} ${token_names}`
+    );
+    console.log(output?.buffer);
+    expect(output?.buffer).to.have.string("Minting tokens for asset");
+  }
+);
+
+Then(
+  "I have token {word} for asset {word} on wallet {word} in state {word}",
+  { timeout: 20 * 1000 },
+  async function (token_name, asset_name, wallet_name, status) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    let tokens = await walletClient.getOwnedTokens(asset.public_key);
+    expect(
+      tokens.some(
+        (token) =>
+          String.fromCharCode(...token.unique_id) === token_name &&
+          token.output_status.toUpperCase() === status
+      )
+    ).to.be.true;
   }
 );
 

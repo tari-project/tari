@@ -55,6 +55,9 @@ service Wallet {
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
 
+    rpc RegisterAsset(RegisterAssetRequest) returns (RegisterAssetResponse);
+    rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
+
     // Mint base layer tokens for an asset
     rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
 
@@ -194,6 +197,25 @@ message ImportUtxosResponse {
     repeated uint64 tx_ids = 1;
 }
 
+message RegisterAssetRequest {
+    string name = 1;
+}
+
+message RegisterAssetResponse {
+    bytes public_key = 1;
+}
+
+message GetOwnedAssetsResponse {
+    repeated Asset assets = 1;
+}
+
+message Asset {
+    string name = 1;
+    string registration_output_status = 2;
+    bytes public_key = 3;
+    bytes owner_commitment = 4;
+}
+
 message MintTokensRequest {
     bytes asset_public_key = 1;
     repeated bytes unique_ids = 2;
@@ -212,9 +234,11 @@ message GetOwnedTokensResponse {
 }
 
 message TokenUtxo {
-    bytes commitment = 1;
-    bytes unique_id = 2;
-    bytes asset_public_key = 3;
+    string name = 1;
+    string output_status = 2;
+    bytes commitment = 3;
+    bytes unique_id = 4;
+    bytes asset_public_key = 5;
 }
 
 message CancelTransactionRequest {

@@ -41,6 +41,10 @@ function Client(address) {
     "getNetworkStatus",
     "cancelTransaction",
     "checkForUpdates",
+    "registerAsset",
+    "getOwnedAssets",
+    "mintTokens",
+    "getOwnedTokens",
   ];
 
   this.waitForReady = (...args) => {
