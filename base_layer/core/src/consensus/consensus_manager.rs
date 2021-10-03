@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{genesis_block::*, Block},
+    blocks::genesis_block::*,
     chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},

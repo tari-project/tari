@@ -286,6 +286,16 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
+    fn fetch_unspent_output_hash_by_unique_id(
+        &self,
+        unique_id: &HashOutput,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_unspent_output_hash_by_unique_id(unique_id)
+    }
+
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }

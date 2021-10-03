@@ -493,7 +493,7 @@ impl UnblindedOutput {
     pub fn as_transaction_output(
         &self,
         factories: &CryptoFactories,
-        verify_proof: bool,
+        _verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
@@ -523,7 +523,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-        verify_proof: bool,
+        _verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
