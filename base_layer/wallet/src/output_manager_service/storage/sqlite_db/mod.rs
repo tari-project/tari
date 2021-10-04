@@ -938,12 +938,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             }),
             None => None,
         };
-        let sidechain_checkpoint = match o.features_sidechain_checkpoint_merkle_root {
-            Some(ref merkle_root) => Some(SideChainCheckpointFeatures {
+        let sidechain_checkpoint = o.features_sidechain_checkpoint_merkle_root.as_ref().map(|merkle_root| SideChainCheckpointFeatures {
                 merkle_root: merkle_root.to_owned(),
-            }),
-            None => None,
-        };
+            });
 
         let features = OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
