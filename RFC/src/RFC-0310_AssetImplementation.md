@@ -68,7 +68,7 @@ New flags to be added to OutputFlags
 | --- | --- | --- |
 | NON_FUNGIBLE | 0b1000_1000 | This UTXO contains Non Fungible data and must not be combined with other fungible UTXOs |
 | ASSET_REGISTRATION | 0b1100_1000 | This UTXO contains registration information for a new asset |
-| MINT |0b0100_0000 | This UTXO represents the creation of a new NFT |
+| MINT |0b0100_0000 | This UTXO represents the creation of a new single NFT or a commitment to multiple NFTs |
 | BURN | 0b0010_0000 | The `unique_id` in this UTXO can be spent as a normal input and must not appear in the output set unless accompanied by a `MINT` flag |
 | SIDECHAIN_CHECKPOINT | 0b1001_1000 | This UTXO is a checkpoint for a sidechain | 
 
@@ -88,6 +88,7 @@ Note: this replaces some information in [RFC-0311](RFC-0311_AssetTemplates.md)
 | asset_registration.checkpoint_unique_id | bytes(32) | A reference to the unique id reserved for checkpoint UTXOs. Optional |
 | asset_registration.checkpoint_frequency | uint32 | The frequency, in sidechain blocks (or other measure of time the sidechain uses) in which checkpoints are created |
 | mint.issuer_proof | bytes(96) (32 nonce + 64 sig) | A _ComSig_ proof proving that the owner of the UTXO containing the asset registration created this token 
+| mint.merkle_root | bytes(32) | The root of the Mutable Merkle Mountain Range of the unique ids created in a sidechain | 
 | checkpoint.merkle_root | bytes(32) | Merkle root of the sidechain data. The format and meaning of this data is specific to the sidechain implementation |
 
 
@@ -354,6 +355,13 @@ blocks in the sidechain have been created since the last checkpoint. If so, the 
 spending the previous checkpoint using the signatures it has obtained. 
 
 ## Examples
+
+### Traditional ERC 721
+
+Use case: I create an immutable NFT that can be transferred 
+
+
+
 
 ### NFT with sidechain metadata 
 
