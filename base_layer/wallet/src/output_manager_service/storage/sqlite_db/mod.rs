@@ -1012,7 +1012,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories, false)?.hash()
+                unblinded_output.as_transaction_output(&factories)?.hash()
             },
             Some(v) => v,
         };

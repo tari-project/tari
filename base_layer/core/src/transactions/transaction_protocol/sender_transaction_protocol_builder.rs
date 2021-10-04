@@ -424,11 +424,9 @@ impl SenderTransactionProtocolBuilder {
             .iter()
             .map(|o| {
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    // TODO: Should proof be verified?
-                    o.as_rewindable_transaction_output(factories, rewind_data, false)
+                    o.as_rewindable_transaction_output(factories, rewind_data)
                 } else {
-                    // TODO: Should proof be verified
-                    o.as_transaction_output(factories, false)
+                    o.as_transaction_output(factories)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
@@ -450,7 +448,7 @@ impl SenderTransactionProtocolBuilder {
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
                 // TODO: Should proof be verified?
-                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, false) {
+                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());
@@ -458,7 +456,7 @@ impl SenderTransactionProtocolBuilder {
                 }
             } else {
                 // TODO: Should proof be verified?
-                match change_unblinded_output.as_transaction_output(factories, false) {
+                match change_unblinded_output.as_transaction_output(factories) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());

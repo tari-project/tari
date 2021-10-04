@@ -162,7 +162,7 @@ fn convert_node_config(
     let net_str = network.as_str();
 
     let key = config_string("common", net_str, "data_dir");
-    let data_dir: PathBuf = cfg.get_str(&key).unwrap_or(net_str.to_string()).into();
+    let data_dir: PathBuf = cfg.get_str(&key).unwrap_or_else(|_| net_str.to_string()).into();
 
     let key = config_string("base_node", net_str, "db_type");
     let db_type = cfg
@@ -276,14 +276,14 @@ fn convert_node_config(
     let key = config_string("base_node", net_str, "base_node_identity_file");
     let base_node_identity_file = cfg
         .get_str(&key)
-        .unwrap_or("config/base_node_id.json".to_string())
+        .unwrap_or_else(|_| "config/base_node_id.json".to_string())
         .into();
 
     // Tor private key persistence
     let key = config_string("base_node", net_str, "base_node_tor_identity_file");
     let base_node_tor_identity_file = cfg
         .get_str(&key)
-        .unwrap_or("config/base_node_tor.json".to_string())
+        .unwrap_or_else(|_| "config/base_node_tor.json".to_string())
         .into();
 
     // Transport

@@ -1713,39 +1713,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
-name = "globset"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10463d9ff00a2a068db14231982f5132edebad0d7660cd956a1c30292dbcbfbd"
-dependencies = [
- "aho-corasick",
- "bstr",
- "fnv",
- "log 0.4.14",
- "regex",
-]
-
-[[package]]
-name = "h2"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e4728fd124914ad25e99e3d15a9361a879f6620f63cb56bbb08f95abb97a535"
-dependencies = [
- "bytes 0.5.6",
- "fnv",
- "futures-core",
- "futures-sink",
- "futures-util",
- "http",
- "indexmap",
- "slab",
- "tokio 0.2.25",
- "tokio-util 0.3.1",
- "tracing",
- "tracing-futures",
-]
-
-[[package]]
 name = "h2"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1760,7 +1727,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio 1.11.0",
- "tokio-util 0.6.7",
+ "tokio-util",
  "tracing",
 ]
 
@@ -1827,16 +1794,6 @@ dependencies = [
 
 [[package]]
 name = "http-body"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13d5ff830006f7646652e057693569bfe0d51760c0085a071769d142a205111b"
-dependencies = [
- "bytes 0.5.6",
- "http",
-]
-
-[[package]]
-name = "http-body"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "399c583b2979440c60be0821a6199eca73bc3c8dcd9d070d75ac726e2c6186e5"
@@ -1851,12 +1808,6 @@ name = "httparse"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acd94fdbe1d4ff688b67b04eee2e17bd50995534a61539e45adfefb45e5e5503"
-
-[[package]]
-name = "httpdate"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "494b4d60369511e7dea41cf646832512a94e542f68bb9c49e54518e0f468eb47"
 
 [[package]]
 name = "httpdate"
@@ -1894,32 +1845,8 @@ dependencies = [
  "time",
  "traitobject",
  "typeable",
- "unicase 1.4.2",
+ "unicase",
  "url 1.7.2",
-]
-
-[[package]]
-name = "hyper"
-version = "0.13.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a6f157065790a3ed2f88679250419b5cdd96e714a0d65f7797fd337186e96bb"
-dependencies = [
- "bytes 0.5.6",
- "futures-channel",
- "futures-core",
- "futures-util",
- "h2 0.2.7",
- "http",
- "http-body 0.3.1",
- "httparse",
- "httpdate 0.3.2",
- "itoa",
- "pin-project 1.0.8",
- "socket2 0.3.19",
- "tokio 0.2.25",
- "tower-service",
- "tracing",
- "want",
 ]
 
 [[package]]
@@ -1932,14 +1859,14 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.3.4",
+ "h2",
  "http",
- "http-body 0.4.3",
+ "http-body",
  "httparse",
- "httpdate 1.0.1",
+ "httpdate",
  "itoa",
  "pin-project-lite 0.2.7",
- "socket2 0.4.1",
+ "socket2",
  "tokio 1.11.0",
  "tower-service",
  "tracing",
@@ -2096,54 +2023,6 @@ dependencies = [
  "serde 1.0.130",
  "serde_derive",
  "serde_json",
-]
-
-[[package]]
-name = "jsonrpc-core"
-version = "17.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4467ab6dfa369b69e52bd0692e480c4d117410538526a57a304a0f2250fd95e"
-dependencies = [
- "futures 0.3.16",
- "futures-executor",
- "futures-util",
- "log 0.4.14",
- "serde 1.0.130",
- "serde_derive",
- "serde_json",
-]
-
-[[package]]
-name = "jsonrpc-http-server"
-version = "17.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "522a047cac0958097ee71d047dd71cb84979fd2fa21c7a68fbe12736bef870a2"
-dependencies = [
- "futures 0.3.16",
- "hyper 0.13.10",
- "jsonrpc-core",
- "jsonrpc-server-utils",
- "log 0.4.14",
- "net2",
- "parking_lot 0.11.2",
- "unicase 2.6.0",
-]
-
-[[package]]
-name = "jsonrpc-server-utils"
-version = "17.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bce68fa279a2822b3619369cd024f8a4f8e5ce485468834f8679a3c7919aae2d"
-dependencies = [
- "bytes 0.5.6",
- "futures 0.3.16",
- "globset",
- "jsonrpc-core",
- "lazy_static 1.4.0",
- "log 0.4.14",
- "tokio 0.2.25",
- "tokio-util 0.3.1",
- "unicase 2.6.0",
 ]
 
 [[package]]
@@ -3657,7 +3536,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "http",
- "http-body 0.4.3",
+ "http-body",
  "hyper 0.14.12",
  "hyper-tls",
  "ipnet",
@@ -4182,17 +4061,6 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.3.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "122e570113d28d773067fab24266b66753f6ea915758651696b6e35e49f88d6e"
-dependencies = [
- "cfg-if 1.0.0",
- "libc",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "socket2"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "765f090f0e423d2b55843402a07915add955e7d60657db13707a159727326cad"
@@ -4574,7 +4442,7 @@ dependencies = [
  "thiserror",
  "tokio 1.11.0",
  "tokio-stream",
- "tokio-util 0.6.7",
+ "tokio-util",
  "tower 0.3.1",
  "tower-make",
  "tracing",
@@ -4797,15 +4665,6 @@ dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.13",
  "syn 0.15.44",
-]
-
-[[package]]
-name = "tari_json_rpc_proxy"
-version = "0.1.0"
-dependencies = [
- "jsonrpc-http-server",
- "tari_app_grpc",
- "tari_utilities",
 ]
 
 [[package]]
@@ -5356,9 +5215,7 @@ dependencies = [
  "bytes 0.5.6",
  "fnv",
  "futures-core",
- "iovec",
  "lazy_static 1.4.0",
- "memchr",
  "mio 0.6.23",
  "num_cpus",
  "pin-project-lite 0.1.12",
@@ -5435,7 +5292,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite 0.2.7",
  "tokio 1.11.0",
- "tokio-util 0.6.7",
+ "tokio-util",
 ]
 
 [[package]]
@@ -5460,20 +5317,6 @@ dependencies = [
  "futures-core",
  "tokio 1.11.0",
  "tokio-stream",
-]
-
-[[package]]
-name = "tokio-util"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be8242891f2b6cbef26a2d7e8605133c2c554cd35b3e4948ea892d6d68436499"
-dependencies = [
- "bytes 0.5.6",
- "futures-core",
- "futures-sink",
- "log 0.4.14",
- "pin-project-lite 0.1.12",
- "tokio 0.2.25",
 ]
 
 [[package]]
@@ -5521,9 +5364,9 @@ dependencies = [
  "bytes 1.1.0",
  "futures-core",
  "futures-util",
- "h2 0.3.4",
+ "h2",
  "http",
- "http-body 0.4.3",
+ "http-body",
  "hyper 0.14.12",
  "hyper-timeout",
  "percent-encoding 2.1.0",
@@ -5532,7 +5375,7 @@ dependencies = [
  "prost-derive",
  "tokio 1.11.0",
  "tokio-stream",
- "tokio-util 0.6.7",
+ "tokio-util",
  "tower 0.4.8",
  "tower-layer",
  "tower-service",
@@ -5585,7 +5428,7 @@ dependencies = [
  "slab",
  "tokio 1.11.0",
  "tokio-stream",
- "tokio-util 0.6.7",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -6008,15 +5851,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f4765f83163b74f957c797ad9253caf97f103fb064d3999aea9568d09fc8a33"
 dependencies = [
  "version_check 0.1.5",
-]
-
-[[package]]
-name = "unicase"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50f37be617794602aabbeee0be4f259dc1778fabe05e2d67ee8f79326d5cb4f6"
-dependencies = [
- "version_check 0.9.3",
 ]
 
 [[package]]
