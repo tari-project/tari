@@ -132,13 +132,13 @@ impl StratumMiner {
                     if difficulty >= target_difficulty {
                         let block_header: BlockHeader = BlockHeader::try_from(hasher.into_header()).unwrap();
                         info!(
-                            "Miner found block header with hash {}, nonce {} and difficulty {:?}",
+                            "Miner found share with hash {}, nonce {} and difficulty {:?}",
                             block_header.hash().to_hex(),
                             solver.current_nonce,
                             difficulty
                         );
                         debug!(
-                            "Miner found block header with hash {}, difficulty {:?} and data {:?}",
+                            "Miner found share with hash {}, difficulty {:?} and data {:?}",
                             block_header.hash().to_hex(),
                             difficulty,
                             block_header
