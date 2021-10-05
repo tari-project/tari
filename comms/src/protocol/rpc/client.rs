@@ -79,6 +79,11 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    pub fn builder<T>() -> RpcClientBuilder<T>
+    where T: NamedProtocolService {
+        RpcClientBuilder::new().with_protocol_id(T::PROTOCOL_NAME.into())
+    }
+
     /// Create a new RpcClient using the given framed substream and perform the RPC handshake.
     pub async fn connect<TSubstream>(
         config: RpcClientConfig,
@@ -192,9 +197,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
     }
 }
 
-impl<TClient> RpcClientBuilder<TClient>
-where TClient: From<RpcClient> + NamedProtocolService
-{
+impl<TClient> RpcClientBuilder<TClient> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -233,14 +236,21 @@ where TClient: From<RpcClient> + NamedProtocolService
         self.protocol_id = Some(protocol_id);
         self
     }
+}
 
+impl<TClient> RpcClientBuilder<TClient>
+where TClient: From<RpcClient> + NamedProtocolService
+{
     /// Negotiates and establishes a session to the peer's RPC service
     pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
     where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static {
         RpcClient::connect(
             self.config,
             framed,
-            self.protocol_id.as_ref().cloned().unwrap_or_default(),
+            self.protocol_id
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
         )
         .await
         .map(Into::into)

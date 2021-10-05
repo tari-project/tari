@@ -22,4 +22,4 @@
 
 mod txo_validation_task;
 
-pub use txo_validation_task::{TxoValidationTask, TxoValidationType};
+pub use txo_validation_task::TxoValidationTask;
