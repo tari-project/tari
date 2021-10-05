@@ -8,35 +8,39 @@ version = "0.10.1"
 edition = "2018"
 
 [dependencies]
-tari_shutdown = { path = "../../infrastructure/shutdown"}
+tari_app_utilities = { path = "../tari_app_utilities" }
+tari_common = { path = "../../common" }
+tari_comms = { path = "../../comms" }
+tari_comms_dht = { path = "../../comms/dht" }
 tari_crypto = "0.11.1"
-tari_test_utils = "0.8.1"
-tari_app_utilities = {path ="../tari_app_utilities"}
-tari_common = {path = "../../common"}
-tari_comms = {path = "../../comms" }
-tari_service_framework = { path= "../../base_layer/service_framework"}
-tari_p2p = {path = "../../base_layer/p2p"}
-tari_comms_dht = {path= "../../comms/dht"}
-tari_mmr = {path = "../../base_layer/mmr"}
+tari_mmr = { path = "../../base_layer/mmr" }
+tari_p2p = { path = "../../base_layer/p2p" }
+tari_service_framework = { path = "../../base_layer/service_framework" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.9", path = "../../infrastructure/storage" }
 
-thiserror = "^1.0.20"
-log = { version = "0.4.8", features = ["std"] }
 anyhow = "1.0.32"
-tokio = { version="1.10", features = ["macros", "time"]}
-tokio-stream = { version = "0.1.7", features = ["sync"] }
-tonic = "0.5.2"
+async-trait = "0.1.50"
+clap = "2.33.3"
+digest = "0.9.0"
+futures = { version = "^0.3.1" }
+log = { version = "0.4.8", features = ["std"] }
+lmdb-zero = "0.4.4"
 prost = "0.8"
 prost-types = "0.8"
-futures = { version = "^0.3.1"}
-clap = "2.33.3"
-async-trait = "0.1.50"
-digest= "0.9.0"
+serde = "1.0.126"
+thiserror = "^1.0.20"
+tokio = { version = "0.2.10", features = ["macros", "sync", "time"] }
+tonic = "0.5.2"
 
 # saving of patricia tree
-patricia_tree =  {version = "0.3.0", features =["binary-format"] }
-bytecodec = { version ="0.4.14", features = ["json_codec"] }
+patricia_tree = { version = "0.3.0", features = ["binary-format"] }
+bytecodec = { version = "0.4.14", features = ["bincode_codec"] }
 serde_json = "1.0.64"
+
+[dev-dependencies]
+tari_test_utils = "0.8.1"
 
 [build-dependencies]
 tonic-build = "0.5.2"
-tari_common = { path="../../common", features = ["build"]}
+tari_common = { path = "../../common", features = ["build"] }

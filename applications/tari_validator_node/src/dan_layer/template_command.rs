@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{dan_layer::storage::AssetDataStore, digital_assets_error::DigitalAssetError};
+use crate::{dan_layer::storage::AssetStore, digital_assets_error::DigitalAssetError};
 
 pub trait TemplateCommand {
-    fn try_execute(&self, data_store: &mut AssetDataStore) -> Result<ExecutionResult, DigitalAssetError>;
+    fn try_execute(&self, data_store: &mut dyn AssetStore) -> Result<ExecutionResult, DigitalAssetError>;
 }
 
 pub enum ExecutionResult {

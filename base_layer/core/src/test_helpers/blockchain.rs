@@ -20,7 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{create_block, mine_to_difficulty};
+use croaring::Bitmap;
+use std::{
+    env,
+    fs,
+    iter,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
+use tari_common::configuration::Network;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_storage::lmdb_store::LMDBConfig;
+
 use crate::{
     blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -59,21 +70,8 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    collections::HashMap,
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
-};
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use tari_common_types::types::{Commitment, HashOutput, Signature};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
@@ -148,7 +146,11 @@ pub struct TempDatabase {
 
 impl TempDatabase {
     pub fn new() -> Self {
-        let temp_path = create_temporary_data_path();
+        let rand_str = iter::repeat_with(|| OsRng.sample(Alphanumeric) as char)
+            .take(10)
+            .collect::<String>();
+        let temp_path = env::temp_dir().join(rand_str);
+        fs::create_dir_all(&temp_path).unwrap();
 
         Self {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),

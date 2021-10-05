@@ -19,7 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::dan_layer::storage::PersistenceError;
 use thiserror::Error;
+
 #[derive(Debug, Error)]
 pub enum DigitalAssetError {
     #[error("Unknown method: {method_name}")]
@@ -28,6 +30,16 @@ pub enum DigitalAssetError {
     MissingArgument { argument_name: String, position: usize },
     #[error("Invalid sig, tODO: fill in deets")]
     InvalidSignature,
-    #[error("Error converting something: {0}")]
-    ConversionError(String),
+    #[error("Peer sent an invalid message: {0}")]
+    InvalidPeerMessage(String),
+    #[error("Persistence error: {0}")]
+    PersistenceError(#[from] PersistenceError),
+    #[error("Metadata was malformed: {0}")]
+    MalformedMetadata(String),
+}
+
+impl From<lmdb_zero::Error> for DigitalAssetError {
+    fn from(err: lmdb_zero::Error) -> Self {
+        Self::PersistenceError(err.into())
+    }
 }

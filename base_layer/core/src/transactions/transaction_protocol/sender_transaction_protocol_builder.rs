@@ -582,416 +582,416 @@ impl SenderTransactionProtocolBuilder {
 
 //----------------------------------------         Tests          ----------------------------------------------------//
 
-#[cfg(test)]
-mod test {
-    use rand::rngs::OsRng;
-    use tari_crypto::{
-        common::Blake256,
-        keys::SecretKey,
-        script,
-        script::{ExecutionStack, TariScript},
-    };
-
-    use crate::{
-        consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-        transactions::{
-            crypto_factories::CryptoFactories,
-            fee::Fee,
-            helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
-            tari_amount::*,
-            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
-            transaction_protocol::{
-                sender::SenderState,
-                sender_transaction_protocol_builder::SenderTransactionInitializer,
-                TransactionProtocolError,
-            },
-        },
-    };
-    use tari_common_types::types::PrivateKey;
-
-    /// One input, 2 outputs
-    #[test]
-    fn no_receivers() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        // Start the builder
-        let builder = SenderTransactionInitializer::new(0);
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
-        let script = script!(Nop);
-        // We should have a bunch of fields missing still, but we can recover and continue
-        assert_eq!(
-            err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
-             private key"
-        );
-
-        let mut builder = err.builder;
-        builder
-            .with_lock_height(100)
-            .with_offset(p.offset.clone())
-            .with_private_nonce(p.nonce.clone());
-        builder
-            .with_output(
-                create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(100)),
-                PrivateKey::random(&mut OsRng),
-            )
-            .unwrap();
-        let (utxo, input) = TestParams::new().create_input(UtxoTestParams {
-            value: MicroTari(5_000),
-            ..Default::default()
-        });
-        builder.with_input(utxo, input);
-        builder
-            .with_fee_per_gram(MicroTari(20))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
-        // We needed a change input, so this should fail
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "Change spending key was not provided");
-        // Ok, give them a change output
-        let mut builder = err.builder;
-        builder.with_change_secret(p.change_spend_key);
-        let result = builder.build::<Blake256>(&factories).unwrap();
-        // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
-            assert_eq!(info.metadata.lock_height, 100, "Lock height");
-            assert_eq!(info.metadata.fee, expected_fee, "Fee");
-            assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
-            assert_eq!(info.inputs.len(), 1, "There should be 1 input");
-        } else {
-            panic!("There were no recipients, so we should be finalizing");
-        }
-    }
-
-    /// One output, one input
-    #[test]
-    fn no_change_or_receivers() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
-
-        let output = create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(500) - expected_fee,
-        );
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
-            .unwrap()
-            .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20))
-            .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories).unwrap();
-        // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
-            assert_eq!(info.metadata.lock_height, 0, "Lock height");
-            assert_eq!(info.metadata.fee, expected_fee, "Fee");
-            assert_eq!(info.outputs.len(), 1, "There should be 1 output");
-            assert_eq!(info.inputs.len(), 1, "There should be 1 input");
-        } else {
-            panic!("There were no recipients, so we should be finalizing");
-        }
-    }
-
-    /// Hit the edge case where our change isn't enough to cover the cost of an extra output
-    #[test]
-    #[allow(clippy::identity_op)]
-    fn change_edge_case() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-        let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
-        // fee == 340, output = 80
-
-        // Pay out so that I should get change, but not enough to pay for the output
-        let output = p.create_unblinded_output(UtxoTestParams {
-            value: MicroTari(500) - expected_fee - MicroTari(50),
-            ..Default::default()
-        });
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
-            .unwrap()
-            .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20))
-            .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories).unwrap();
-        // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
-            assert_eq!(info.metadata.lock_height, 0, "Lock height");
-            assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
-            assert_eq!(info.outputs.len(), 1, "There should be 1 output");
-            assert_eq!(info.inputs.len(), 1, "There should be 1 input");
-        } else {
-            panic!("There were no recipients, so we should be finalizing");
-        }
-    }
-
-    #[test]
-    fn too_many_inputs() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-
-        let output = create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(500),
-        );
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
-            .unwrap()
-            .with_fee_per_gram(MicroTari(2));
-
-        for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
-            let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
-            builder.with_input(utxo, input);
-        }
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "Too many inputs in transaction");
-    }
-
-    #[test]
-    fn fee_too_low() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-        let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key)
-            .unwrap()
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(1))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "Fee is less than the minimum");
-    }
-
-    #[test]
-    fn not_enough_funds() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
-        let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(1))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "You are spending more than you're providing");
-    }
-
-    #[test]
-    fn multi_recipients() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
-        let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(2);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_amount(0, MicroTari(1200))
-            .with_amount(1, MicroTari(1100))
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(20))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_recipient_data(
-                1,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories).unwrap();
-        // Peek inside and check the results
-        if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
-            assert_eq!(s, "Multiple recipients are not supported yet")
-        } else {
-            panic!("We should not allow multiple recipients at this time");
-        }
-    }
-
-    #[test]
-    fn single_recipient() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo1, input1) = create_test_input(MicroTari(2000), 0, &factories.commitment);
-        let (utxo2, input2) = create_test_input(MicroTari(3000), 0, &factories.commitment);
-        let weight = MicroTari(30);
-
-        let script = script!(Nop);
-        let expected_fee = Fee::calculate(weight, 1, 2, 3);
-        let output = create_unblinded_output(
-            script.clone(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(1500) - expected_fee,
-        );
-        // Start the builder
-        let mut builder = SenderTransactionInitializer::new(1);
-        builder
-            .with_lock_height(1234)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_input(utxo1, input1)
-            .with_input(utxo2, input2)
-            .with_amount(0, MicroTari(2500))
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(weight)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories).unwrap();
-        // Peek inside and check the results
-        if let SenderState::SingleRoundMessageReady(info) = result.state {
-            assert_eq!(info.num_recipients, 1, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
-            assert_eq!(info.metadata.lock_height, 1234, "Lock height");
-            assert_eq!(info.metadata.fee, expected_fee, "Fee");
-            assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
-            assert_eq!(info.inputs.len(), 2, "There should be 2 input");
-        } else {
-            panic!("There was a recipient, we should be ready to send a message");
-        }
-    }
-
-    #[test]
-    fn fail_range_proof() {
-        // Create some inputs
-        let factories = CryptoFactories::new(32);
-        let p = TestParams::new();
-
-        let script = script!(Nop);
-        let output = create_unblinded_output(
-            script.clone(),
-            OutputFeatures::default(),
-            p.clone(),
-            (1u64.pow(32) + 1u64).into(),
-        );
-        // Start the builder
-        let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
-        let weight = MicroTari(30);
-        let mut builder = SenderTransactionInitializer::new(1);
-        builder
-            .with_lock_height(1234)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_input(utxo1, input1)
-            .with_amount(0, MicroTari(9800))
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(weight)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories);
-
-        match result {
-            Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert!(
+// #[cfg(test)]
+// mod test {
+//     use rand::rngs::OsRng;
+//     use tari_crypto::{
+//         common::Blake256,
+//         keys::SecretKey,
+//         script,
+//         script::{ExecutionStack, TariScript},
+//     };
+//
+//     use crate::{
+//         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+//         transactions::{
+//             crypto_factories::CryptoFactories,
+//             fee::Fee,
+//             helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
+//             tari_amount::*,
+//             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+//             transaction_protocol::{
+//                 sender::SenderState,
+//                 sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
+//                 TransactionProtocolError,
+//             },
+//         },
+//     };
+//     use tari_common_types::types::PrivateKey;
+//
+//     /// One input, 2 outputs
+//     #[test]
+//     fn no_receivers() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         // Start the builder
+//         let builder = SenderTransactionInitializer::new(0);
+//         let err = builder.build::<Blake256>(&factories).unwrap_err();
+//         let script = script!(Nop);
+//         // We should have a bunch of fields missing still, but we can recover and continue
+//         assert_eq!(
+//             err.message,
+//             "Missing Lock Height,Missing Fee per gram,Missing Offset,Change script,Change input data,Change script \
+//              private key"
+//         );
+//
+//         let mut builder = err.builder;
+//         builder
+//             .with_lock_height(100)
+//             .with_offset(p.offset.clone())
+//             .with_private_nonce(p.nonce.clone());
+//         builder
+//             .with_output(
+//                 create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(100)),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .unwrap();
+//         let (utxo, input) = TestParams::new().create_input(UtxoTestParams {
+//             value: MicroTari(5_000),
+//             ..Default::default()
+//         });
+//         builder.with_input(utxo, input);
+//         builder
+//             .with_fee_per_gram(MicroTari(20))
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
+//         // We needed a change input, so this should fail
+//         let err = builder.build::<Blake256>(&factories).unwrap_err();
+//         assert_eq!(err.message, "Change spending key was not provided");
+//         // Ok, give them a change output
+//         let mut builder = err.builder;
+//         builder.with_change_secret(p.change_spend_key);
+//         let result = builder.build::<Blake256>(&factories).unwrap();
+//         // Peek inside and check the results
+//         if let SenderState::Finalizing(info) = result.state {
+//             assert_eq!(info.num_recipients, 0, "Number of receivers");
+//             assert_eq!(info.signatures.len(), 0, "Number of signatures");
+//             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
+//             assert_eq!(info.metadata.lock_height, 100, "Lock height");
+//             assert_eq!(info.metadata.fee, expected_fee, "Fee");
+//             assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
+//             assert_eq!(info.inputs.len(), 1, "There should be 1 input");
+//         } else {
+//             panic!("There were no recipients, so we should be finalizing");
+//         }
+//     }
+//
+//     /// One output, one input
+//     #[test]
+//     fn no_change_or_receivers() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
+//         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
+//
+//         let output = create_unblinded_output(
+//             TariScript::default(),
+//             OutputFeatures::default(),
+//             p.clone(),
+//             MicroTari(500) - expected_fee,
+//         );
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(0);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_output(output, p.sender_offset_private_key)
+//             .unwrap()
+//             .with_input(utxo, input)
+//             .with_fee_per_gram(MicroTari(20))
+//             .with_prevent_fee_gt_amount(false);
+//         let result = builder.build::<Blake256>(&factories).unwrap();
+//         // Peek inside and check the results
+//         if let SenderState::Finalizing(info) = result.state {
+//             assert_eq!(info.num_recipients, 0, "Number of receivers");
+//             assert_eq!(info.signatures.len(), 0, "Number of signatures");
+//             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
+//             assert_eq!(info.metadata.lock_height, 0, "Lock height");
+//             assert_eq!(info.metadata.fee, expected_fee, "Fee");
+//             assert_eq!(info.outputs.len(), 1, "There should be 1 output");
+//             assert_eq!(info.inputs.len(), 1, "There should be 1 input");
+//         } else {
+//             panic!("There were no recipients, so we should be finalizing");
+//         }
+//     }
+//
+//     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
+//     #[test]
+//     #[allow(clippy::identity_op)]
+//     fn change_edge_case() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
+//         let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
+//         // fee == 340, output = 80
+//
+//         // Pay out so that I should get change, but not enough to pay for the output
+//         let output = p.create_unblinded_output(UtxoTestParams {
+//             value: MicroTari(500) - expected_fee - MicroTari(50),
+//             ..Default::default()
+//         });
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(0);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_output(output, p.sender_offset_private_key)
+//             .unwrap()
+//             .with_input(utxo, input)
+//             .with_fee_per_gram(MicroTari(20))
+//             .with_prevent_fee_gt_amount(false);
+//         let result = builder.build::<Blake256>(&factories).unwrap();
+//         // Peek inside and check the results
+//         if let SenderState::Finalizing(info) = result.state {
+//             assert_eq!(info.num_recipients, 0, "Number of receivers");
+//             assert_eq!(info.signatures.len(), 0, "Number of signatures");
+//             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
+//             assert_eq!(info.metadata.lock_height, 0, "Lock height");
+//             assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
+//             assert_eq!(info.outputs.len(), 1, "There should be 1 output");
+//             assert_eq!(info.inputs.len(), 1, "There should be 1 input");
+//         } else {
+//             panic!("There were no recipients, so we should be finalizing");
+//         }
+//     }
+//
+//     #[test]
+//     fn too_many_inputs() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//
+//         let output = create_unblinded_output(
+//             TariScript::default(),
+//             OutputFeatures::default(),
+//             p.clone(),
+//             MicroTari(500),
+//         );
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(0);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_output(output, p.sender_offset_private_key)
+//             .unwrap()
+//             .with_fee_per_gram(MicroTari(2));
+//
+//         for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
+//             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
+//             builder.with_input(utxo, input);
+//         }
+//         let err = builder.build::<Blake256>(&factories).unwrap_err();
+//         assert_eq!(err.message, "Too many inputs in transaction");
+//     }
+//
+//     #[test]
+//     fn fee_too_low() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
+//         let script = script!(Nop);
+//         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(0);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_input(utxo, input)
+//             .with_output(output, p.sender_offset_private_key)
+//             .unwrap()
+//             .with_change_secret(p.change_spend_key)
+//             .with_fee_per_gram(MicroTari(1))
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let err = builder.build::<Blake256>(&factories).unwrap_err();
+//         assert_eq!(err.message, "Fee is less than the minimum");
+//     }
+//
+//     #[test]
+//     fn not_enough_funds() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
+//         let script = script!(Nop);
+//         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(0);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_input(utxo, input)
+//             .with_output(output, p.sender_offset_private_key.clone())
+//             .unwrap()
+//             .with_change_secret(p.change_spend_key)
+//             .with_fee_per_gram(MicroTari(1))
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let err = builder.build::<Blake256>(&factories).unwrap_err();
+//         assert_eq!(err.message, "You are spending more than you're providing");
+//     }
+//
+//     #[test]
+//     fn multi_recipients() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
+//         let script = script!(Nop);
+//         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(2);
+//         builder
+//             .with_lock_height(0)
+//             .with_offset(p.offset)
+//             .with_amount(0, MicroTari(1200))
+//             .with_amount(1, MicroTari(1100))
+//             .with_private_nonce(p.nonce)
+//             .with_input(utxo, input)
+//             .with_output(output, p.sender_offset_private_key.clone())
+//             .unwrap()
+//             .with_change_secret(p.change_spend_key)
+//             .with_fee_per_gram(MicroTari(20))
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_recipient_data(
+//                 1,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let result = builder.build::<Blake256>(&factories).unwrap();
+//         // Peek inside and check the results
+//         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
+//             assert_eq!(s, "Multiple recipients are not supported yet")
+//         } else {
+//             panic!("We should not allow multiple recipients at this time");
+//         }
+//     }
+//
+//     #[test]
+//     fn single_recipient() {
+//         // Create some inputs
+//         let factories = CryptoFactories::default();
+//         let p = TestParams::new();
+//         let (utxo1, input1) = create_test_input(MicroTari(2000), 0, &factories.commitment);
+//         let (utxo2, input2) = create_test_input(MicroTari(3000), 0, &factories.commitment);
+//         let weight = MicroTari(30);
+//
+//         let script = script!(Nop);
+//         let expected_fee = Fee::calculate(weight, 1, 2, 3);
+//         let output = create_unblinded_output(
+//             script.clone(),
+//             OutputFeatures::default(),
+//             p.clone(),
+//             MicroTari(1500) - expected_fee,
+//         );
+//         // Start the builder
+//         let mut builder = SenderTransactionInitializer::new(1);
+//         builder
+//             .with_lock_height(1234)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_output(output, p.sender_offset_private_key.clone())
+//             .unwrap()
+//             .with_input(utxo1, input1)
+//             .with_input(utxo2, input2)
+//             .with_amount(0, MicroTari(2500))
+//             .with_change_secret(p.change_spend_key)
+//             .with_fee_per_gram(weight)
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let result = builder.build::<Blake256>(&factories).unwrap();
+//         // Peek inside and check the results
+//         if let SenderState::SingleRoundMessageReady(info) = result.state {
+//             assert_eq!(info.num_recipients, 1, "Number of receivers");
+//             assert_eq!(info.signatures.len(), 0, "Number of signatures");
+//             assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
+//             assert_eq!(info.metadata.lock_height, 1234, "Lock height");
+//             assert_eq!(info.metadata.fee, expected_fee, "Fee");
+//             assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
+//             assert_eq!(info.inputs.len(), 2, "There should be 2 input");
+//         } else {
+//             panic!("There was a recipient, we should be ready to send a message");
+//         }
+//     }
+//
+//     #[test]
+//     fn fail_range_proof() {
+//         // Create some inputs
+//         let factories = CryptoFactories::new(32);
+//         let p = TestParams::new();
+//
+//         let script = script!(Nop);
+//         let output = create_unblinded_output(
+//             script.clone(),
+//             OutputFeatures::default(),
+//             p.clone(),
+//             (1u64.pow(32) + 1u64).into(),
+//         );
+//         // Start the builder
+//         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
+//         let weight = MicroTari(30);
+//         let mut builder = SenderTransactionInitializer::new(1);
+//         builder
+//             .with_lock_height(1234)
+//             .with_offset(p.offset)
+//             .with_private_nonce(p.nonce)
+//             .with_output(output, p.sender_offset_private_key.clone())
+//             .unwrap()
+//             .with_input(utxo1, input1)
+//             .with_amount(0, MicroTari(9800))
+//             .with_change_secret(p.change_spend_key)
+//             .with_fee_per_gram(weight)
+//             .with_recipient_data(
+//                 0,
+//                 script.clone(),
+//                 PrivateKey::random(&mut OsRng),
+//                 Default::default(),
+//                 PrivateKey::random(&mut OsRng),
+//             )
+//             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+//         let result = builder.build::<Blake256>(&factories);
+//
+//         match result {
+//             Ok(_) => panic!("Range proof should have failed to verify"),
+//             Err(e) => assert!(
                 e.message
                     .contains("Value provided is outside the range allowed by the range proof"),
                 "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
                 e
             ),
-        }
-    }
-}
+//         }
+//     }
+// }

@@ -98,7 +98,7 @@ impl TariCommsInboundConnectionService {
         let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
         let hot_stuff_message = proto_message
             .try_into()
-            .map_err(|s| DigitalAssetError::ConversionError(s))?;
+            .map_err(|s| DigitalAssetError::InvalidPeerMessage(s))?;
         self.sender.send((from, hot_stuff_message)).await.unwrap();
         Ok(())
     }
