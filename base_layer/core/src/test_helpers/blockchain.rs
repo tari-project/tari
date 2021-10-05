@@ -22,11 +22,13 @@
 
 use croaring::Bitmap;
 use std::{
+    collections::HashMap,
     env,
     fs,
     iter,
     ops::Deref,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -59,7 +61,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     crypto::tari_utilities::Hashable,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::BlockSpec,
+    test_helpers::{create_block, BlockSpec},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
@@ -72,6 +74,8 @@ use crate::{
 };
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common_types::types::{Commitment, HashOutput, Signature};
+
+use super::mine_to_difficulty;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

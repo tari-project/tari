@@ -34,7 +34,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
-    ops::Add,
+    ops::{Add, Shl},
 };
 use tari_common_types::types::{
     BlindingFactor,

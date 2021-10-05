@@ -33,7 +33,7 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::{
     transaction::Transaction,
-    transaction_protocol::{proto, TxId},
+    transaction_protocol::{proto::protocol as proto, TxId},
 };
 use tari_p2p::tari_message::TariMessageType;
 

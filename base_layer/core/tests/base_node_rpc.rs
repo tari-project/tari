@@ -273,7 +273,7 @@ async fn test_base_node_wallet_rpc() {
     let msg = FetchMatchingUtxos {
         output_hashes: req_utxos
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories, false).unwrap().hash())
+            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash())
             .collect(),
     };
 
@@ -287,6 +287,6 @@ async fn test_base_node_wallet_rpc() {
 
         assert!(utxos1
             .iter()
-            .any(|u| u.as_transaction_output(&factories, false).unwrap().commitment == output.commitment));
+            .any(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment));
     }
 }

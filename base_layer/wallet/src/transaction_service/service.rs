@@ -69,7 +69,7 @@ use tari_core::{
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
-            proto,
+            proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
             RewindData,

@@ -367,7 +367,7 @@ mod add_block {
         db.add_block(block.clone()).unwrap().assert_added();
 
         let prev_block = block;
-        let prev_output = prev_utxo.as_transaction_output(&Default::default(), false).unwrap();
+        let prev_output = prev_utxo.as_transaction_output(&Default::default()).unwrap();
 
         let (txns, _) = schema_to_transaction(&[TransactionSchema {
             from: vec![outputs[1].clone()],
