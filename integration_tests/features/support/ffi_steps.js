@@ -538,22 +538,22 @@ When("I stop ffi wallet {word}", function (walletName) {
 });
 
 Then(
-  "I start STXO validation on ffi wallet {word}",
+  "I start TXO validation on ffi wallet {word}",
   async function (wallet_name) {
     const wallet = this.getWallet(wallet_name);
-    await wallet.startStxoValidation();
-    while (!wallet.getStxoValidationStatus().stxo_validation_complete) {
+    await wallet.startTxoValidation();
+    while (!wallet.getTxoValidationStatus().txo_validation_complete) {
       await sleep(1000);
     }
   }
 );
 
 Then(
-  "I start UTXO validation on ffi wallet {word}",
+  "I start TX validation on ffi wallet {word}",
   async function (wallet_name) {
     const wallet = this.getWallet(wallet_name);
-    await wallet.startUtxoValidation();
-    while (!wallet.getUtxoValidationStatus().utxo_validation_complete) {
+    await wallet.startTxValidation();
+    while (!wallet.getTxValidationStatus().tx_validation_complete) {
       await sleep(1000);
     }
   }

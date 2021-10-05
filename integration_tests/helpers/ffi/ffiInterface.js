@@ -285,8 +285,6 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
-          this.ptr,
-          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -1118,13 +1116,7 @@ class InterfaceFFI {
   static createCallbackTransactionCancellation(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
   }
-  static createCallbackUtxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
-  }
-  static createCallbackStxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
-  }
-  static createCallbackInvalidTxoValidationComplete(fn) {
+  static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
   static createCallbackTransactionValidationComplete(fn) {
@@ -1158,9 +1150,7 @@ class InterfaceFFI {
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
-    callback_utxo_validation_complete,
-    callback_stxo_validation_complete,
-    callback_invalid_txo_validation_complete,
+    callback_txo_validation_complete,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1183,9 +1173,7 @@ class InterfaceFFI {
       callback_direct_send_result,
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
-      callback_utxo_validation_complete,
-      callback_stxo_validation_complete,
-      callback_invalid_txo_validation_complete,
+      callback_txo_validation_complete,
       callback_transaction_validation_complete,
       callback_saf_message_received,
       recovery_in_progress,

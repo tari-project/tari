@@ -486,9 +486,6 @@ fn convert_node_config(
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
 
-    let key = "wallet.base_node_update_publisher_channel_size";
-    let base_node_update_publisher_channel_size = optional(cfg.get_int(key))?.unwrap_or(50) as usize;
-
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(key)

@@ -1643,7 +1643,7 @@ where
         {
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
-        if completed_tx.is_coinbase_transaction() {
+        if completed_tx.is_coinbase() {
             return Err(TransactionServiceError::AttemptedToBroadcastCoinbaseTransaction(
                 completed_tx.tx_id,
             ));
@@ -1685,7 +1685,7 @@ where
             if completed_tx.valid &&
                 (completed_tx.status == TransactionStatus::Completed ||
                     completed_tx.status == TransactionStatus::Broadcast) &&
-                !completed_tx.is_coinbase_transaction()
+                !completed_tx.is_coinbase()
             {
                 self.broadcast_completed_transaction(completed_tx, join_handles).await?;
             }

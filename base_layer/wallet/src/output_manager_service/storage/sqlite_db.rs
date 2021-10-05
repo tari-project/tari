@@ -415,6 +415,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         } else {
             OutputStatus::UnspentMinedUnconfirmed as i32
         };
+        error!(
+            target: LOG_TARGET,
+            "`set_received_output_mined_height` status: {}", status
+        );
         // Only allow updating of non-deleted utxos
         diesel::update(outputs::table.filter(outputs::hash.eq(hash).and(outputs::marked_deleted_at_height.is_null())))
             .set((
@@ -489,24 +493,33 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
-        debug!(target: LOG_TARGET, "set_coinbase_abandoned(TxID: {})", tx_id);
-
-        let status = if abandoned {
-            OutputStatus::AbandonedCoinbase as i32
+        if abandoned {
+            debug!(
+                target: LOG_TARGET,
+                "set_coinbase_abandoned(TxID: {}) as {}", tx_id, abandoned
+            );
+            diesel::update(
+                outputs::table.filter(
+                    outputs::received_in_tx_id
+                        .eq(Some(tx_id as i64))
+                        .and(outputs::coinbase_block_height.is_not_null()),
+                ),
+            )
+            .set((outputs::status.eq(OutputStatus::AbandonedCoinbase as i32),))
+            .execute(&(*conn))
+            .num_rows_affected_or_not_found(1)?;
         } else {
-            OutputStatus::EncumberedToBeReceived as i32
+            let output = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::AbandonedCoinbase, &conn)?;
+            for o in output.into_iter() {
+                o.update(
+                    UpdateOutput {
+                        status: Some(OutputStatus::EncumberedToBeReceived),
+                        ..Default::default()
+                    },
+                    &conn,
+                )?;
+            }
         };
-
-        diesel::update(
-            outputs::table.filter(
-                outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .and(outputs::coinbase_block_height.is_not_null()),
-            ),
-        )
-        .set((outputs::status.eq(status),))
-        .execute(&(*conn))
-        .num_rows_affected_or_not_found(1)?;
 
         Ok(())
     }
@@ -1481,9 +1494,8 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
 
 impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let encrypted_master_key = encrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
-        let encrypted_branch_seed =
-            encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().as_bytes().to_vec())?;
+        let encrypted_master_key = encrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
+        let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().as_bytes().to_vec())?;
         self.master_key = encrypted_master_key;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())

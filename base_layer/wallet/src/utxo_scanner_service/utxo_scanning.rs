@@ -716,10 +716,18 @@ where TBackend: WalletBackend + 'static
                             //we make sure the flag is set to false here
                             running_flag.store(false, Ordering::Relaxed);
                         });
+                        if self.mode == UtxoScannerMode::Recovery {
+                            return Ok(());
+                        }
                     }
                 },
                 _ = self.resources.current_base_node_watcher.changed() => {
-                    trace!(target: LOG_TARGET, "Base node change detected.");
+                    debug!(target: LOG_TARGET, "Base node change detected.");
+                    let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                    if let Some(peer) = peer {
+                        self.peer_seeds = vec![peer.public_key];
+                    }
+
                     self.is_running.store(false, Ordering::Relaxed);
                 },
                 _ = shutdown.wait() => {
@@ -728,10 +736,6 @@ where TBackend: WalletBackend + 'static
                     info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
                     return Ok(());
                 }
-            }
-
-            if self.mode == UtxoScannerMode::Recovery {
-                return Ok(());
             }
         }
     }
