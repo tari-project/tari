@@ -35,12 +35,14 @@ pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundC
     MockInboundConnectionService::new()
 }
 
+type Messages<TAddr, TPayload> = (
+    Sender<(TAddr, HotStuffMessage<TPayload>)>,
+    Receiver<(TAddr, HotStuffMessage<TPayload>)>,
+);
+
 #[derive()]
 pub struct MockInboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
-    messages: (
-        Sender<(TAddr, HotStuffMessage<TPayload>)>,
-        Receiver<(TAddr, HotStuffMessage<TPayload>)>,
-    ),
+    messages: Messages<TAddr, TPayload>,
 }
 
 #[async_trait]
@@ -57,11 +59,11 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAd
         Self { messages: channel(10) }
     }
 
-    pub fn push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
+    pub fn _push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
         self.messages.0.try_send((from, message)).unwrap()
     }
 
-    pub fn create_sender(&self) -> Sender<(TAddr, HotStuffMessage<TPayload>)> {
+    pub fn _create_sender(&self) -> Sender<(TAddr, HotStuffMessage<TPayload>)> {
         self.messages.0.clone()
     }
 }

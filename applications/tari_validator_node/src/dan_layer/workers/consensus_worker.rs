@@ -423,12 +423,11 @@ mod test {
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
         dbg!(events);
-        let mapped_events = events.iter().filter_map(|e| match e {
+        let mapped_events = events.iter().map(|e| match e {
             ConsensusWorkerDomainEvent::StateChanged { old: _, new } => Some(new),
-            _ => None,
         });
         for (state, event) in states.iter().zip(mapped_events) {
-            assert_eq!(state, event)
+            assert_eq!(state, event.unwrap())
         }
     }
 }

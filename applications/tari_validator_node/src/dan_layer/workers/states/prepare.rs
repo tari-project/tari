@@ -339,27 +339,34 @@ mod test {
             &payload_provider,
             &signing,
         );
+
         outbound2
             .send(
                 "A",
                 "B",
                 HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
             )
-            .await;
+            .await
+            .unwrap();
+
         outbound2
             .send(
                 "C",
                 "B",
                 HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
             )
-            .await;
+            .await
+            .unwrap();
+
         outbound2
             .send(
                 "D",
                 "B",
                 HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
             )
-            .await;
+            .await
+            .unwrap();
+
         let event = task.await.unwrap();
         assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
     }
