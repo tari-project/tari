@@ -162,19 +162,19 @@ Feature: Wallet Transactions
     When I merge mine 10 blocks via PROXY
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-#    Then I have wallet WALLET_B connected to all seed nodes
-#    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-#    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-#    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-#    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-#    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-#    When wallet WALLET_A detects all transactions are at least Broadcast
-#    Then I merge mine 5 blocks via PROXY
-#    Then all nodes are at height 15
-#    Then I wait for wallet WALLET_B to have at least 500000 uT
-#    Then I check if wallet WALLET_B has 5 transactions
-#    Then I restart wallet WALLET_B
-#    Then I check if wallet WALLET_B has 5 transactions
+    Then I have wallet WALLET_B connected to all seed nodes
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When wallet WALLET_A detects all transactions are at least Broadcast
+    Then I merge mine 5 blocks via PROXY
+    Then all nodes are at height 15
+    Then I wait for wallet WALLET_B to have at least 500000 uT
+    Then I check if wallet WALLET_B has 5 transactions
+    Then I restart wallet WALLET_B
+    Then I check if wallet WALLET_B has 5 transactions
 
   # runs 8mins on circle ci
   @critical @long-running
