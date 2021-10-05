@@ -21,11 +21,11 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
 const AUTOUPDATE_HASHES_TXT_URL =
-  "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt";
 const AUTOUPDATE_HASHES_TXT_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/good.sig";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig";
 const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/bad.sig";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.bad.sig";
 
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
@@ -91,6 +91,7 @@ Given(
     const node = await this.createNode(name, {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -110,6 +111,7 @@ Given(
     const node = await this.createNode(name, {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -129,6 +131,7 @@ Given(
     await this.createAndAddWallet(name, "", {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -146,6 +149,7 @@ Given(
     await this.createAndAddWallet(name, "", {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -970,12 +974,14 @@ Then(
     let client = await this.getNodeOrWalletClient(name);
     await sleep(5000);
     await waitFor(
-      async () => client.checkForUpdates().has_update,
+      async () => (await client.checkForUpdates()).has_update,
       false,
       60 * 1000
     );
-    expect(client.checkForUpdates().has_update, "There should be no update").to
-      .be.false;
+    expect(
+      (await client.checkForUpdates()).has_update,
+      "There should be no update"
+    ).to.be.false;
   }
 );
 
@@ -985,14 +991,14 @@ Then(
   async function (name) {
     let client = await this.getNodeOrWalletClient(name);
     await waitFor(
-      async () => {
-        return client.checkForUpdates().has_update;
-      },
+      async () => (await client.checkForUpdates()).has_update,
       true,
-      1150 * 1000
+      60 * 1000
     );
-    expect(client.checkForUpdates().has_update, "There should be update").to.be
-      .true;
+    expect(
+      (await client.checkForUpdates()).has_update,
+      "There should be update"
+    ).to.be.true;
   }
 );
 
