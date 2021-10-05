@@ -987,11 +987,11 @@ impl SenderTransactionProtocolBuilder {
 //         match result {
 //             Ok(_) => panic!("Range proof should have failed to verify"),
 //             Err(e) => assert!(
-                e.message
-                    .contains("Value provided is outside the range allowed by the range proof"),
-                "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
-                e
-            ),
+//     e.message
+//         .contains("Value provided is outside the range allowed by the range proof"),
+//     "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
+//     e
+// ),
 //         }
 //     }
 // }
