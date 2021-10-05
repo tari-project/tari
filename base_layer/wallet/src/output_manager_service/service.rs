@@ -466,9 +466,9 @@ where TBackend: OutputManagerBackend + 'static
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
-        Ok(UnblindedOutputBuilder::new(value, spending_key.clone())
+        Ok(UnblindedOutputBuilder::new(value, spending_key)
             .with_features(features)
-            .with_script(script.clone())
+            .with_script(script)
             .with_input_data(input_data)
             .with_script_private_key(script_private_key)
             .with_unique_id(unique_id)

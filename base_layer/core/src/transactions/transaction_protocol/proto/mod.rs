@@ -27,4 +27,4 @@ pub mod transaction_metadata;
 pub mod transaction_sender;
 
 // Re-export message types
-pub use protocol::*;
+// pub use protocol::*;

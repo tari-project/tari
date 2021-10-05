@@ -24,8 +24,7 @@ members = [
     "applications/tari_merge_mining_proxy",
     "applications/tari_stratum_transcoder",
     "applications/tari_mining_node",
-    "applications/tari_dan_node",
-    "applications/tari_json_rpc_proxy"
+    "applications/tari_validator_node",
 ]
 #
 #[profile.release]

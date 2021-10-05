@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, DanNodeConfig, Network},
+    configuration::{bootstrap::ApplicationType, merge_mining_config::MergeMiningConfig, Network, ValidatorNodeConfig},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
@@ -85,8 +85,6 @@ pub struct GlobalConfig {
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
     pub console_wallet_db_file: PathBuf,
-    pub console_wallet_identity_file: PathBuf,
-    pub console_wallet_tor_identity_file: PathBuf,
     pub wallet_peer_db_path: PathBuf,
     pub console_wallet_peer_db_path: PathBuf,
     pub buffer_size_base_node: usize,
@@ -118,11 +116,6 @@ pub struct GlobalConfig {
     pub wallet_base_node_service_request_max_age: u64,
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
-    pub monerod_url: String,
-    pub monerod_username: String,
-    pub monerod_password: String,
-    pub monerod_use_auth: bool,
-    pub proxy_host_address: SocketAddr,
     pub transcoder_host_address: SocketAddr,
     pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
@@ -134,11 +127,12 @@ pub struct GlobalConfig {
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
     pub validate_tip_timeout_sec: u64,
-    pub dan_node: Option<DanNodeConfig>,
+    pub validator_node: Option<ValidatorNodeConfig>,
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
+    pub merge_mining_config: Option<MergeMiningConfig>,
 }
 
 impl GlobalConfig {
@@ -167,11 +161,8 @@ fn convert_node_config(
 ) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.as_str();
 
-    let key = config_string("base_node", net_str, "data_dir");
-    let data_dir: PathBuf = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
+    let key = config_string("common", net_str, "data_dir");
+    let data_dir: PathBuf = cfg.get_str(&key).unwrap_or_else(|_| net_str.to_string()).into();
 
     let key = config_string("base_node", net_str, "db_type");
     let db_type = cfg
@@ -285,27 +276,14 @@ fn convert_node_config(
     let key = config_string("base_node", net_str, "base_node_identity_file");
     let base_node_identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
-
-    // Console wallet identity path
-    let key = config_string("base_node", net_str, "console_wallet_identity_file");
-    let console_wallet_identity_file = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
-
-    let key = config_string("base_node", net_str, "console_wallet_tor_identity_file");
-    let console_wallet_tor_identity_file = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or_else(|_| "config/base_node_id.json".to_string())
         .into();
 
     // Tor private key persistence
     let key = config_string("base_node", net_str, "base_node_tor_identity_file");
     let base_node_tor_identity_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or_else(|_| "config/base_node_tor.json".to_string())
         .into();
 
     // Transport
@@ -320,9 +298,7 @@ fn convert_node_config(
         .transpose()?;
 
     let key = config_string("base_node", net_str, "allow_test_addresses");
-    let allow_test_addresses = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let allow_test_addresses = cfg.get_bool(&key).unwrap_or(false);
 
     // Public address
     let key = config_string("base_node", net_str, "public_address");
@@ -612,34 +588,46 @@ fn convert_node_config(
             .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
     );
 
-    let key = config_string("merge_mining_proxy", net_str, "monerod_url");
-    let monerod_url = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let merge_mining_config = match application {
+        ApplicationType::MergeMiningProxy => {
+            let key = config_string("merge_mining_proxy", net_str, "monerod_url");
+            let monerod_url = cfg
+                .get_str(&key)
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
-    let monerod_use_auth = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
+            let monerod_use_auth = cfg
+                .get_bool(&key)
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("merge_mining_proxy", net_str, "monerod_username");
-    let monerod_username = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_username");
+            let monerod_username = cfg
+                .get_str(&key)
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("merge_mining_proxy", net_str, "monerod_password");
-    let monerod_password = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_password");
+            let monerod_password = cfg
+                .get_str(&key)
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("merge_mining_proxy", net_str, "proxy_host_address");
-    let proxy_host_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
+            let key = config_string("merge_mining_proxy", net_str, "proxy_host_address");
+            let proxy_host_address = cfg
+                .get_str(&key)
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+                .and_then(|addr| {
+                    addr.parse::<SocketAddr>()
+                        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                })?;
+            Some(MergeMiningConfig {
+                monerod_url,
+                monerod_use_auth,
+                monerod_username,
+                monerod_password,
+                proxy_host_address,
+            })
+        },
+        _ => None,
+    };
 
     let key = config_string("stratum_transcoder", net_str, "transcoder_host_address");
     let transcoder_host_address = cfg
@@ -704,22 +692,6 @@ fn convert_node_config(
         .filter(|c| c.is_alphanumeric())
         .collect::<String>();
 
-    // Dan config
-    let key = config_string("dan_node", &net_str, "committee");
-    let committee = match cfg.get_array(&key) {
-        Ok(committee) => committee.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => match cfg.get_str(&key) {
-            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
-            Err(..) => vec![],
-        },
-    };
-
-    let key = config_string("dan_node", &net_str, "phase_timeout");
-    let phase_timeout = optional(cfg.get_int(&key))?.unwrap_or(30) as u64;
-
-    let key = config_string("dan_node", &net_str, "template_id");
-    let template_id = optional(cfg.get_str(&key))?.unwrap_or_else(|| "EditableMetadata".to_string());
-
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -752,10 +724,8 @@ fn convert_node_config(
         peer_db_path,
         num_mining_threads,
         base_node_tor_identity_file,
-        console_wallet_identity_file,
         wallet_db_file,
         console_wallet_db_file,
-        console_wallet_tor_identity_file,
         wallet_peer_db_path,
         console_wallet_peer_db_path,
         buffer_size_base_node,
@@ -787,13 +757,8 @@ fn convert_node_config(
         wallet_base_node_service_request_max_age,
         wallet_balance_enquiry_cooldown_period,
         prevent_fee_gt_amount,
-        proxy_host_address,
         transcoder_host_address,
         proxy_submit_to_origin,
-        monerod_url,
-        monerod_username,
-        monerod_password,
-        monerod_use_auth,
         force_sync_peers,
         wait_for_initial_sync_at_startup,
         max_randomx_vms,
@@ -803,11 +768,12 @@ fn convert_node_config(
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
-        dan_node: DanNodeConfig::new(committee, phase_timeout, template_id).unwrap(),
+        validator_node: ValidatorNodeConfig::convert_if_present(cfg)?,
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
         base_node_bypass_range_proof_verification,
+        merge_mining_config,
     })
 }
 

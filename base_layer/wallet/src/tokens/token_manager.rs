@@ -67,7 +67,7 @@ impl<T: OutputManagerBackend + 'static> TokenManager<T> {
                 // Filter out asset registrations that don't have a parent pub key
                 ub.unblinded_output.features.parent_public_key.is_some()
             })
-            .map(|unblinded_output| convert_to_token(unblinded_output))
+            .map(convert_to_token)
             .collect::<Result<_, _>>()?;
         Ok(assets)
     }
@@ -83,8 +83,7 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
                 .unblinded_output
                 .features
                 .parent_public_key
-                .as_ref()
-                .map(|a| a.clone())
+                .as_ref().cloned()
                 .unwrap(),
             unblinded_output.commitment,
             unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
@@ -102,8 +101,7 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
             .unblinded_output
             .features
             .parent_public_key
-            .as_ref()
-            .map(|a| a.clone())
+            .as_ref().cloned()
             .unwrap(),
         unblinded_output.commitment,
         unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),

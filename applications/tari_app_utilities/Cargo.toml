@@ -30,7 +30,7 @@ tonic = "0.5.2"
 path = "../../base_layer/core"
 version = "^0.10"
 default-features = false
-features = ["transactions"]
+features = ["transactions", "base_node_proto"]
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }

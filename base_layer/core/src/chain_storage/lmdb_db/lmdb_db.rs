@@ -100,9 +100,7 @@ use tari_common_types::{
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
-
-type DatabaseRef = Arc<Database<'static>>;
+use tari_storage::lmdb_store::{db, DatabaseRef, LMDBBuilder, LMDBConfig, LMDBStore};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 

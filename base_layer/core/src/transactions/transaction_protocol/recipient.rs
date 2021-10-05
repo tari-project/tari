@@ -259,7 +259,7 @@ mod test {
             ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
-        assert_eq!(data.tx_id, 15);
+        assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
             .commitment

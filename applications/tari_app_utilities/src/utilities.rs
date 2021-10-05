@@ -74,6 +74,8 @@ pub enum ExitCodes {
     IncorrectPassword,
     #[error("Your application is encrypted but no password was provided.")]
     NoPassword,
+    #[error("The application encountered a database error: {0}")]
+    DatabaseError(String),
     #[error("Tor connection is offline")]
     TorOffline,
 }
@@ -94,6 +96,7 @@ impl ExitCodes {
             Self::ConversionError(_) => 111,
             Self::IncorrectPassword | Self::NoPassword => 112,
             Self::TorOffline => 113,
+            Self::DatabaseError(_) => 114,
         }
     }
 }
