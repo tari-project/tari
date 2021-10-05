@@ -84,7 +84,7 @@ function readLastNLines(file, n) {
 }
 
 async function emptyFile(file) {
-  const fs = require("fs/promises");
+  const fs = require("fs").promises;
   await fs.mkdir(path.dirname(file), { recursive: true });
   try {
     await fs.truncate(file, 0);
