@@ -349,12 +349,14 @@ impl Controller {
                                 error!("Error parsing message: {}", m)
                             }
                         },
+                        Ok(None) => {
+                            // noop, nothing to read for this interval
+                        },
                         Err(e) => {
                             error!("Error reading message: {:?}", e);
                             self.stream = None;
                             continue;
                         },
-                        _ => error!("Error reading message: None"),
                     }
                     next_server_read = time::get_time().sec + server_read_interval;
                 }
