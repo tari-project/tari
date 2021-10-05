@@ -56,7 +56,7 @@ use tari_core::{
         fee::Fee,
         helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
         tari_amount::{uT, MicroTari, T},
-        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
+        transaction::{KernelBuilder, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
     },
@@ -1041,7 +1041,95 @@ async fn consensus_validation_large_tx() {
 
 #[tokio::test]
 async fn consensus_validation_unique_id() {
-    assert!(true);
+    let mut rng = rand::thread_rng();
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+
+    // Create a block with 5 outputs
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    // mint new NFT
+    let (_, asset) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(vec![1, 2, 3]),
+        ..Default::default()
+    };
+    let txs = vec![txn_schema!(
+        from: vec![outputs[1][0].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    // trying to publish a transaction with the same unique id should fail
+    let tx = txn_schema!(
+        from: vec![outputs[1][1].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    );
+    let (tx, _, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // a different unique_id should be fine
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(vec![4, 5, 6]),
+        ..Default::default()
+    };
+    let tx = txn_schema!(
+        from: vec![outputs[1][1].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    );
+    let (tx, _, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).unwrap();
+    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
+
+    // a different asset should also be fine
+    let (_, asset) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(vec![4, 5, 6]),
+        ..Default::default()
+    };
+    let tx = txn_schema!(
+        from: vec![outputs[1][2].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    );
+    let (tx, _, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).unwrap();
+    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
+
+    // a transaction containing duplicates should be rejected
+    let (_, asset) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(vec![7, 8, 9]),
+        ..Default::default()
+    };
+    let tx = txn_schema!(
+        from: vec![outputs[1][3].clone(), outputs[1][4].clone()],
+        to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    );
+    let (tx, _, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).unwrap();
+    dbg!(&response);
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }
 
 #[tokio::test]

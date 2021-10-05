@@ -51,13 +51,14 @@ pub enum TxSubmissionRejectionReason {
 
 impl Display for TxSubmissionRejectionReason {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        use TxSubmissionRejectionReason::*;
         let response = match self {
-            TxSubmissionRejectionReason::AlreadyMined => "Already Mined ",
-            TxSubmissionRejectionReason::DoubleSpend => "Double Spend",
-            TxSubmissionRejectionReason::Orphan => "Orphan",
-            TxSubmissionRejectionReason::TimeLocked => "Time Locked",
-            TxSubmissionRejectionReason::ValidationFailed => "Validation Failed",
-            TxSubmissionRejectionReason::None => "None",
+            AlreadyMined => "Already Mined ",
+            DoubleSpend => "Double Spend",
+            Orphan => "Orphan",
+            TimeLocked => "Time Locked",
+            ValidationFailed => "Validation Failed",
+            None => "None",
         };
         fmt.write_str(response)
     }
@@ -80,9 +81,9 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
 }
 
 impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
-    fn from(resp: TxSubmissionRejectionReason) -> Self {
+    fn from(response: TxSubmissionRejectionReason) -> Self {
         use TxSubmissionRejectionReason::*;
-        match resp {
+        match response {
             None => proto::TxSubmissionRejectionReason::None,
             AlreadyMined => proto::TxSubmissionRejectionReason::AlreadyMined,
             DoubleSpend => proto::TxSubmissionRejectionReason::DoubleSpend,

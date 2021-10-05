@@ -449,7 +449,7 @@ impl LMDBDatabase {
             "utxo_commitment_index",
         )?;
 
-        if let Some(unique_id) = &output.features.unique_id.clone() {
+        if let Some(unique_id) = output.features.unique_asset_id() {
             lmdb_insert(
                 txn,
                 &*self.unique_id_index,
@@ -581,7 +581,7 @@ impl LMDBDatabase {
             "utxo_commitment_index",
         )?;
 
-        if let Some(unique_id) = input.features.unique_id.clone() {
+        if let Some(unique_id) = input.features.unique_asset_id() {
             lmdb_delete(txn, &self.unique_id_index, unique_id.as_bytes(), "unique_id_index")?;
         }
 
@@ -859,7 +859,7 @@ impl LMDBDatabase {
                     output.commitment.as_bytes(),
                     "utxo_commitment_index",
                 )?;
-                if let Some(unique_id) = output.features.unique_id.clone() {
+                if let Some(unique_id) = output.features.unique_asset_id() {
                     lmdb_delete(txn, &*self.unique_id_index, unique_id.as_bytes(), "unique_id_index")?;
                 }
             }

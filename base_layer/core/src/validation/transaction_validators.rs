@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -66,6 +67,8 @@ impl MempoolTransactionValidation for TxInternalConsistencyValidator {
 /// This validator will check the transaction against the current consensus rules.
 ///
 /// 1. The transaction weight should not exceed the maximum weight for 1 block
+/// 1. All of the outputs should have a unique asset id in the transaction
+/// 1. All of the outputs should have a unique asset id not already on chain
 #[derive(Clone)]
 pub struct TxConsensusValidator<B> {
     db: BlockchainDatabase<B>,
@@ -83,6 +86,38 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
         // validate maximum tx weight
         if tx.calculate_weight() > consensus_constants.get_max_block_weight_excluding_coinbase() {
             return Err(ValidationError::MaxTransactionWeightExceeded);
+        }
+
+        let outputs = tx.get_body().outputs();
+
+        // outputs in transaction should have unique asset ids
+        let mut unique_ids: Vec<Vec<u8>> = outputs
+            .iter()
+            .filter_map(|output| output.features.unique_asset_id())
+            .collect();
+
+        unique_ids.sort();
+        let num_ids = unique_ids.len();
+
+        unique_ids.dedup();
+        let num_unique = unique_ids.len();
+
+        if num_unique < num_ids {
+            return Err(ValidationError::ConsensusError(
+                "Transaction contains outputs with duplicate unique_asset_ids".into(),
+            ));
+        }
+
+        // output unique asset id should not already be in the chain
+        for unique_id in unique_ids {
+            if let Some(hash) = self.db.fetch_unspent_output_by_unique_id(&unique_id)? {
+                let msg = format!(
+                    "Output with unique_asset_id: {} already exists in stored output with hash: {}",
+                    unique_id.to_hex(),
+                    hash.to_hex()
+                );
+                return Err(ValidationError::ConsensusError(msg));
+            }
         }
 
         Ok(())

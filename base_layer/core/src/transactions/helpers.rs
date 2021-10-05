@@ -498,7 +498,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
-        schema.features,
+        OutputFeatures::default(),
         script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
