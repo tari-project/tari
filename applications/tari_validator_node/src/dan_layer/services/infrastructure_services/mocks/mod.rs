@@ -22,13 +22,13 @@
 
 use crate::{
     dan_layer::{
-        models::{HotStuffMessage},
+        models::HotStuffMessage,
         services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundConnectionService<TAddr, TPayload> {
@@ -106,7 +106,7 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayl
 }
 
 use crate::dan_layer::models::Payload;
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 #[async_trait]
 impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>

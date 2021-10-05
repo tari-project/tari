@@ -39,14 +39,7 @@ use bytecodec::{
 };
 use helpers::create_lmdb_store;
 use lmdb_zero as lmdb;
-use lmdb_zero::{
-    put,
-    ConstAccessor,
-    LmdbResultExt,
-    ReadTransaction,
-    WriteAccessor,
-    WriteTransaction,
-};
+use lmdb_zero::{put, ConstAccessor, LmdbResultExt, ReadTransaction, WriteAccessor, WriteTransaction};
 use patricia_tree::{
     node::{Node, NodeDecoder, NodeEncoder},
     PatriciaMap,

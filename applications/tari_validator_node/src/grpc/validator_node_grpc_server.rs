@@ -22,7 +22,7 @@
 use crate::{
     dan_layer::{
         models::{Instruction, TokenId},
-        services::{MempoolService},
+        services::MempoolService,
     },
     grpc::validator_node_rpc as rpc,
     types::{ComSig, PublicKey},

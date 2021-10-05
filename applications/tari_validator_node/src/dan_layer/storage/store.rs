@@ -20,19 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dan_layer::{
-        models::TokenId,
-    },
-    digital_assets_error::DigitalAssetError,
-};
+use crate::{dan_layer::models::TokenId, digital_assets_error::DigitalAssetError};
 
-
-
-
-
-
-const PATRICIA_MAP_KEY: u64 = 1u64;
+// const PATRICIA_MAP_KEY: u64 = 1u64;
 
 pub trait AssetStore {
     fn get_metadata(&mut self, token_id: &TokenId) -> Result<Option<Vec<u8>>, DigitalAssetError>;

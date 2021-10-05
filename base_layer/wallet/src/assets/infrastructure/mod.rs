@@ -44,7 +44,7 @@ pub enum AssetManagerRequest {
     },
     CreateInitialCheckpoint {
         asset_public_key: Box<PublicKey>,
-        merkle_root: Box<Vec<u8>>,
+        merkle_root: Vec<u8>,
     },
 }
 

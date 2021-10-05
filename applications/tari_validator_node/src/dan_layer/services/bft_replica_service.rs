@@ -29,7 +29,7 @@ pub trait BftReplicaService {
 
 pub struct ConcreteBftReplicaService {
     current_view: ViewId,
-    node_identity: NodeIdentity,
+    _node_identity: NodeIdentity,
     committee: Vec<NodeId>,
     position_in_committee: usize,
 }
@@ -48,7 +48,7 @@ impl ConcreteBftReplicaService {
             .expect("NodeID should always be present since we add it");
         Self {
             current_view: ViewId(0),
-            node_identity,
+            _node_identity: node_identity,
             committee,
             position_in_committee,
         }

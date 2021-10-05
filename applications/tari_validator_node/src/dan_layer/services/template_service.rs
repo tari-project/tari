@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{Instruction, InstructionCaller, InstructionId, TemplateId},
-        storage::{AssetStore},
+        storage::AssetStore,
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },

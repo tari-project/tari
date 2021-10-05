@@ -21,9 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
-use std::{
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 pub trait MempoolService {
     fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;

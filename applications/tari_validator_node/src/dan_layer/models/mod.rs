@@ -20,9 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-
-
-mod block;
+// mod block;
 mod committee;
 pub mod domain_events;
 mod hot_stuff_message;
@@ -30,23 +28,19 @@ mod hot_stuff_tree_node;
 mod instruction;
 mod instruction_set;
 mod quorum_certificate;
-mod replica_info;
+// mod replica_info;
 mod view;
 mod view_id;
 
-pub use block::Block;
+// pub use block::Block;
 pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
-pub use replica_info::ReplicaInfo;
-use std::{
-    convert::TryFrom,
-    fmt::{Debug},
-    hash::Hash,
-};
+// pub use replica_info::ReplicaInfo;
+use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 pub use view::View;
 pub use view_id::ViewId;
 
@@ -74,7 +68,7 @@ impl TemplateId {
         match s {
             "EditableMetadata" => TemplateId::EditableMetadata,
             _ => {
-                // TODO: Propagate errr instead
+                // TODO: Propagate error instead
                 dbg!("Unrecognised template");
                 TemplateId::EditableMetadata
             },

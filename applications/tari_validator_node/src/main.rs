@@ -69,7 +69,7 @@ fn main() {
 fn main_inner() -> Result<(), ExitCodes> {
     let (_bootstrap, node_config, _) = init_configuration(ApplicationType::DanNode)?;
 
-    // let operation_mode = cmd_args::get_operation_mode();
+    let _operation_mode = cmd_args::get_operation_mode();
     // match operation_mode {
     //     OperationMode::Run => {
     let runtime = build_runtime()?;

@@ -42,13 +42,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 
-
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    sync::{Arc},
-    time::Instant,
-};
+use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
 
 use tokio::time::{sleep, Duration};
 
@@ -94,6 +88,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn next_event(
         &mut self,
         current_view: &View,
@@ -109,6 +104,7 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
+        dbg!(next_event_result);
 
         let started = Instant::now();
 
@@ -235,7 +231,7 @@ where
 
     fn find_highest_qc(&self) -> QuorumCertificate<TPayload> {
         let mut max_qc = None;
-        for (_sender, message) in &self.received_new_view_messages {
+        for message in self.received_new_view_messages.values() {
             match &max_qc {
                 None => max_qc = message.justify().cloned(),
                 Some(qc) => {
@@ -311,7 +307,7 @@ mod test {
     use crate::dan_layer::{
         models::ViewId,
         services::{
-            infrastructure_services::mocks::{mock_outbound},
+            infrastructure_services::mocks::mock_outbound,
             mocks::{mock_payload_provider, mock_signing_service},
         },
     };
