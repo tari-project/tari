@@ -1,5 +1,5 @@
 const { CronJob } = require("cron");
-const fs = require("fs/promises");
+const { promises: fs } = require("fs");
 const {
   sendWebhookNotification,
   getWebhookUrl,
