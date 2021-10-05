@@ -22,6 +22,7 @@
 
 use futures::future::Either;
 use log::*;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
@@ -42,6 +43,7 @@ use tari_p2p::transport::{TorConfig, TransportType};
 
 use crate::identity_management::load_from_json;
 use tari_common_types::emoji::EmojiId;
+use tari_comms::transports::predicate::FalsePredicate;
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -185,7 +187,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
-                proxy_bypass_addresses: vec![],
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
             }),
         },
         CommsTransport::TorHiddenService {
@@ -195,6 +197,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             auth,
             onion_port,
             tor_proxy_bypass_addresses,
+            tor_proxy_bypass_for_outbound_tcp,
         } => {
             let identity = Some(&config.base_node_tor_identity_file)
                 .filter(|p| p.exists())
@@ -227,6 +230,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
                 tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
             })
         },
         CommsTransport::Socks5 {
@@ -237,7 +241,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             socks_config: SocksConfig {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
-                proxy_bypass_addresses: vec![],
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
             },
             listener_address,
         },

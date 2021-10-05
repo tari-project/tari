@@ -2424,6 +2424,8 @@ pub unsafe extern "C" fn transport_tor_create(
         socks_address_override: None,
         socks_auth: authentication,
         tor_proxy_bypass_addresses: vec![],
+        // Prefer performance
+        tor_proxy_bypass_for_outbound_tcp: true,
     };
     let transport = TariTransportType::Tor(tor_config);
 
