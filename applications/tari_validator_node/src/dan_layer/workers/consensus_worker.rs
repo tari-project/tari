@@ -360,7 +360,7 @@ mod test {
         })
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[tokio::test]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();

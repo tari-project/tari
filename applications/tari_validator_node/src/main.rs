@@ -36,13 +36,10 @@ use std::{
     process,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use thiserror::Error;
 use tokio::{runtime, task};
-use tokio_stream::StreamExt;
 use tonic::transport::Server;
 
 use crate::{
-    cmd_args::OperationMode,
     dan_layer::{
         dan_node::DanNode,
         services::{ConcreteMempoolService, MempoolService, MempoolServiceHandle},
@@ -54,7 +51,7 @@ use tari_app_utilities::{initialization::init_configuration, utilities::ExitCode
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tokio::runtime::Runtime;
 
-const LOG_TARGET: &str = "dan_node::app";
+const LOG_TARGET: &str = "validator_node::app";
 
 fn main() {
     if let Err(exit_code) = main_inner() {

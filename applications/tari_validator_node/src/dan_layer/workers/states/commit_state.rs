@@ -40,7 +40,7 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
-use std::{any::Any, collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
 
 // TODO: This is very similar to pre-commit state

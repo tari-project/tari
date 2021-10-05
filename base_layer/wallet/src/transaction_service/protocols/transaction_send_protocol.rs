@@ -47,7 +47,12 @@ use tari_comms_dht::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData, TxId},
+    transaction_protocol::{
+        proto::protocol as proto,
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
+        TxId,
+    },
     SenderTransactionProtocol,
 };
 use tari_crypto::script;

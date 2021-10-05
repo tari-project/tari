@@ -91,7 +91,12 @@ use tari_core::{
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::*,
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage, TxId},
+        transaction_protocol::{
+            proto::protocol as proto,
+            recipient::RecipientSignedMessage,
+            sender::TransactionSenderMessage,
+            TxId,
+        },
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,

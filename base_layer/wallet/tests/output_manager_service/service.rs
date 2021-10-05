@@ -1297,7 +1297,7 @@ async fn test_utxo_stxo_invalid_txo_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(invalid_value),
     );
-    let invalid_tx_output = invalid_output.as_transaction_output(&factories, false).unwrap();
+    let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
 
     let invalid_db_output = DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap();
     backend
@@ -1319,7 +1319,7 @@ async fn test_utxo_stxo_invalid_txo_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(spent_value1),
     );
-    let spent_tx_output1 = spent_output1.as_transaction_output(&factories, false).unwrap();
+    let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
     let spent_db_output1 = DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap();
 
     backend
@@ -1356,7 +1356,7 @@ async fn test_utxo_stxo_invalid_txo_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value1),
     );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output1.clone()).await.unwrap();
 
@@ -1377,7 +1377,7 @@ async fn test_utxo_stxo_invalid_txo_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value3),
     );
-    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output3.clone()).await.unwrap();
 
@@ -1388,11 +1388,11 @@ async fn test_utxo_stxo_invalid_txo_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value4),
     );
-    let unspent_tx_output4 = unspent_output4.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output4 = unspent_output4.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output4.clone()).await.unwrap();
 
-    rpc_service_state.set_utxos(vec![invalid_output.as_transaction_output(&factories, false).unwrap()]);
+    rpc_service_state.set_utxos(vec![invalid_output.as_transaction_output(&factories).unwrap()]);
 
     oms.set_base_node_public_key(server_node_identity.public_key().clone())
         .await
@@ -1531,7 +1531,7 @@ async fn test_base_node_switch_during_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value1),
     );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output1).await.unwrap();
 
@@ -1552,7 +1552,7 @@ async fn test_base_node_switch_during_validation() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value3),
     );
-    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output3).await.unwrap();
 
@@ -1817,7 +1817,7 @@ async fn test_txo_validation_base_node_not_synced() {
         TestParamsHelpers::new(),
         MicroTari::from(unspent_value1),
     );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories, false).unwrap();
+    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     oms.add_output(unspent_output1.clone()).await.unwrap();
 
