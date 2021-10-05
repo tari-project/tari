@@ -38,7 +38,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use std::{
-    collections::{vec_deque::Iter, VecDeque},
+    collections::{VecDeque},
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
@@ -46,15 +46,15 @@ use std::{
 pub struct MockMempoolService {}
 
 impl MempoolService for MockMempoolService {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+    fn submit_instruction(&mut self, _instruction: Instruction) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+    fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         todo!()
     }
 
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+    fn remove_instructions(&mut self, _instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
@@ -139,7 +139,7 @@ impl<TEvent: Event> MockEventsPublisher<TEvent> {
     }
 
     pub fn to_vec(&self) -> Vec<TEvent> {
-        self.events.lock().unwrap().iter().map(|s| s.clone()).collect()
+        self.events.lock().unwrap().iter().cloned().collect()
     }
 }
 
@@ -158,7 +158,7 @@ pub struct MockSigningService<TAddr: NodeAddressable> {
 }
 
 impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr> {
-    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+    fn sign(&self, _identity: &TAddr, _challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
         Ok(Signature {})
     }
 }
@@ -171,7 +171,7 @@ pub struct MockTemplateService {}
 
 #[async_trait]
 impl TemplateService for MockTemplateService {
-    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
+    async fn execute_instruction(&mut self, _instruction: &Instruction) -> Result<(), DigitalAssetError> {
         dbg!("Executing instruction as mock");
         Ok(())
     }

@@ -359,7 +359,7 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = Span::styled(
-                format!("{}", match tx.get_unique_id() {
+                (match tx.get_unique_id() {
                     Some(unique_id) => unique_id,
                     None => tx.amount.to_string(),
                 }),

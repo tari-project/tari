@@ -387,13 +387,13 @@ where TBackend: TransactionBackend + 'static
 
     async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
         let mut transaction = None;
-        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id.into()).await {
+        if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
             transaction = Some(tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id.into()).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_outbound_transaction(tx_id).await {
             let mut outbound_tx = CompletedTransaction::from(tx);
             outbound_tx.source_public_key = self.comms_public_key.clone();
             transaction = Some(outbound_tx);
-        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id.into()).await {
+        } else if let Ok(tx) = self.db.get_cancelled_pending_inbound_transaction(tx_id).await {
             let mut inbound_tx = CompletedTransaction::from(tx);
             inbound_tx.destination_public_key = self.comms_public_key.clone();
             transaction = Some(inbound_tx);
@@ -418,7 +418,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_broadcast_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id.into()).await {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -434,7 +434,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_mined_event(&mut self, tx_id: TxId) {
-        match self.db.get_completed_transaction(tx_id.into()).await {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -450,7 +450,7 @@ where TBackend: TransactionBackend + 'static
     }
 
     async fn receive_transaction_mined_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
-        match self.db.get_completed_transaction(tx_id.into()).await {
+        match self.db.get_completed_transaction(tx_id).await {
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,

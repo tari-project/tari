@@ -446,7 +446,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     }
 
     if let Some(unique_id) = &output.features.unique_id {
-        if db.fetch_unspent_output_hash_by_unique_id(&unique_id)?.is_some() {
+        if db.fetch_unspent_output_hash_by_unique_id(unique_id)?.is_some() {
             warn!(
                 target: LOG_TARGET,
                 "Duplicate UTXO set unique_id found for output: {}", output

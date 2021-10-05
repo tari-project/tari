@@ -1507,7 +1507,6 @@ mod test {
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        transaction_protocol::TxId,
         CryptoFactories,
     };
     use tari_test_utils::random;

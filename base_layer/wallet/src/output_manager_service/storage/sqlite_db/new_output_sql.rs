@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use aes_gcm::{Aes256Gcm, Error as AeadError};
-use diesel::{query_dsl::methods::FilterDsl, RunQueryDsl, SqliteConnection};
+use diesel::{RunQueryDsl, SqliteConnection};
 
 use tari_core::{crypto::tari_utilities::ByteArray, transactions::transaction_protocol::TxId};
 
@@ -30,7 +30,7 @@ use crate::{
         error::OutputManagerStorageError,
         storage::{models::DbUnblindedOutput, OutputStatus},
     },
-    schema::{outputs, outputs::columns},
+    schema::{outputs},
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 

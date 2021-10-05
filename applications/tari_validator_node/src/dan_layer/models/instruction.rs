@@ -46,7 +46,7 @@ impl PartialEq for Instruction {
 }
 
 impl Instruction {
-    pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, signature: ComSig) -> Self {
+    pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, _signature: ComSig) -> Self {
         let mut s = Self {
             asset_id,
             method,

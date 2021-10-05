@@ -22,7 +22,7 @@
 
 use crate::dan_layer::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, Signature, ViewId};
 use digest::Digest;
-use std::hash::Hash;
+
 use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]

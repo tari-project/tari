@@ -44,7 +44,7 @@ pub struct InstructionSet {
 
 impl InstructionSet {
     pub fn empty() -> Self {
-        Self::from_slice(&vec![])
+        Self::from_slice(&[])
     }
 
     pub fn from_slice(instructions: &[Instruction]) -> Self {

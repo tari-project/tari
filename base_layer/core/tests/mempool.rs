@@ -1073,7 +1073,7 @@ async fn consensus_validation_unique_id() {
     // trying to publish a transaction with the same unique id should fail
     let tx = txn_schema!(
         from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
     let (tx, _, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
@@ -1083,13 +1083,13 @@ async fn consensus_validation_unique_id() {
     // a different unique_id should be fine
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset.clone()),
+        parent_public_key: Some(asset),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
     };
     let tx = txn_schema!(
         from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
     let (tx, _, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
@@ -1100,13 +1100,13 @@ async fn consensus_validation_unique_id() {
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset.clone()),
+        parent_public_key: Some(asset),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
     };
     let tx = txn_schema!(
         from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
     let (tx, _, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
@@ -1117,13 +1117,13 @@ async fn consensus_validation_unique_id() {
     let (_, asset) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset.clone()),
+        parent_public_key: Some(asset),
         unique_id: Some(vec![7, 8, 9]),
         ..Default::default()
     };
     let tx = txn_schema!(
         from: vec![outputs[1][3].clone(), outputs[1][4].clone()],
-        to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features
     );
     let (tx, _, _) = spend_utxos(tx);
     let tx = Arc::new(tx);

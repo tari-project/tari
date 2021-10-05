@@ -28,7 +28,7 @@ mod p2p;
 mod types;
 
 use crate::grpc::validator_node_grpc_server::ValidatorNodeGrpcServer;
-use anyhow;
+
 use futures::FutureExt;
 use log::*;
 use std::{
@@ -67,12 +67,12 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let (bootstrap, node_config, _) = init_configuration(ApplicationType::DanNode)?;
+    let (_bootstrap, node_config, _) = init_configuration(ApplicationType::DanNode)?;
 
     // let operation_mode = cmd_args::get_operation_mode();
     // match operation_mode {
     //     OperationMode::Run => {
-    let mut runtime = build_runtime()?;
+    let runtime = build_runtime()?;
     runtime.block_on(run_node(node_config))?;
     // }
     // }
@@ -96,7 +96,7 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
 fn build_runtime() -> Result<Runtime, ExitCodes> {
     let mut builder = runtime::Builder::new_multi_thread();
-    builder.enable_all().build().map_err(|e| ExitCodes::UnknownError)
+    builder.enable_all().build().map_err(|_e| ExitCodes::UnknownError)
 }
 
 async fn run_dan_node<TMempoolService: MempoolService + Clone + Send>(

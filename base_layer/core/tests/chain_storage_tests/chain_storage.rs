@@ -1079,7 +1079,7 @@ fn asset_unique_id() {
     // attempt to mint the same unique id for the same asset
     let tx = txn_schema!(
         from: vec![outputs[1][1].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
 
     let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
@@ -1088,7 +1088,7 @@ fn asset_unique_id() {
     // new unique id
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset.clone()),
+        parent_public_key: Some(asset),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
     };
@@ -1099,7 +1099,7 @@ fn asset_unique_id() {
     // mint
     let tx = txn_schema!(
         from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
 
@@ -1111,7 +1111,7 @@ fn asset_unique_id() {
     let (_, asset2) = PublicKey::random_keypair(&mut rng);
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset2.clone()),
+        parent_public_key: Some(asset2),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
     };
@@ -1122,7 +1122,7 @@ fn asset_unique_id() {
     // mint
     let tx = txn_schema!(
         from: vec![outputs[1][3].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
 

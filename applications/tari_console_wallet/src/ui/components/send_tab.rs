@@ -133,7 +133,7 @@ impl SendTab {
 
         let amount_input = Paragraph::new(match &self.selected_unique_id {
             Some(token) => format!("Token selected : {}", token.to_hex()),
-            None => format!("{}", self.amount_field),
+            None => self.amount_field.to_string(),
         })
         .style(match self.send_input_mode {
             SendInputMode::Amount => Style::default().fg(Color::Magenta),
@@ -800,7 +800,7 @@ impl<B: Backend> Component<B> for SendTab {
             } else {
                 let tokens: Vec<&Token> = app_state
                     .get_owned_tokens()
-                    .into_iter()
+                    .iter()
                     .filter(|&token| token.output_status() == "Unspent")
                     .collect();
                 self.selected_unique_id = Some(Vec::from(tokens[index - 1].unique_id()));
@@ -817,7 +817,7 @@ impl<B: Backend> Component<B> for SendTab {
             let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
             let tokens: Vec<&Token> = app_state
                 .get_owned_tokens()
-                .into_iter()
+                .iter()
                 .filter(|&token| token.output_status() == "Unspent")
                 .collect();
             if index > tokens.len().saturating_sub(1) {

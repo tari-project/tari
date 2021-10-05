@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload, ViewId};
+use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload};
 
 use crate::{
     dan_layer::services::infrastructure_services::NodeAddressable,
@@ -29,9 +29,9 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
-use std::{convert::TryInto, marker::PhantomData, sync::Arc};
+use std::{convert::TryInto, sync::Arc};
 use tari_comms::types::CommsPublicKey;
-use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
+use tari_p2p::{comms_connector::PeerMessage};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -61,16 +61,12 @@ impl TariCommsInboundConnectionService {
 
     pub fn take_receiver(&mut self) -> Option<TariCommsInboundReceiver<InstructionSet>> {
         // Takes the receiver, can only be done once
-        if let Some(receiver) = self.receiver.take() {
-            Some(receiver)
-        } else {
-            None
-        }
+        self.receiver.take()
     }
 
     pub async fn run(
         &mut self,
-        shutdown_signal: ShutdownSignal,
+        _shutdown_signal: ShutdownSignal,
         inbound_stream: impl Stream<Item = Arc<PeerMessage>>,
     ) -> Result<(), DigitalAssetError> {
         let inbound_stream = inbound_stream.fuse();
@@ -98,7 +94,7 @@ impl TariCommsInboundConnectionService {
         let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
         let hot_stuff_message = proto_message
             .try_into()
-            .map_err(|s| DigitalAssetError::InvalidPeerMessage(s))?;
+            .map_err(DigitalAssetError::InvalidPeerMessage)?;
         self.sender.send((from, hot_stuff_message)).await.unwrap();
         Ok(())
     }

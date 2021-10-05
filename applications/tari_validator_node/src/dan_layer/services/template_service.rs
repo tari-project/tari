@@ -23,12 +23,11 @@
 use crate::{
     dan_layer::{
         models::{Instruction, InstructionCaller, InstructionId, TemplateId},
-        storage::{AssetDataStore, AssetStore},
+        storage::{AssetStore},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },
     digital_assets_error::DigitalAssetError,
-    types::PublicKey,
 };
 use async_trait::async_trait;
 use std::collections::VecDeque;

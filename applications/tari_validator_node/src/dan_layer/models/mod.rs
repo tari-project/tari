@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
+
 
 mod block;
 mod committee;
@@ -44,8 +44,7 @@ pub use quorum_certificate::QuorumCertificate;
 pub use replica_info::ReplicaInfo;
 use std::{
     convert::TryFrom,
-    fmt,
-    fmt::{Debug, Formatter},
+    fmt::{Debug},
     hash::Hash,
 };
 pub use view::View;

@@ -22,7 +22,6 @@
 
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
 use std::{
-    ops::Index,
     sync::{Arc, Mutex},
 };
 
@@ -49,7 +48,7 @@ impl MempoolService for ConcreteMempoolService {
         Ok(())
     }
 
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+    fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         Ok(self.instructions.clone())
     }
 

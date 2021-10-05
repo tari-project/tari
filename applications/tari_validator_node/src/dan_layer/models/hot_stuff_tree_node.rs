@@ -23,7 +23,6 @@
 use crate::dan_layer::models::{Payload, TreeNodeHash};
 use digest::Digest;
 use std::{
-    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
 };
 use tari_crypto::common::Blake256;
