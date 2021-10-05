@@ -30,7 +30,7 @@ use crate::{
         error::OutputManagerStorageError,
         storage::{models::DbUnblindedOutput, OutputStatus},
     },
-    schema::outputs,
+    schema::{outputs},
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 
@@ -39,27 +39,27 @@ use crate::{
 #[derive(Clone, Debug, Insertable, PartialEq)]
 #[table_name = "outputs"]
 pub struct NewOutputSql {
-    commitment: Option<Vec<u8>>,
-    spending_key: Vec<u8>,
-    value: i64,
-    flags: i32,
-    maturity: i64,
-    status: i32,
-    tx_id: Option<i64>,
-    hash: Option<Vec<u8>>,
-    script: Vec<u8>,
-    input_data: Vec<u8>,
-    script_private_key: Vec<u8>,
-    metadata: Option<Vec<u8>>,
-    features_asset_public_key: Option<Vec<u8>>,
-    features_mint_asset_public_key: Option<Vec<u8>>,
-    features_mint_asset_owner_commitment: Option<Vec<u8>>,
-    features_parent_public_key: Option<Vec<u8>>,
-    features_unique_id: Option<Vec<u8>>,
-    sender_offset_public_key: Vec<u8>,
-    metadata_signature_nonce: Vec<u8>,
-    metadata_signature_u_key: Vec<u8>,
-    metadata_signature_v_key: Vec<u8>,
+    pub commitment: Option<Vec<u8>>,
+    pub spending_key: Vec<u8>,
+    pub value: i64,
+    pub flags: i32,
+    pub maturity: i64,
+    pub status: i32,
+    pub tx_id: Option<i64>,
+    pub hash: Option<Vec<u8>>,
+    pub script: Vec<u8>,
+    pub input_data: Vec<u8>,
+    pub script_private_key: Vec<u8>,
+    pub metadata: Option<Vec<u8>>,
+    pub features_asset_public_key: Option<Vec<u8>>,
+    pub features_mint_asset_public_key: Option<Vec<u8>>,
+    pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
+    pub features_parent_public_key: Option<Vec<u8>>,
+    pub features_unique_id: Option<Vec<u8>>,
+    pub sender_offset_public_key: Vec<u8>,
+    pub metadata_signature_nonce: Vec<u8>,
+    pub metadata_signature_u_key: Vec<u8>,
+    pub metadata_signature_v_key: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -103,6 +103,14 @@ impl NewOutputSql {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
+
+    // /// Return all outputs with a given status
+    // pub fn index_status(
+    //     status: OutputStatus,
+    //     conn: &SqliteConnection,
+    // ) -> Result<Vec<NewOutputSql>, OutputManagerStorageError> {
+    //     Ok(outputs::table.filter(columns::status.eq(status as i32)).load(conn)?)
+    // }
 }
 
 impl Encryptable<Aes256Gcm> for NewOutputSql {

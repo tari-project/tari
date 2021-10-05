@@ -34,7 +34,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
-    ops::Add,
+    ops::{Add, Shl},
 };
 use tari_common_types::types::{
     BlindingFactor,
@@ -187,6 +187,19 @@ impl OutputFeatures {
             asset: None,
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root }),
             ..Default::default()
+        }
+    }
+
+    pub fn unique_asset_id(&self) -> Option<Vec<u8>> {
+        let parent_public_key = self.parent_public_key.as_ref();
+        let unique_id = self.unique_id.as_ref();
+
+        match (parent_public_key, unique_id) {
+            (Some(pk), Some(id)) => {
+                let unique_asset_id = [pk.as_bytes(), id.as_slice()].concat();
+                Some(unique_asset_id)
+            },
+            _ => None,
         }
     }
 }

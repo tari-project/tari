@@ -23,7 +23,7 @@
 use clap::App;
 
 pub fn get_operation_mode() -> OperationMode {
-    let matches = App::new("Tari DAN node").version("1.0").get_matches();
+    let _matches = App::new("Tari DAN node").version("1.0").get_matches();
     OperationMode::Run
 }
 

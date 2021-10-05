@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_crypto::{
-    commitment::HomomorphicCommitment,
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     signatures::CommitmentSignature,
     tari_utilities::{ByteArray, ByteArrayError},
@@ -32,7 +31,7 @@ pub(crate) type PublicKey = RistrettoPublicKey;
 
 pub(crate) type ComSig = CommitmentSignature<RistrettoPublicKey, RistrettoSecretKey>;
 
-pub fn create_com_sig_from_bytes(bytes: &[u8]) -> Result<ComSig, ByteArrayError> {
+pub fn create_com_sig_from_bytes(_bytes: &[u8]) -> Result<ComSig, ByteArrayError> {
     Ok(ComSig::default())
     // Ok(ComSig::new(
     //  HomomorphicCommitment::from_bytes(&bytes[0..32])?,

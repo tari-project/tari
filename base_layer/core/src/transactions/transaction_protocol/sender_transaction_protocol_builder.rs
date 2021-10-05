@@ -61,7 +61,7 @@ use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
-/// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
+/// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
 /// # use crate::SenderTransactionProtocol;
@@ -987,11 +987,11 @@ impl SenderTransactionProtocolBuilder {
 //         match result {
 //             Ok(_) => panic!("Range proof should have failed to verify"),
 //             Err(e) => assert!(
-                e.message
-                    .contains("Value provided is outside the range allowed by the range proof"),
-                "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
-                e
-            ),
+//     e.message
+//         .contains("Value provided is outside the range allowed by the range proof"),
+//     "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
+//     e
+// ),
 //         }
 //     }
 // }

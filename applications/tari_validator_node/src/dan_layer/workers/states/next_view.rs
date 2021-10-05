@@ -48,7 +48,7 @@ impl NextViewState {
         broadcast: &mut TOutboundService,
         committee: &Committee<TAddr>,
         node_id: TAddr,
-        shutdown: &ShutdownSignal,
+        _shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
         let next_view = current_view.view_id.next();

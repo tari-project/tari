@@ -35,22 +35,20 @@ use crate::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BftReplicaService,
             EventsPublisher,
-            MempoolService,
             PayloadProcessor,
             PayloadProvider,
             SigningService,
         },
         workers::{
             states,
-            states::{ConsensusWorkerStateEvent, Prepare, Starting},
+            states::{ConsensusWorkerStateEvent},
         },
     },
     digital_assets_error::DigitalAssetError,
 };
 use log::*;
 use std::{
-    marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc},
 };
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
@@ -171,7 +169,7 @@ where
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        
 
         let starting_view = self.current_view_id;
         loop {
@@ -316,8 +314,7 @@ where
 mod test {
     use super::*;
     use crate::dan_layer::services::{
-        infrastructure_services::mocks::mock_inbound,
-        mocks::{mock_bft, mock_mempool},
+        mocks::{mock_bft},
     };
 
     use crate::dan_layer::services::{
@@ -330,8 +327,8 @@ mod test {
             MockEventsPublisher,
         },
     };
-    use futures::task;
-    use std::collections::HashMap;
+    
+    
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 
@@ -356,11 +353,11 @@ mod test {
             Duration::from_secs(5),
         );
         tokio::spawn(async move {
-            let res = replica_a.run(shutdown_signal, Some(2)).await;
+            let _res = replica_a.run(shutdown_signal, Some(2)).await;
         })
     }
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
@@ -436,7 +433,7 @@ mod test {
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
         dbg!(events);
         let mapped_events = events.iter().filter_map(|e| match e {
-            ConsensusWorkerDomainEvent::StateChanged { old, new } => Some(new),
+            ConsensusWorkerDomainEvent::StateChanged { old: _, new } => Some(new),
             _ => None,
         });
         for (state, event) in states.iter().zip(mapped_events) {

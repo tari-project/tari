@@ -237,7 +237,7 @@ pub fn check_accounting_balance(
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,
-                "Validation failed on block:{}:{}",
+                "Validation failed on block:{}:{:?}",
                 block.hash().to_hex(),
                 err
             );
@@ -379,6 +379,23 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
     }
 
+    if let Some(unique_id) = &input.features.unique_id {
+        if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_unique_id(unique_id)? {
+            // Check that it is the same utxo in which the unique_id was created
+            if utxo_hash == output_hash {
+                return Ok(());
+            }
+
+            warn!(
+                target: LOG_TARGET,
+                "Input spends a UTXO but has a duplicate unique_id:
+            {}",
+                input
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+        }
+    }
+
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
     if db.fetch_output(&output_hash)?.is_some() {
         warn!(
@@ -426,6 +443,16 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
             "Duplicate UTXO set commitment found for output: {}", output
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
+    }
+
+    if let Some(unique_id) = &output.features.unique_id {
+        if db.fetch_unspent_output_hash_by_unique_id(unique_id)?.is_some() {
+            warn!(
+                target: LOG_TARGET,
+                "Duplicate UTXO set unique_id found for output: {}", output
+            );
+            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+        }
     }
 
     Ok(())

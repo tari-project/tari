@@ -22,7 +22,7 @@
 
 use crate::dan_layer::{
     models::TokenId,
-    storage::{AssetStore, LmdbAssetBackend, LmdbAssetStore},
+    storage::{AssetStore, LmdbAssetStore},
 };
 use std::fs;
 use tari_test_utils::paths;

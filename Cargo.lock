@@ -428,9 +428,9 @@ version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adf4c9d0bbf32eea58d7c0f812058138ee8edaf0f2802b6d03561b504729a325"
 dependencies = [
+ "bincode",
  "byteorder",
  "serde 1.0.130",
- "serde_json",
  "trackable 0.2.24",
 ]
 
@@ -1391,6 +1391,16 @@ dependencies = [
  "kernel32-sys",
  "libc",
  "winapi 0.2.8",
+]
+
+[[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi 0.3.9",
 ]
 
 [[package]]
@@ -4366,6 +4376,7 @@ dependencies = [
  "anyhow",
  "config",
  "dirs-next",
+ "fs2 0.4.3",
  "get_if_addrs",
  "git2",
  "log 0.4.14",
@@ -4568,7 +4579,7 @@ dependencies = [
  "croaring",
  "digest",
  "env_logger 0.7.1",
- "fs2",
+ "fs2 0.3.0",
  "futures 0.3.16",
  "hex",
  "lazy_static 1.4.0",
@@ -4776,7 +4787,7 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger 0.6.2",
- "fs2",
+ "fs2 0.3.0",
  "futures 0.3.16",
  "futures-timer",
  "lazy_static 1.4.0",
@@ -4960,10 +4971,12 @@ dependencies = [
  "clap",
  "digest",
  "futures 0.3.16",
+ "lmdb-zero",
  "log 0.4.14",
  "patricia_tree",
  "prost",
  "prost-types",
+ "serde 1.0.130",
  "serde_json",
  "tari_app_utilities",
  "tari_common",
@@ -4974,6 +4987,7 @@ dependencies = [
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_storage",
  "tari_test_utils 0.8.1",
  "thiserror",
  "tokio 1.11.0",
@@ -4995,7 +5009,7 @@ dependencies = [
  "diesel_migrations",
  "digest",
  "env_logger 0.7.1",
- "fs2",
+ "fs2 0.3.0",
  "futures 0.3.16",
  "libsqlite3-sys",
  "lmdb-zero",

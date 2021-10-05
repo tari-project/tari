@@ -83,7 +83,8 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
                 .unblinded_output
                 .features
                 .parent_public_key
-                .as_ref().cloned()
+                .as_ref()
+                .cloned()
                 .unwrap(),
             unblinded_output.commitment,
             unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),
@@ -101,7 +102,8 @@ fn convert_to_token(unblinded_output: DbUnblindedOutput) -> Result<Token, Wallet
             .unblinded_output
             .features
             .parent_public_key
-            .as_ref().cloned()
+            .as_ref()
+            .cloned()
             .unwrap(),
         unblinded_output.commitment,
         unblinded_output.unblinded_output.features.unique_id.unwrap_or_default(),

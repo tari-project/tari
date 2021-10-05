@@ -23,12 +23,10 @@
 use crate::{
     dan_layer::{
         models::{
-            Block,
             Committee,
             HotStuffMessage,
             HotStuffMessageType,
             HotStuffTreeNode,
-            Instruction,
             Payload,
             QuorumCertificate,
             View,
@@ -36,8 +34,6 @@ use crate::{
         },
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-            BftReplicaService,
-            MempoolService,
             PayloadProvider,
             SigningService,
         },
@@ -45,17 +41,15 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
-use async_trait::async_trait;
-use futures::StreamExt;
+
+
 use std::{
-    any::Any,
     collections::HashMap,
-    hash::Hash,
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{Arc},
     time::Instant,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
+
 use tokio::time::{sleep, Duration};
 
 pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
@@ -122,13 +116,13 @@ where
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, &committee, &payload_provider, outbound_service).await?{
+                        if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, committee, payload_provider, outbound_service).await?{
                            next_event_result = result;
                             break;
                         }
 
                     }
-                    if let Some(result) = self.process_replica_message(&message, &current_view, &from,  committee.leader_for_view(current_view.view_id),  outbound_service, &signing_service).await? {
+                    if let Some(result) = self.process_replica_message(&message, current_view, &from,  committee.leader_for_view(current_view.view_id),  outbound_service, signing_service).await? {
                         next_event_result = result;
                         break;
                     }
@@ -167,7 +161,7 @@ where
         }
 
         // TODO: This might need to be checked in the QC rather
-        if self.received_new_view_messages.contains_key(&sender) {
+        if self.received_new_view_messages.contains_key(sender) {
             dbg!("Already received message from {:?}", &sender);
             return Ok(None);
         }
@@ -182,7 +176,7 @@ where
             );
             let high_qc = self.find_highest_qc();
             let proposal = self.create_proposal(high_qc.node(), payload_provider).await?;
-            self.broadcast_proposal(outbound, &committee, proposal, high_qc, current_view.view_id)
+            self.broadcast_proposal(outbound, committee, proposal, high_qc, current_view.view_id)
                 .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
             Ok(None) // Will move to pre-commit when it receives the message as a replica
@@ -192,7 +186,7 @@ where
                 self.received_new_view_messages.len(),
                 committee.len()
             );
-            return Ok(None);
+            Ok(None)
         }
     }
 
@@ -228,9 +222,9 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, &signing_service)
+                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, signing_service)
                     .await?;
-                return Ok(Some(ConsensusWorkerStateEvent::Prepared));
+                Ok(Some(ConsensusWorkerStateEvent::Prepared))
             } else {
                 unimplemented!("Did not extend from qc.justify.node")
             }
@@ -241,9 +235,9 @@ where
 
     fn find_highest_qc(&self) -> QuorumCertificate<TPayload> {
         let mut max_qc = None;
-        for (sender, message) in &self.received_new_view_messages {
+        for (_sender, message) in &self.received_new_view_messages {
             match &max_qc {
-                None => max_qc = message.justify().map(|qc| qc.clone()),
+                None => max_qc = message.justify().cloned(),
                 Some(qc) => {
                     if let Some(justify) = message.justify() {
                         if qc.view_number() < justify.view_number() {
@@ -317,13 +311,14 @@ mod test {
     use crate::dan_layer::{
         models::ViewId,
         services::{
-            infrastructure_services::mocks::{mock_inbound, mock_outbound},
+            infrastructure_services::mocks::{mock_outbound},
             mocks::{mock_payload_provider, mock_signing_service},
         },
     };
     use tokio::time::Duration;
 
-    #[tokio::test(threaded_scheduler)]
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "missing implementations"]
     async fn basic_test_as_leader() {
         // let mut inbound = mock_inbound();
         // let mut sender = inbound.create_sender();

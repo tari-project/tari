@@ -40,7 +40,7 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
-    transactions::{transaction_protocol::proto, CryptoFactories},
+    transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,

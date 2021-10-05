@@ -41,7 +41,7 @@ impl NodeIdentitySigningService {
 }
 
 impl SigningService<CommsPublicKey> for NodeIdentitySigningService {
-    fn sign(&self, identity: &CommsPublicKey, challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+    fn sign(&self, identity: &CommsPublicKey, _challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
         if identity != self.node_identity.public_key() {
             return Err(DigitalAssetError::InvalidSignature);
         }

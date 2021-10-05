@@ -22,14 +22,12 @@
 
 use crate::{
     dan_layer::{
-        models::{View, ViewId},
-        workers::ConsensusWorker,
+        models::{ViewId},
     },
-    digital_assets_error::DigitalAssetError,
 };
-use async_trait::async_trait;
 
-use tari_shutdown::ShutdownSignal;
+
+
 
 // #[async_trait]
 // pub trait State {
@@ -39,7 +37,7 @@ use tari_shutdown::ShutdownSignal;
 //         shutdown: &ShutdownSignal,
 //     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
 // }
-use crate::dan_layer::models::QuorumCertificate;
+
 
 mod commit_state;
 mod decide_state;

@@ -27,14 +27,13 @@ use crate::{
         HotStuffTreeNode,
         Instruction,
         InstructionSet,
-        Payload,
         QuorumCertificate,
         Signature,
         TokenId,
         TreeNodeHash,
         ViewId,
     },
-    types::{com_sig_to_bytes, create_com_sig_from_bytes, PublicKey},
+    types::{create_com_sig_from_bytes, PublicKey},
 };
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::tari_utilities::ByteArray;
@@ -77,7 +76,7 @@ impl From<&QuorumCertificate<InstructionSet>> for dan_p2p::QuorumCertificate {
 }
 
 impl From<&Signature> for dan_p2p::Signature {
-    fn from(s: &Signature) -> Self {
+    fn from(_s: &Signature) -> Self {
         Self {}
     }
 }

@@ -24,7 +24,7 @@ use rand::{rngs::OsRng, RngCore};
 use tari_crypto::{script::StackItem, tari_utilities::Hashable};
 
 use tari_common::configuration::Network;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, PublicKey};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -48,12 +48,14 @@ use tari_core::{
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
+        transaction::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
     tx,
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -1036,6 +1038,97 @@ fn store_and_retrieve_blocks() {
     assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
     assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
     assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
+}
+#[test]
+fn asset_unique_id() {
+    let mut rng = rand::thread_rng();
+    let network = Network::LocalNet;
+    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let tx = txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
+    );
+
+    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+
+    // create a new NFT
+    let (_, asset) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(vec![1, 2, 3]),
+        ..Default::default()
+    };
+
+    // check the output is not stored in the db
+    let unique_id = features.unique_asset_id().unwrap();
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_none());
+
+    // mint it to the chain
+    let tx = txn_schema!(
+        from: vec![outputs[1][0].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+    );
+    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+
+    // check it is in the db
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_some());
+
+    // attempt to mint the same unique id for the same asset
+    let tx = txn_schema!(
+        from: vec![outputs[1][1].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+
+    let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
+    assert!(matches!(err, ChainStorageError::KeyExists { .. }));
+
+    // new unique id
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset),
+        unique_id: Some(vec![4, 5, 6]),
+        ..Default::default()
+    };
+    let unique_id = features.unique_asset_id().unwrap();
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_none());
+
+    // mint
+    let tx = txn_schema!(
+        from: vec![outputs[1][2].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+
+    // check it is in the db
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_some());
+
+    // same id for a different asset is fine
+    let (_, asset2) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset2),
+        unique_id: Some(vec![4, 5, 6]),
+        ..Default::default()
+    };
+    let unique_id = features.unique_asset_id().unwrap();
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_none());
+
+    // mint
+    let tx = txn_schema!(
+        from: vec![outputs[1][3].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+
+    // check it is in the db
+    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    assert!(output_hash.is_some());
 }
 
 #[test]

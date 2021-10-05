@@ -113,6 +113,14 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         commitment: &Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
+
+    /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists in the current UTXO
+    /// set, otherwise None is returned.
+    fn fetch_unspent_output_hash_by_unique_id(
+        &self,
+        unique_id: &HashOutput,
+    ) -> Result<Option<HashOutput>, ChainStorageError>;
+
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 

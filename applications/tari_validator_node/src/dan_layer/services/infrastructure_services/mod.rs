@@ -27,7 +27,7 @@ mod outbound_service;
 pub use inbound_connection_service::{InboundConnectionService, TariCommsInboundConnectionService};
 pub use node_addressable::NodeAddressable;
 pub use outbound_service::{OutboundService, TariCommsOutboundService};
-use std::{fmt::Debug, hash::Hash};
+
 
 #[cfg(test)]
 pub mod mocks;

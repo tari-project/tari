@@ -22,14 +22,14 @@
 use crate::{
     dan_layer::{
         models::{Instruction, TokenId},
-        services::{ConcreteMempoolService, MempoolService},
+        services::{MempoolService},
     },
     grpc::validator_node_rpc as rpc,
-    types::{create_com_sig_from_bytes, ComSig, PublicKey},
+    types::{ComSig, PublicKey},
 };
-use std::sync::{Arc, Mutex};
+
 use tari_crypto::tari_utilities::ByteArray;
-use tokio::sync::RwLock;
+
 use tonic::{Request, Response, Status};
 
 pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService> {
@@ -62,7 +62,7 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
         let request = request.into_inner();
         let instruction = Instruction::new(
             PublicKey::from_bytes(&request.asset_public_key)
-                .map_err(|err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
+                .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
             request.method.clone(),
             request.args.clone(),
             TokenId(request.token_id.clone()),

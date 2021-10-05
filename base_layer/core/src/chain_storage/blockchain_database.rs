@@ -304,6 +304,14 @@ where B: BlockchainBackend
         db.fetch_unspent_output_hash_by_commitment(commitment)
     }
 
+    pub fn fetch_unspent_output_by_unique_id(
+        &self,
+        unique_id: &HashOutput,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_unspent_output_hash_by_unique_id(unique_id)
+    }
+
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the block hash specified or the tip if not
     /// specified.

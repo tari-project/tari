@@ -40,7 +40,7 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
-use std::{any::Any, collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
 
 // TODO: This is very similar to pre-commit state
@@ -107,7 +107,7 @@ where
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
             if current_view.is_leader() {
-                                  if let Some(result) = self.process_leader_message(&current_view, message.clone(), &from, outbound_service
+                                  if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
                             ).await?{
                                      next_event_result = result;
                                       break;
@@ -115,7 +115,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, &current_view, &from, &leader,  outbound_service, &signing_service).await? {
+                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -150,7 +150,7 @@ where
         }
 
         // TODO: This might need to be checked in the QC rather
-        if self.received_new_view_messages.contains_key(&sender) {
+        if self.received_new_view_messages.contains_key(sender) {
             dbg!("Already received message from {:?}", &sender);
             return Ok(None);
         }
@@ -164,14 +164,14 @@ where
                 self.committee.len()
             );
 
-            if let Some(qc) = self.create_qc(&current_view) {
+            if let Some(qc) = self.create_qc(current_view) {
                 self.pre_commit_qc = Some(qc.clone());
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
                 return Ok(None); // Replica will move this on
             }
             dbg!("committee did not agree on node");
-            return Ok(None);
+            Ok(None)
 
             // let high_qc = self.find_highest_qc();
             // let proposal = self.create_proposal(high_qc.node(), payload_provider);
@@ -184,7 +184,7 @@ where
                 self.received_new_view_messages.len(),
                 self.committee.len()
             );
-            return Ok(None);
+            Ok(None)
         }
     }
 
@@ -205,7 +205,7 @@ where
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {
-                None => message.node().map(|n| n.clone()),
+                None => message.node().cloned(),
                 Some(n) => {
                     if let Some(m_node) = message.node() {
                         if &n != m_node {
@@ -261,10 +261,10 @@ where
                 outbound,
                 view_leader,
                 current_view.view_id,
-                &signing_service,
+                signing_service,
             )
             .await?;
-            return Ok(Some(ConsensusWorkerStateEvent::Committed));
+            Ok(Some(ConsensusWorkerStateEvent::Committed))
         } else {
             dbg!("received non justify message");
             Ok(None)

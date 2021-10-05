@@ -37,7 +37,6 @@ use crate::{
         storage::{AssetDataStore, LmdbAssetStore},
         workers::ConsensusWorker,
     },
-    digital_assets_error::DigitalAssetError,
     ExitCodes,
 };
 use log::*;
@@ -47,7 +46,7 @@ use tari_app_utilities::{
     identity_management::{load_from_json, setup_node_identity},
     utilities::convert_socks_authentication,
 };
-use tari_common::{CommsTransport, ConfigBootstrap, GlobalConfig, TorControlAuthentication};
+use tari_common::{CommsTransport, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
     peer_manager::PeerFeatures,
     socks,
@@ -60,16 +59,16 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
-use tari_crypto::tari_utilities::hex::{Hex, HexError};
+use tari_crypto::tari_utilities::hex::{Hex};
 use tari_p2p::{
-    comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
+    comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
     tari_message::TariMessageType,
     transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime::Handle, task};
+use tari_shutdown::{ShutdownSignal};
+use tokio::{task};
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 
@@ -199,7 +198,7 @@ impl DanNode {
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> P2pConfig {
         P2pConfig {
             network: self.config.network,
-            node_identity: node_identity.clone(),
+            node_identity,
             transport_type: self.create_transport_type(),
             datastore_path: self.config.peer_db_path.clone(),
             peer_database_name: "peers".to_string(),

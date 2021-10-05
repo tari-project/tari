@@ -40,10 +40,8 @@ use bytecodec::{
 use helpers::create_lmdb_store;
 use lmdb_zero as lmdb;
 use lmdb_zero::{
-    db,
     put,
     ConstAccessor,
-    ConstTransaction,
     LmdbResultExt,
     ReadTransaction,
     WriteAccessor,
@@ -53,8 +51,8 @@ use patricia_tree::{
     node::{Node, NodeDecoder, NodeEncoder},
     PatriciaMap,
 };
-use serde_json as json;
-use std::{borrow::Cow, fs, fs::File, ops::Deref, path::Path, str, sync::Arc};
+
+use std::{fs, fs::File, path::Path, sync::Arc};
 use tari_common::file_lock;
 use tari_storage::lmdb_store::{DatabaseRef, LMDBConfig};
 

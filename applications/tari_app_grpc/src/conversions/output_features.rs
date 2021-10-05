@@ -60,10 +60,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id,
-            parent_public_key: match features.parent_public_key {
-                Some(a) => Some(a.as_bytes().to_vec()),
-                None => None,
-            },
+            parent_public_key: features.parent_public_key.map(|a| a.as_bytes().to_vec()),
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),

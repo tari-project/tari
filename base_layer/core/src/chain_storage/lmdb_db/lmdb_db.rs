@@ -67,6 +67,7 @@ use crate::{
             LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA,
             LMDB_DB_ORPHAN_PARENT_MAP_INDEX,
             LMDB_DB_TXOS_HASH_TO_INDEX,
+            LMDB_DB_UNIQUE_ID_INDEX,
             LMDB_DB_UTXOS,
             LMDB_DB_UTXO_COMMITMENT_INDEX,
             LMDB_DB_UTXO_MMR_SIZE_INDEX,
@@ -139,6 +140,7 @@ pub struct LMDBDatabase {
     kernel_mmr_size_index: DatabaseRef,
     output_mmr_size_index: DatabaseRef,
     utxo_commitment_index: DatabaseRef,
+    unique_id_index: DatabaseRef,
     orphans_db: DatabaseRef,
     monero_seed_height_db: DatabaseRef,
     orphan_header_accumulated_data_db: DatabaseRef,
@@ -166,6 +168,7 @@ impl LMDBDatabase {
             kernel_mmr_size_index: get_database(&store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
             output_mmr_size_index: get_database(&store, LMDB_DB_UTXO_MMR_SIZE_INDEX)?,
             utxo_commitment_index: get_database(&store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
+            unique_id_index: get_database(&store, LMDB_DB_UNIQUE_ID_INDEX)?,
             orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
             orphan_header_accumulated_data_db: get_database(&store, LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA)?,
             monero_seed_height_db: get_database(&store, LMDB_DB_MONERO_SEED_HEIGHT)?,
@@ -374,7 +377,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 19] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 20] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -390,6 +393,7 @@ impl LMDBDatabase {
             ("kernel_mmr_size_index", &self.kernel_mmr_size_index),
             ("output_mmr_size_index", &self.output_mmr_size_index),
             ("utxo_commitment_index", &self.utxo_commitment_index),
+            ("unique_id_index", &self.unique_id_index),
             ("orphans_db", &self.orphans_db),
             (
                 "orphan_header_accumulated_data_db",
@@ -442,6 +446,16 @@ impl LMDBDatabase {
             &output_hash,
             "utxo_commitment_index",
         )?;
+
+        if let Some(unique_id) = output.features.unique_asset_id() {
+            lmdb_insert(
+                txn,
+                &*self.unique_id_index,
+                unique_id.as_bytes(),
+                &output_hash,
+                "unique_id_index",
+            )?;
+        }
 
         lmdb_insert(
             txn,
@@ -564,6 +578,10 @@ impl LMDBDatabase {
             input.commitment().as_bytes(),
             "utxo_commitment_index",
         )?;
+
+        if let Some(unique_id) = input.features.unique_asset_id() {
+            lmdb_delete(txn, &self.unique_id_index, unique_id.as_bytes(), "unique_id_index")?;
+        }
 
         let hash = input.hash();
         let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
@@ -839,6 +857,9 @@ impl LMDBDatabase {
                     output.commitment.as_bytes(),
                     "utxo_commitment_index",
                 )?;
+                if let Some(unique_id) = output.features.unique_asset_id() {
+                    lmdb_delete(txn, &*self.unique_id_index, unique_id.as_bytes(), "unique_id_index")?;
+                }
             }
         }
         // Move inputs in this block back into the unspent set, any outputs spent within this block they will be removed
@@ -1273,13 +1294,14 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_KERNEL_MMR_SIZE_INDEX, flags)
         .add_database(LMDB_DB_UTXO_MMR_SIZE_INDEX, flags)
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
+        .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .build()
-        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{:?}", err)))?;
     LMDBDatabase::new(lmdb_store, file_lock)
 }
 
@@ -1353,7 +1375,7 @@ impl BlockchainBackend for LMDBDatabase {
                     }
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Failed to apply DB transaction: {}", e);
+                    error!(target: LOG_TARGET, "Failed to apply DB transaction: {:?}", e);
                     return Err(e);
                 },
             }
@@ -1851,6 +1873,14 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())
+    }
+
+    fn fetch_unspent_output_hash_by_unique_id(
+        &self,
+        unique_id: &HashOutput,
+    ) -> Result<Option<HashOutput>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_get::<_, HashOutput>(&*txn, &*self.unique_id_index, unique_id)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {

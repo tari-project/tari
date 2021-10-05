@@ -251,6 +251,7 @@ async fn test_wallet() {
         .send_transaction(
             bob_identity.public_key().clone(),
             value,
+            None,
             MicroTari::from(20),
             "".to_string(),
         )
@@ -598,6 +599,7 @@ fn test_store_and_forward_send_tx() {
         .block_on(alice_wallet.transaction_service.send_transaction(
             carol_identity.public_key().clone(),
             value,
+            None,
             MicroTari::from(20),
             "Store and Forward!".to_string(),
         ))
