@@ -156,11 +156,7 @@ class WalletFFI {
       ffi.Callback("void", ["uint64", "bool"], callback);
     this.createCallbackTransactionCancellation = (callback) =>
       ffi.Callback("void", [this.tari_completed_transaction_ptr], callback);
-    this.createCallbackUtxoValidationComplete = (callback) =>
-      ffi.Callback("void", ["uint64", "uchar"], callback);
-    this.createCallbackStxoValidationComplete = (callback) =>
-      ffi.Callback("void", ["uint64", "uchar"], callback);
-    this.createCallbackInvalidTxoValidationComplete = (callback) =>
+    this.createCallbackTxoValidationComplete = (callback) =>
       ffi.Callback("void", ["uint64", "uchar"], callback);
     this.createCallbackTransactionValidationComplete = (callback) =>
       ffi.Callback("void", ["uint64", "uchar"], callback);
@@ -1488,9 +1484,7 @@ class WalletFFI {
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
-    callback_utxo_validation_complete,
-    callback_stxo_validation_complete,
-    callback_invalid_txo_validation_complete,
+    callback_txo_validation_complete,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1511,9 +1505,7 @@ class WalletFFI {
         callback_direct_send_result,
         callback_store_and_forward_send_result,
         callback_transaction_cancellation,
-        callback_utxo_validation_complete,
-        callback_stxo_validation_complete,
-        callback_invalid_txo_validation_complete,
+        callback_txo_validation_complete,
         callback_transaction_validation_complete,
         callback_saf_message_received,
         this.recovery_in_progress,

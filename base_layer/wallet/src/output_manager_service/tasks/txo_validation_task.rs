@@ -229,7 +229,7 @@ where
                 .for_protocol(self.operation_id)?;
             debug!(
                 target: LOG_TARGET,
-                "Base node returned {} as mined and {} as unmined",
+                "Base node returned {} outputs as mined and {} outputs as unmined",
                 mined.len(),
                 unmined.len()
             );
@@ -242,7 +242,7 @@ where
                     mined_height,
                     tip_height
                 );
-                self.update_output_as_mined(&output, mined_in_block, *mined_height, *mmr_position, tip_height)
+                self.update_output_as_mined(output, mined_in_block, *mined_height, *mmr_position, tip_height)
                     .await?;
             }
         }

@@ -125,7 +125,7 @@ where
             if let Some((tip_height, tip_block)) = tip_info {
                 for tx in &unmined {
                     // Treat coinbases separately
-                    if tx.is_coinbase_transaction() {
+                    if tx.is_coinbase() {
                         if tx.coinbase_block_height.unwrap_or_default() <= tip_height {
                             info!(target: LOG_TARGET, "Updated coinbase {} as abandoned", tx.tx_id);
                             self.update_coinbase_as_abandoned(
@@ -146,7 +146,7 @@ where
                         }
                     } else {
                         info!(target: LOG_TARGET, "Updated transaction {} as unmined", tx.tx_id);
-                        self.update_transaction_as_unmined(&tx).await?;
+                        self.update_transaction_as_unmined(tx).await?;
                     }
                 }
             }

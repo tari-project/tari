@@ -2410,6 +2410,6 @@ impl<'a> OutputKey<'a> {
     }
 
     pub fn get_key(&self) -> String {
-        format!("{}-{:010}", to_hex(&self.header_hash), self.mmr_position)
+        format!("{}-{:010}", to_hex(self.header_hash), self.mmr_position)
     }
 }

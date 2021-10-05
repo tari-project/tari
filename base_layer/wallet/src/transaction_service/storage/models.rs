@@ -241,7 +241,7 @@ impl CompletedTransaction {
         }
     }
 
-    pub fn is_coinbase_transaction(&self) -> bool {
+    pub fn is_coinbase(&self) -> bool {
         self.coinbase_block_height.is_some()
     }
 }
