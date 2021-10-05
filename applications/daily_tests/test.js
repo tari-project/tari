@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 const assert = require("assert");
+const { describe, it } = require("mocha");
 
 describe("Automatic recovery", () => {
   let {

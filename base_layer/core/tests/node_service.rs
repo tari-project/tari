@@ -40,6 +40,7 @@ use helpers::{
         BaseNodeBuilder,
     },
 };
+use randomx_rs::RandomXFlag;
 use std::{sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::protocol::messaging::MessagingEvent;
@@ -82,7 +83,7 @@ async fn request_response_get_metadata() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
@@ -112,7 +113,7 @@ async fn request_and_response_fetch_blocks() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
@@ -166,7 +167,7 @@ async fn request_and_response_fetch_blocks_with_hashes() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
@@ -243,7 +244,7 @@ async fn propagate_and_forward_many_valid_blocks() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -274,18 +275,26 @@ async fn propagate_and_forward_many_valid_blocks() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
@@ -349,7 +358,7 @@ async fn propagate_and_forward_invalid_block_hash() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -374,14 +383,20 @@ async fn propagate_and_forward_invalid_block_hash() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
@@ -447,7 +462,7 @@ async fn propagate_and_forward_invalid_block() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
@@ -488,18 +503,26 @@ async fn propagate_and_forward_invalid_block() {
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
     dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
@@ -594,7 +617,7 @@ async fn local_get_new_block_template_and_get_new_block() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
@@ -635,7 +658,7 @@ async fn local_get_new_block_with_zero_conf() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -693,7 +716,9 @@ async fn local_get_new_block_with_zero_conf() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -712,7 +737,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -765,7 +790,9 @@ async fn local_get_new_block_with_combined_transaction() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -788,7 +815,7 @@ async fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let mut block1 = db
-        .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_mmr_size += 1;

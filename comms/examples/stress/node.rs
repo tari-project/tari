@@ -38,6 +38,7 @@ use tari_comms::{
     NodeIdentity,
     Substream,
 };
+use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
@@ -51,6 +52,7 @@ pub async fn create(
     port: u16,
     tor_identity: Option<TorIdentity>,
     is_tcp: bool,
+    shutdown_signal: ShutdownSignal,
 ) -> Result<
     (
         CommsNode,
@@ -67,7 +69,7 @@ pub async fn create(
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
         .unwrap();
-    let peer_database = datastore.get_handle(&"peerdb").unwrap();
+    let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let mut protocols = Protocols::new();
@@ -94,6 +96,7 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database, None)
@@ -141,6 +144,7 @@ pub async fn create(
         builder
             .with_listener_address(hs_ctl.proxied_address())
             .build()?
+            .with_hidden_service_controller(hs_ctl)
             .add_protocol_extensions(protocols.into())
             .add_protocol_extension(MessagingProtocolExtension::new(
                 event_tx,

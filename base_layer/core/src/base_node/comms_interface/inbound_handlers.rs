@@ -129,7 +129,7 @@ where T: BlockchainBackend + 'static
                 self.blockchain_db.get_chain_metadata().await?,
             )),
             NodeCommsRequest::FetchHeaders(block_nums) => {
-                let mut block_headers = Vec::<BlockHeader>::new();
+                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     match self.blockchain_db.fetch_header(block_num).await {
                         Ok(Some(block_header)) => {
@@ -145,7 +145,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
             },
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
-                let mut block_headers = Vec::<BlockHeader>::new();
+                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_hashes.len());
                 for block_hash in block_hashes {
                     let block_hex = block_hash.to_hex();
                     match self.blockchain_db.fetch_header_by_block_hash(block_hash).await? {
@@ -196,16 +196,14 @@ where T: BlockchainBackend + 'static
                         .await?
                         .ok_or(CommsInterfaceError::BlockHeaderNotFound(0))?,
                 };
-                let mut headers = vec![];
+                let mut headers = Vec::with_capacity(MAX_HEADERS_PER_RESPONSE as usize);
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
                     match self.blockchain_db.fetch_header(starting_block.height + i as u64).await {
-                        Ok(header) => {
-                            if let Some(header) = header {
-                                let hash = header.hash();
-                                headers.push(header);
-                                if hash == stopping_hash {
-                                    break;
-                                }
+                        Ok(Some(header)) => {
+                            let hash = header.hash();
+                            headers.push(header);
+                            if hash == stopping_hash {
+                                break;
                             }
                         },
                         Err(err) => {
@@ -217,6 +215,7 @@ where T: BlockchainBackend + 'static
                             );
                             return Err(err.into());
                         },
+                        _ => error!(target: LOG_TARGET, "Could not fetch header: None"),
                     }
                 }
 
@@ -392,7 +391,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                let block = self.blockchain_db.prepare_block_merkle_roots(block_template).await?;
+                let block = self.blockchain_db.prepare_new_block(block_template).await?;
                 Ok(NodeCommsResponse::NewBlock {
                     success: true,
                     error: None,

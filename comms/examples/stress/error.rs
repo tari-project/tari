@@ -37,6 +37,7 @@ use tokio::{
 };
 
 #[derive(Debug, Error)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[error("HiddenServiceBuilderError: {0}")]
     HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),

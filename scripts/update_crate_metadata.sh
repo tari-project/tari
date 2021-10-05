@@ -40,6 +40,7 @@ function update_versions {
    base_layer/p2p
    base_layer/service_framework
    base_layer/wallet
+   base_layer/tari_stratum_ffi
    common
    comms
    comms/dht
@@ -50,6 +51,7 @@ function update_versions {
    applications/tari_console_wallet
    applications/tari_merge_mining_proxy
    applications/tari_mining_node
+   applications/tari_validator_node
    applications/test_faucet
 '}
 

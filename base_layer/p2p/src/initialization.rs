@@ -62,7 +62,7 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
+use tari_comms_dht::{Dht, DhtConfig, DhtInitializationError, DhtProtocolVersion};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
@@ -112,7 +112,7 @@ impl CommsInitializationError {
 
 /// Configuration for a comms node
 #[derive(Clone)]
-pub struct CommsConfig {
+pub struct P2pConfig {
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database
@@ -193,7 +193,7 @@ pub async fn initialize_local_test_comms(
         .with_user_agent("/test/1.0")
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_min_connectivity(1.0)
+        .with_min_connectivity(1)
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
@@ -202,17 +202,17 @@ pub async fn initialize_local_test_comms(
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
-        outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
-    )
-    .local_test()
-    .with_discovery_timeout(discovery_request_timeout)
-    .build()
-    .await?;
+    let dht = Dht::builder()
+        .local_test()
+        .with_outbound_sender(outbound_tx)
+        .with_discovery_timeout(discovery_request_timeout)
+        .build(
+            comms.node_identity(),
+            comms.peer_manager(),
+            comms.connectivity(),
+            comms.shutdown_signal(),
+        )
+        .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let (event_sender, _) = broadcast::channel(100);
@@ -316,7 +316,7 @@ async fn initialize_hidden_service(
 
 async fn configure_comms_and_dht(
     builder: CommsBuilder,
-    config: &CommsConfig,
+    config: &P2pConfig,
     connector: InboundDomainConnector,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
     let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
@@ -352,16 +352,15 @@ async fn configure_comms_and_dht(
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
-    let dht = DhtBuilder::new(
-        node_identity.clone(),
-        peer_manager,
-        outbound_tx,
-        connectivity,
-        shutdown_signal,
-    )
-    .with_config(config.dht.clone())
-    .build()
-    .await?;
+    let mut dht = Dht::builder();
+    dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
+    // TODO: remove this once enough weatherwax nodes have upgraded
+    if config.network == Network::Weatherwax {
+        dht.with_protocol_version(DhtProtocolVersion::v1());
+    }
+    let dht = dht
+        .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
+        .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
@@ -449,12 +448,12 @@ async fn add_all_peers(
 }
 
 pub struct P2pInitializer {
-    config: CommsConfig,
+    config: P2pConfig,
     connector: Option<PubsubDomainConnector>,
 }
 
 impl P2pInitializer {
-    pub fn new(config: CommsConfig, connector: PubsubDomainConnector) -> Self {
+    pub fn new(config: P2pConfig, connector: PubsubDomainConnector) -> Self {
         Self {
             config,
             connector: Some(connector),

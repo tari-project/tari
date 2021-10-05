@@ -163,7 +163,7 @@ where B: BlockchainBackend + 'static
                     .map(Ok);
 
             // Ensure task stops if the peer prematurely stops their RPC session
-            if utils::mpsc::send_all(&tx, utxos).await.is_err() {
+            if utils::mpsc::send_all(tx, utxos).await.is_err() {
                 break;
             }
 

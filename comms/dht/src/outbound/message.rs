@@ -23,6 +23,7 @@
 use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
+    version::DhtProtocolVersion,
 };
 use bytes::Bytes;
 use std::{fmt, fmt::Display, sync::Arc};
@@ -155,6 +156,7 @@ impl fmt::Display for DhtOutboundRequest {
 /// send a message
 #[derive(Debug)]
 pub struct DhtOutboundMessage {
+    pub protocol_version: DhtProtocolVersion,
     pub tag: MessageTag,
     pub destination_node_id: NodeId,
     pub custom_header: Option<DhtMessageHeader>,

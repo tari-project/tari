@@ -205,7 +205,7 @@ impl SenderTransactionProtocolBuilder {
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
-            &output.metadata_signature.public_nonce(),
+            output.metadata_signature.public_nonce(),
             &commitment,
         );
         if !output.metadata_signature.verify_challenge(
@@ -424,10 +424,8 @@ impl SenderTransactionProtocolBuilder {
             .iter()
             .map(|o| {
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    // TODO: Should proof be verified?
                     o.as_rewindable_transaction_output(factories, rewind_data)
                 } else {
-                    // TODO: Should proof be verified
                     o.as_transaction_output(factories)
                 }
             })
@@ -963,7 +961,7 @@ impl SenderTransactionProtocolBuilder {
 //             (1u64.pow(32) + 1u64).into(),
 //         );
 //         // Start the builder
-//         let (utxo1, input1) = create_test_input((2u64.pow(32) + 10000u64).into(), 0, &factories.commitment);
+//         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
 //         let weight = MicroTari(30);
 //         let mut builder = SenderTransactionInitializer::new(1);
 //         builder
@@ -973,7 +971,7 @@ impl SenderTransactionProtocolBuilder {
 //             .with_output(output, p.sender_offset_private_key.clone())
 //             .unwrap()
 //             .with_input(utxo1, input1)
-//             .with_amount(0, MicroTari(100))
+//             .with_amount(0, MicroTari(9800))
 //             .with_change_secret(p.change_spend_key)
 //             .with_fee_per_gram(weight)
 //             .with_recipient_data(
@@ -988,7 +986,12 @@ impl SenderTransactionProtocolBuilder {
 //
 //         match result {
 //             Ok(_) => panic!("Range proof should have failed to verify"),
-//             Err(e) => assert!(e.message.contains("Range proof could not be verified")),
+//             Err(e) => assert!(
+                e.message
+                    .contains("Value provided is outside the range allowed by the range proof"),
+                "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
+                e
+            ),
 //         }
 //     }
 // }

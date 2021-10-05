@@ -40,7 +40,7 @@ use crate::{
     NodeIdentity,
     PeerManager,
 };
-use futures::future;
+use futures::{future, StreamExt};
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_try_recv, streams, unpack_enum};
@@ -76,7 +76,6 @@ fn setup_connectivity_manager(
         peer_manager: peer_manager.clone(),
         shutdown_signal: shutdown.to_signal(),
     }
-    .create()
     .spawn();
 
     (
@@ -137,79 +136,12 @@ async fn connecting_peers() {
 }
 
 #[runtime::test]
-async fn add_many_managed_peers() {
-    let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
-        setup_connectivity_manager(Default::default());
-    let peers = add_test_peers(&peer_manager, 10).await;
-
-    let connections = future::join_all(
-        (0..5)
-            .map(|i| peers[i].clone())
-            .map(|peer| create_peer_connection_mock_pair(node_identity.to_peer(), peer)),
-    )
-    .await
-    .into_iter()
-    .map(|(conn, _, _, _)| conn)
-    .collect::<Vec<_>>();
-
-    connectivity
-        .add_managed_peers(peers.iter().map(|p| p.node_id.clone()).collect())
-        .await
-        .unwrap();
-
-    let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
-    unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
-
-    // First 5 succeeded
-    for conn in &connections {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone()));
-    }
-
-    // 7-10 have failed, the rest are still connecting
-    for i in peers.iter().take(10).skip(7) {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
-            Box::new(i.node_id.clone()),
-            ConnectionManagerError::ConnectFailedMaximumAttemptsReached,
-        ));
-    }
-
-    let events = collect_try_recv!(event_stream, take = 9, timeout = Duration::from_secs(10));
-    let n = events
-        .iter()
-        .find_map(|event| match event {
-            ConnectivityEvent::ConnectivityStateOnline(n) => Some(n),
-            ConnectivityEvent::ConnectivityStateDegraded(_) => None,
-            ConnectivityEvent::PeerConnected(_) => None,
-            e => panic!("Unexpected ConnectivityEvent {:?}", e),
-        })
-        .unwrap();
-    assert!(*n > 1);
-
-    let connection_states = connectivity.get_all_connection_states().await.unwrap();
-    assert_eq!(connection_states.len(), 10);
-
-    for i in peers.iter().take(5) {
-        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
-        assert_eq!(state.status(), ConnectionStatus::Connected);
-        // Check the connection matches the expected peer
-        assert_eq!(state.connection().unwrap().peer_node_id(), &i.node_id);
-    }
-    for i in peers.iter().take(6).skip(5) {
-        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
-        assert_eq!(state.status(), ConnectionStatus::Connecting);
-        assert!(state.connection().is_none());
-    }
-    for i in peers.iter().take(10).skip(7) {
-        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
-        assert_eq!(state.status(), ConnectionStatus::Failed);
-        assert!(state.connection().is_none());
-    }
-}
-
-#[runtime::test]
 async fn online_then_offline() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
-        setup_connectivity_manager(Default::default());
+        setup_connectivity_manager(ConnectivityConfig {
+            min_connectivity: 2,
+            ..Default::default()
+        });
     let peers = add_test_peers(&peer_manager, 8).await;
     let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
     for peer in &clients {
@@ -237,13 +169,14 @@ async fn online_then_offline() {
     .collect::<Vec<_>>();
 
     connectivity
-        .add_managed_peers(peers.iter().map(|p| p.node_id.clone()).collect())
-        .await
-        .unwrap();
+        .dial_many_peers(peers.iter().map(|p| p.node_id.clone()))
+        .collect::<Vec<_>>()
+        .await;
+
     connectivity
-        .add_managed_peers(clients.iter().map(|p| p.node_id().clone()).collect())
-        .await
-        .unwrap();
+        .dial_many_peers(clients.iter().map(|p| p.node_id().clone()))
+        .collect::<Vec<_>>()
+        .await;
 
     let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
     unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
@@ -260,20 +193,18 @@ async fn online_then_offline() {
         .await
         .unwrap();
     cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
-        connections[0].peer_node_id().clone().into(),
+        connections[0].peer_node_id().clone(),
         ConnectionManagerError::InvalidStaticPublicKey,
     ));
 
     for conn in connections.iter().skip(1) {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
-            conn.peer_node_id().clone().into(),
-        ));
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
     }
 
     streams::assert_in_broadcast(
         &mut event_stream,
         |item| match item {
-            ConnectivityEvent::ConnectivityStateDegraded(2) => Some(()),
+            ConnectivityEvent::ConnectivityStateOnline(2) => Some(()),
             _ => None,
         },
         Duration::from_secs(10),
@@ -285,9 +216,7 @@ async fn online_then_offline() {
 
     // Disconnect client connections
     for conn in &client_connections {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
-            conn.peer_node_id().clone().into(),
-        ));
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
     }
 
     streams::assert_in_broadcast(
@@ -307,7 +236,10 @@ async fn online_then_offline() {
 #[runtime::test]
 async fn ban_peer() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
-        setup_connectivity_manager(Default::default());
+        setup_connectivity_manager(ConnectivityConfig {
+            min_connectivity: 1,
+            ..Default::default()
+        });
     let peer = add_test_peers(&peer_manager, 1).await.pop().unwrap();
     let (conn, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
 
@@ -347,7 +279,7 @@ async fn ban_peer() {
 #[runtime::test]
 async fn peer_selection() {
     let config = ConnectivityConfig {
-        min_connectivity: 1.0,
+        min_connectivity: 1,
         ..Default::default()
     };
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
@@ -366,9 +298,9 @@ async fn peer_selection() {
     .collect::<Vec<_>>();
 
     connectivity
-        .add_managed_peers(peers.iter().take(5).map(|p| p.node_id.clone()).collect())
-        .await
-        .unwrap();
+        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .collect::<Vec<_>>()
+        .await;
 
     let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
     unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
@@ -378,7 +310,7 @@ async fn peer_selection() {
     }
 
     // Wait for all peers to be connected (i.e. for the connection manager events to be received)
-    let mut _events = collect_try_recv!(event_stream, take = 12, timeout = Duration::from_secs(10));
+    let mut _events = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let conns = connectivity
         .select_connections(ConnectivitySelection::random_nodes(10, vec![connections[0]
@@ -402,4 +334,83 @@ async fn peer_selection() {
         let c = conns.remove(0);
         assert_eq!(c.peer_node_id(), i.peer_node_id());
     }
+}
+
+#[runtime::test]
+async fn pool_management() {
+    let config = ConnectivityConfig {
+        min_connectivity: 1,
+        connection_pool_refresh_interval: Duration::from_secs(10),
+        reaper_min_inactive_age: Duration::from_secs(10),
+        is_connection_reaping_enabled: true,
+        ..Default::default()
+    };
+    let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
+        setup_connectivity_manager(config);
+    let peers = add_test_peers(&peer_manager, 10).await;
+
+    let connections = future::join_all(
+        peers
+            .iter()
+            .cloned()
+            .map(|peer| create_peer_connection_mock_pair(peer, node_identity.to_peer())),
+    )
+    .await
+    .into_iter()
+    .map(|(_, _, conn, _)| conn)
+    .collect::<Vec<_>>();
+
+    connectivity
+        .dial_many_peers(peers.iter().take(5).map(|p| p.node_id.clone()))
+        .collect::<Vec<_>>()
+        .await;
+
+    let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
+    unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = events.remove(0));
+    // 10 connections
+    for conn in &connections {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone()));
+    }
+
+    // Wait for all peers to be connected (i.e. for the connection manager events to be received)
+    let _ = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
+
+    let mut important_connection = connectivity
+        .get_connection(connections[0].peer_node_id().clone())
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Drop all connections references
+    for mut conn in connections {
+        if conn != important_connection {
+            assert_eq!(conn.handle_count(), 2);
+            // The peer connection mock does not "automatically" publish event to connectivity manager
+            conn.disconnect().await.unwrap();
+            cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
+        }
+    }
+
+    assert_eq!(important_connection.handle_count(), 2);
+
+    let events = collect_try_recv!(event_stream, take = 9, timeout = Duration::from_secs(10));
+    for event in events {
+        unpack_enum!(ConnectivityEvent::PeerDisconnected(_) = event);
+    }
+
+    assert_eq!(important_connection.handle_count(), 2);
+
+    let conns = connectivity.get_active_connections().await.unwrap();
+
+    assert_eq!(conns.len(), 1);
+    important_connection.disconnect().await.unwrap();
+    cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+        important_connection.peer_node_id().clone(),
+    ));
+    drop(important_connection);
+
+    let mut events = collect_try_recv!(event_stream, take = 1, timeout = Duration::from_secs(10));
+    unpack_enum!(ConnectivityEvent::PeerDisconnected(_) = events.remove(0));
+    let conns = connectivity.get_active_connections().await.unwrap();
+    assert!(conns.is_empty());
 }

@@ -218,10 +218,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            sidechain_checkpoint: match features.sidechain_checkpoint {
-                Some(a) => Some(a.into()),
-                None => None,
-            },
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.into()),
         })
     }
 }
@@ -233,10 +230,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id,
-            parent_public_key: match features.parent_public_key {
-                Some(a) => Some(a.as_bytes().to_vec()),
-                None => None,
-            },
+            parent_public_key: features.parent_public_key.map(|a| a.as_bytes().to_vec()),
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
@@ -314,8 +308,7 @@ impl TryFrom<proto::types::AggregateBody> for AggregateBody {
         let inputs = try_convert_all(body.inputs)?;
         let outputs = try_convert_all(body.outputs)?;
         let kernels = try_convert_all(body.kernels)?;
-        let mut body = AggregateBody::new(inputs, outputs, kernels);
-        body.sort();
+        let body = AggregateBody::new(inputs, outputs, kernels);
         Ok(body)
     }
 }

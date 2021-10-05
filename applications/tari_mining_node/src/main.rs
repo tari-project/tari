@@ -189,10 +189,10 @@ async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
 ) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_addr(&global);
+    let base_node_addr = config.base_node_addr(global);
     info!("Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
-    let wallet_addr = config.wallet_addr(&global);
+    let wallet_addr = config.wallet_addr(global);
     info!("Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
 
@@ -247,7 +247,6 @@ async fn mining_cycle(
 
     // 4. Initialize miner and start receiving mining statuses in the loop
     let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
-    let template_time = Instant::now();
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
     while let Some(report) = reports.next().await {
@@ -285,10 +284,10 @@ async fn mining_cycle(
                 block_submitted = true;
                 break;
             } else {
-                display_report(&report, config, template_time).await;
+                display_report(&report, config).await;
             }
         } else {
-            display_report(&report, config, template_time).await;
+            display_report(&report, config).await;
         }
         if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_timeout_sec() {
             validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
@@ -300,22 +299,16 @@ async fn mining_cycle(
     Ok(block_submitted)
 }
 
-async fn display_report(report: &MiningReport, config: &MinerConfig, template_time: Instant) {
+async fn display_report(report: &MiningReport, config: &MinerConfig) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
-    let estimated_time = report.target_difficulty as f64 / (hashrate * config.num_mining_threads as f64 * 1000000.0);
-    let remaining = estimated_time as i32 - template_time.elapsed().as_secs() as i32;
     debug!(
-        "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {}, Estimated block in \
-         approx. {}m{}s (+/- Ave. {:.0}s)",
+        "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
         hashrate * config.num_mining_threads as f64,
         config.num_mining_threads,
         report.height,
         report.target_difficulty,
-        remaining / 60,
-        remaining % 60,
-        estimated_time,
     );
 }
 

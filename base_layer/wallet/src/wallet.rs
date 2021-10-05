@@ -195,6 +195,7 @@ where
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
+                wallet_database.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
@@ -499,10 +500,10 @@ where
             .await;
 
         match coin_split_tx {
-            Ok((tx_id, split_tx, amount, fee)) => {
+            Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, fee, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, message)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),

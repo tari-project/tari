@@ -100,9 +100,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
         let identity = self.wallet.comms.node_identity();
         Ok(Response::new(GetIdentityResponse {
-            public_key: identity.public_key().to_string().as_bytes().to_vec(),
+            public_key: identity.public_key().to_string().into_bytes(),
             public_address: identity.public_address().to_string(),
-            node_id: identity.node_id().to_string().as_bytes().to_vec(),
+            node_id: identity.node_id().to_string().into_bytes(),
         }))
     }
 
@@ -377,7 +377,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let fee = transaction.body.get_total_fee();
 
         let owner_commitments = transaction
             .body
@@ -386,7 +385,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, fee, 0.into(), "test mint transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), "test mint transaction".to_string())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

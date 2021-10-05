@@ -365,7 +365,23 @@ impl TransactionsTab {
                 }),
                 Style::default().fg(Color::White),
             );
-            let fee = Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White));
+            let fee_details = if tx.is_coinbase() {
+                Span::raw("")
+            } else {
+                Span::styled(
+                    format!(
+                        " (weight: {}g, #inputs: {}, #outputs: {})",
+                        tx.transaction.calculate_weight(),
+                        tx.transaction.body.inputs().len(),
+                        tx.transaction.body.outputs().len()
+                    ),
+                    Style::default().fg(Color::Gray),
+                )
+            };
+            let fee = Spans::from(vec![
+                Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
+                fee_details,
+            ]);
             let status_msg = if tx.cancelled {
                 "Cancelled".to_string()
             } else if !tx.valid {
@@ -380,11 +396,11 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
-            let excess_hex = if tx.transaction.body.kernels().is_empty() {
-                "".to_string()
-            } else {
-                tx.transaction.body.kernels()[0].excess_sig.get_signature().to_hex()
-            };
+            let excess_hex = tx
+                .transaction
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_default();
             let excess = Span::styled(excess_hex.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(&tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && !tx.cancelled {

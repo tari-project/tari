@@ -53,12 +53,13 @@ use tari_core::transactions::{
     transaction::OutputFeatures,
     CryptoFactories,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
-    contacts_service::storage::database::Contact,
+    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::{WalletError, WalletStorageError},
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         sqlite_db::WalletSqliteDatabase,
@@ -68,8 +69,12 @@ use tari_wallet::{
             run_migration_and_create_sqlite_connection,
         },
     },
-    test_utils::make_wallet_databases,
-    transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
+    test_utils::make_wallet_database_connection,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        handle::TransactionEvent,
+        storage::sqlite_db::TransactionServiceSqliteDatabase,
+    },
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -100,7 +105,7 @@ async fn create_wallet(
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
@@ -183,7 +188,7 @@ async fn test_wallet() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -195,7 +200,7 @@ async fn test_wallet() {
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
     let bob_wallet = create_wallet(
-        &bob_db_tempdir.path(),
+        bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
@@ -339,7 +344,7 @@ async fn test_wallet() {
 
     let mut shutdown_a = Shutdown::new();
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -365,7 +370,7 @@ async fn test_wallet() {
     // Test the partial db backup in this test so that we can work with the data generated during the test
     let mut shutdown_a = Shutdown::new();
     let alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -422,7 +427,7 @@ async fn test_do_not_overwrite_master_key() {
     let mut shutdown = Shutdown::new();
     let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
     let wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -438,7 +443,7 @@ async fn test_do_not_overwrite_master_key() {
     let shutdown = Shutdown::new();
     let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
     match create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -454,7 +459,7 @@ async fn test_do_not_overwrite_master_key() {
     // make sure we can create a new wallet with recovery key if the db file does not exist
     let dir = tempdir().unwrap();
     let _wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -472,7 +477,7 @@ async fn test_sign_message() {
 
     let shutdown = Shutdown::new();
     let mut wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -530,7 +535,7 @@ fn test_store_and_forward_send_tx() {
 
     let mut alice_wallet = alice_runtime
         .block_on(create_wallet(
-            &alice_db_tempdir.path(),
+            alice_db_tempdir.path(),
             "alice_db",
             factories.clone(),
             shutdown_a.to_signal(),
@@ -541,7 +546,7 @@ fn test_store_and_forward_send_tx() {
 
     let bob_wallet = bob_runtime
         .block_on(create_wallet(
-            &bob_db_tempdir.path(),
+            bob_db_tempdir.path(),
             "bob_db",
             factories.clone(),
             shutdown_b.to_signal(),
@@ -553,7 +558,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories.clone(),
             shutdown_c.to_signal(),
@@ -609,7 +614,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories,
             shutdown_c2.to_signal(),
@@ -679,8 +684,8 @@ async fn test_import_utxo() {
         PeerFeatures::COMMUNICATION_NODE,
     );
     let temp_dir = tempdir().unwrap();
-    let (wallet_backend, tx_backend, oms_backend, contacts_backend, _temp_dir) = make_wallet_databases(None);
-    let comms_config = CommsConfig {
+    let (connection, _temp_dir) = make_wallet_database_connection(None);
+    let comms_config = P2pConfig {
         network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -717,10 +722,10 @@ async fn test_import_utxo() {
     );
     let mut alice_wallet = Wallet::start(
         config,
-        WalletDatabase::new(wallet_backend),
-        tx_backend,
-        oms_backend,
-        contacts_backend,
+        WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
+        TransactionServiceSqliteDatabase::new(connection.clone(), None),
+        OutputManagerSqliteDatabase::new(connection.clone(), None),
+        ContactsServiceSqliteDatabase::new(connection),
         shutdown.to_signal(),
         None,
     )

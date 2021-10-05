@@ -1,6 +1,8 @@
-const { setWorldConstructor, After, BeforeAll } = require("cucumber");
+const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
+const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
+const DanNodeProcess = require("../../helpers/danNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -18,6 +20,7 @@ class CustomWorld {
     this.checkAutoTransactions = true;
     this.seeds = {};
     this.nodes = {};
+    this.dan_nodes = {};
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
@@ -69,6 +72,16 @@ class CustomWorld {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
   }
 
+  createDanNode(name, options) {
+    return new DanNodeProcess(name, false, options, this.logFilePathBaseNode);
+  }
+
+  async createAndAddDanNode(name) {
+    const node = this.createDanNode(name);
+    await node.init();
+    await this.addDanNode(name, node);
+  }
+
   async createAndAddNode(name, addresses) {
     const node = this.createNode(name);
     if (Array.isArray(addresses)) {
@@ -78,6 +91,11 @@ class CustomWorld {
     }
     await node.startNew();
     await this.addNode(name, node);
+  }
+
+  async addDanNode(name, process) {
+    this.dan_nodes[name] = process;
+    // this.clients[name] = await process.createGrpcClient();
   }
 
   async addNode(name, process) {
@@ -143,6 +161,12 @@ class CustomWorld {
     if (txInputs == null) {
       return result;
     }
+    // This function is called from steps with timeout = -1. So we need to
+    // write something to the console from time to time. Because otherwise
+    // it will timeout and the tests will be killed.
+    let keepAlive = setInterval(() => {
+      console.log(".");
+    }, 1000 * 60 * 10);
     let i = 0;
     for (const input of txInputs) {
       const txn = new TransactionBuilder();
@@ -154,6 +178,10 @@ class CustomWorld {
         completedTx
       );
       if (this.checkAutoTransactions && submitResult.result != "ACCEPTED") {
+        console.log(
+          "Automated transaction failed. If this is not intended add step :",
+          "`I do not expect all automated transactions to succeed` !"
+        );
         result = false;
       }
       if (submitResult.result == "ACCEPTED") {
@@ -164,6 +192,7 @@ class CustomWorld {
         break;
       }
     }
+    clearInterval(keepAlive);
     console.log(
       `Created ${i} transactions for node: ${name} at height: ${height}`
     );
@@ -233,7 +262,7 @@ class CustomWorld {
   }
 
   getNode(name) {
-    const node = this.nodes[name] || this.seeds[name];
+    const node = this.nodes[name] || this.seeds[name] || this.dan_nodes[name];
     if (!node) {
       throw new Error(`Node not found with name '${name}'`);
     }
@@ -350,11 +379,16 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({ timeout: 1200000 }, async function () {
+BeforeAll({ timeout: 2400000 }, async function () {
   const baseNode = new BaseNodeProcess("compile");
   console.log("Compiling base node...");
   await baseNode.init();
   await baseNode.compile();
+
+  const danNode = new DanNodeProcess("compile");
+  console.log("Compiling dan node...");
+  await danNode.init();
+  await danNode.compile();
 
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");
@@ -367,9 +401,21 @@ BeforeAll({ timeout: 1200000 }, async function () {
     null,
     "127.0.0.1:9998"
   );
+
   console.log("Compiling mmproxy...");
   await mmProxy.init();
   await mmProxy.compile();
+
+  const stratumtranscoder = new StratumTranscoderProcess(
+    "compile",
+    "127.0.0.1:9999",
+    "127.0.0.1:9998",
+    null
+  );
+
+  console.log("Compiling stratum transcoder...");
+  await stratumtranscoder.init();
+  await stratumtranscoder.compile();
 
   const miningNode = new MiningNodeProcess(
     "compile",
@@ -378,14 +424,23 @@ BeforeAll({ timeout: 1200000 }, async function () {
     "127.0.0.1:9998"
     // this.logFilePathMiningNode
   );
+
   console.log("Compiling mining node...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
   await InterfaceFFI.compile();
-  await InterfaceFFI.init();
   console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
+
+  console.log("World ready, now lets run some tests! :)");
+});
+
+Before(async function (testCase) {
+  console.log(`Testing scenario "${testCase.pickle.name}"`);
 });
 
 After(async function (testCase) {

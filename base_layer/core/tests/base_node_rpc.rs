@@ -46,6 +46,7 @@ use std::convert::TryFrom;
 
 use tempfile::{tempdir, TempDir};
 
+use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
@@ -112,6 +113,8 @@ async fn setup() -> (
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
+        randomx_vm_cnt: 0,
+        randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
     let request_mock = RpcRequestMock::new(base_node.comms.peer_manager());
@@ -179,7 +182,7 @@ async fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block0.block(), vec![tx1.clone()], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
     base_node
@@ -226,7 +229,7 @@ async fn test_base_node_wallet_rpc() {
     // Now we will Mine block 2 so that we can see 1 confirmation on tx1
     let mut block2 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![], &consensus_manager))
         .unwrap();
 
     block2.header.output_mmr_size += 1;

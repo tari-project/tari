@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::stream_id::{Id, StreamId};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -34,4 +35,12 @@ where T: AsyncRead + AsyncWrite + Unpin {
             .max_frame_length(max_frame_len)
             .new_codec(),
     )
+}
+
+impl<T> StreamId for CanonicalFraming<T>
+where T: StreamId
+{
+    fn stream_id(&self) -> Id {
+        self.get_ref().stream_id()
+    }
 }

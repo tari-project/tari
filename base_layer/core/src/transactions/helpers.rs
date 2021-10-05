@@ -158,7 +158,7 @@ impl TestParams {
         (self.script_private_key.clone(), self.get_script_public_key())
     }
 
-    /// Create a random transaction input for the given amount and maturity period. The input ,its unblinded
+    /// Create a random transaction input for the given amount and maturity period. The input's unblinded
     /// parameters are returned.
     pub fn create_input(&self, params: UtxoTestParams) -> (TransactionInput, UnblindedOutput) {
         let unblinded = self.create_unblinded_output(params);
@@ -537,8 +537,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
     let metadata_sig =
-        TransactionOutput::create_final_metadata_signature(&value, &keys.k, &script, &features, &offset_keys.k)
-            .unwrap();
+        TransactionOutput::create_final_metadata_signature(&value, &keys.k, script, &features, &offset_keys.k).unwrap();
 
     let utxo = TransactionOutput::new(
         features,

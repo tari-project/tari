@@ -66,10 +66,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
             "Found {} owned outputs that contain assets",
             outputs.len()
         );
-        let assets: Vec<Asset> = outputs
-            .into_iter()
-            .map(|unblinded_output| convert_to_asset(unblinded_output))
-            .collect::<Result<_, _>>()?;
+        let assets: Vec<Asset> = outputs.into_iter().map(convert_to_asset).collect::<Result<_, _>>()?;
         Ok(assets)
     }
 

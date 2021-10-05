@@ -82,29 +82,29 @@ impl Controller {
 
     fn read_message(&mut self) -> Result<Option<String>, Error> {
         if self.stream.is_none() {
-            return Err(Error::ConnectionError("broken pipe".to_string()));
+            return Err(Error::Connection("broken pipe".to_string()));
         }
         let mut line = String::new();
         match self.stream.as_mut().unwrap().read_line(&mut line) {
             Ok(_) => {
                 // stream is not returning a proper error on disconnect
                 if line.is_empty() {
-                    return Err(Error::ConnectionError("broken pipe".to_string()));
+                    return Err(Error::Connection("broken pipe".to_string()));
                 }
                 Ok(Some(line))
             },
-            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::ConnectionError("broken pipe".to_string())),
+            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::Connection("broken pipe".to_string())),
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
             Err(e) => {
                 error!("Communication error with stratum server: {}", e);
-                Err(Error::ConnectionError("broken pipe".to_string()))
+                Err(Error::Connection("broken pipe".to_string()))
             },
         }
     }
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
         if self.stream.is_none() {
-            return Err(Error::ConnectionError(String::from("No server connection")));
+            return Err(Error::Connection(String::from("No server connection")));
         }
         debug!("sending request: {}", message);
         let _ = self.stream.as_mut().unwrap().write(message.as_bytes());
@@ -214,7 +214,7 @@ impl Controller {
         debug!("Received request type: {}", req.method);
         match req.method.as_str() {
             "job" => match req.params {
-                None => Err(Error::RequestError("No params in job request".to_owned())),
+                None => Err(Error::Request("No params in job request".to_owned())),
                 Some(params) => {
                     let job = serde_json::from_value::<types::job_params::JobParams>(params)?;
                     info!(
@@ -224,7 +224,7 @@ impl Controller {
                     self.send_miner_job(job)
                 },
             },
-            _ => Err(Error::RequestError("Unknown method".to_owned())),
+            _ => Err(Error::Request("Unknown method".to_owned())),
         }
     }
 
@@ -316,39 +316,37 @@ impl Controller {
                 // read messages from server
                 if time::get_time().sec > next_server_read {
                     match self.read_message() {
-                        Ok(message) => {
-                            if let Some(m) = message {
-                                // figure out what kind of message,
-                                // and dispatch appropriately
-                                debug!("Received message: {}", m);
-                                // Deserialize to see what type of object it is
-                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
-                                    // Is this a response or request?
-                                    if v["method"] == "job" {
-                                        // this is a request
-                                        match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
-                                            Err(e) => error!("Error parsing request {} : {:?}", m, e),
-                                            Ok(request) => {
-                                                if let Err(err) = self.handle_request(request) {
-                                                    error!("Error handling request {} : :{:?}", m, err)
-                                                }
-                                            },
-                                        }
-                                    } else {
-                                        // this is a response
-                                        match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
-                                            Err(e) => error!("Error parsing response {} : {:?}", m, e),
-                                            Ok(response) => {
-                                                if let Err(err) = self.handle_response(response) {
-                                                    error!("Error handling response {} : :{:?}", m, err)
-                                                }
-                                            },
-                                        }
+                        Ok(Some(m)) => {
+                            // figure out what kind of message,
+                            // and dispatch appropriately
+                            debug!("Received message: {}", m);
+                            // Deserialize to see what type of object it is
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
+                                // Is this a response or request?
+                                if v["method"] == "job" {
+                                    // this is a request
+                                    match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
+                                        Err(e) => error!("Error parsing request {} : {:?}", m, e),
+                                        Ok(request) => {
+                                            if let Err(err) = self.handle_request(request) {
+                                                error!("Error handling request {} : :{:?}", m, err)
+                                            }
+                                        },
                                     }
-                                    continue;
                                 } else {
-                                    error!("Error parsing message: {}", m)
+                                    // this is a response
+                                    match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
+                                        Err(e) => error!("Error parsing response {} : {:?}", m, e),
+                                        Ok(response) => {
+                                            if let Err(err) = self.handle_response(response) {
+                                                error!("Error handling response {} : :{:?}", m, err)
+                                            }
+                                        },
+                                    }
                                 }
+                                continue;
+                            } else {
+                                error!("Error parsing message: {}", m)
                             }
                         },
                         Err(e) => {
@@ -356,6 +354,7 @@ impl Controller {
                             self.stream = None;
                             continue;
                         },
+                        _ => error!("Error reading message: None"),
                     }
                     next_server_read = time::get_time().sec + server_read_interval;
                 }

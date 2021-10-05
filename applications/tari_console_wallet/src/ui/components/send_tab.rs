@@ -366,14 +366,11 @@ impl SendTab {
                 self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
-                let one_sided_transaction = matches!(
-                    self.confirmation_dialog,
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend)
-                );
+                let one_sided_transaction =
+                    matches!(self.confirmation_dialog, Some(ConfirmationDialogType::OneSidedSend));
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::ConfirmNormalSend) |
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+                    Some(ConfirmationDialogType::NormalSend) | Some(ConfirmationDialogType::OneSidedSend) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
@@ -445,7 +442,7 @@ impl SendTab {
                             return KeyHandled::Handled;
                         }
                     },
-                    Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                    Some(ConfirmationDialogType::DeleteContact) => {
                         if 'y' == c {
                             if let Some(c) = self
                                 .contacts_list_state
@@ -564,7 +561,7 @@ impl SendTab {
         if self.show_contacts {
             match c {
                 'd' => {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmDeleteContact);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::DeleteContact);
                     return KeyHandled::Handled;
                 },
                 '\n' => {
@@ -663,7 +660,7 @@ impl<B: Backend> Component<B> for SendTab {
 
         match self.confirmation_dialog {
             None => (),
-            Some(ConfirmationDialogType::ConfirmNormalSend) => {
+            Some(ConfirmationDialogType::NormalSend) => {
                 draw_dialog(
                     f,
                     area,
@@ -674,7 +671,7 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+            Some(ConfirmationDialogType::OneSidedSend) => {
                 draw_dialog(
                     f,
                     area,
@@ -685,7 +682,7 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+            Some(ConfirmationDialogType::DeleteContact) => {
                 draw_dialog(
                     f,
                     area,
@@ -782,9 +779,9 @@ impl<B: Backend> Component<B> for SendTab {
                 }
 
                 if matches!(c, 'o') {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmOneSidedSend);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::OneSidedSend);
                 } else {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmNormalSend);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::NormalSend);
                 }
             },
             _ => {},
@@ -889,7 +886,7 @@ pub enum ContactInputMode {
 
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
-    ConfirmNormalSend,
-    ConfirmOneSidedSend,
-    ConfirmDeleteContact,
+    NormalSend,
+    OneSidedSend,
+    DeleteContact,
 }

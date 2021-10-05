@@ -117,17 +117,19 @@ async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
     }
     count++;
     await sleep(sleepMs);
+    process.stdout.write(".");
   }
 }
 
-async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
+async function waitForPredicate(predicate, timeOut, sleepMs = 500) {
   const now = new Date();
   while (new Date() - now < timeOut) {
     const val = await predicate();
     if (val) {
       return val;
     }
-    await sleep(sleep_ms);
+    await sleep(sleepMs);
+    process.stdout.write(".");
   }
   throw new Error(`Predicate was not true after ${timeOut} ms`);
 }

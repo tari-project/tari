@@ -359,7 +359,7 @@ class TransactionBuilder {
     const excess = tari_crypto.commit(privateKey, BigInt(0));
     this.kv.new_key("nonce");
     const public_nonce = this.kv.public_key("nonce");
-    const challenge = this.buildChallenge(public_nonce, 0, lockHeight);
+    const challenge = this.buildChallenge(public_nonce, 0, 0);
     const private_nonce = this.kv.private_key("nonce");
     const sig = tari_crypto.sign_challenge_with_nonce(
       privateKey,
@@ -420,7 +420,7 @@ class TransactionBuilder {
         {
           features: 1,
           fee: 0,
-          lock_height: lockHeight,
+          lock_height: 0,
           excess: Buffer.from(excess.commitment, "hex"),
           excess_sig: {
             public_nonce: Buffer.from(sig.public_nonce, "hex"),

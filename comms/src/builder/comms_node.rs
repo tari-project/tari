@@ -190,7 +190,7 @@ impl UnspawnedCommsNode {
         connection_manager.add_protocols(protocols);
 
         //---------------------------------- Spawn Actors --------------------------------------------//
-        connectivity_manager.create().spawn();
+        connectivity_manager.spawn();
         connection_manager.spawn();
 
         info!(target: LOG_TARGET, "Hello from comms!");
@@ -239,11 +239,6 @@ impl UnspawnedCommsNode {
     /// Return a cloned atomic reference of the NodeIdentity
     pub fn node_identity(&self) -> Arc<NodeIdentity> {
         Arc::clone(&self.node_identity)
-    }
-
-    /// Return an owned copy of a ConnectionManagerRequester. Used to initiate connections to peers.
-    pub fn connection_manager(&self) -> ConnectionManagerRequester {
-        self.connection_manager_requester.clone()
     }
 
     /// Return an owned copy of a ConnectivityRequester. This is the async interface to the ConnectivityManager

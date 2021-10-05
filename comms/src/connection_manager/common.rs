@@ -160,7 +160,7 @@ pub async fn find_unbanned_peer(
     peer_manager: &PeerManager,
     authenticated_public_key: &CommsPublicKey,
 ) -> Result<Option<Peer>, ConnectionManagerError> {
-    match peer_manager.find_by_public_key(&authenticated_public_key).await {
+    match peer_manager.find_by_public_key(authenticated_public_key).await {
         Ok(peer) if peer.is_banned() => Err(ConnectionManagerError::PeerBanned),
         Ok(peer) => Ok(Some(peer)),
         Err(err) if err.is_peer_not_found() => Ok(None),

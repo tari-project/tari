@@ -29,11 +29,7 @@ use crate::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tari_comms::{
     log_if_error,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
@@ -45,7 +41,6 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{mpsc, oneshot},
     task,
-    time,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -228,7 +223,7 @@ impl DhtDiscoveryService {
         public_key: &CommsPublicKey,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<Peer, DhtDiscoveryError> {
-        let node_id = self.validate_raw_node_id(&public_key, &discovery_msg.node_id)?;
+        let node_id = self.validate_raw_node_id(public_key, &discovery_msg.node_id)?;
 
         let addresses = discovery_msg
             .addresses
@@ -242,7 +237,7 @@ impl DhtDiscoveryService {
         let peer = self
             .peer_manager
             .add_or_update_online_peer(
-                &public_key,
+                public_key,
                 node_id,
                 addresses,
                 PeerFeatures::from_bits_truncate(discovery_msg.peer_features),
@@ -327,8 +322,7 @@ impl DhtDiscoveryService {
             "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
         );
 
-        let send_states = self
-            .outbound_requester
+        self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
                     .broadcast(Vec::new())
@@ -342,32 +336,6 @@ impl DhtDiscoveryService {
             .resolve()
             .await
             .map_err(DhtDiscoveryError::DiscoverySendFailed)?;
-
-        // Spawn a task to log how the sending of discovery went
-        task::spawn(async move {
-            debug!(
-                target: LOG_TARGET,
-                "Discovery sent to {} peer(s). Waiting to see how many got through.",
-                send_states.len()
-            );
-            let result = time::timeout(Duration::from_secs(10), send_states.wait_percentage_success(0.51)).await;
-            match result {
-                Ok((succeeded, failed)) => {
-                    let num_succeeded = succeeded.len();
-                    let num_failed = failed.len();
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Discovery sent to a majority of neighbouring peers ({} succeeded, {} failed)",
-                        num_succeeded,
-                        num_failed
-                    );
-                },
-                Err(_) => {
-                    warn!(target: LOG_TARGET, "Failed to send discovery to a majority of peers");
-                },
-            }
-        });
 
         Ok(())
     }

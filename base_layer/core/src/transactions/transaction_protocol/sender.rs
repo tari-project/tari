@@ -20,17 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
-
-use digest::Digest;
-use serde::{Deserialize, Serialize};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
-    tari_utilities::ByteArray,
-};
-
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::*,
@@ -56,7 +45,16 @@ use crate::transactions::{
         TxId,
     },
 };
+use digest::Digest;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    script::TariScript,
+    tari_utilities::ByteArray,
+};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -370,7 +368,7 @@ impl SenderTransactionProtocol {
                     features: recipient_output_features,
                     script: recipient_script,
                     sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
-                    public_commitment_nonce: PublicKey::from_secret_key(&private_commitment_nonce),
+                    public_commitment_nonce: PublicKey::from_secret_key(private_commitment_nonce),
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -409,8 +407,8 @@ impl SenderTransactionProtocol {
                 let index = info.outputs.len() - 1;
                 if info.outputs[index].verify_metadata_signature().is_err() {
                     info.outputs[index].metadata_signature = SenderTransactionProtocol::finalize_metadata_signature(
-                        &private_commitment_nonce,
-                        &recipient_sender_offset_private_key,
+                        private_commitment_nonce,
+                        recipient_sender_offset_private_key,
                         &info.outputs[index].clone(),
                         &PedersenCommitmentFactory::default(),
                     )?;
@@ -434,7 +432,7 @@ impl SenderTransactionProtocol {
         commitment_factory: &PedersenCommitmentFactory,
     ) -> Result<ComSignature, TPE> {
         // Create sender signature
-        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
+        let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
         let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
         let sender_signature =
             Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
@@ -445,7 +443,7 @@ impl SenderTransactionProtocol {
         let u_aggregated = u + sender_signature;
         let aggregated_metadata_signature = ComSignature::new(r_pub_aggregated, u_aggregated, v.clone());
 
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         if !aggregated_metadata_signature.verify_challenge(
             &(&output.commitment + &sender_offset_public_key),
             &e,

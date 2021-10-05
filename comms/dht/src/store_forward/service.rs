@@ -49,6 +49,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     task,
     time,
+    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
@@ -212,6 +213,7 @@ impl StoreAndForwardService {
 
     async fn run(mut self) {
         let mut cleanup_ticker = time::interval(CLEANUP_INTERVAL);
+        cleanup_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             tokio::select! {

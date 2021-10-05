@@ -84,14 +84,7 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
         config.console_wallet_peer_db_path =
             concatenate_paths_normalized(prepend.clone(), config.console_wallet_peer_db_path.clone());
     }
-    if !config.console_wallet_identity_file.is_absolute() {
-        config.console_wallet_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_identity_file.clone());
-    }
-    if !config.console_wallet_tor_identity_file.is_absolute() {
-        config.console_wallet_tor_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_tor_identity_file.clone());
-    }
+
     if !config.wallet_db_file.is_absolute() {
         config.wallet_db_file = concatenate_paths_normalized(prepend.clone(), config.wallet_db_file.clone());
     }

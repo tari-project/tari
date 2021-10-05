@@ -1076,11 +1076,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .get_block_sync_info()
             .map(|info| {
-                let node_ids = info
-                    .sync_peers
-                    .iter()
-                    .map(|x| x.to_string().as_bytes().to_vec())
-                    .collect();
+                let node_ids = info.sync_peers.iter().map(|x| x.to_string().into_bytes()).collect();
                 tari_rpc::SyncInfoResponse {
                     tip_height: info.tip_height,
                     local_height: info.local_height,
@@ -1108,7 +1104,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         match block {
             Some(block) => {
                 let (block, acc_data, confirmations, _) = block.dissolve();
-                let total_block_reward = self.consensus_rules.calculate_coinbase_and_fees(&block);
+                let total_block_reward = self
+                    .consensus_rules
+                    .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
 
                 let resp = tari_rpc::BlockHeaderResponse {
                     difficulty: acc_data.achieved_difficulty.into(),

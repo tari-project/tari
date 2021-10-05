@@ -466,9 +466,9 @@ where TBackend: OutputManagerBackend + 'static
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
-        Ok(UnblindedOutputBuilder::new(value, spending_key.clone())
+        Ok(UnblindedOutputBuilder::new(value, spending_key)
             .with_features(features)
-            .with_script(script.clone())
+            .with_script(script)
             .with_input_data(input_data)
             .with_script_private_key(script_private_key)
             .with_unique_id(unique_id)
@@ -951,7 +951,7 @@ where TBackend: OutputManagerBackend + 'static
             &spending_key.clone(),
             &script,
             &output_features,
-            &&sender_offset_private_key,
+            &sender_offset_private_key,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
@@ -1316,7 +1316,7 @@ where TBackend: OutputManagerBackend + 'static
         split_count: usize,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
-    ) -> Result<(TxId, Transaction, MicroTari, MicroTari), OutputManagerError> {
+    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
         trace!(
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."
@@ -1425,7 +1425,7 @@ where TBackend: OutputManagerBackend + 'static
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.take_transaction()?;
-        Ok((tx_id, tx, fee, utxos_total_value))
+        Ok((tx_id, tx, utxos_total_value))
     }
 
     /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows

@@ -209,7 +209,10 @@ impl WalletConnectivityService {
         loop {
             let node_id = match self.current_base_node() {
                 Some(n) => n,
-                None => return,
+                None => {
+                    self.set_online_status(OnlineStatus::Offline);
+                    return;
+                },
             };
             debug!(
                 target: LOG_TARGET,
@@ -248,9 +251,8 @@ impl WalletConnectivityService {
     }
 
     async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {
-        self.connectivity.add_managed_peers(vec![peer.clone()]).await?;
-        let conn = match self.try_dial_peer(peer).await? {
-            Some(peer) => peer,
+        let conn = match self.try_dial_peer(peer.clone()).await? {
+            Some(c) => c,
             None => return Ok(false),
         };
         debug!(
@@ -265,11 +267,7 @@ impl WalletConnectivityService {
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
         });
         self.notify_pending_requests().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Successfully established RPC connection {}",
-            conn.peer_node_id()
-        );
+        debug!(target: LOG_TARGET, "Successfully established RPC connection {}", peer);
         Ok(true)
     }
 
