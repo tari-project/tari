@@ -1,4 +1,4 @@
-const fs = require("fs/promises");
+const fs = require("fs").promises;
 const yargs = require("yargs");
 const path = require("path");
 const helpers = require("./helpers");

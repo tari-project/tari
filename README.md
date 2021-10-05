@@ -491,7 +491,7 @@ For pooled SHA3 mining:
 #num_mining_threads=8
 
 # Stratum Mode configuration
-# mining_pool_address = "miningcore.tarilabs.com:3052"
+# mining_pool_address = "miningcore.tari.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY" 
 # mining_worker_name = "worker1"
 ```
