@@ -20,55 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ConfigurationError;
-use config::Config;
-use serde::Deserialize;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tonic_build::configure()
+        .build_server(true)
+        .format(false)
+        .compile(&["proto/validator_node.proto"], &["proto"])?;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct DanNodeConfig {
-    pub committee: Vec<String>,
-    pub phase_timeout: u64,
-    pub template_id: String,
-}
-
-impl DanNodeConfig {
-    pub fn new(
-        committee: Vec<String>,
-        phase_timeout: u64,
-        template_id: String,
-    ) -> Result<Option<DanNodeConfig>, ConfigurationError> {
-        if committee.len() == 0 {
-            Ok(None)
-        } else {
-            Ok(Some(DanNodeConfig {
-                committee,
-                phase_timeout,
-                template_id,
-            }))
-        }
-    }
-
-    pub fn convert_if_present(cfg: Config) -> Result<Option<DanNodeConfig>, ConfigurationError> {
-        let section: DanNodeConfig = match cfg.get("dan_node") {
-            Ok(s) => s,
-            Err(e) => {
-                dbg!(e);
-                return Ok(None);
-            },
-        };
-        Ok(Some(section))
-        // dbg!(&section);
-        // if section.is_empty() {
-        //     Ok(None)
-        // } else {
-        //     Ok(Some(Self {
-        //         committee: section
-        //             .get("committee")
-        //             .ok_or_else(|| ConfigurationError::new("dan_node.committee", "missing committee"))?
-        //             .into_array()?
-        //             .into_iter()
-        //             .map(|c| c.into_str())
-        //             .collect::<Result<Vec<_>, ConfigError>>()?,
-        //     }))
-    }
+    tari_common::build::ProtobufCompiler::new()
+        .proto_paths(&["src/p2p/proto"])
+        .emit_rerun_if_changed_directives()
+        .compile()
+        .unwrap();
+    Ok(())
 }

@@ -116,7 +116,6 @@ where
             reason: "loop ended without setting this event".to_string(),
         };
 
-        // TODO: rather change the loop below to inside the wait for message
         let started = Instant::now();
 
         loop {
@@ -136,7 +135,6 @@ where
 
                 },
                 _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                    // TODO: perhaps this should be from the time the state was entered
                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                     break;
                 }

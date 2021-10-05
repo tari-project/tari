@@ -34,6 +34,7 @@ use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use std::{
     cmp,
+    convert::TryFrom,
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -70,20 +71,25 @@ pub struct MergeMiningProxyConfig {
     pub wait_for_initial_sync_at_startup: bool,
 }
 
-impl From<GlobalConfig> for MergeMiningProxyConfig {
-    fn from(config: GlobalConfig) -> Self {
-        Self {
+impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
+    type Error = String;
+
+    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
+        let inner = config
+            .merge_mining_config
+            .ok_or_else(|| "Merge mining config was missing".to_string())?;
+        Ok(Self {
             network: config.network,
-            monerod_url: config.monerod_url,
-            monerod_username: config.monerod_username,
-            monerod_password: config.monerod_password,
-            monerod_use_auth: config.monerod_use_auth,
+            monerod_url: inner.monerod_url,
+            monerod_username: inner.monerod_username,
+            monerod_password: inner.monerod_password,
+            monerod_use_auth: inner.monerod_use_auth,
             grpc_base_node_address: config.grpc_base_node_address,
             grpc_console_wallet_address: config.grpc_console_wallet_address,
-            proxy_host_address: config.proxy_host_address,
+            proxy_host_address: inner.proxy_host_address,
             proxy_submit_to_origin: config.proxy_submit_to_origin,
             wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
-        }
+        })
     }
 }
 

@@ -20,16 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::configure()
-        .build_server(true)
-        .format(false)
-        .compile(&["proto/dan_node.proto"], &["proto"])?;
+use crate::ConfigurationError;
+use config::Config;
+use serde::Deserialize;
 
-    tari_common::build::ProtobufCompiler::new()
-        .proto_paths(&["src/p2p/proto"])
-        .emit_rerun_if_changed_directives()
-        .compile()
-        .unwrap();
-    Ok(())
+#[derive(Debug, Clone, Deserialize)]
+pub struct ValidatorNodeConfig {
+    pub committee: Vec<String>,
+    pub phase_timeout: u64,
+    pub template_id: String,
+}
+
+impl ValidatorNodeConfig {
+    pub fn convert_if_present(cfg: Config) -> Result<Option<ValidatorNodeConfig>, ConfigurationError> {
+        let section: Self = match cfg.get("validator_node") {
+            Ok(s) => s,
+            Err(e) => {
+                dbg!(e);
+                return Ok(None);
+            },
+        };
+        Ok(Some(section))
+        // dbg!(&section);
+        // if section.is_empty() {
+        //     Ok(None)
+        // } else {
+        //     Ok(Some(Self {
+        //         committee: section
+        //             .get("committee")
+        //             .ok_or_else(|| ConfigurationError::new("dan_node.committee", "missing committee"))?
+        //             .into_array()?
+        //             .into_iter()
+        //             .map(|c| c.into_str())
+        //             .collect::<Result<Vec<_>, ConfigError>>()?,
+        //     }))
+    }
 }

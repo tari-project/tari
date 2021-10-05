@@ -344,7 +344,7 @@ impl UnblindedOutputBuilder {
                 .as_ref()
                 .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
             &self.features,
-            &sender_offset_private_key,
+            sender_offset_private_key,
         )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
@@ -490,11 +490,7 @@ impl UnblindedOutput {
         })
     }
 
-    pub fn as_transaction_output(
-        &self,
-        factories: &CryptoFactories,
-        verify_proof: bool,
-    ) -> Result<TransactionOutput, TransactionError> {
+    pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
             return Err(TransactionError::ValidationError(
@@ -523,7 +519,6 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-        verify_proof: bool,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {

@@ -71,13 +71,13 @@ impl AssetManagerHandle {
     pub async fn create_initial_asset_checkpoint(
         &mut self,
         public_key: &PublicKey,
-        merkle_root: &Vec<u8>,
+        merkle_root: &[u8],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
-                merkle_root: Box::new(merkle_root.clone()),
+                merkle_root: Box::new(merkle_root.to_vec()),
             })
             .await??
         {

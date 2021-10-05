@@ -212,11 +212,11 @@ impl CoinbaseBuilder {
         // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
-                .as_rewindable_transaction_output(&self.factories, rewind_data, false)
+                .as_rewindable_transaction_output(&self.factories, rewind_data)
                 .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
         } else {
             unblinded_output
-                .as_transaction_output(&self.factories, false)
+                .as_transaction_output(&self.factories)
                 .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
         };
         let kernel = KernelBuilder::new()

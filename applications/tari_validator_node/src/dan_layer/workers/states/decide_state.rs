@@ -107,7 +107,6 @@ where
         };
 
         self.received_new_view_messages.clear();
-        // TODO: rather change the loop below to inside the wait for message
         let started = Instant::now();
         loop {
             tokio::select! {
@@ -128,7 +127,6 @@ where
 
                               }
                       _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                                    // TODO: perhaps this should be from the time the state was entered
                                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                                     break;
                                 }
@@ -155,7 +153,6 @@ where
             return Ok(None);
         }
 
-        // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(&sender) {
             dbg!("Already received message from {:?}", &sender);
             return Ok(None);
@@ -207,7 +204,6 @@ where
     }
 
     fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {
-        // TODO: This can be done in one loop instead of two
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {

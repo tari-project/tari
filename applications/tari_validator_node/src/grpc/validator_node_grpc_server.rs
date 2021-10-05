@@ -24,7 +24,7 @@ use crate::{
         models::{Instruction, TokenId},
         services::{ConcreteMempoolService, MempoolService},
     },
-    grpc::dan_rpc,
+    grpc::validator_node_rpc as rpc,
     types::{create_com_sig_from_bytes, ComSig, PublicKey},
 };
 use std::sync::{Arc, Mutex};
@@ -32,32 +32,32 @@ use tari_crypto::tari_utilities::ByteArray;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 
-pub struct DanGrpcServer<TMempoolService: MempoolService> {
+pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService> {
     mempool_service: TMempoolService,
 }
 
-impl<TMempoolService: MempoolService> DanGrpcServer<TMempoolService> {
+impl<TMempoolService: MempoolService> ValidatorNodeGrpcServer<TMempoolService> {
     pub fn new(mempool_service: TMempoolService) -> Self {
         Self { mempool_service }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> dan_rpc::dan_node_server::DanNode
-    for DanGrpcServer<TMempoolService>
+impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService>
 {
     async fn get_token_data(
         &self,
-        request: tonic::Request<dan_rpc::GetTokenDataRequest>,
-    ) -> Result<tonic::Response<dan_rpc::GetTokenDataResponse>, tonic::Status> {
+        request: tonic::Request<rpc::GetTokenDataRequest>,
+    ) -> Result<tonic::Response<rpc::GetTokenDataResponse>, tonic::Status> {
         dbg!(&request);
         Err(Status::internal("Oh noes"))
     }
 
     async fn execute_instruction(
         &self,
-        request: Request<dan_rpc::ExecuteInstructionRequest>,
-    ) -> Result<Response<dan_rpc::ExecuteInstructionResponse>, Status> {
+        request: Request<rpc::ExecuteInstructionRequest>,
+    ) -> Result<Response<rpc::ExecuteInstructionResponse>, Status> {
         dbg!(&request);
         let request = request.into_inner();
         let instruction = Instruction::new(
@@ -76,12 +76,12 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> dan_rpc::d
         let mut mempool_service = self.mempool_service.clone();
         match mempool_service.submit_instruction(instruction) {
             Ok(_) => {
-                return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),
                 }))
             },
             Err(_) => {
-                return Ok(Response::new(dan_rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Errored".to_string(),
                 }))
             },

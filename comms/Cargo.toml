@@ -30,7 +30,7 @@ lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
 multiaddr = { version = "0.13.0" }
 nom = { version = "5.1.0", features = ["std"], default-features = false }
-openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }
+openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
 pin-project = "1.0.8"
 prost = "=0.8.0"
 rand = "0.8"

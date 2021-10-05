@@ -41,7 +41,7 @@ pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
 }
 
 pub struct TariCommsInboundConnectionService {
-    // TODO: remove
+    // TODO: remove option
     receiver: Option<TariCommsInboundReceiver<InstructionSet>>,
     sender: Sender<(CommsPublicKey, HotStuffMessage<InstructionSet>)>,
 }
@@ -95,7 +95,6 @@ impl TariCommsInboundConnectionService {
     async fn forward_message(&mut self, message: Arc<PeerMessage>) -> Result<(), DigitalAssetError> {
         // let from = message.authenticated_origin.as_ref().unwrap().clone();
         let from = message.source_peer.public_key.clone();
-        // TODO: Convert hotstuff
         let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
         let hot_stuff_message = proto_message
             .try_into()
