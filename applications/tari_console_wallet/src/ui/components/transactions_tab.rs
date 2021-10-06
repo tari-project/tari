@@ -1,18 +1,13 @@
 use std::collections::HashMap;
 
 use crate::ui::{
-    components::{balance::Balance, styles, Component},
-    state::AppState,
+    components::{balance::Balance, Component},
+    state::{AppState, CompletedTransactionInfo},
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
 use chrono::{DateTime, Local};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_wallet::transaction_service::storage::models::{
-    CompletedTransaction,
-    TransactionDirection,
-    TransactionStatus,
-};
+use tari_wallet::transaction_service::storage::models::{TransactionDirection, TransactionStatus};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -23,12 +18,14 @@ use tui::{
     Frame,
 };
 
+use super::styles;
+
 pub struct TransactionsTab {
     balance: Balance,
     selected_tx_list: SelectedTransactionList,
     pending_list_state: WindowedListState,
     completed_list_state: WindowedListState,
-    detailed_transaction: Option<CompletedTransaction>,
+    detailed_transaction: Option<CompletedTransactionInfo>,
     error_message: Option<String>,
     confirmation_dialog: bool,
 }
@@ -106,13 +103,12 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                match t.get_unique_id() {
-                    Some(unique_id) => column1_items.push(ListItem::new(Span::styled(
-                        format!("Token : {}", unique_id),
-                        amount_style,
-                    ))),
-                    None => column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style))),
-                }
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.source_public_key),
@@ -123,13 +119,12 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Green)
                 };
-                match t.get_unique_id() {
-                    Some(unique_id) => column1_items.push(ListItem::new(Span::styled(
-                        format!("Token : {}", unique_id),
-                        amount_style,
-                    ))),
-                    None => column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style))),
-                }
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
@@ -203,39 +198,32 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                match t.get_unique_id() {
-                    Some(unique_id) => column1_items.push(ListItem::new(Span::styled(
-                        format!("Token : {}", unique_id),
-                        amount_style,
-                    ))),
-                    None => column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style))),
-                }
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
-                let maturity = if let Some(output) = t.transaction.body.outputs().first() {
-                    output.features.maturity
-                } else {
-                    0
-                };
                 let color = match (t.cancelled, chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,
                     // not mature yet
-                    (_, Some(height)) if maturity > height => Color::Yellow,
+                    (_, Some(height)) if t.maturity > height => Color::Yellow,
                     // default
                     _ => Color::Green,
                 };
                 let amount_style = Style::default().fg(color);
-                match t.get_unique_id() {
-                    Some(unique_id) => column1_items.push(ListItem::new(Span::styled(
-                        format!("Token : {}", unique_id),
-                        amount_style,
-                    ))),
-                    None => column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style))),
-                }
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
@@ -290,9 +278,12 @@ impl TransactionsTab {
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
         let amount = Span::styled(
             match self.detailed_transaction.as_ref() {
-                Some(tx) => match tx.get_unique_id() {
-                    Some(_unique_id) => "Token:",
-                    None => "Amount",
+                Some(tx) => {
+                    if tx.unique_id.is_empty() {
+                        "Amount:"
+                    } else {
+                        "Token:"
+                    }
                 },
                 None => "Amount/Token:",
             },
@@ -358,22 +349,20 @@ impl TransactionsTab {
                     )
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
-            let amount = Span::styled(
-                match tx.get_unique_id() {
-                    Some(unique_id) => unique_id,
-                    None => tx.amount.to_string(),
-                },
-                Style::default().fg(Color::White),
-            );
-            let fee_details = if tx.is_coinbase() {
+            let amount = tx.amount.to_string();
+            let content = if tx.unique_id.is_empty() {
+                &amount
+            } else {
+                &tx.unique_id
+            };
+            let amount = Span::styled(content, Style::default().fg(Color::White));
+            let fee_details = if tx.is_coinbase {
                 Span::raw("")
             } else {
                 Span::styled(
                     format!(
                         " (weight: {}g, #inputs: {}, #outputs: {})",
-                        tx.transaction.calculate_weight(),
-                        tx.transaction.body.inputs().len(),
-                        tx.transaction.body.outputs().len()
+                        tx.weight, tx.inputs_count, tx.outputs_count
                     ),
                     Style::default().fg(Color::Gray),
                 )
@@ -396,12 +385,7 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
-            let excess_hex = tx
-                .transaction
-                .first_kernel_excess_sig()
-                .map(|s| s.get_signature().to_hex())
-                .unwrap_or_default();
-            let excess = Span::styled(excess_hex.as_str(), Style::default().fg(Color::White));
+            let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(&tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && !tx.cancelled {
                 format!("{} required confirmations met", required_confirmations)
@@ -421,15 +405,8 @@ impl TransactionsTab {
                     .unwrap_or_else(|| "N/A".to_string()),
                 Style::default().fg(Color::White),
             );
-            let maturity = tx
-                .transaction
-                .body
-                .outputs()
-                .first()
-                .map(|o| o.features.maturity)
-                .unwrap_or_else(|| 0);
-            let maturity = if maturity > 0 {
-                format!("Spendable at Block #{}", maturity)
+            let maturity = if tx.maturity > 0 {
+                format!("Spendable at Block #{}", tx.maturity)
             } else {
                 "N/A".to_string()
             };
