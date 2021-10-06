@@ -11,7 +11,8 @@ class DanNodeClient {
 
   async connect(port) {
     const PROTO_PATH =
-      __dirname + "/../../applications/tari_dan_node/proto/dan_node.proto";
+      __dirname +
+      "/../../applications/tari_validator_node/proto/validator_node.proto";
     const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
       keepCase: true,
       longs: String,
@@ -20,10 +21,13 @@ class DanNodeClient {
       oneofs: true,
     });
     const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
-    const tari = protoDescriptor.tari.dan.rpc;
+    const tari = protoDescriptor.tari.validator_node.rpc;
     this.client = await tryConnect(
       () =>
-        new tari.DanNode("127.0.0.1:" + port, grpc.credentials.createInsecure())
+        new tari.ValidatorNode(
+          "127.0.0.1:" + port,
+          grpc.credentials.createInsecure()
+        )
     );
 
     grpcPromise.promisifyAll(this.client, {
