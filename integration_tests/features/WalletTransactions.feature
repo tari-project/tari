@@ -78,11 +78,15 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     Then I import WALLET_B spent outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
+    Then I wait for 5 seconds
     Then I restart wallet WALLET_C
     Then I wait for wallet WALLET_C to have less than 1 uT
-    Then I check if last imported transactions are invalid in wallet WALLET_C
+    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
+    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
+    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
+    #Then I check if last imported transactions are invalid in wallet WALLET_C
 
-  @critical @flaky
+  @critical @flakey
   Scenario: Wallet imports reorged outputs that become invalidated
     # Chain 1
     Given I have a seed node SEED_B
@@ -100,7 +104,10 @@ Feature: Wallet Transactions
     Then I stop wallet WALLET_RECEIVE_TX
     When I have wallet WALLET_IMPORTED connected to base node B
     Then I import WALLET_RECEIVE_TX unspent outputs to WALLET_IMPORTED
-    # Chain 2
+    Then I wait for wallet WALLET_IMPORTED to have at least 1000000 uT
+    # This triggers a validation of the imported outputs
+    Then I restart wallet WALLET_IMPORTED
+        # Chain 2
     Given I have a seed node SEED_C
     And I have a base node C connected to seed SEED_C
     And I have wallet WC connected to base node C
@@ -115,7 +122,13 @@ Feature: Wallet Transactions
     And node C is at height 10
     Then I restart wallet WALLET_IMPORTED
     Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
-    Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
+    And mining node CM mines 1 blocks with min difficulty 1000 and max difficulty 9999999999
+    And node B is at height 11
+    And node C is at height 11
+    # TODO Either remove the check for invalid Faux tx and change the test name or implement a new way to invalidate Faux Tx
+    # The concept of invalidating the Faux transaction doesn't exist in this branch anymore. There has been talk of removing the Faux transaction
+    # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
+    # Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
   @critical
   Scenario: Wallet imports faucet UTXO

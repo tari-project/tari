@@ -53,13 +53,14 @@ class WalletFFIClient {
     this.start(seed_words_text, pass_phrase);
   }
 
-  getStxoValidationStatus() {
-    return this.wallet.getStxoValidationStatus();
+  getTxoValidationStatus() {
+    return this.wallet.getTxoValidationStatus();
   }
 
-  getUtxoValidationStatus() {
-    return this.wallet.getUtxoValidationStatus();
+  getTxValidationStatus() {
+    return this.wallet.getTxValidationStatus();
   }
+
   identify() {
     return this.wallet.getPublicKey();
   }
@@ -112,12 +113,12 @@ class WalletFFIClient {
     this.wallet.applyEncryption(passphrase);
   }
 
-  startStxoValidation() {
-    this.wallet.startStxoValidation();
+  startTxoValidation() {
+    this.wallet.startTxoValidation();
   }
 
-  startUtxoValidation() {
-    this.wallet.startUtxoValidation();
+  startTxValidation() {
+    this.wallet.startTxValidation();
   }
 
   getCounters() {
