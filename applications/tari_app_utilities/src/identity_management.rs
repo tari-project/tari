@@ -23,7 +23,13 @@
 use crate::utilities::ExitCodes;
 use log::*;
 use rand::rngs::OsRng;
-use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
+use std::{
+    clone::Clone,
+    fs,
+    path::{Path, PathBuf},
+    string::ToString,
+    sync::Arc,
+};
 use tari_common::configuration::bootstrap::prompt;
 use tari_common_types::types::PrivateKey;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
@@ -31,6 +37,7 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
+use thiserror::Error;
 
 pub const LOG_TARGET: &str = "tari_application";
 
@@ -144,7 +151,7 @@ pub fn create_new_identity<P: AsRef<Path>>(
     path: P,
     public_addr: Multiaddr,
     features: PeerFeatures,
-) -> Result<NodeIdentity, String> {
+) -> Result<NodeIdentity, SaveAsJsonError> {
     let private_key = PrivateKey::random(&mut OsRng);
     let node_identity = NodeIdentity::new(private_key, public_addr, features);
     save_as_json(path, &node_identity)?;
@@ -165,10 +172,20 @@ pub fn recover_node_identity<P: AsRef<Path>>(
     path: P,
     public_addr: &Multiaddr,
     features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes> {
+) -> Result<Arc<NodeIdentity>, SaveAsJsonError> {
     let node_identity = NodeIdentity::new(private_key, public_addr.clone(), features);
-    save_as_json(path, &node_identity).map_err(ExitCodes::IOError)?;
+    save_as_json(path, &node_identity)?;
     Ok(Arc::new(node_identity))
+}
+
+#[derive(Debug, Error)]
+pub enum LoadFromJsonError {
+    #[error("Could not load from json. {0}")]
+    IOError(#[from] std::io::Error),
+    #[error("Identity file, {0}, does not exist.")]
+    NotExist(PathBuf),
+    #[error("Wrong format of json to load: {0}")]
+    FormatError(#[from] tari_crypto::tari_utilities::message_format::MessageFormatError),
 }
 
 /// Loads the node identity from json at the given path
@@ -177,17 +194,26 @@ pub fn recover_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
+pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, LoadFromJsonError> {
     if !path.as_ref().exists() {
-        return Err(format!(
-            "Identity file, {}, does not exist.",
-            path.as_ref().to_str().unwrap()
-        ));
+        Err(LoadFromJsonError::NotExist(path.as_ref().to_owned()))
+    } else {
+        let contents = fs::read_to_string(path)?;
+        let object = T::from_json(&contents)?;
+        Ok(object)
     }
+}
 
-    let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let object = T::from_json(&contents).map_err(|err| err.to_string())?;
-    Ok(object)
+#[derive(Debug, Error)]
+pub enum SaveAsJsonError {
+    #[error("Could not save json to data folder. {0}")]
+    IOError(#[from] std::io::Error),
+    // TODO: consider to move `path` out to a wrapper struct
+    // and provide it for every error variant
+    #[error("Error writing json file, {path}. {error}")]
+    WriteError { path: PathBuf, error: std::io::Error },
+    #[error("Wrong format of json to save: {0}")]
+    FormatError(#[from] tari_crypto::tari_utilities::message_format::MessageFormatError),
 }
 
 /// Saves the node identity as json at a given path, creating it if it does not already exist
@@ -197,20 +223,16 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
 ///
 /// ## Returns
 /// Result to check if successful or not, string will indicate reason on error
-pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
-    let json = object.to_json().unwrap();
+pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), SaveAsJsonError> {
+    let json = object.to_json()?;
     if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
-            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;
+            fs::create_dir_all(p)?;
         }
     }
-    fs::write(path.as_ref(), json.as_bytes()).map_err(|e| {
-        format!(
-            "Error writing json file, {}. {}",
-            path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e.to_string()
-        )
+    fs::write(path.as_ref(), json.as_bytes()).map_err(|error| SaveAsJsonError::WriteError {
+        path: path.as_ref().to_owned(),
+        error,
     })?;
-
     Ok(())
 }
