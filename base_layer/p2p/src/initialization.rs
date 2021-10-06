@@ -305,7 +305,11 @@ async fn initialize_hidden_service(
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
         .with_control_server_address(config.control_server_addr)
-        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses);
+        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses.into());
+
+    if config.tor_proxy_bypass_for_outbound_tcp {
+        builder = builder.bypass_tor_for_tcp_addresses();
+    }
 
     if let Some(identity) = config.identity {
         builder = builder.with_tor_identity(*identity);

@@ -904,6 +904,9 @@ fn network_transport_config(
                 None => None,
             };
 
+            let key = config_string(app_str, network, "tor_proxy_bypass_for_outbound_tcp");
+            let tor_proxy_bypass_for_outbound_tcp = optional(cfg.get_bool(&key))?.unwrap_or(false);
+
             Ok(CommsTransport::TorHiddenService {
                 control_server_address,
                 auth,
@@ -911,6 +914,7 @@ fn network_transport_config(
                 forward_address,
                 onion_port,
                 tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
             })
         },
         "socks5" => {
@@ -1051,6 +1055,7 @@ pub enum CommsTransport {
         auth: TorControlAuthentication,
         onion_port: NonZeroU16,
         tor_proxy_bypass_addresses: Vec<Multiaddr>,
+        tor_proxy_bypass_for_outbound_tcp: bool,
     },
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {

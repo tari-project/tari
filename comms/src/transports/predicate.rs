@@ -21,6 +21,36 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::multiaddr::{Multiaddr, Protocol};
+use std::marker::PhantomData;
+
+pub trait Predicate<A: ?Sized> {
+    fn check(&self, arg: &A) -> bool;
+}
+
+impl<T, A> Predicate<A> for T
+where
+    T: Fn(&A) -> bool,
+    A: ?Sized,
+{
+    fn check(&self, arg: &A) -> bool {
+        (self)(arg)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FalsePredicate<'a, A>(PhantomData<&'a A>);
+
+impl<'a, A> FalsePredicate<'a, A> {
+    pub fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<A> Predicate<A> for FalsePredicate<'_, A> {
+    fn check(&self, _: &A) -> bool {
+        false
+    }
+}
 
 pub fn is_onion_address(addr: &Multiaddr) -> bool {
     let protocol = addr.iter().next();

@@ -24,10 +24,16 @@ use super::controller::HiddenServiceControllerError;
 use crate::{
     multiaddr::Multiaddr,
     socks,
-    tor::{hidden_service::controller::HiddenServiceController, Authentication, PortMapping, TorIdentity},
+    tor::{
+        hidden_service::{controller::HiddenServiceController, TorProxyOpts},
+        Authentication,
+        PortMapping,
+        TorIdentity,
+    },
 };
 use bitflags::bitflags;
 use log::*;
+use std::sync::Arc;
 use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
 use thiserror::Error;
 
@@ -60,7 +66,7 @@ pub struct HiddenServiceBuilder {
     port_mapping: Option<PortMapping>,
     socks_addr_override: Option<Multiaddr>,
     control_server_addr: Option<Multiaddr>,
-    proxy_bypass_addresses: Vec<Multiaddr>,
+    proxy_opts: TorProxyOpts,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
     hs_flags: HsFlags,
@@ -84,8 +90,8 @@ impl HiddenServiceBuilder {
     setter!(
         /// Configure the underlying SOCKS transport to bypass the proxy and connect directly to these addresses
         with_bypass_proxy_addresses,
-        proxy_bypass_addresses,
-        Vec<Multiaddr>
+        proxy_opts.bypass_addresses,
+        Arc<Vec<Multiaddr>>
     );
 
     setter!(
@@ -116,6 +122,13 @@ impl HiddenServiceBuilder {
         hs_flags,
         HsFlags
     );
+
+    /// Use a direct TCP/IP connection if a TCP address is given instead of the tor proxy. This is worse for privacy
+    /// but can use the full available connection bandwidth
+    pub fn bypass_tor_for_tcp_addresses(mut self) -> Self {
+        self.proxy_opts.bypass_for_tcpip = true;
+        self
+    }
 
     /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
     /// listener address as given by the tor control port.
@@ -164,7 +177,7 @@ impl HiddenServiceBuilder {
             self.socks_auth,
             self.identity,
             self.hs_flags,
-            self.proxy_bypass_addresses,
+            self.proxy_opts,
             self.shutdown_signal,
         );
 
