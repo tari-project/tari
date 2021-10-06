@@ -28,5 +28,5 @@ pub trait TemplateCommand {
 
 pub enum ExecutionResult {
     Ok,
-    Error,
+    // Error,
 }

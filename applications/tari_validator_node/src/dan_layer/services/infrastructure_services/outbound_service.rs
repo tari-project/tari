@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{HotStuffMessage, InstructionSet, Payload},
-        services::infrastructure_services::{NodeAddressable},
+        services::infrastructure_services::NodeAddressable,
     },
     digital_assets_error::DigitalAssetError,
     p2p,

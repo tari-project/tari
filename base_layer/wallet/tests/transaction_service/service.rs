@@ -34,7 +34,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::{rngs::OsRng};
+use rand::rngs::OsRng;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,

@@ -28,6 +28,5 @@ pub use inbound_connection_service::{InboundConnectionService, TariCommsInboundC
 pub use node_addressable::NodeAddressable;
 pub use outbound_service::{OutboundService, TariCommsOutboundService};
 
-
 #[cfg(test)]
 pub mod mocks;

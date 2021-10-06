@@ -3866,7 +3866,7 @@ Then(
       metadata,
       "eee280877ef836f1026d8a848a5da3eb6364cd0343372235e6ca10e2a697fc6f" // token
     );
-    expect(response?.status).to.be.equal("Accepted");
+    expect(response.status).to.be.equal("Accepted");
   }
 );
 

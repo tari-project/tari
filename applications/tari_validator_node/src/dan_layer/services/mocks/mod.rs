@@ -38,7 +38,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use std::{
-    collections::{VecDeque},
+    collections::VecDeque,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
@@ -63,7 +63,7 @@ impl MempoolService for MockMempoolService {
     }
 }
 
-pub fn mock_mempool() -> MockMempoolService {
+pub fn _mock_mempool() -> MockMempoolService {
     MockMempoolService {}
 }
 
@@ -163,7 +163,7 @@ impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr>
     }
 }
 
-pub fn mock_template_service() -> MockTemplateService {
+pub fn _mock_template_service() -> MockTemplateService {
     MockTemplateService {}
 }
 

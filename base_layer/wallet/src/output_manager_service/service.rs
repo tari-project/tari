@@ -939,8 +939,10 @@ where TBackend: OutputManagerBackend + 'static
         }
 
         let script = script!(Nop);
-        let mut output_features = OutputFeatures::default();
-        output_features.unique_id = unique_id.clone();
+        let output_features = OutputFeatures {
+            unique_id: unique_id.clone(),
+            ..Default::default()
+        };
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager

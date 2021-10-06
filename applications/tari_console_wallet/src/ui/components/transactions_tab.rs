@@ -359,10 +359,10 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = Span::styled(
-                (match tx.get_unique_id() {
+                match tx.get_unique_id() {
                     Some(unique_id) => unique_id,
                     None => tx.amount.to_string(),
-                }),
+                },
                 Style::default().fg(Color::White),
             );
             let fee_details = if tx.is_coinbase() {

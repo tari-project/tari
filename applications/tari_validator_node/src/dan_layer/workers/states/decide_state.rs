@@ -64,7 +64,7 @@ where
     p_t: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     commit_qc: Option<QuorumCertificate<TPayload>>,
-    locked_qc: Option<QuorumCertificate<TPayload>>,
+    _locked_qc: Option<QuorumCertificate<TPayload>>,
 }
 
 impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
@@ -87,7 +87,7 @@ where
             p_p: PhantomData,
             received_new_view_messages: HashMap::new(),
             commit_qc: None,
-            locked_qc: None,
+            _locked_qc: None,
             p_s: PhantomData,
             p_t: PhantomData,
         }
@@ -105,6 +105,7 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
+        dbg!(next_event_result);
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
@@ -276,7 +277,7 @@ where
         }
     }
 
-    async fn send_vote_to_leader(
+    async fn _send_vote_to_leader(
         &self,
         node: &HotStuffTreeNode<TPayload>,
         outbound: &mut TOutboundService,

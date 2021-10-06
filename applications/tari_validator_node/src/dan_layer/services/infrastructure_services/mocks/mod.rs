@@ -22,25 +22,27 @@
 
 use crate::{
     dan_layer::{
-        models::{HotStuffMessage},
+        models::HotStuffMessage,
         services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundConnectionService<TAddr, TPayload> {
     MockInboundConnectionService::new()
 }
 
+type Messages<TAddr, TPayload> = (
+    Sender<(TAddr, HotStuffMessage<TPayload>)>,
+    Receiver<(TAddr, HotStuffMessage<TPayload>)>,
+);
+
 #[derive()]
 pub struct MockInboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
-    messages: (
-        Sender<(TAddr, HotStuffMessage<TPayload>)>,
-        Receiver<(TAddr, HotStuffMessage<TPayload>)>,
-    ),
+    messages: Messages<TAddr, TPayload>,
 }
 
 #[async_trait]
@@ -57,11 +59,11 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAd
         Self { messages: channel(10) }
     }
 
-    pub fn push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
+    pub fn _push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
         self.messages.0.try_send((from, message)).unwrap()
     }
 
-    pub fn create_sender(&self) -> Sender<(TAddr, HotStuffMessage<TPayload>)> {
+    pub fn _create_sender(&self) -> Sender<(TAddr, HotStuffMessage<TPayload>)> {
         self.messages.0.clone()
     }
 }
@@ -106,7 +108,7 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayl
 }
 
 use crate::dan_layer::models::Payload;
-use std::{fmt::Debug};
+use std::fmt::Debug;
 
 #[async_trait]
 impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>

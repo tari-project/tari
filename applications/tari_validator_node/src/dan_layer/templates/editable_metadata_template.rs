@@ -58,7 +58,7 @@ impl EditableMetadataTemplate {
 pub struct UpdateMetadataCommand {
     token_id: TokenId,
     metadata: Vec<u8>,
-    caller: InstructionCaller,
+    _caller: InstructionCaller,
 }
 
 impl UpdateMetadataCommand {
@@ -66,7 +66,7 @@ impl UpdateMetadataCommand {
         Self {
             token_id,
             metadata,
-            caller,
+            _caller: caller,
         }
     }
 }

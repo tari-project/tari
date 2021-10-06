@@ -1039,7 +1039,9 @@ fn store_and_retrieve_blocks() {
     assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
     assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
 }
+
 #[test]
+#[allow(clippy::erasing_op)]
 fn asset_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;

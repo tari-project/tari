@@ -77,11 +77,11 @@ impl Instruction {
         &self.from
     }
 
-    pub fn signature(&self) -> &ComSig {
+    pub fn _signature(&self) -> &ComSig {
         &self.signature
     }
 
-    pub fn hash(&self) -> &[u8] {
+    pub fn _hash(&self) -> &[u8] {
         &self.hash
     }
 

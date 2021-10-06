@@ -30,7 +30,7 @@ use crate::{
         error::OutputManagerStorageError,
         storage::{models::DbUnblindedOutput, OutputStatus},
     },
-    schema::{outputs},
+    schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 

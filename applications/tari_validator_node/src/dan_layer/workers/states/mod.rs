@@ -20,14 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dan_layer::{
-        models::{ViewId},
-    },
-};
-
-
-
+use crate::dan_layer::models::ViewId;
 
 // #[async_trait]
 // pub trait State {
@@ -37,7 +30,6 @@ use crate::{
 //         shutdown: &ShutdownSignal,
 //     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
 // }
-
 
 mod commit_state;
 mod decide_state;
@@ -61,17 +53,13 @@ pub enum ConsensusWorkerStateEvent {
     PreCommitted,
     Committed,
     Decided,
-    ShutdownReceived,
     TimedOut,
     NewView { new_view: ViewId },
 }
 
 impl ConsensusWorkerStateEvent {
     pub fn must_shutdown(&self) -> bool {
-        match self {
-            ConsensusWorkerStateEvent::Errored { .. } => true,
-            _ => false,
-        }
+        matches!(self, ConsensusWorkerStateEvent::Errored { .. })
     }
 
     pub fn shutdown_reason(&self) -> Option<&str> {

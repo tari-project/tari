@@ -39,17 +39,12 @@ use crate::{
             PayloadProvider,
             SigningService,
         },
-        workers::{
-            states,
-            states::{ConsensusWorkerStateEvent},
-        },
+        workers::{states, states::ConsensusWorkerStateEvent},
     },
     digital_assets_error::DigitalAssetError,
 };
 use log::*;
-use std::{
-    sync::{Arc},
-};
+use std::sync::Arc;
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -76,7 +71,7 @@ pub struct ConsensusWorker<
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
 {
-    bft_replica_service: TBftReplicaService,
+    _bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
     state: ConsensusWorkerState,
@@ -125,6 +120,7 @@ where
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
@@ -140,7 +136,7 @@ where
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
 
         Self {
-            bft_replica_service,
+            _bft_replica_service: bft_replica_service,
             inbound_connections,
             state: ConsensusWorkerState::Starting,
             current_view_id: ViewId(0),
@@ -169,8 +165,6 @@ where
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
-        
-
         let starting_view = self.current_view_id;
         loop {
             if let Some(max) = max_views_to_process {
@@ -313,9 +307,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::dan_layer::services::{
-        mocks::{mock_bft},
-    };
+    use crate::dan_layer::services::mocks::mock_bft;
 
     use crate::dan_layer::services::{
         infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
@@ -327,8 +319,7 @@ mod test {
             MockEventsPublisher,
         },
     };
-    
-    
+
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 
@@ -432,12 +423,11 @@ mod test {
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
         dbg!(events);
-        let mapped_events = events.iter().filter_map(|e| match e {
+        let mapped_events = events.iter().map(|e| match e {
             ConsensusWorkerDomainEvent::StateChanged { old: _, new } => Some(new),
-            _ => None,
         });
         for (state, event) in states.iter().zip(mapped_events) {
-            assert_eq!(state, event)
+            assert_eq!(state, event.unwrap())
         }
     }
 }

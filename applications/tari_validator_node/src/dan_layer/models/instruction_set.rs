@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::models::{Instruction, Payload};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;
 
@@ -61,7 +61,7 @@ impl InstructionSet {
         let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
         // assume instructions are sorted
         for instruction in &self.instructions {
-            mmr.push(instruction.calculate_hash());
+            mmr.push(instruction.calculate_hash()).unwrap();
         }
 
         InstructionSetHash(mmr.get_merkle_root().unwrap())

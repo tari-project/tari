@@ -59,7 +59,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
-use tari_crypto::tari_utilities::hex::{Hex};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
@@ -67,8 +67,8 @@ use tari_p2p::{
     transport::{TorConfig, TransportType},
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
-use tari_shutdown::{ShutdownSignal};
-use tokio::{task};
+use tari_shutdown::ShutdownSignal;
+use tokio::task;
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 
@@ -119,7 +119,7 @@ impl DanNode {
             .config
             .validator_node
             .as_ref()
-            .ok_or(ExitCodes::ConfigError("Missing dan section".to_string()))?;
+            .ok_or_else(|| ExitCodes::ConfigError("Missing dan section".to_string()))?;
 
         let committee: Vec<CommsPublicKey> = dan_config
             .committee

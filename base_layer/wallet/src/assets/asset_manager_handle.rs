@@ -77,7 +77,7 @@ impl AssetManagerHandle {
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
-                merkle_root: Box::new(merkle_root.to_vec()),
+                merkle_root: merkle_root.to_vec(),
             })
             .await??
         {
