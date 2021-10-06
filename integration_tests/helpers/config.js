@@ -44,6 +44,9 @@ function mapEnvs(options) {
         ? "true"
         : "false";
     }
+    if (auto_update.check_interval) {
+      res.TARI_COMMON__AUTO_UPDATE__CHECK_INTERVAL = auto_update.check_interval;
+    }
     if (auto_update.dns_hosts) {
       res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
     }
