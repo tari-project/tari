@@ -3,7 +3,7 @@ const protoLoader = require("@grpc/proto-loader");
 const { tryConnect } = require("./util");
 const grpcPromise = require("grpc-promise");
 
-class DanNodeClient {
+class ValidatorNodeClient {
   constructor() {
     this.client = null;
     this.blockTemplates = {};
@@ -36,7 +36,7 @@ class DanNodeClient {
   }
 
   static async create(port) {
-    const client = new DanNodeClient();
+    const client = new ValidatorNodeClient();
     await client.connect(port);
     return client;
   }
@@ -63,4 +63,4 @@ class DanNodeClient {
   }
 }
 
-module.exports = DanNodeClient;
+module.exports = ValidatorNodeClient;

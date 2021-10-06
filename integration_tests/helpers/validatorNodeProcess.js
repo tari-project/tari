@@ -2,13 +2,13 @@ const { spawn } = require("child_process");
 const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
-const DanNodeClient = require("./danNodeClient");
+const ValidatorNodeClient = require("./validatorNodeClient");
 const { sleep, getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 
 let outputProcess;
-class DanNodeProcess {
+class ValidatorNodeProcess {
   constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
@@ -217,8 +217,8 @@ class DanNodeProcess {
   }
 
   async createGrpcClient() {
-    return await DanNodeClient.create(this.grpcPort);
+    return await ValidatorNodeClient.create(this.grpcPort);
   }
 }
 
-module.exports = DanNodeProcess;
+module.exports = ValidatorNodeProcess;
