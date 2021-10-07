@@ -5,48 +5,44 @@ authors = ["The Tari Development Community"]
 edition = "2018"
 
 [dependencies]
-tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_common = { path = "../../common" }
+tari_app_grpc = { path = "../tari_app_grpc", features = ["wallet"] }
 tari_app_utilities = { path = "../tari_app_utilities", features = ["wallet"] }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_common_types = { path = "../../base_layer/common_types" }
-tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_app_grpc = { path = "../tari_app_grpc", features = ["wallet"] }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
+tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 
 bitflags = "1.2.1"
 chrono = { version = "0.4.6", features = ["serde"] }
 chrono-english = "0.1"
-futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 crossterm = { version = "0.17" }
-rand = "0.8"
-unicode-width = "0.1"
-unicode-segmentation = "1.6.0"
+futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 log = { version = "0.4.8", features = ["std"] }
+opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
 qrcode = { version = "0.12" }
+rand = "0.8"
 regex = "1.5.4"
 rpassword = "5.0"
 rustyline = "6.0"
 strum = "^0.19"
 strum_macros = "^0.19"
-tokio = { version = "1.11", features = ["signal"] }
 thiserror = "1.0.26"
+tokio = { version = "1.11", features = ["signal"] }
 tonic = "0.5.2"
-
 tracing = "0.1.26"
 tracing-opentelemetry = "0.15.0"
 tracing-subscriber = "0.2.20"
-
-# network tracing, rt-tokio for async batch export
-opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
-opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
+unicode-segmentation = "1.6.0"
+unicode-width = "0.1"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.10"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
