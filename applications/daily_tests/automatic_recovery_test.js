@@ -65,7 +65,7 @@ async function run(options = {}) {
       grpc_console_wallet_address: "127.0.0.1:18111",
       baseDir: options.baseDir || "./temp/base-nodes/",
     },
-    false,
+    "../../integration_tests/log4rs/wallet.yml",
     options.seedWords
   );
 
@@ -93,12 +93,6 @@ async function run(options = {}) {
             numScanned: parseInt(scannedMatch[1]),
             recoveredAmount,
           };
-        }
-
-        let errMatch = data.match(FAILURE_REGEXP);
-        // One extra attempt
-        if (errMatch && parseInt(errMatch[1]) > 1) {
-          throw new Error(data);
         }
 
         return null;
