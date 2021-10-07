@@ -30,14 +30,13 @@ use std::{
 };
 
 use chrono::Utc;
-use futures::{pin_mut, StreamExt};
+use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::broadcast, task, time};
 
 use tari_common_types::types::HashOutput;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
@@ -57,10 +56,10 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
     output_manager_service::{handle::OutputManagerHandle, TxId},
     storage::{
@@ -68,13 +67,11 @@ use crate::{
         sqlite_db::WalletSqliteDatabase,
     },
     transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{
-        error::UtxoScannerError,
-        handle::{UtxoScannerEvent, UtxoScannerRequest, UtxoScannerResponse},
-    },
+    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
     WalletSqlite,
 };
-use tokio::time::MissedTickBehavior;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
+use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
@@ -104,7 +101,8 @@ pub struct UtxoScannerServiceBuilder {
 #[derive(Clone)]
 struct UtxoScannerResources<TBackend> {
     pub db: WalletDatabase<TBackend>,
-    pub connectivity: ConnectivityRequester,
+    pub comms_connectivity: ConnectivityRequester,
+    pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub node_identity: Arc<NodeIdentity>,
@@ -141,16 +139,14 @@ impl UtxoScannerServiceBuilder {
     ) -> UtxoScannerService<WalletSqliteDatabase> {
         let resources = UtxoScannerResources {
             db: wallet.db.clone(),
-            connectivity: wallet.comms.connectivity(),
+            comms_connectivity: wallet.comms.connectivity(),
+            current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
             output_manager_service: wallet.output_manager_service.clone(),
             transaction_service: wallet.transaction_service.clone(),
             node_identity: wallet.comms.node_identity(),
             factories: wallet.factories.clone(),
         };
 
-        // When the Utxo Scanner is built using this method it is not going to run as a Service so we will pass in the
-        // sender to be held by the service so that the receiver will not error when it is polled
-        let (sender, receiver) = reply_channel::unbounded();
         let (event_sender, _) = broadcast::channel(200);
 
         let interval = self
@@ -163,9 +159,7 @@ impl UtxoScannerServiceBuilder {
             resources,
             interval,
             shutdown_signal,
-            receiver,
             event_sender,
-            Some(sender),
         )
     }
 
@@ -173,18 +167,19 @@ impl UtxoScannerServiceBuilder {
     pub fn build_with_resources<TBackend: WalletBackend + 'static>(
         &mut self,
         db: WalletDatabase<TBackend>,
-        connectivity: ConnectivityRequester,
+        comms_connectivity: ConnectivityRequester,
+        base_node_watcher: watch::Receiver<Option<Peer>>,
         output_manager_service: OutputManagerHandle,
         transaction_service: TransactionServiceHandle,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         shutdown_signal: ShutdownSignal,
-        request_stream: reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
     ) -> UtxoScannerService<TBackend> {
         let resources = UtxoScannerResources {
             db,
-            connectivity,
+            comms_connectivity,
+            current_base_node_watcher: base_node_watcher,
             output_manager_service,
             transaction_service,
             node_identity,
@@ -200,9 +195,7 @@ impl UtxoScannerServiceBuilder {
             resources,
             interval,
             shutdown_signal,
-            request_stream,
             event_sender,
-            None,
         )
     }
 }
@@ -253,7 +246,7 @@ where TBackend: WalletBackend + 'static
             target: LOG_TARGET,
             "Attempting UTXO sync with seed peer {} ({})", self.peer_index, peer,
         );
-        match self.resources.connectivity.dial_peer(peer.clone()).await {
+        match self.resources.comms_connectivity.dial_peer(peer.clone()).await {
             Ok(conn) => Ok(conn),
             Err(e) => {
                 self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
@@ -324,7 +317,10 @@ where TBackend: WalletBackend + 'static
                 timer.elapsed(),
                 num_scanned
             );
+
+            // let num_scanned = 0;
             total_scanned += num_scanned;
+            // return Ok((total_scanned, start_index, timer.elapsed()));
         }
     }
 
@@ -647,10 +643,7 @@ where TBackend: WalletBackend + 'static
     is_running: Arc<AtomicBool>,
     scan_for_utxo_interval: Duration,
     shutdown_signal: ShutdownSignal,
-    request_stream: Option<reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>>,
     event_sender: broadcast::Sender<UtxoScannerEvent>,
-    _request_stream_sender_holder:
-        Option<SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>>,
 }
 
 impl<TBackend> UtxoScannerService<TBackend>
@@ -664,11 +657,7 @@ where TBackend: WalletBackend + 'static
         resources: UtxoScannerResources<TBackend>,
         scan_for_utxo_interval: Duration,
         shutdown_signal: ShutdownSignal,
-        request_stream: reply_channel::Receiver<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
-        _request_stream_sender_holder: Option<
-            SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
-        >,
     ) -> Self {
         Self {
             resources,
@@ -678,9 +667,7 @@ where TBackend: WalletBackend + 'static
             is_running: Arc::new(AtomicBool::new(false)),
             scan_for_utxo_interval,
             shutdown_signal,
-            request_stream: Some(request_stream),
             event_sender,
-            _request_stream_sender_holder,
         }
     }
 
@@ -711,13 +698,6 @@ where TBackend: WalletBackend + 'static
             "UTXO scanning service starting (interval = {:.2?})", self.scan_for_utxo_interval
         );
 
-        let request_stream = self
-            .request_stream
-            .take()
-            .expect("UTXO Scanner Service initialized without request_stream")
-            .fuse();
-        pin_mut!(request_stream);
-
         let mut shutdown = self.shutdown_signal.clone();
         let start_at = Instant::now() + Duration::from_secs(1);
         let mut work_interval = time::interval_at(start_at.into(), self.scan_for_utxo_interval);
@@ -736,19 +716,19 @@ where TBackend: WalletBackend + 'static
                             //we make sure the flag is set to false here
                             running_flag.store(false, Ordering::Relaxed);
                         });
+                        if self.mode == UtxoScannerMode::Recovery {
+                            return Ok(());
+                        }
                     }
                 },
-                request_context = request_stream.select_next_some() => {
-                    trace!(target: LOG_TARGET, "Handling Service API Request");
-                    let (request, reply_tx) = request_context.split();
-                    let response = self.handle_request(request).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
-                        e
-                    });
-                    let _ = reply_tx.send(response).map_err(|e| {
-                        warn!(target: LOG_TARGET, "Failed to send reply");
-                        e
-                    });
+                _ = self.resources.current_base_node_watcher.changed() => {
+                    debug!(target: LOG_TARGET, "Base node change detected.");
+                    let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                    if let Some(peer) = peer {
+                        self.peer_seeds = vec![peer.public_key];
+                    }
+
+                    self.is_running.store(false, Ordering::Relaxed);
                 },
                 _ = shutdown.wait() => {
                     // this will stop the task if its running, and let that thread exit gracefully
@@ -757,21 +737,6 @@ where TBackend: WalletBackend + 'static
                     return Ok(());
                 }
             }
-
-            if self.mode == UtxoScannerMode::Recovery {
-                return Ok(());
-            }
-        }
-    }
-
-    async fn handle_request(&mut self, request: UtxoScannerRequest) -> Result<UtxoScannerResponse, UtxoScannerError> {
-        trace!(target: LOG_TARGET, "Handling Service Request: {:?}", request);
-        match request {
-            UtxoScannerRequest::SetBaseNodePublicKey(pk) => {
-                self.is_running.store(false, Ordering::Relaxed);
-                self.peer_seeds = vec![pk];
-                Ok(UtxoScannerResponse::BaseNodePublicKeySet)
-            },
         }
     }
 }

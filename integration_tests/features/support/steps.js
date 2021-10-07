@@ -2972,36 +2972,6 @@ Then(
 );
 
 Then(
-  /the number of coinbase transactions for wallet (.*) and wallet (.*) are (.*) less/,
-  { timeout: 20 * 1000 },
-  async function (walletNameA, walletNameB, count) {
-    const walletClientA = await this.getWallet(walletNameA).connectClient();
-    const transactionsA = await walletClientA.getAllCoinbaseTransactions();
-    const walletClientB = await this.getWallet(walletNameB).connectClient();
-    const transactionsB = await walletClientB.getAllCoinbaseTransactions();
-    if (this.resultStack.length >= 2) {
-      const walletStats = [this.resultStack.pop(), this.resultStack.pop()];
-      console.log(
-        "\nCoinbase comparison: Expect this (current + deficit)",
-        transactionsA.length,
-        transactionsB.length,
-        Number(count),
-        "to equal this (previous)",
-        walletStats[0][1],
-        walletStats[1][1]
-      );
-      expect(
-        transactionsA.length + transactionsB.length + Number(count)
-      ).to.equal(walletStats[0][1] + walletStats[1][1]);
-    } else {
-      expect(
-        "\nCoinbase comparison: Not enough results saved on the stack!"
-      ).to.equal("");
-    }
-  }
-);
-
-Then(
   /all (.*) transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/,
   { timeout: 20 * 1000 },
   async function (transaction_type, walletNameA, walletNameB) {

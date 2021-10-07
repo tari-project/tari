@@ -48,6 +48,7 @@ use crate::{
     },
 };
 
+use crate::proto::base_node::{QueryDeletedRequest, QueryDeletedResponse, UtxoQueryRequest, UtxoQueryResponses};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 
@@ -79,6 +80,21 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
 
     #[rpc(method = 6)]
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+
+    #[rpc(method = 7)]
+    async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus>;
+
+    #[rpc(method = 8)]
+    async fn query_deleted(
+        &self,
+        request: Request<QueryDeletedRequest>,
+    ) -> Result<Response<QueryDeletedResponse>, RpcStatus>;
+
+    #[rpc(method = 9)]
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

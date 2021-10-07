@@ -166,7 +166,6 @@ use tari_shutdown::Shutdown;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
-    output_manager_service::TxoValidationType,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
@@ -186,7 +185,6 @@ use tari_wallet::{
             },
         },
     },
-    types::ValidationRetryStrategy,
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
     Wallet,
     WalletConfig,
@@ -2424,6 +2422,8 @@ pub unsafe extern "C" fn transport_tor_create(
         socks_address_override: None,
         socks_auth: authentication,
         tor_proxy_bypass_addresses: vec![],
+        // Prefer performance
+        tor_proxy_bypass_for_outbound_tcp: true,
     };
     let transport = TariTransportType::Tor(tor_config);
 
@@ -2729,14 +2729,8 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
 /// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
 /// be conducted. The outcome of the discovery process is relayed via this callback
-/// `callback_utxo_validation_complete` - The callback function pointer matching the function signature. This is called
-/// when a UTXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
-/// `callback_stxo_validation_complete` - The callback function pointer matching the function signature. This is called
-/// when a STXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
-/// `callback_invalid_txo_validation_complete` - The callback function pointer matching the function signature. This is
-/// called when a invalid TXO validation process is completed. The request_key is used to identify which request this
+/// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
@@ -2772,9 +2766,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
-    callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
-    callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     recovery_in_progress: *mut bool,
@@ -2921,9 +2913,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_direct_send_result,
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
-                callback_utxo_validation_complete,
-                callback_stxo_validation_complete,
-                callback_invalid_txo_validation_complete,
+                callback_txo_validation_complete,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
             );
@@ -4302,8 +4292,8 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
     }
 }
 
-/// This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs
-/// (UTXOs).
+/// This function will tell the wallet to query the set base node to confirm the status of transaction outputs
+/// (TXOs).
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -4317,7 +4307,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_start_utxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4337,114 +4327,10 @@ pub unsafe extern "C" fn wallet_start_utxo_validation(wallet: *mut TariWallet, e
         return 0;
     }
 
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(0)),
-    ) {
-        Ok(request_key) => request_key,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// This function will tell the wallet to query the set base node to confirm the status of spent transaction outputs
-/// (UTXOs).
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
-/// request. Note the result will be 0 if there was an error
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        error = LibWalletError::from(e).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::Limited(0)),
-    ) {
-        Ok(request_key) => request_key,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// This function will tell the wallet to query the set base node to confirm the status of invalid transaction outputs.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
-/// request. Note the result will be 0 if there was an error
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .store_and_forward_requester
-            .request_saf_messages_from_neighbours(),
-    ) {
-        error = LibWalletError::from(e).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::Limited(0)),
-    ) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.validate_txos())
+    {
         Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
@@ -4491,12 +4377,10 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         return 0;
     }
 
-    match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .transaction_service
-            .validate_transactions(ValidationRetryStrategy::Limited(0)),
-    ) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.validate_transactions())
+    {
         Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -5292,9 +5176,7 @@ mod test {
         pub direct_send_callback_called: bool,
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
-        pub callback_utxo_validation_complete: bool,
-        pub callback_stxo_validation_complete: bool,
-        pub callback_invalid_txo_validation_complete: bool,
+        pub callback_txo_validation_complete: bool,
         pub callback_transaction_validation_complete: bool,
     }
 
@@ -5310,9 +5192,7 @@ mod test {
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
-                callback_utxo_validation_complete: false,
-                callback_stxo_validation_complete: false,
-                callback_invalid_txo_validation_complete: false,
+                callback_txo_validation_complete: false,
                 callback_transaction_validation_complete: false,
             }
         }
@@ -5432,15 +5312,7 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn utxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn stxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn invalid_txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -5778,9 +5650,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5818,9 +5688,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5924,9 +5792,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5972,9 +5838,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6003,9 +5867,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6029,9 +5891,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6076,9 +5936,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6152,9 +6010,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6303,9 +6159,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6358,9 +6212,7 @@ mod test {
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                utxo_validation_complete_callback,
-                stxo_validation_complete_callback,
-                invalid_txo_validation_complete_callback,
+                txo_validation_complete_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,

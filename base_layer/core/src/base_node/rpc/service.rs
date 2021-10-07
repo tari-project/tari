@@ -19,16 +19,17 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            QueryDeletedRequest,
+            QueryDeletedResponse,
             Signatures as SignaturesProto,
             TipInfoResponse,
             TxLocation,
@@ -37,6 +38,9 @@ use crate::{
             TxQueryResponse,
             TxSubmissionRejectionReason,
             TxSubmissionResponse,
+            UtxoQueryRequest,
+            UtxoQueryResponse,
+            UtxoQueryResponses,
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
@@ -261,6 +265,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let mut responses: Vec<TxQueryBatchResponse> = Vec::new();
 
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
         for sig in message.sigs {
             let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
@@ -269,9 +279,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 location: response.location,
                 block_hash: response.block_hash,
                 confirmations: response.confirmations,
+                block_height: response.height_of_longest_chain - response.confirmations,
             });
         }
-        Ok(Response::new(TxQueryBatchResponses { responses, is_synced }))
+        Ok(Response::new(TxQueryBatchResponses {
+            responses,
+            is_synced,
+            tip_hash: Some(metadata.best_block().clone()),
+            height_of_longest_chain: metadata.height_of_longest_chain(),
+        }))
     }
 
     async fn fetch_matching_utxos(
@@ -290,13 +306,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let db = self.db();
         let mut res = Vec::with_capacity(message.output_hashes.len());
-        for (pruned_output, spent) in (db
+        let utxos = db
             .fetch_utxos(message.output_hashes)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
-        .into_iter()
-        .flatten()
-        {
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .into_iter()
+            .flatten();
+        for (pruned_output, spent) in utxos {
             if let PrunedOutput::NotPruned { output } = pruned_output {
                 if !spent {
                     res.push(output);
@@ -307,6 +323,130 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(FetchUtxosResponse {
             outputs: res.into_iter().map(Into::into).collect(),
             is_synced,
+        }))
+    }
+
+    async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus> {
+        let message = request.into_message();
+        let db = self.db();
+        let mut res = Vec::with_capacity(message.output_hashes.len());
+        for UtxoMinedInfo {
+            output,
+            mmr_position,
+            mined_height: height,
+            header_hash,
+        } in (db
+            .fetch_utxos_and_mined_info(message.output_hashes)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
+        .into_iter()
+        .flatten()
+        {
+            res.push((output, mmr_position, height, header_hash));
+        }
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        Ok(Response::new(UtxoQueryResponses {
+            height_of_longest_chain: metadata.height_of_longest_chain(),
+            best_block: metadata.best_block().clone(),
+            responses: res
+                .into_iter()
+                .map(
+                    |(output, mmr_position, mined_height, mined_in_block)| UtxoQueryResponse {
+                        mmr_position: mmr_position.into(),
+                        mined_height,
+                        mined_in_block,
+                        output_hash: output.hash(),
+                        output: match output {
+                            PrunedOutput::Pruned { .. } => None,
+                            PrunedOutput::NotPruned { output } => Some(output.into()),
+                        },
+                    },
+                )
+                .collect(),
+        }))
+    }
+
+    /// Currently the wallet cannot use the deleted bitmap because it can't compile croaring
+    /// at some point in the future, it might be better to send the wallet the actual bitmap so
+    /// it can check itself
+    async fn query_deleted(
+        &self,
+        request: Request<QueryDeletedRequest>,
+    ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
+        let message = request.into_message();
+
+        if let Some(chain_must_include_header) = message.chain_must_include_header {
+            if self
+                .db
+                .fetch_header_by_block_hash(chain_must_include_header)
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .is_none()
+            {
+                return Err(RpcStatus::not_found(
+                    "Chain does not include header. It might have been reorged out",
+                ));
+            }
+        }
+
+        let deleted_bitmap = self
+            .db
+            .fetch_deleted_bitmap_at_tip()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let mut deleted_positions = vec![];
+        let mut not_deleted_positions = vec![];
+
+        for position in message.mmr_positions {
+            if position > u32::MAX as u64 {
+                // TODO: in future, bitmap may support higher than u32
+                return Err(RpcStatus::bad_request("position must fit into a u32"));
+            }
+            let position = position as u32;
+            if deleted_bitmap.bitmap().contains(position) {
+                deleted_positions.push(position);
+            } else {
+                not_deleted_positions.push(position);
+            }
+        }
+
+        let mut blocks_deleted_in = Vec::new();
+        let mut heights_deleted_at = Vec::new();
+        if message.include_deleted_block_data {
+            let headers = self
+                .db
+                .fetch_header_hash_by_deleted_mmr_positions(deleted_positions.clone())
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+            heights_deleted_at.reserve(headers.len());
+            blocks_deleted_in.reserve(headers.len());
+            for (height, hash) in headers.into_iter().flatten() {
+                heights_deleted_at.push(height);
+                blocks_deleted_in.push(hash);
+            }
+        }
+
+        let metadata = self
+            .db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        Ok(Response::new(QueryDeletedResponse {
+            height_of_longest_chain: metadata.height_of_longest_chain(),
+            best_block: metadata.best_block().clone(),
+            deleted_positions: deleted_positions.into_iter().map(|v| v as u64).collect(),
+            not_deleted_positions: not_deleted_positions.into_iter().map(|v| v as u64).collect(),
+            blocks_deleted_in,
+            heights_deleted_at,
         }))
     }
 
@@ -331,6 +471,21 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     }
 
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let height = request.into_message();
+        let header = self
+            .db()
+            .fetch_header(height)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+
+        Ok(Response::new(header.into()))
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
         let height = request.into_message();
         let header = self
             .db()

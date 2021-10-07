@@ -285,8 +285,6 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
-          this.ptr,
-          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -383,12 +381,7 @@ class InterfaceFFI {
           this.intPtr,
         ],
       ],
-      wallet_start_utxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_stxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_invalid_txo_validation: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
+      wallet_start_txo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_start_transaction_validation: [
         this.ulonglong,
         [this.ptr, this.intPtr],
@@ -1123,13 +1116,7 @@ class InterfaceFFI {
   static createCallbackTransactionCancellation(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
   }
-  static createCallbackUtxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
-  }
-  static createCallbackStxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
-  }
-  static createCallbackInvalidTxoValidationComplete(fn) {
+  static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
   static createCallbackTransactionValidationComplete(fn) {
@@ -1163,9 +1150,7 @@ class InterfaceFFI {
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
-    callback_utxo_validation_complete,
-    callback_stxo_validation_complete,
-    callback_invalid_txo_validation_complete,
+    callback_txo_validation_complete,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1188,9 +1173,7 @@ class InterfaceFFI {
       callback_direct_send_result,
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
-      callback_utxo_validation_complete,
-      callback_stxo_validation_complete,
-      callback_invalid_txo_validation_complete,
+      callback_txo_validation_complete,
       callback_transaction_validation_complete,
       callback_saf_message_received,
       recovery_in_progress,
@@ -1426,24 +1409,10 @@ class InterfaceFFI {
     return result;
   }
 
-  static walletStartUtxoValidation(ptr) {
+  static walletStartTxoValidation(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_start_utxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartUtxoValidation`);
-    return result;
-  }
-
-  static walletStartStxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_stxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartStxoValidation`);
-    return result;
-  }
-
-  static walletStartInvalidTxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_invalid_txo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartInvalidUtxoValidation`);
+    let result = this.fn.wallet_start_txo_validation(ptr, error);
+    this.checkErrorResult(error, `walletStartTxoValidation`);
     return result;
   }
 
