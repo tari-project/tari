@@ -21,12 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::TryFrom,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::{
+    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus},
+    PeerConnection,
+};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -36,15 +40,18 @@ use tari_core::{
     proto,
     proto::{
         base_node::{
-            ChainMetadata,
+            ChainMetadata as ChainMetadataProto,
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            QueryDeletedRequest,
+            QueryDeletedResponse,
             Signatures as SignaturesProto,
             TipInfoResponse,
-            TxQueryBatchResponse as TxQueryBatchResponseProto,
             TxQueryBatchResponses as TxQueryBatchResponsesProto,
             TxQueryResponse as TxQueryResponseProto,
             TxSubmissionResponse as TxSubmissionResponseProto,
+            UtxoQueryRequest,
+            UtxoQueryResponses,
         },
         types::{
             Signature as SignatureProto,
@@ -57,22 +64,18 @@ use tari_core::{
 };
 use tokio::time::sleep;
 
-/// This macro unlocks a Mutex or RwLock. If the lock is
-/// poisoned (i.e. panic while unlocked) the last value
-/// before the panic is used.
-macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
-            Ok(lock) => lock,
-            Err(poisoned) => {
-                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
-                poisoned.into_inner()
-            },
-        }
-    };
-    ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
+pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
+where T: From<RpcClient> + NamedProtocolService {
+    let framed = connection
+        .open_framed_substream(&T::PROTOCOL_NAME.into(), 1024 * 1024)
+        .await
+        .unwrap();
+
+    RpcClient::builder()
+        .with_protocol_id(T::PROTOCOL_NAME.into())
+        .connect(framed)
+        .await
+        .unwrap()
 }
 
 #[derive(Clone, Debug)]
@@ -80,15 +83,22 @@ pub struct BaseNodeWalletRpcMockState {
     submit_transaction_calls: Arc<Mutex<Vec<Transaction>>>,
     transaction_query_calls: Arc<Mutex<Vec<Signature>>>,
     transaction_batch_query_calls: Arc<Mutex<Vec<Vec<Signature>>>>,
+    utxo_query_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
+    query_deleted_calls: Arc<Mutex<Vec<QueryDeletedRequest>>>,
+    get_header_by_height_calls: Arc<Mutex<Vec<u64>>>,
     submit_transaction_response: Arc<Mutex<TxSubmissionResponse>>,
     transaction_query_response: Arc<Mutex<TxQueryResponse>>,
+    transaction_query_batch_response: Arc<Mutex<TxQueryBatchResponsesProto>>,
     tip_info_response: Arc<Mutex<TipInfoResponse>>,
+    utxo_query_response: Arc<Mutex<UtxoQueryResponses>>,
+    query_deleted_response: Arc<Mutex<QueryDeletedResponse>>,
     fetch_utxos_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     response_delay: Arc<Mutex<Option<Duration>>>,
     rpc_status_error: Arc<Mutex<Option<RpcStatus>>>,
     get_header_response: Arc<Mutex<Option<BlockHeader>>>,
     synced: Arc<Mutex<bool>>,
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
+    blocks: Arc<Mutex<HashMap<u64, BlockHeader>>>,
 }
 
 #[allow(clippy::mutex_atomic)]
@@ -98,6 +108,9 @@ impl BaseNodeWalletRpcMockState {
             submit_transaction_calls: Arc::new(Mutex::new(Vec::new())),
             transaction_query_calls: Arc::new(Mutex::new(Vec::new())),
             transaction_batch_query_calls: Arc::new(Mutex::new(Vec::new())),
+            utxo_query_calls: Arc::new(Mutex::new(vec![])),
+            query_deleted_calls: Arc::new(Mutex::new(vec![])),
+            get_header_by_height_calls: Arc::new(Mutex::new(vec![])),
             submit_transaction_response: Arc::new(Mutex::new(TxSubmissionResponse {
                 accepted: true,
                 rejection_reason: TxSubmissionRejectionReason::None,
@@ -110,8 +123,14 @@ impl BaseNodeWalletRpcMockState {
                 is_synced: true,
                 height_of_longest_chain: 0,
             })),
+            transaction_query_batch_response: Arc::new(Mutex::new(TxQueryBatchResponsesProto {
+                responses: vec![],
+                tip_hash: Some(vec![]),
+                is_synced: true,
+                height_of_longest_chain: 0,
+            })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
-                metadata: Some(ChainMetadata {
+                metadata: Some(ChainMetadataProto {
                     height_of_longest_chain: Some(std::u64::MAX),
                     best_block: Some(Vec::new()),
                     accumulated_difficulty: Vec::new(),
@@ -119,12 +138,26 @@ impl BaseNodeWalletRpcMockState {
                 }),
                 is_synced: true,
             })),
+            utxo_query_response: Arc::new(Mutex::new(UtxoQueryResponses {
+                responses: vec![],
+                best_block: vec![],
+                height_of_longest_chain: 1,
+            })),
+            query_deleted_response: Arc::new(Mutex::new(QueryDeletedResponse {
+                deleted_positions: vec![],
+                not_deleted_positions: vec![],
+                best_block: vec![],
+                height_of_longest_chain: 1,
+                heights_deleted_at: vec![],
+                blocks_deleted_in: vec![],
+            })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
             rpc_status_error: Arc::new(Mutex::new(None)),
             get_header_response: Arc::new(Mutex::new(None)),
             synced: Arc::new(Mutex::new(true)),
             utxos: Arc::new(Mutex::new(Vec::new())),
+            blocks: Arc::new(Mutex::new(Default::default())),
         }
     }
 
@@ -143,7 +176,22 @@ impl BaseNodeWalletRpcMockState {
         *lock = response;
     }
 
-    pub fn set_response_delay(&mut self, delay: Option<Duration>) {
+    pub fn set_transaction_query_batch_responses(&self, response: TxQueryBatchResponsesProto) {
+        let mut lock = acquire_lock!(self.transaction_query_batch_response);
+        *lock = response;
+    }
+
+    pub fn set_utxo_query_response(&self, response: UtxoQueryResponses) {
+        let mut lock = acquire_lock!(self.utxo_query_response);
+        *lock = response;
+    }
+
+    pub fn set_query_deleted_response(&self, response: QueryDeletedResponse) {
+        let mut lock = acquire_lock!(self.query_deleted_response);
+        *lock = response;
+    }
+
+    pub fn set_response_delay(&self, delay: Option<Duration>) {
         let mut lock = acquire_lock!(self.response_delay);
         *lock = delay;
     }
@@ -162,6 +210,28 @@ impl BaseNodeWalletRpcMockState {
     pub fn set_utxos(&self, utxos: Vec<TransactionOutput>) {
         let mut lock = acquire_lock!(self.utxos);
         *lock = utxos;
+    }
+
+    /// This method sets the contents of the UTXO set against which the queries will be made
+    pub fn set_blocks(&self, blocks: HashMap<u64, BlockHeader>) {
+        let mut lock = acquire_lock!(self.blocks);
+        *lock = blocks;
+    }
+
+    pub fn take_utxo_query_calls(&self) -> Vec<Vec<Vec<u8>>> {
+        acquire_lock!(self.utxo_query_calls).drain(..).collect()
+    }
+
+    pub fn pop_utxo_query_call(&self) -> Option<Vec<Vec<u8>>> {
+        acquire_lock!(self.utxo_query_calls).pop()
+    }
+
+    pub fn take_query_deleted_calls(&self) -> Vec<QueryDeletedRequest> {
+        acquire_lock!(self.query_deleted_calls).drain(..).collect()
+    }
+
+    pub fn pop_query_deleted_call(&self) -> Option<QueryDeletedRequest> {
+        acquire_lock!(self.query_deleted_calls).pop()
     }
 
     pub fn take_submit_transaction_calls(&self) -> Vec<Transaction> {
@@ -194,6 +264,58 @@ impl BaseNodeWalletRpcMockState {
 
     pub fn pop_transaction_fetch_utxo_call(&self) -> Option<Vec<Vec<u8>>> {
         acquire_lock!(self.fetch_utxos_calls).pop()
+    }
+
+    pub fn take_get_header_by_height_calls(&self) -> Vec<u64> {
+        acquire_lock!(self.get_header_by_height_calls).drain(..).collect()
+    }
+
+    pub fn pop_get_header_by_height_calls(&self) -> Option<u64> {
+        acquire_lock!(self.get_header_by_height_calls).pop()
+    }
+
+    pub async fn wait_pop_get_header_by_height_calls(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<u64>, String> {
+        let now = Instant::now();
+        let mut count = 0usize;
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.get_header_by_height_calls);
+            count = (*lock).len();
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            sleep(Duration::from_millis(100)).await;
+        }
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
+    }
+
+    pub async fn wait_pop_utxo_query_calls(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<Vec<Vec<u8>>>, String> {
+        let now = Instant::now();
+        let mut count = 0usize;
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.utxo_query_calls);
+            count = (*lock).len();
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            sleep(Duration::from_millis(100)).await;
+        }
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 
     pub async fn wait_pop_transaction_query_calls(
@@ -278,6 +400,23 @@ impl BaseNodeWalletRpcMockState {
         }
         Err("Did not receive enough calls within the timeout period".to_string())
     }
+
+    pub async fn wait_pop_query_deleted(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<QueryDeletedRequest>, String> {
+        let now = Instant::now();
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.query_deleted_calls);
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            sleep(Duration::from_millis(100)).await;
+        }
+        Err("Did not receive enough calls within the timeout period".to_string())
+    }
 }
 
 impl Default for BaseNodeWalletRpcMockState {
@@ -333,7 +472,6 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         }
 
         let submit_transaction_response_lock = acquire_lock!(self.state.submit_transaction_response);
-
         Ok(Response::new(submit_transaction_response_lock.clone().into()))
     }
 
@@ -341,6 +479,9 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         &self,
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
+        // TODO: delay_lock is blocking any other RPC method from being called (as well as blocking an async task)
+        //       until this method returns.
+        //       Although this is sort of fine in tests it is probably unintentional
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             sleep(delay).await;
@@ -381,30 +522,20 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         log::info!("Transaction Batch Query call received: {:?}", signatures);
 
         let mut transaction_query_calls_lock = acquire_lock!(self.state.transaction_batch_query_calls);
-        (*transaction_query_calls_lock).push(signatures.clone());
+        (*transaction_query_calls_lock).push(signatures);
 
         let status_lock = acquire_lock!(self.state.rpc_status_error);
         if let Some(status) = (*status_lock).clone() {
             return Err(status);
         }
 
-        let transaction_query_response_lock = acquire_lock!(self.state.transaction_query_response);
-        let transaction_query_response = TxQueryResponseProto::from(transaction_query_response_lock.clone());
-        let mut responses = Vec::new();
-        for sig in signatures.iter() {
-            let response = TxQueryBatchResponseProto {
-                signature: Some(sig.clone().into()),
-                location: transaction_query_response.location,
-                block_hash: transaction_query_response.block_hash.clone(),
-                confirmations: transaction_query_response.confirmations,
-            };
-            responses.push(response);
-        }
+        let transaction_query_response_lock = acquire_lock!(self.state.transaction_query_batch_response);
+
+        let mut response = transaction_query_response_lock.clone();
+
         let sync_lock = acquire_lock!(self.state.synced);
-        Ok(Response::new(TxQueryBatchResponsesProto {
-            responses,
-            is_synced: *sync_lock,
-        }))
+        response.is_synced = *sync_lock;
+        Ok(Response::new(response))
     }
 
     async fn fetch_matching_utxos(
@@ -469,11 +600,54 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
             .ok_or_else(|| RpcStatus::not_found("get_header_response set to None"))?;
         Ok(Response::new(resp.into()))
     }
+
+    async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus> {
+        let message = request.into_message();
+
+        let mut utxo_query_lock = acquire_lock!(self.state.utxo_query_calls);
+        (*utxo_query_lock).push(message.output_hashes);
+
+        let lock = acquire_lock!(self.state.utxo_query_response);
+        Ok(Response::new(lock.clone()))
+    }
+
+    async fn query_deleted(
+        &self,
+        request: Request<QueryDeletedRequest>,
+    ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
+        let message = request.into_message();
+
+        let mut query_deleted_lock = acquire_lock!(self.state.query_deleted_calls);
+        (*query_deleted_lock).push(message);
+
+        let lock = acquire_lock!(self.state.query_deleted_response);
+        Ok(Response::new(lock.clone()))
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        let height = request.into_message();
+
+        let mut header_by_height_lock = acquire_lock!(self.state.get_header_by_height_calls);
+        (*header_by_height_lock).push(height);
+
+        let block_lock = acquire_lock!(self.state.blocks);
+
+        let header = (*block_lock).get(&height).cloned();
+
+        if let Some(h) = header {
+            Ok(Response::new(h.into()))
+        } else {
+            Err(RpcStatus::not_found("Header not found"))
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::support::rpc::BaseNodeWalletRpcMockService;
+    use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
     use tari_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},

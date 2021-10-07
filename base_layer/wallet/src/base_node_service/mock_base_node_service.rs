@@ -103,24 +103,12 @@ impl MockBaseNodeService {
         }
     }
 
-    fn set_base_node_peer(&mut self, peer: Peer) {
-        self.base_node_peer = Some(peer);
-    }
-
     /// This handler is called when requests arrive from the various streams
     fn handle_request(
         &mut self,
         request: BaseNodeServiceRequest,
     ) -> Result<BaseNodeServiceResponse, BaseNodeServiceError> {
         match request {
-            BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
-                self.set_base_node_peer(*peer);
-                Ok(BaseNodeServiceResponse::BaseNodePeerSet)
-            },
-            BaseNodeServiceRequest::GetBaseNodePeer => {
-                let peer = self.base_node_peer.clone();
-                Ok(BaseNodeServiceResponse::BaseNodePeer(peer.map(Box::new)))
-            },
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
                 self.state.chain_metadata.clone(),
             )),

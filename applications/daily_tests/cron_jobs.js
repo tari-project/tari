@@ -1,5 +1,5 @@
 const { CronJob } = require("cron");
-const fs = require("fs/promises");
+const { promises: fs } = require("fs");
 const {
   sendWebhookNotification,
   getWebhookUrl,
@@ -52,10 +52,10 @@ async function runWalletRecoveryTest(instances) {
       scannedRate,
       recoveredAmount,
     } = await walletRecoveryTest({
-      seedWords:
-        "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
-      log: LOG_FILE,
-      numWallets: instances,
+        seedWords:
+          "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
+        log: LOG_FILE,
+        numWallets: instances,
       baseDir,
     });
 

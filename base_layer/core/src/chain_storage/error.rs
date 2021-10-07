@@ -114,6 +114,8 @@ pub enum ChainStorageError {
     DbResizeRequired,
     #[error("DB transaction was too large ({0} operations)")]
     DbTransactionTooLarge(usize),
+    #[error("DB needs to be resynced: {0}")]
+    DatabaseResyncRequired(&'static str),
 }
 
 impl ChainStorageError {

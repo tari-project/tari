@@ -89,7 +89,6 @@ mod not_found;
 pub mod __macro_reexports {
     pub use crate::{
         framing::CanonicalFraming,
-        multiplexing::Substream,
         protocol::{
             rpc::{
                 client_pool::RpcPoolClient,
@@ -105,6 +104,7 @@ pub mod __macro_reexports {
             },
             ProtocolId,
         },
+        stream_id::StreamId,
         Bytes,
     };
     pub use futures::{future, future::BoxFuture};

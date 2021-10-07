@@ -24,11 +24,15 @@ mod builder;
 pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 
 mod controller;
+pub use controller::{HiddenServiceController, HiddenServiceControllerError};
+
+mod proxy_opts;
+pub use proxy_opts::TorProxyOpts;
+
 use crate::{
     multiaddr::Multiaddr,
     tor::{PrivateKey, TorClientError},
 };
-pub use controller::{HiddenServiceController, HiddenServiceControllerError};
 use serde_derive::{Deserialize, Serialize};
 use std::fmt;
 use tari_shutdown::OptionalShutdownSignal;

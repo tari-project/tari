@@ -27,7 +27,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -201,6 +201,7 @@ pub struct CompletedTransaction {
     pub valid: bool,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
+    pub mined_in_block: Option<BlockHash>,
 }
 
 impl CompletedTransaction {
@@ -236,11 +237,12 @@ impl CompletedTransaction {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         }
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.status == TransactionStatus::Coinbase
+        self.coinbase_block_height.is_some()
     }
 }
 
@@ -334,6 +336,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         }
     }
 }
@@ -358,6 +361,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         }
     }
 }
