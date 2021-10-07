@@ -147,7 +147,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Set up the Tokio runtime
     let rt = setup_runtime(&node_config).map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(e)
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
@@ -227,7 +227,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
                 return ExitCodes::ConfigError(boxed_error.to_string());
             }
         }
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(err.to_string())
     })?;
 
     if node_config.grpc_enabled {

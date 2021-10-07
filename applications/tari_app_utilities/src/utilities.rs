@@ -50,8 +50,8 @@ pub const LOG_TARGET: &str = "tari::application";
 pub enum ExitCodes {
     #[error("There is an error in the wallet configuration: {0}")]
     ConfigError(String),
-    #[error("The application exited because an unknown error occurred. Check the logs for details.")]
-    UnknownError,
+    #[error("The application exited because an unknown error occurred: {0}. Check the logs for more details.")]
+    UnknownError(String),
     #[error("The application exited because an interface error occurred. Check the logs for details.")]
     InterfaceError,
     #[error("The application exited. {0}")]
@@ -82,7 +82,7 @@ impl ExitCodes {
     pub fn as_i32(&self) -> i32 {
         match self {
             Self::ConfigError(_) => 101,
-            Self::UnknownError => 102,
+            Self::UnknownError(_) => 102,
             Self::InterfaceError => 103,
             Self::WalletError(_) => 104,
             Self::GrpcError(_) => 105,
