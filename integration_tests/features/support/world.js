@@ -2,7 +2,7 @@ const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
-const DanNodeProcess = require("../../helpers/danNodeProcess");
+const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -73,7 +73,12 @@ class CustomWorld {
   }
 
   createDanNode(name, options) {
-    return new DanNodeProcess(name, false, options, this.logFilePathBaseNode);
+    return new ValidatorNodeProcess(
+      name,
+      false,
+      options,
+      this.logFilePathBaseNode
+    );
   }
 
   async createAndAddDanNode(name) {
@@ -385,8 +390,8 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await baseNode.init();
   await baseNode.compile();
 
-  const danNode = new DanNodeProcess("compile");
-  console.log("Compiling dan node...");
+  const danNode = new ValidatorNodeProcess("compile");
+  console.log("Compiling validator node...");
   await danNode.init();
   await danNode.compile();
 

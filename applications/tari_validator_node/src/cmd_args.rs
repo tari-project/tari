@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use clap::App;
+// use clap::App;
 
-pub fn get_operation_mode() -> OperationMode {
-    let _matches = App::new("Tari DAN node").version("1.0").get_matches();
-    OperationMode::Run
-}
+// pub fn _get_operation_mode() -> OperationMode {
+//     let _matches = App::new("Tari DAN node").version("1.0").get_matches();
+//     OperationMode::Run
+// }
 
-pub enum OperationMode {
-    Run,
-}
+// pub enum OperationMode {
+//     Run,
+// }
 
 // pub struct DanNodeConfig {}

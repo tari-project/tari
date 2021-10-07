@@ -2,13 +2,13 @@ const { spawn } = require("child_process");
 const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
-const DanNodeClient = require("./danNodeClient");
+const ValidatorNodeClient = require("./validatorNodeClient");
 const { sleep, getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 
 let outputProcess;
-class DanNodeProcess {
+class ValidatorNodeProcess {
   constructor(name, excludeTestEnvars, options, logFilePath, nodeFile) {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
@@ -25,7 +25,7 @@ class DanNodeProcess {
   async init() {
     this.port = await getFreePort();
     this.grpcPort = 18080; // Currently it's constant
-    this.name = `DanNode${this.port}-${this.name}`;
+    this.name = `ValidatorNode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
     do {
@@ -53,15 +53,14 @@ class DanNodeProcess {
         "build",
         "--release",
         "--bin",
-        "tari_dan_node",
+        "tari_validator_node",
         "-Z",
         "unstable-options",
         "--out-dir",
         process.cwd() + "/temp/out",
       ]);
-      outputProcess = process.cwd() + "/temp/out/tari_dan_node";
+      outputProcess = process.cwd() + "/temp/out/tari_validator_node";
     }
-    console.log(outputProcess);
     return outputProcess;
   }
 
@@ -145,7 +144,7 @@ class DanNodeProcess {
       });
 
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        // console.log(`stdout: ${data}`);
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
           data
@@ -218,8 +217,8 @@ class DanNodeProcess {
   }
 
   async createGrpcClient() {
-    return await DanNodeClient.create(this.grpcPort);
+    return await ValidatorNodeClient.create(this.grpcPort);
   }
 }
 
-module.exports = DanNodeProcess;
+module.exports = ValidatorNodeProcess;

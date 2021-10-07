@@ -27,7 +27,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
@@ -77,7 +77,12 @@ use crate::{
 };
 use std::collections::VecDeque;
 use tari_core::transactions::transaction_protocol::TxId;
-use tari_wallet::{assets::Asset, output_manager_service::handle::OutputManagerHandle, tokens::Token};
+use tari_wallet::{
+    assets::Asset,
+    output_manager_service::handle::OutputManagerHandle,
+    tokens::Token,
+    transaction_service::storage::models::TransactionDirection,
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -363,11 +368,11 @@ impl AppState {
         &self.cached_data.contacts[start..end]
     }
 
-    pub fn get_pending_txs(&self) -> &Vec<CompletedTransaction> {
+    pub fn get_pending_txs(&self) -> &Vec<CompletedTransactionInfo> {
         &self.cached_data.pending_txs
     }
 
-    pub fn get_pending_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransaction] {
+    pub fn get_pending_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransactionInfo] {
         if self.cached_data.pending_txs.is_empty() || start > end || end > self.cached_data.pending_txs.len() {
             return &[];
         }
@@ -375,7 +380,7 @@ impl AppState {
         &self.cached_data.pending_txs[start..end]
     }
 
-    pub fn get_pending_tx(&self, index: usize) -> Option<&CompletedTransaction> {
+    pub fn get_pending_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
         if index < self.cached_data.pending_txs.len() {
             Some(&self.cached_data.pending_txs[index])
         } else {
@@ -383,7 +388,7 @@ impl AppState {
         }
     }
 
-    pub fn get_completed_txs(&self) -> Vec<&CompletedTransaction> {
+    pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
         if self
             .completed_tx_filter
             .contains(TransactionFilter::ABANDONED_COINBASES)
@@ -402,7 +407,7 @@ impl AppState {
         (&self.cached_data.confirmations).get(tx_id)
     }
 
-    pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransaction> {
+    pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
         let filtered_completed_txs = self.get_completed_txs();
         if index < filtered_completed_txs.len() {
             Some(filtered_completed_txs[index])
@@ -570,7 +575,10 @@ impl AppStateInner {
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
             b.timestamp.partial_cmp(&a.timestamp).unwrap()
         });
-        self.data.pending_txs = pending_transactions;
+        self.data.pending_txs = pending_transactions
+            .iter()
+            .map(|tx| CompletedTransactionInfo::from(tx.clone()))
+            .collect();
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
         completed_transactions.extend(
@@ -599,7 +607,10 @@ impl AppStateInner {
                 .expect("Should be able to compare timestamps")
         });
 
-        self.data.completed_txs = completed_transactions;
+        self.data.completed_txs = completed_transactions
+            .iter()
+            .map(|tx| CompletedTransactionInfo::from(tx.clone()))
+            .collect();
         self.updated = true;
         Ok(())
     }
@@ -641,7 +652,7 @@ impl AppStateInner {
                     });
             },
             Some(tx) => {
-                let tx = CompletedTransaction::from(tx);
+                let tx = CompletedTransactionInfo::from(CompletedTransaction::from(tx));
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && !tx.cancelled {
                         self.data.pending_txs[index] = tx;
@@ -920,11 +931,92 @@ impl AppStateInner {
 }
 
 #[derive(Clone)]
+pub struct CompletedTransactionInfo {
+    pub tx_id: TxId,
+    pub source_public_key: CommsPublicKey,
+    pub destination_public_key: CommsPublicKey,
+    pub amount: MicroTari,
+    pub fee: MicroTari,
+    pub excess_signature: String,
+    pub maturity: u64,
+    pub status: TransactionStatus,
+    pub message: String,
+    pub timestamp: NaiveDateTime,
+    pub cancelled: bool,
+    pub direction: TransactionDirection,
+    pub valid: bool,
+    pub mined_height: Option<u64>,
+    pub is_coinbase: bool,
+    pub weight: u64,
+    pub inputs_count: usize,
+    pub outputs_count: usize,
+    pub unique_id: String,
+}
+
+fn first_unique_id(tx: &CompletedTransaction) -> String {
+    let body = tx.transaction.get_body();
+    for input in body.inputs() {
+        if let Some(ref unique_id) = input.features.unique_id {
+            return unique_id.to_hex();
+        }
+    }
+    for output in body.outputs() {
+        if let Some(ref unique_id) = output.features.unique_id {
+            return unique_id.to_hex();
+        }
+    }
+
+    String::new()
+}
+
+impl From<CompletedTransaction> for CompletedTransactionInfo {
+    fn from(completed_transaction: CompletedTransaction) -> Self {
+        let excess_signature = if completed_transaction.transaction.body.kernels().is_empty() {
+            "".to_string()
+        } else {
+            completed_transaction.transaction.body.kernels()[0]
+                .excess_sig
+                .get_signature()
+                .to_hex()
+        };
+        let unique_id = first_unique_id(&completed_transaction);
+
+        Self {
+            tx_id: completed_transaction.tx_id,
+            source_public_key: completed_transaction.source_public_key.clone(),
+            destination_public_key: completed_transaction.destination_public_key.clone(),
+            amount: completed_transaction.amount,
+            fee: completed_transaction.fee,
+            excess_signature,
+            maturity: completed_transaction
+                .transaction
+                .body
+                .outputs()
+                .first()
+                .map(|o| o.features.maturity)
+                .unwrap_or_else(|| 0),
+            status: completed_transaction.status.clone(),
+            message: completed_transaction.message.clone(),
+            timestamp: completed_transaction.timestamp,
+            cancelled: completed_transaction.cancelled,
+            direction: completed_transaction.direction.clone(),
+            valid: completed_transaction.valid,
+            mined_height: completed_transaction.mined_height,
+            is_coinbase: completed_transaction.is_coinbase(),
+            weight: completed_transaction.transaction.calculate_weight(),
+            inputs_count: completed_transaction.transaction.body.inputs().len(),
+            outputs_count: completed_transaction.transaction.body.outputs().len(),
+            unique_id,
+        }
+    }
+}
+
+#[derive(Clone)]
 struct AppStateData {
     owned_assets: Vec<Asset>,
     owned_tokens: Vec<Token>,
-    pending_txs: Vec<CompletedTransaction>,
-    completed_txs: Vec<CompletedTransaction>,
+    pending_txs: Vec<CompletedTransactionInfo>,
+    completed_txs: Vec<CompletedTransactionInfo>,
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
