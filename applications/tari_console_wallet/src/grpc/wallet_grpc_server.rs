@@ -17,6 +17,7 @@ use tari_app_grpc::{
         GetCompletedTransactionsResponse,
         GetIdentityRequest,
         GetIdentityResponse,
+        GetOwnedAssetsResponse,
         GetTransactionInfoRequest,
         GetTransactionInfoResponse,
         GetVersionRequest,
@@ -25,6 +26,8 @@ use tari_app_grpc::{
         ImportUtxosResponse,
         MintTokensRequest,
         MintTokensResponse,
+        RegisterAssetRequest,
+        RegisterAssetResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -361,6 +364,62 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
     }
 
+    async fn register_asset(
+        &self,
+        request: Request<RegisterAssetRequest>,
+    ) -> Result<Response<RegisterAssetResponse>, Status> {
+        let mut manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+        let (tx_id, transaction) = manager
+            .create_registration_transaction(message.name)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let asset_public_key = transaction
+            .body
+            .outputs()
+            .into_iter()
+            .filter_map(|tx| match tx.features.asset.clone() {
+                Some(asset) => Some(asset.public_key),
+                None => None,
+            })
+            .next()
+            .unwrap();
+        let _result = transaction_service
+            .submit_transaction(
+                tx_id,
+                transaction,
+                0.into(),
+                "test register asset transaction".to_string(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(RegisterAssetResponse {
+            public_key: Vec::from(asset_public_key.as_bytes()),
+        }))
+    }
+
+    async fn get_owned_assets(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetOwnedAssetsResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let owned = asset_manager
+            .list_owned_assets()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        for x in owned.iter() {
+            println!("name : {}", x.name());
+        }
+        let owned = owned
+            .into_iter()
+            .map(|asset| tari_rpc::Asset {
+                name: asset.name().to_string(),
+                registration_output_status: asset.registration_output_status().to_string(),
+                public_key: Vec::from(asset.public_key().as_bytes()),
+                owner_commitment: Vec::from(asset.owner_commitment().as_bytes()),
+            })
+            .collect();
+        Ok(Response::new(tari_rpc::GetOwnedAssetsResponse { assets: owned }))
+    }
+
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
         let mut asset_manager = self.wallet.asset_manager.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
@@ -409,6 +468,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .filter_map(|t| {
                 if t.asset_public_key() == &request_public_key {
                     Some(tari_rpc::TokenUtxo {
+                        name: t.name().to_string(),
+                        output_status: t.output_status().to_string(),
                         asset_public_key: Vec::from(t.asset_public_key().as_bytes()),
                         unique_id: Vec::from(t.unique_id()),
                         commitment: Vec::from(t.owner_commitment().as_bytes()),

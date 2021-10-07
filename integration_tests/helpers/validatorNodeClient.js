@@ -1,6 +1,10 @@
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
-const { tryConnect } = require("./util");
+const {
+  tryConnect,
+  convertHexStringToVec,
+  convertStringToVec,
+} = require("./util");
 const grpcPromise = require("grpc-promise");
 
 class ValidatorNodeClient {
@@ -42,13 +46,6 @@ class ValidatorNodeClient {
   }
 
   executeInstruction(asset_public_key, method, metadata, token, signature, id) {
-    let convertHexStringToVec = (string) =>
-      string.match(/.{2}/g).map((x) => parseInt(x, 16));
-    let convertStringToVec = (string) =>
-      Array(string.length)
-        .fill()
-        .map((_, i) => string.charCodeAt(i));
-
     console.log(
       `Executing instruction for asset ${asset_public_key} / token ${token} via method ${method} with metadata ${metadata} `
     );
