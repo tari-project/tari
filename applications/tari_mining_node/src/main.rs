@@ -74,6 +74,8 @@ async fn main_inner() -> Result<(), ExitCodes> {
     config.num_mining_threads = global.num_mining_threads;
     config.validate_tip_timeout_sec = global.validate_tip_timeout_sec;
     config.mining_worker_name = global.mining_worker_name.clone();
+    config.mining_wallet_address = global.mining_wallet_address.clone();
+    config.mining_pool_address = global.mining_pool_address.clone();
     debug!("{:?}", bootstrap);
     debug!("{:?}", config);
 
