@@ -11,8 +11,8 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_storage = { path = "../infrastructure/storage" }
-tari_shutdown = { path = "../infrastructure/shutdown" }
+tari_storage = { version = "^0.10", path = "../infrastructure/storage" }
+tari_shutdown = { version = "^0.10", path = "../infrastructure/shutdown" }
 
 anyhow = "1.0.32"
 async-trait = "0.1.36"
@@ -31,8 +31,6 @@ log = { version = "0.4.0", features = ["std"] }
 multiaddr = { version = "0.13.0" }
 nom = { version = "5.1.0", features = ["std"], default-features = false }
 openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }
-opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
-opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
 pin-project = "1.0.8"
 prost = "=0.8.0"
 rand = "0.8"
@@ -44,21 +42,27 @@ tokio = { version = "1.11", features = ["rt-multi-thread", "time", "sync", "sign
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
 tower = "0.3.1"
-tower-make = { version = "0.3.0", optional = true }
 tracing = "0.1.26"
 tracing-futures = "0.2.5"
 yamux = "=0.9.0"
 
+# network tracing, rt-tokio for async batch export
+opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
+
+# RPC dependencies
+tower-make = { version = "0.3.0", optional = true }
+
 [dev-dependencies]
-tari_test_utils = { path = "../infrastructure/test_utils" }
-tari_comms_rpc_macros = { path = "./rpc_macros" }
+tari_test_utils = { version = "^0.10", path = "../infrastructure/test_utils" }
+tari_comms_rpc_macros = { version = "*", path = "./rpc_macros" }
 
 env_logger = "0.7.0"
 serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { path = "../common", features = ["build"] }
+tari_common = { version = "^0.10", path = "../common", features = ["build"] }
 
 [features]
 c_integration = []

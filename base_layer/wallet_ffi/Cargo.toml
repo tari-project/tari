@@ -7,14 +7,14 @@ version = "0.19.0"
 edition = "2018"
 
 [dependencies]
-tari_comms = { path = "../../comms", features = ["c_integration"] }
-tari_comms_dht = { path = "../../comms/dht", default-features = false }
-tari_common_types = { path="../common_types" }
+tari_comms = { version = "^0.10", path = "../../comms", features = ["c_integration"]}
+tari_comms_dht = { version = "^0.10", path = "../../comms/dht", default-features = false }
+tari_common_types = {path="../common_types"}
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_key_manager = { path = "../key_manager" }
-tari_p2p = { path = "../p2p" }
-tari_wallet = { path = "../wallet", features = ["c_integration"]}
-tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_key_manager = { version = "^0.10", path = "../key_manager" }
+tari_p2p = { version = "^0.10", path = "../p2p" }
+tari_wallet = { version = "^0.10", path = "../wallet", features = ["c_integration"]}
+tari_shutdown = { version = "^0.10", path = "../../infrastructure/shutdown" }
 tari_utilities = "^0.3"
 
 chrono = { version = "0.4.6", features = ["serde"]}
@@ -38,6 +38,7 @@ security-framework = "2.4.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
+version = "^0.10"
 default-features = false
 features = ["transactions"]
 
@@ -48,6 +49,6 @@ crate-type = ["staticlib","cdylib"]
 tempfile = "3.1.0"
 lazy_static = "1.3.0"
 env_logger = "0.7.1"
-tari_key_manager = { path = "../key_manager" }
-tari_common_types = { path = "../../base_layer/common_types"}
-tari_test_utils = { path = "../../infrastructure/test_utils"}
+tari_key_manager = { version = "^0.10", path = "../key_manager" }
+tari_common_types = { version = "^0.10", path = "../../base_layer/common_types"}
+tari_test_utils = { version = "^0.10", path = "../../infrastructure/test_utils"}

@@ -13,14 +13,14 @@ edition = "2018"
 proc-macro = true
 
 [dependencies]
-tari_comms = { path = "../", features = ["rpc"] }
+tari_comms = { version = "^0.10", path = "../", features = ["rpc"] }
 
 proc-macro2 = "1.0.24"
 quote = "1.0.7"
 syn = { version = "1.0.38", features = ["fold"] }
 
 [dev-dependencies]
-tari_test_utils = { path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.10", path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"
 prost = "0.8.0"

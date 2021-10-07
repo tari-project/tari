@@ -7,15 +7,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_common_types = { path = "../../base_layer/common_types" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_utilities = "^0.3"
+tari_common_types ={path="../../base_layer/common_types"}
 
 rand = "0.8"
 serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0"
 
 [dependencies.tari_core]
+version = "^0.10"
 path = "../../base_layer/core/"
 default-features = false
 features = ["transactions", "avx2"]
