@@ -23,7 +23,7 @@
 use super::{
     config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
-    handle::{BaseNodeEvent, BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
+    handle::{BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
 };
 use crate::{
     base_node_service::monitor::BaseNodeMonitor,
@@ -35,7 +35,6 @@ use futures::{future, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
@@ -153,12 +152,6 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
-        self.wallet_connectivity.set_base_node(peer.clone()).await?;
-        self.publish_event(BaseNodeEvent::BaseNodePeerSet(Box::new(peer)));
-        Ok(())
-    }
-
     /// This handler is called when requests arrive from the various streams
     async fn handle_request(
         &mut self,
@@ -169,14 +162,6 @@ where T: WalletBackend + 'static
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
-                self.set_base_node_peer(*peer).await?;
-                Ok(BaseNodeServiceResponse::BaseNodePeerSet)
-            },
-            BaseNodeServiceRequest::GetBaseNodePeer => {
-                let peer = self.wallet_connectivity.get_current_base_node_peer().map(Box::new);
-                Ok(BaseNodeServiceResponse::BaseNodePeer(peer))
-            },
             BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata.clone() {
                 Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
                 None => {
@@ -189,15 +174,5 @@ where T: WalletBackend + 'static
                 Ok(BaseNodeServiceResponse::Latency(self.state.read().await.latency))
             },
         }
-    }
-
-    fn publish_event(&self, event: BaseNodeEvent) {
-        trace!(target: LOG_TARGET, "Publishing event: {:?}", event);
-        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
-            trace!(
-                target: LOG_TARGET,
-                "Could not publish BaseNodeEvent as there are no subscribers"
-            )
-        });
     }
 }

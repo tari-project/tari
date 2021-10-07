@@ -52,12 +52,11 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId},
     transaction_service::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TransactionStatus},
     },
-    types::ValidationRetryStrategy,
     WalletSqlite,
 };
 
@@ -351,7 +350,7 @@ impl AppState {
             self.cached_data
                 .completed_txs
                 .iter()
-                .filter(|tx| !(tx.cancelled && tx.status == TransactionStatus::Coinbase))
+                .filter(|tx| !((tx.cancelled || !tx.valid) && tx.status == TransactionStatus::Coinbase))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -815,32 +814,12 @@ impl AppStateInner {
         let mut output_manager_service = self.wallet.output_manager_service.clone();
 
         task::spawn(async move {
-            if let Err(e) = txn_service
-                .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
+            if let Err(e) = txn_service.validate_transactions().await {
                 error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
             }
 
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
+            if let Err(e) = output_manager_service.validate_txos().await {
                 error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-            }
-
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
-                error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
-            }
-
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
-                error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
             }
         });
     }

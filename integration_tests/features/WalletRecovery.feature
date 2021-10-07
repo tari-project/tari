@@ -1,4 +1,4 @@
-@wallet-recovery
+@wallet-recovery @wallet
 Feature: Wallet Recovery
 
     @critical

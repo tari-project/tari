@@ -20,23 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::output_manager_service::error::OutputManagerStorageError;
 use std::cmp::Ordering;
-
-use tari_crypto::script::{ExecutionStack, TariScript};
-
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
+use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
 };
-
-use crate::output_manager_service::error::OutputManagerStorageError;
+use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
+    pub mined_height: Option<u64>,
+    pub mined_in_block: Option<BlockHash>,
+    pub mined_mmr_position: Option<u64>,
+    pub marked_deleted_at_height: Option<u64>,
+    pub marked_deleted_in_block: Option<BlockHash>,
 }
 
 impl DbUnblindedOutput {
@@ -49,6 +51,11 @@ impl DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            mined_height: None,
+            mined_in_block: None,
+            mined_mmr_position: None,
+            marked_deleted_at_height: None,
+            marked_deleted_in_block: None,
         })
     }
 
@@ -62,6 +69,11 @@ impl DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            mined_height: None,
+            mined_in_block: None,
+            mined_mmr_position: None,
+            marked_deleted_at_height: None,
+            marked_deleted_in_block: None,
         })
     }
 }
@@ -115,4 +127,9 @@ pub enum OutputStatus {
     EncumberedToBeSpent,
     Invalid,
     CancelledInbound,
+    UnspentMinedUnconfirmed,
+    ShortTermEncumberedToBeReceived,
+    ShortTermEncumberedToBeSpent,
+    SpentMinedUnconfirmed,
+    AbandonedCoinbase,
 }

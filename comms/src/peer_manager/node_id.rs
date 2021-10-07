@@ -359,6 +359,12 @@ impl TryFrom<&[u8]> for NodeId {
     }
 }
 
+impl From<CommsPublicKey> for NodeId {
+    fn from(pk: CommsPublicKey) -> Self {
+        NodeId::from_public_key(&pk)
+    }
+}
+
 impl Hash for NodeId {
     /// Require the implementation of the Hash trait for Hashmaps
     fn hash<H: Hasher>(&self, state: &mut H) {

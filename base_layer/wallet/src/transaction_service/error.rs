@@ -28,7 +28,7 @@ use crate::{
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_p2p::services::liveness::error::LivenessError;
@@ -79,6 +79,8 @@ pub enum TransactionServiceError {
     DiscoveryProcessFailed(TxId),
     #[error("Invalid Completed Transaction provided")]
     InvalidCompletedTransaction,
+    #[error("Attempted to broadcast a coinbase transaction. TxId `{0}`")]
+    AttemptedToBroadcastCoinbaseTransaction(TxId),
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
     #[error("Error sending data to Protocol via registered channels")]
@@ -145,6 +147,13 @@ pub enum TransactionServiceError {
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
     WalletRecoveryInProgress,
+    #[error("Connectivity error: {source}")]
+    ConnectivityError {
+        #[from]
+        source: ConnectivityError,
+    },
+    #[error("Base Node is not synced")]
+    BaseNodeNotSynced,
 }
 
 #[derive(Debug, Error)]
@@ -202,5 +211,18 @@ impl TransactionServiceProtocolError {
 impl From<TransactionServiceProtocolError> for TransactionServiceError {
     fn from(tspe: TransactionServiceProtocolError) -> Self {
         tspe.error
+    }
+}
+
+pub trait TransactionServiceProtocolErrorExt<TRes> {
+    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+}
+
+impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
+    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+        match self {
+            Ok(r) => Ok(r),
+            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+        }
     }
 }

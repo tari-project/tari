@@ -87,7 +87,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
                     event!(Level::INFO, version = version, "Server accepted version");
-                    debug!(target: LOG_TARGET, "Server accepted version {}", version);
+                    debug!(target: LOG_TARGET, "Server accepted version: {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
                         ..Default::default()
