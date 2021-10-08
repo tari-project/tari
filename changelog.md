@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.11.0](https://github.com/tari-project/tari/compare/v0.10.1...v0.11.0) (2021-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* new transaction and output validation protocol (#3421)
+
+### Features
+
+* allow tor proxy to be bypassed for outbound tcp connections ([#3424](https://github.com/tari-project/tari/issues/3424)) ([6a5982e](https://github.com/tari-project/tari/commit/6a5982e2814fe4bd3e4d33f5d4770db2bb28d7e2))
+* new transaction and output validation protocol ([#3421](https://github.com/tari-project/tari/issues/3421)) ([6578d1e](https://github.com/tari-project/tari/commit/6578d1eb885578761803b6278123ad154c677d53)), closes [#3191](https://github.com/tari-project/tari/issues/3191) [#3352](https://github.com/tari-project/tari/issues/3352) [#3383](https://github.com/tari-project/tari/issues/3383) [#3391](https://github.com/tari-project/tari/issues/3391) [#3394](https://github.com/tari-project/tari/issues/3394) [#3400](https://github.com/tari-project/tari/issues/3400) [#3417](https://github.com/tari-project/tari/issues/3417)
+* update coinbase handling for new tx and output validation ([#3383](https://github.com/tari-project/tari/issues/3383)) ([8b546c9](https://github.com/tari-project/tari/commit/8b546c998c28ca5ca049ed7e446e0507546d02c8))
+
+
+### Bug Fixes
+
+* allow env override of mining node pool settings ([#3428](https://github.com/tari-project/tari/issues/3428)) ([423dbe1](https://github.com/tari-project/tari/commit/423dbe151344024075ca23731370ae988261eb1f))
+* auto update cucumber tests, reduced timeout ([#3418](https://github.com/tari-project/tari/issues/3418)) ([ce17627](https://github.com/tari-project/tari/commit/ce17627ab0a6a6e4cbc3ea8d0e3532256f22d81a))
+* don't display an error when there is no message to be read in tari_mining_node ([#3409](https://github.com/tari-project/tari/issues/3409)) ([eb4b560](https://github.com/tari-project/tari/commit/eb4b560bfc18e76ff31c39dcf7b55d42c53f5b0e))
+* handle recovering a duplicate output ([#3426](https://github.com/tari-project/tari/issues/3426)) ([f9c9201](https://github.com/tari-project/tari/commit/f9c9201db0886ba2c9643b047f240ceec42bfc29))
+* network switching ([#3413](https://github.com/tari-project/tari/issues/3413)) ([9a369a0](https://github.com/tari-project/tari/commit/9a369a024558f217edcd0fd220e788522fea4760))
+* only allow one session per peer for block/header sync ([#3402](https://github.com/tari-project/tari/issues/3402)) ([06da165](https://github.com/tari-project/tari/commit/06da165d498bff1983c63eed8fede776841213d0))
+* reduce console wallet tui memory usage ([#3389](https://github.com/tari-project/tari/issues/3389)) ([ca1e9fd](https://github.com/tari-project/tari/commit/ca1e9fdfc267e47f15b8434deb2a7953bc7d1c8e))
+* update default sha3 pool address in readme and config ([#3405](https://github.com/tari-project/tari/issues/3405)) ([dae656a](https://github.com/tari-project/tari/commit/dae656ac755c1c9a08d670c6e0f258ed725576b9))
+* update message on finding a valid share in tari_mining_node ([#3408](https://github.com/tari-project/tari/issues/3408)) ([7c13fde](https://github.com/tari-project/tari/commit/7c13fde7b4d5c6c4dfd0c7d4de5d2858597ac9a9))
+* updates to daily recovery test ([#3433](https://github.com/tari-project/tari/issues/3433)) ([8ac27be](https://github.com/tari-project/tari/commit/8ac27bea9a699e4b85a870bfc847bc7e38692790))
+* use intermediate u64 to calculate average ([#3432](https://github.com/tari-project/tari/issues/3432)) ([ff6bc38](https://github.com/tari-project/tari/commit/ff6bc38826ea584061f7c575ab5de9a514eb4832))
+
 ### [0.10.1](https://github.com/tari-project/tari/compare/v0.10.0...v0.10.1) (2021-10-01)
 
 

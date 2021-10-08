@@ -3762,8 +3762,8 @@ fn test_transaction_resending() {
         factories.clone(),
         connection,
         Some(TransactionServiceConfig {
-            transaction_resend_period: Duration::from_secs(10),
-            resend_response_cooldown: Duration::from_secs(5),
+            transaction_resend_period: Duration::from_secs(20),
+            resend_response_cooldown: Duration::from_secs(10),
             ..Default::default()
         }),
     );
@@ -3786,7 +3786,7 @@ fn test_transaction_resending() {
 
     // Check that there were repeats
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 1");
 
     let mut alice_sender_message = TransactionSenderMessage::None;
@@ -3824,8 +3824,8 @@ fn test_transaction_resending() {
         factories,
         connection,
         Some(TransactionServiceConfig {
-            transaction_resend_period: Duration::from_secs(10),
-            resend_response_cooldown: Duration::from_secs(5),
+            transaction_resend_period: Duration::from_secs(20),
+            resend_response_cooldown: Duration::from_secs(10),
             ..Default::default()
         }),
     );
@@ -3840,7 +3840,7 @@ fn test_transaction_resending() {
 
     // Check that the reply was repeated
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Bob call wait 1");
 
     let mut bob_reply_message;
@@ -3861,8 +3861,8 @@ fn test_transaction_resending() {
 
     assert!(bob_outbound_service.wait_call_count(1, Duration::from_secs(2)).is_err());
 
-    // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a reponse.
-    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
+    // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicits a response.
+    runtime.block_on(async { sleep(Duration::from_secs(8)).await });
     runtime
         .block_on(bob_tx_sender.send(create_dummy_message(
             alice_sender_message.into(),
@@ -3870,7 +3870,7 @@ fn test_transaction_resending() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(2, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Bob call wait 2");
     let _ = bob_outbound_service.pop_call().unwrap();
     let call = bob_outbound_service.pop_call().unwrap();
@@ -3888,7 +3888,7 @@ fn test_transaction_resending() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 2");
 
     let _ = alice_outbound_service.pop_call().unwrap();
@@ -3905,11 +3905,11 @@ fn test_transaction_resending() {
         .unwrap();
 
     assert!(alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(4))
+        .wait_call_count(1, Duration::from_secs(5))
         .is_err());
 
-    // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a reponse.
-    runtime.block_on(async { sleep(Duration::from_secs(2)).await });
+    // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a response.
+    runtime.block_on(async { sleep(Duration::from_secs(6)).await });
 
     runtime
         .block_on(alice_tx_reply_sender.send(create_dummy_message(
