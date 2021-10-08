@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::transaction::TxId;
+use tari_common_types::transaction::{self as tx, TxId};
 use tari_core::{
     crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
     transactions::transaction::Transaction,
@@ -60,21 +60,6 @@ mod wallet {
     use super::*;
     use tari_wallet::transaction_service::storage::models;
 
-    impl From<models::TransactionStatus> for grpc::TransactionStatus {
-        fn from(status: models::TransactionStatus) -> Self {
-            use models::TransactionStatus::*;
-            match status {
-                Completed => grpc::TransactionStatus::Completed,
-                Broadcast => grpc::TransactionStatus::Broadcast,
-                MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
-                MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
-                Imported => grpc::TransactionStatus::Imported,
-                Pending => grpc::TransactionStatus::Pending,
-                Coinbase => grpc::TransactionStatus::Coinbase,
-            }
-        }
-    }
-
     impl From<models::TransactionDirection> for grpc::TransactionDirection {
         fn from(status: models::TransactionDirection) -> Self {
             use models::TransactionDirection::*;
@@ -83,6 +68,21 @@ mod wallet {
                 Inbound => grpc::TransactionDirection::Inbound,
                 Outbound => grpc::TransactionDirection::Outbound,
             }
+        }
+    }
+}
+
+impl From<tx::TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: tx::TransactionStatus) -> Self {
+        use tx::TransactionStatus::*;
+        match status {
+            Completed => grpc::TransactionStatus::Completed,
+            Broadcast => grpc::TransactionStatus::Broadcast,
+            MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
+            MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
+            Imported => grpc::TransactionStatus::Imported,
+            Pending => grpc::TransactionStatus::Pending,
+            Coinbase => grpc::TransactionStatus::Coinbase,
         }
     }
 }

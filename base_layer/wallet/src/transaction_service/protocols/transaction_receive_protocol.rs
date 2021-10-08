@@ -26,7 +26,7 @@ use crate::transaction_service::{
     service::TransactionServiceResources,
     storage::{
         database::TransactionBackend,
-        models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
+        models::{CompletedTransaction, InboundTransaction, TransactionDirection},
     },
     tasks::send_transaction_reply::send_transaction_reply,
 };
@@ -34,7 +34,7 @@ use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::TxId;
+use tari_common_types::transaction::{TransactionStatus, TxId};
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
@@ -240,12 +240,7 @@ where
             .naive_utc()
             .signed_duration_since(inbound_tx.timestamp)
             .to_std()
-            .map_err(|_| {
-                TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                )
-            })?;
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
             .resources
@@ -270,12 +265,7 @@ where
                     .naive_utc()
                     .signed_duration_since(timestamp)
                     .to_std()
-                    .map_err(|_| {
-                        TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                        )
-                    })?;
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
         };

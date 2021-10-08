@@ -38,7 +38,11 @@ use tokio::{
 };
 
 use tari_common::{configuration::Network, GlobalConfig};
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::{TransactionStatus, TxId},
+    types::PublicKey,
+};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -53,10 +57,7 @@ use tari_wallet::{
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TransactionStatus},
-    },
+    transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
 };
 
