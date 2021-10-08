@@ -34,7 +34,7 @@ pub use helpers::{
     serialize_monero_block_to_hex,
 };
 
-mod fixed_array;
+pub mod fixed_array;
 pub use fixed_array::FixedByteArray;
 
 mod pow_data;

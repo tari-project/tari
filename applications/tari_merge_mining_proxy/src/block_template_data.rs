@@ -23,7 +23,7 @@ use crate::error::MmProxyError;
 use chrono::{self, DateTime, Duration, Utc};
 use std::{collections::HashMap, sync::Arc};
 use tari_app_grpc::tari_rpc as grpc;
-use tari_core::proof_of_work::monero_rx::FixedByteArray;
+use tari_core::proof_of_work::monero_rx::{fixed_array, FixedByteArray};
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -101,7 +101,7 @@ impl BlockTemplateRepository {
 
 #[derive(Clone, Debug)]
 pub struct BlockTemplateData {
-    pub monero_seed: FixedByteArray,
+    pub monero_seed: FixedByteArray<{ fixed_array::MAX_ARR_SIZE }>,
     pub tari_block: grpc::Block,
     pub tari_miner_data: grpc::MinerData,
     pub monero_difficulty: u64,
@@ -112,7 +112,7 @@ impl BlockTemplateData {}
 
 #[derive(Default)]
 pub struct BlockTemplateDataBuilder {
-    monero_seed: Option<FixedByteArray>,
+    monero_seed: Option<FixedByteArray<{ fixed_array::MAX_ARR_SIZE }>>,
     tari_block: Option<grpc::Block>,
     tari_miner_data: Option<grpc::MinerData>,
     monero_difficulty: Option<u64>,
@@ -124,7 +124,7 @@ impl BlockTemplateDataBuilder {
         Default::default()
     }
 
-    pub fn monero_seed(mut self, monero_seed: FixedByteArray) -> Self {
+    pub fn monero_seed(mut self, monero_seed: FixedByteArray<{ fixed_array::MAX_ARR_SIZE }>) -> Self {
         self.monero_seed = Some(monero_seed);
         self
     }

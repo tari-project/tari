@@ -21,40 +21,81 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::crypto::tari_utilities::ByteArrayError;
-use monero::{
-    consensus::{encode, Decodable, Encodable},
-    VarInt,
-};
-use std::{convert::TryFrom, io, ops::Deref};
+use serde::{Deserialize, Serialize};
+use std::{convert::TryFrom, ops::Deref};
 use tari_crypto::tari_utilities::ByteArray;
 
-const MAX_ARR_SIZE: usize = 63;
+mod arrays {
+    use std::{convert::TryInto, marker::PhantomData};
 
-#[derive(Clone, Debug)]
-pub struct FixedByteArray {
-    elems: [u8; MAX_ARR_SIZE],
+    use serde::{
+        de::{SeqAccess, Visitor},
+        ser::SerializeTuple,
+        Deserialize,
+        Deserializer,
+        Serialize,
+        Serializer,
+    };
+    pub fn serialize<S: Serializer, T: Serialize, const N: usize>(data: &[T; N], ser: S) -> Result<S::Ok, S::Error> {
+        let mut s = ser.serialize_tuple(N)?;
+        for item in data {
+            s.serialize_element(item)?;
+        }
+        s.end()
+    }
+
+    struct ArrayVisitor<T, const N: usize>(PhantomData<T>);
+
+    impl<'de, T, const N: usize> Visitor<'de> for ArrayVisitor<T, N>
+    where T: Deserialize<'de>
+    {
+        type Value = [T; N];
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str(&format!("an array of length {}", N))
+        }
+
+        #[inline]
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where A: SeqAccess<'de> {
+            let mut data = Vec::with_capacity(N);
+            for _ in 0..N {
+                match (seq.next_element())? {
+                    Some(val) => data.push(val),
+                    None => return Err(serde::de::Error::invalid_length(N, &self)),
+                }
+            }
+            match data.try_into() {
+                Ok(arr) => Ok(arr),
+                Err(_) => unreachable!(),
+            }
+        }
+    }
+    pub fn deserialize<'de, D, T, const N: usize>(deserializer: D) -> Result<[T; N], D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        deserializer.deserialize_tuple(N, ArrayVisitor::<T, N>(PhantomData))
+    }
+}
+
+pub const MAX_ARR_SIZE: usize = 63;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FixedByteArray<const N: usize> {
+    #[serde(with = "arrays")]
+    elems: [u8; N],
     len: u8,
 }
 
-impl FixedByteArray {
+impl FixedByteArray<MAX_ARR_SIZE> {
     pub fn new() -> Self {
         Default::default()
     }
 
     pub fn as_slice(&self) -> &[u8] {
         &self[..self.len()]
-    }
-
-    /// Pushes a byte to the end of the array.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the array is full.
-    // NOTE: This should be a private function
-    fn push(&mut self, elem: u8) {
-        assert!(!self.is_full());
-        self.elems[self.len()] = elem;
-        self.len += 1;
     }
 
     #[inline]
@@ -73,7 +114,7 @@ impl FixedByteArray {
     }
 }
 
-impl Deref for FixedByteArray {
+impl Deref for FixedByteArray<MAX_ARR_SIZE> {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -81,7 +122,7 @@ impl Deref for FixedByteArray {
     }
 }
 
-impl Default for FixedByteArray {
+impl Default for FixedByteArray<MAX_ARR_SIZE> {
     fn default() -> Self {
         Self {
             elems: [0u8; MAX_ARR_SIZE],
@@ -90,7 +131,7 @@ impl Default for FixedByteArray {
     }
 }
 
-impl ByteArray for FixedByteArray {
+impl ByteArray for FixedByteArray<MAX_ARR_SIZE> {
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength)?;
         if len > MAX_ARR_SIZE as u8 {
@@ -107,38 +148,15 @@ impl ByteArray for FixedByteArray {
     }
 }
 
-impl Decodable for FixedByteArray {
-    fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, encode::Error> {
-        let len = VarInt::consensus_decode(d)?.0 as usize;
-        if len > MAX_ARR_SIZE {
-            return Err(encode::Error::ParseFailed(
-                "length exceeded maximum of 64-bytes for FixedByteArray",
-            ));
-        }
-        let mut ret = FixedByteArray::new();
-        for _ in 0..len {
-            // PANIC: Cannot happen because len has been checked
-            ret.push(Decodable::consensus_decode(d)?);
-        }
-        Ok(ret)
-    }
-}
-
-impl Encodable for FixedByteArray {
-    fn consensus_encode<E: io::Write>(&self, e: &mut E) -> Result<usize, io::Error> {
-        self.as_slice().consensus_encode(e)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::crypto::tari_utilities::hex::Hex;
-    use monero::consensus;
+    use tari_crypto::tari_utilities::ByteArray;
 
     #[test]
     fn assert_size() {
-        assert_eq!(std::mem::size_of::<FixedByteArray>(), MAX_ARR_SIZE + 1);
+        assert_eq!(std::mem::size_of::<FixedByteArray<MAX_ARR_SIZE>>(), MAX_ARR_SIZE + 1);
     }
 
     #[test]
@@ -163,33 +181,11 @@ mod test {
 
     #[test]
     fn serialize_deserialize() {
-        let data = consensus::serialize(&FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap());
-        assert_eq!(data.len(), 13 + 1);
-        let arr = consensus::deserialize::<FixedByteArray>(&data).unwrap();
+        let data = bincode::serialize(&FixedByteArray::from_hex("ffffffffffffffffffffffffff").unwrap()).unwrap();
+        println!("{:?}", data);
+        assert_eq!(data.len(), 64);
+        let arr = bincode::deserialize::<FixedByteArray<MAX_ARR_SIZE>>(&data).unwrap();
         assert!(arr.iter().all(|b| *b == 0xff));
-    }
-
-    #[test]
-    fn length_check() {
-        let mut buf = [0u8; MAX_ARR_SIZE + 1];
-        buf[0] = 63;
-        let arr = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap();
-        assert_eq!(arr.len(), MAX_ARR_SIZE);
-
-        buf[0] = 64;
-        let err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
-
-        // VarInt encoding that doesnt terminate, but _would_ represent a number < MAX_ARR_SIZE
-        buf[0] = 0b1000000;
-        buf[1] = 0b1000000;
-        let err = FixedByteArray::consensus_decode(&mut io::Cursor::new(buf)).unwrap_err();
-        assert!(matches!(err, encode::Error::ParseFailed(_)));
-    }
-
-    #[test]
-    fn capacity_overflow_does_not_panic() {
-        let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
-        let _ = consensus::deserialize::<FixedByteArray>(data);
+        assert_eq!(arr.len(), 13);
     }
 }

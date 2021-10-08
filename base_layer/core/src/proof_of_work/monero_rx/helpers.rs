@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use super::{
     error::MergeMineError,
+    fixed_array,
     fixed_array::FixedByteArray,
     merkle_tree::{create_merkle_proof, tree_hash},
     pow_data::MoneroPowData,
@@ -87,10 +88,10 @@ fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> 
     Ok(monero_data)
 }
 
-pub fn extract_tari_hash(monero: &monero::Block) -> Option<&monero::Hash> {
+pub fn extract_tari_hash(monero: &monero::Block) -> Option<monero::Hash> {
     for item in monero.miner_tx.prefix.extra.0.iter() {
         if let SubField::MergeMining(_depth, merge_mining_hash) = item {
-            return Some(merge_mining_hash);
+            return Some(*merge_mining_hash);
         }
     }
     None
@@ -110,7 +111,10 @@ pub fn serialize_monero_block_to_hex(obj: &monero::Block) -> Result<String, Merg
     Ok(bytes)
 }
 
-pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Result<MoneroPowData, MergeMineError> {
+pub fn construct_monero_data(
+    block: monero::Block,
+    seed: FixedByteArray<{ fixed_array::MAX_ARR_SIZE }>,
+) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
     let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).ok_or_else(|| {
@@ -315,7 +319,7 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -375,7 +379,7 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -422,7 +426,7 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -455,7 +459,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let hash = Hash::null_hash();
+        let hash = Hash::null();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (block.tx_hashes.len() as u16);
         let mut hashes = Vec::with_capacity(count as usize);
@@ -476,7 +480,7 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -530,7 +534,7 @@ mod test {
             coinbase_merkle_proof,
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -564,10 +568,10 @@ mod test {
             randomx_key: FixedByteArray::default(),
             transaction_count: 1,
             merkle_root: Default::default(),
-            coinbase_merkle_proof: create_merkle_proof(&[Hash::null_hash()], &Hash::null_hash()).unwrap(),
+            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
             coinbase_tx: Default::default(),
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
@@ -617,11 +621,11 @@ mod test {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
-            merkle_root: Hash::null_hash(),
+            merkle_root: Hash::null(),
             coinbase_merkle_proof,
             coinbase_tx: block.miner_tx,
         };
-        let serialized = consensus::serialize(&monero_data);
+        let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,

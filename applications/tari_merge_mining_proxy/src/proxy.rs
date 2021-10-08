@@ -253,7 +253,6 @@ impl InnerService {
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
             let hash = monero_rx::extract_tari_hash(&monero_block)
-                .copied()
                 .ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))?;
 
             debug!(
@@ -280,7 +279,7 @@ impl InnerService {
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
-            header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);
+            header_mut.pow.as_mut().unwrap().pow_data = bincode::serialize(&monero_data)?;
 
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();

@@ -22,7 +22,6 @@
 
 use super::block_builders::chain_block;
 use monero::{
-    consensus,
     consensus::deserialize,
     cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
     Block as MoneroBlock,
@@ -94,7 +93,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
                 coinbase_merkle_proof: monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap(),
                 coinbase_tx: block.miner_tx,
             };
-            new_block.header.pow.pow_data = consensus::serialize(&monero_data);
+            new_block.header.pow.pow_data = bincode::serialize(&monero_data).unwrap();
         }
 
         db.add_block(new_block.clone().into()).unwrap();

@@ -192,7 +192,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
         coinbase_merkle_proof,
         coinbase_tx: mblock.miner_tx,
     };
-    let serialized = monero_rx::serialize(&monero_data);
+    let serialized = bincode::serialize(&monero_data).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::Monero;
     tblock.header.pow.pow_data = serialized;
 }

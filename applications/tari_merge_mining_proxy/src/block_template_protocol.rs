@@ -28,7 +28,11 @@ use crate::{
 use log::*;
 use std::cmp;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
+use tari_core::proof_of_work::{
+    monero_rx,
+    monero_rx::{fixed_array, FixedByteArray},
+    Difficulty,
+};
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 
@@ -267,7 +271,7 @@ pub struct FinalBlockTemplateData {
 
 /// Container struct for monero mining data inputs obtained from monerod
 pub struct MoneroMiningData {
-    pub seed_hash: FixedByteArray,
+    pub seed_hash: FixedByteArray<{ fixed_array::MAX_ARR_SIZE }>,
     pub blocktemplate_blob: String,
     pub difficulty: u64,
 }
