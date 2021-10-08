@@ -724,8 +724,12 @@ where TBackend: WalletBackend + 'static
                 _ = self.resources.current_base_node_watcher.changed() => {
                     debug!(target: LOG_TARGET, "Base node change detected.");
                     let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                    if let Some(peer) = peer {
-                        self.peer_seeds = vec![peer.public_key];
+
+                    // If we are recovering we will stick to the initially provided seeds
+                    if self.mode != UtxoScannerMode::Recovery {
+                        if let Some(peer) = peer {
+                            self.peer_seeds = vec![peer.public_key];
+                        }
                     }
 
                     self.is_running.store(false, Ordering::Relaxed);
