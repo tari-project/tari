@@ -22,7 +22,6 @@
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::TxId,
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
@@ -40,7 +39,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common_types::types::Signature;
+use tari_common_types::{transaction::TxId, types::Signature};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},

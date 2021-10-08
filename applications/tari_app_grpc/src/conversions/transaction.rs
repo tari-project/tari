@@ -22,6 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::transaction::TxId;
 use tari_core::{
     crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
     transactions::transaction::Transaction,
@@ -57,7 +58,7 @@ impl TryFrom<grpc::Transaction> for Transaction {
 #[cfg(feature = "wallet")]
 mod wallet {
     use super::*;
-    use tari_wallet::{output_manager_service::TxId, transaction_service::storage::models};
+    use tari_wallet::transaction_service::storage::models;
 
     impl From<models::TransactionStatus> for grpc::TransactionStatus {
         fn from(status: models::TransactionStatus) -> Self {
@@ -84,14 +85,14 @@ mod wallet {
             }
         }
     }
+}
 
-    impl grpc::TransactionInfo {
-        pub fn not_found(tx_id: TxId) -> Self {
-            Self {
-                tx_id,
-                status: grpc::TransactionStatus::NotFound as i32,
-                ..Default::default()
-            }
+impl grpc::TransactionInfo {
+    pub fn not_found(tx_id: TxId) -> Self {
+        Self {
+            tx_id,
+            status: grpc::TransactionStatus::NotFound as i32,
+            ..Default::default()
         }
     }
 }

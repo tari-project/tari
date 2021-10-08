@@ -20,23 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
-        },
-        tasks::send_transaction_reply::send_transaction_reply,
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
     },
+    tasks::send_transaction_reply::send_transaction_reply,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 

@@ -22,12 +22,13 @@
 
 use crate::{
     error::WalletStorageError,
-    output_manager_service::{error::OutputManagerError, TxId},
+    output_manager_service::error::OutputManagerError,
     transaction_service::storage::database::DbKey,
 };
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
+use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};

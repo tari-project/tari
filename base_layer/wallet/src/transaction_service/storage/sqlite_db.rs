@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::TxId,
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
     storage::sqlite_utilities::WalletDbConnection,
     transaction_service::{
@@ -53,7 +52,10 @@ use std::{
     str::from_utf8,
     sync::{Arc, MutexGuard, RwLock},
 };
-use tari_common_types::types::{BlockHash, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlockHash, PublicKey},
+};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::tari_utilities::{

@@ -23,7 +23,7 @@
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -60,7 +60,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common_types::types::PrivateKey;
+use tari_common_types::{transaction::TxId, types::PrivateKey};
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
