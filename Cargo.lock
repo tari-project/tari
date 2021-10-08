@@ -4185,7 +4185,6 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
- "tari_wallet",
  "tonic",
  "tonic-build",
 ]
