@@ -2,7 +2,6 @@ on:
   push:
     branches:
       - development
-      - workspace-versioning
 
 name: Version
 
@@ -20,9 +19,6 @@ jobs:
           git_user_signingkey: true
           git_commit_gpgsign: true
           git_push_gpgsign: false
-      - name: temp
-        run: |
-          git config --list
       - name: install
         run: |
           echo "this is a lot faster than building from source 🤷"
@@ -44,5 +40,5 @@ jobs:
           --no-global-tag \
           --force "*" \
           -y \
-          -m "ci: bump crate versions to %v" \
-          --allow-branch workspace-versioning
+          -m "ci: bump crate versions to %v [skip ci]" \
+          --allow-branch development
