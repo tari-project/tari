@@ -111,9 +111,9 @@ use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
     initialization::init_configuration,
-    utilities::{setup_runtime, ExitCodes},
+    utilities::setup_runtime,
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
 use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};

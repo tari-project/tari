@@ -22,6 +22,7 @@
 
 use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
+use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
@@ -166,6 +167,13 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+}
+
+impl From<OutputManagerError> for ExitCodes {
+    fn from(err: OutputManagerError) -> Self {
+        log::error!(target: crate::error::ERROR_LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
 }
 
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also
