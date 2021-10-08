@@ -2,6 +2,7 @@ on:
   push:
     branches:
       - development
+      - workspace-versioning
 
 name: Version
 
@@ -12,14 +13,24 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
+      - name: gpg
+        uses: crazy-max/ghaction-import-gpg@v4
+        with:
+          gpg_private_key: ${{ secrets.TARI_DEPLOY_SECRET_KEY }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_push_gpgsign: false
+      - name: temp
+        run: |
+          git config --list
       - name: install
         run: |
           echo "this is a lot faster than building from source 🤷"
-          curl -o /tmp/cws -L https://github.com/delta1/cargo-workspaces/releases/download/v0.2.23-build/cargo-workspaces-x86_64-linux-gnu
+          curl -o /tmp/cws -L https://github.com/delta1/cargo-workspaces/releases/download/v0.2.24/cargo-workspaces-v0.2.24-x86_64-linux-gnu
           chmod +x /tmp/cws
       - name: git config
         run: |
-          git config --global user.name "Tari Deploy"
+          git config --global user.name "tari-deploy"
           git config --global user.email "bug_reports@tari.com"
       - name: crates list
         run: |
@@ -29,8 +40,9 @@ jobs:
         run: |
           /tmp/cws workspaces version patch \
           --no-git-tag \
+          --sign-commit \
           --no-global-tag \
           --force "*" \
           -y \
           -m "ci: bump crate versions to %v" \
-          --allow-branch development
+          --allow-branch workspace-versioning
