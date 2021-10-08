@@ -27,13 +27,7 @@ use crate::{
         error::{TransactionKeyError, TransactionStorageError},
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                WalletTransaction,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         },
     },
     util::{
@@ -52,7 +46,7 @@ use std::{
     sync::{Arc, MutexGuard, RwLock},
 };
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;

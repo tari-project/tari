@@ -37,7 +37,7 @@ use crate::{
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionDirection},
+            models::CompletedTransaction,
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -61,7 +61,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::PrivateKey,
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};

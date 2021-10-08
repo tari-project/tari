@@ -55,19 +55,13 @@ impl TryFrom<grpc::Transaction> for Transaction {
     }
 }
 
-#[cfg(feature = "wallet")]
-mod wallet {
-    use super::*;
-    use tari_wallet::transaction_service::storage::models;
-
-    impl From<models::TransactionDirection> for grpc::TransactionDirection {
-        fn from(status: models::TransactionDirection) -> Self {
-            use models::TransactionDirection::*;
-            match status {
-                Unknown => grpc::TransactionDirection::Unknown,
-                Inbound => grpc::TransactionDirection::Inbound,
-                Outbound => grpc::TransactionDirection::Outbound,
-            }
+impl From<tx::TransactionDirection> for grpc::TransactionDirection {
+    fn from(status: tx::TransactionDirection) -> Self {
+        use tx::TransactionDirection::*;
+        match status {
+            Unknown => grpc::TransactionDirection::Unknown,
+            Inbound => grpc::TransactionDirection::Inbound,
+            Outbound => grpc::TransactionDirection::Outbound,
         }
     }
 }

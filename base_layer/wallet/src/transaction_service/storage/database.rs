@@ -22,7 +22,7 @@
 
 use crate::transaction_service::{
     error::TransactionStorageError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionDirection},
+    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
 };
 use aes_gcm::Aes256Gcm;
 use chrono::Utc;
@@ -36,7 +36,7 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;

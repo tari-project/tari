@@ -26,7 +26,7 @@ use crate::transaction_service::{
     service::TransactionServiceResources,
     storage::{
         database::TransactionBackend,
-        models::{CompletedTransaction, InboundTransaction, TransactionDirection},
+        models::{CompletedTransaction, InboundTransaction},
     },
     tasks::send_transaction_reply::send_transaction_reply,
 };
@@ -34,7 +34,7 @@ use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::{TransactionStatus, TxId};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 

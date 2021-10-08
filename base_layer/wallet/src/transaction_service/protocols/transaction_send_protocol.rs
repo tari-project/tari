@@ -29,7 +29,7 @@ use crate::{
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, OutboundTransaction, TransactionDirection},
+            models::{CompletedTransaction, OutboundTransaction},
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -42,7 +42,7 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::TransactionStatus;
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,

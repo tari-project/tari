@@ -40,7 +40,7 @@ use tokio::{
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_common_types::{
     emoji::EmojiId,
-    transaction::{TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::PublicKey,
 };
 use tari_comms::{
@@ -75,10 +75,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
-use tari_wallet::{
-    output_manager_service::handle::OutputManagerHandle,
-    transaction_service::storage::models::TransactionDirection,
-};
+use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 

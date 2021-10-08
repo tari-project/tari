@@ -22,12 +22,8 @@
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
-};
 use tari_common_types::{
-    transaction::{TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
@@ -37,7 +33,6 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
-use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
@@ -187,43 +182,6 @@ impl CompletedTransaction {
 
     pub fn is_coinbase(&self) -> bool {
         self.coinbase_block_height.is_some()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TransactionDirection {
-    Inbound,
-    Outbound,
-    Unknown,
-}
-
-#[derive(Debug, Error)]
-#[error("Invalid TransactionDirection: {code}")]
-pub struct TransactionDirectionError {
-    pub code: i32,
-}
-
-impl TryFrom<i32> for TransactionDirection {
-    type Error = TransactionDirectionError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(TransactionDirection::Inbound),
-            1 => Ok(TransactionDirection::Outbound),
-            2 => Ok(TransactionDirection::Unknown),
-            code => Err(TransactionDirectionError { code }),
-        }
-    }
-}
-
-impl Display for TransactionDirection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        // No struct or tuple variants
-        match self {
-            TransactionDirection::Inbound => write!(f, "Inbound"),
-            TransactionDirection::Outbound => write!(f, "Outbound"),
-            TransactionDirection::Unknown => write!(f, "Unknown"),
-        }
     }
 }
 

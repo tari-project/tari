@@ -146,7 +146,7 @@ use tokio::runtime::Runtime;
 use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
-    transaction::TransactionStatus,
+    transaction::{TransactionDirection, TransactionStatus},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -177,7 +177,7 @@ use tari_wallet::{
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionDirection},
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
