@@ -400,7 +400,7 @@ class WalletClient {
 
   async getOwnedAssets() {
     let assets = await this.client.getOwnedAssets();
-    return assets?.assets;
+    return assets.assets;
   }
 
   async mintTokens(asset_public_key, names) {
@@ -408,12 +408,12 @@ class WalletClient {
       asset_public_key,
       unique_ids: names.map((name) => convertStringToVec(name)),
     });
-    return owner_commitments?.owner_commitments;
+    return owner_commitments.owner_commitments;
   }
 
   async getOwnedTokens(asset_public_key) {
     let tokens = await this.client.getOwnedTokens({ asset_public_key });
-    return tokens?.tokens;
+    return tokens.tokens;
   }
 }
 

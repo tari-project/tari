@@ -125,6 +125,12 @@ Given(
   }
 );
 
+Given("I have {int} wallet(s)", { timeout: -1 }, async function (numWallets) {
+  for (let i = 0; i < numWallets; i++) {
+    await this.createAndAddWallet(`wallet${i}`, "", {});
+  }
+});
+
 Given(
   /I have a wallet (.*) with auto update enabled/,
   { timeout: 20 * 1000 },
@@ -176,6 +182,16 @@ Given(
     await this.createAndAddNode(name);
   }
 );
+
+Given("I have {int} base nodes", { timeout: 20 * 1000 }, async function (n) {
+  for (let i = 0; i < n; i++) {
+    await this.createAndAddNode(`basenode${i}`);
+  }
+});
+
+Given("I have 1 base node", { timeout: 20 * 1000 }, async function () {
+  await this.createAndAddNode(`basenode`);
+});
 
 Given(
   /I have a SHA3 miner (.*) connected to seed node (.*)/,
@@ -361,9 +377,9 @@ Given(
 );
 
 Given(
-  /I have wallet (.*) connected to seed node (.*)/,
+    /I have (a )?wallet (.*) connected to seed node (.*)/,
   { timeout: 20 * 1000 },
-  async function (walletName, seedName) {
+  async function (a, walletName, seedName) {
     await this.createAndAddWallet(
       walletName,
       this.seeds[seedName].peerAddress()
@@ -1303,12 +1319,16 @@ When(
   }
 );
 
-When(
-  /I update the parent of block (.*) to be an orphan/,
-  async function (_block) {
-    // TODO
+When("I mine {int} block(s)", { timeout: -1 }, async function (numBlocks) {
+  let name = this.currentBaseNodeName();
+  // const tipHeight = await this.getClient(name).getTipHeight();
+  for (let i = 0; i < numBlocks; i++) {
+    await withTimeout(
+      60 * 1000,
+      this.mineBlock(name, 0)
+    );
   }
-);
+});
 
 When(
   /I mine (\d+) blocks on (.*)/,
@@ -1353,15 +1373,15 @@ When(
   }
 );
 
-When(
-  /I merge mine (.*) blocks via (.*)/,
-  { timeout: 600 * 1000 },
-  async function (numBlocks, mmProxy) {
-    for (let i = 0; i < numBlocks; i++) {
-      await this.mergeMineBlock(mmProxy);
-    }
-  }
-);
+// When(
+//   /I merge mine (.*) blocks via (.*)/,
+//   { timeout: 600 * 1000 },
+//   async function (numBlocks, mmProxy) {
+//     for (let i = 0; i < numBlocks; i++) {
+//       await this.mergeMineBlock(mmProxy);
+//     }
+//   }
+// );
 
 // TODO: This step is still really flaky, rather use the co-mine with mining node step:
 //       Error: 13 INTERNAL:
@@ -3910,8 +3930,8 @@ Then(
       wallet,
       `register-asset ${asset_name}`
     );
-    console.log(output?.buffer);
-    expect(output?.buffer).to.have.string("Registering asset");
+    // console.log(output.buffer);
+    expect(output.buffer).to.have.string("Registering asset");
   }
 );
 
@@ -3968,8 +3988,8 @@ Then(
       wallet,
       `mint-tokens ${byteArrayToHex(asset.public_key)} ${token_names}`
     );
-    console.log(output?.buffer);
-    expect(output?.buffer).to.have.string("Minting tokens for asset");
+    console.log(output.buffer);
+    expect(output.buffer).to.have.string("Minting tokens for asset");
   }
 );
 

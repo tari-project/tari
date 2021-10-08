@@ -59,13 +59,14 @@ pub struct StratumTranscoderProxyConfig {
 }
 
 impl From<GlobalConfig> for StratumTranscoderProxyConfig {
-    fn from(config: GlobalConfig) -> Self {
-        Self {
-            network: config.network,
-            grpc_base_node_address: config.grpc_base_node_address,
-            grpc_console_wallet_address: config.grpc_console_wallet_address,
-            transcoder_host_address: config.transcoder_host_address,
-        }
+    fn from(_config: GlobalConfig) -> Self {
+        unimplemented!("Need to fix config");
+        // Self {
+        //     network: config.network,
+        //     grpc_base_node_address: config.grpc_base_node_address,
+        //     grpc_console_wallet_address: config.grpc_console_wallet_address,
+        //     transcoder_host_address: config.transcoder_host_address,
+        // }
     }
 }
 

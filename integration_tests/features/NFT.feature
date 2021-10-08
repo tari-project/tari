@@ -1,3 +1,4 @@
+@dan
 Feature: NFT
     Scenario: Minting tokens
         Given I have a seed node SEED

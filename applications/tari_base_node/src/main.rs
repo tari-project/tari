@@ -230,10 +230,12 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         ExitCodes::UnknownError
     })?;
 
-    if node_config.grpc_enabled {
-        // Go, GRPC, go go
-        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
+    if let Some(ref base_node_config) = node_config.base_node_config {
+        if let Some(address) = base_node_config.grpc_address {
+            // Go, GRPC, go go
+            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+            task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
+        }
     }
 
     // Run, node, run!
