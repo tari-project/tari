@@ -69,7 +69,7 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
-        handle::OutputManagerHandle,
+        handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
@@ -82,6 +82,7 @@ use tari_wallet::{
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
+    time::sleep,
 };
 
 #[allow(clippy::type_complexity)]
@@ -1347,7 +1348,9 @@ async fn test_txo_validation() {
     query_deleted_response.best_block = [8u8; 16].to_vec();
     rpc_service_state.set_query_deleted_response(query_deleted_response);
 
-    oms.validate_txos().await.unwrap();
+    let mut event_stream = oms.get_event_stream();
+
+    let validation_id = oms.validate_txos().await.unwrap();
 
     let _utxo_query_calls = rpc_service_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
@@ -1358,6 +1361,26 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
+
+    let delay = sleep(Duration::from_secs(30));
+    tokio::pin!(delay);
+    let mut validation_completed = false;
+    loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                 if let OutputManagerEvent::TxoValidationSuccess(id) = &*event.unwrap(){
+                    if id == &validation_id {
+                        validation_completed = true;
+                        break;
+                    }
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+    assert!(validation_completed, "Validation protocol should complete");
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(
