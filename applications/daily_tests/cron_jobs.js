@@ -52,10 +52,10 @@ async function runWalletRecoveryTest(instances) {
       scannedRate,
       recoveredAmount,
     } = await walletRecoveryTest({
-        seedWords:
-          "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
-        log: LOG_FILE,
-        numWallets: instances,
+      seedWords:
+        "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
+      log: LOG_FILE,
+      numWallets: instances,
       baseDir,
     });
 
@@ -136,7 +136,7 @@ async function main() {
 
   // ------------------------- CRON ------------------------- //
   new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
-  new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
+  //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
   new CronJob("0 6 * * *", () =>
     runBaseNodeSyncTest(SyncType.Archival)
   ).start();
