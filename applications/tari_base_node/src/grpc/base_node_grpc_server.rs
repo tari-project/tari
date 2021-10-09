@@ -326,7 +326,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let headers: Vec<u64> = if request.from_height != 0 {
             match sorting {
-                Sorting::Desc => ((cmp::max(0, request.from_height as i64 - num_headers as i64 + 1) as u64)..=
+                Sorting::Desc => (cmp::max(0, request.from_height - num_headers + 1)..=
                     request.from_height)
                     .rev()
                     .collect(),
@@ -334,7 +334,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         } else {
             match sorting {
-                Sorting::Desc => ((cmp::max(0, tip as i64 - num_headers as i64 + 1) as u64)..=tip)
+                Sorting::Desc => (cmp::max(0, tip - num_headers + 1)..=tip)
                     .rev()
                     .collect(),
                 Sorting::Asc => (0..num_headers).collect(),
