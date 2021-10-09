@@ -1,2 +1,2 @@
 ALTER TABLE completed_transactions
-    ADD COLUMN mined_height INTEGER NULL;
+    ADD COLUMN mined_height BIGINT NULL;

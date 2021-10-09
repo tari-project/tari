@@ -1,2 +1,2 @@
 ALTER TABLE completed_transactions
-    ADD COLUMN confirmations INTEGER NULL DEFAULT NULL;
+    ADD COLUMN confirmations BIGINT NULL DEFAULT NULL;

@@ -115,6 +115,7 @@ use tari_app_utilities::{
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
+use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
@@ -128,7 +129,7 @@ const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
-        eprintln!("{:?}", exit_code);
+        exit_code.eprint_details();
         error!(
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}",
@@ -147,7 +148,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Set up the Tokio runtime
     let rt = setup_runtime(&node_config).map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(e)
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
@@ -205,20 +206,14 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     .await
     .map_err(|err| {
         for boxed_error in err.chain() {
-            if let Some(HiddenServiceControllerError::TorControlPortOffline) =
-                boxed_error.downcast_ref::<HiddenServiceControllerError>()
-            {
-                println!("Unable to connect to the Tor control port.");
-                println!(
-                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
-                     turned on.",
-                );
-                println!("If you are unsure of what to do, use the following command to start the Tor proxy:");
-                println!(
-                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
-                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
-                );
+            if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
                 return ExitCodes::TorOffline;
+            }
+            if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
+                return ExitCodes::DbInconsistentState(format!(
+                    "You may need to resync your database because {}",
+                    reason
+                ));
             }
 
             // todo: find a better way to do this
@@ -227,7 +222,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
                 return ExitCodes::ConfigError(boxed_error.to_string());
             }
         }
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(err.to_string())
     })?;
 
     if node_config.grpc_enabled {

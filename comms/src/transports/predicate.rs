@@ -20,39 +20,64 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-use tokio::sync::watch;
+use crate::multiaddr::{Multiaddr, Protocol};
+use std::marker::PhantomData;
 
-#[derive(Clone)]
-pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
+pub trait Predicate<A: ?Sized> {
+    fn check(&self, arg: &A) -> bool;
+}
 
-impl<T> Watch<T> {
-    pub fn new(initial: T) -> Self {
-        let (tx, rx) = watch::channel(initial);
-        Self(Arc::new(tx), rx)
+impl<T, A> Predicate<A> for T
+where
+    T: Fn(&A) -> bool,
+    A: ?Sized,
+{
+    fn check(&self, arg: &A) -> bool {
+        (self)(arg)
     }
+}
 
-    pub fn borrow(&self) -> watch::Ref<'_, T> {
-        self.receiver().borrow()
+#[derive(Debug, Default)]
+pub struct FalsePredicate<'a, A>(PhantomData<&'a A>);
+
+impl<'a, A> FalsePredicate<'a, A> {
+    pub fn new() -> Self {
+        Self(PhantomData)
     }
+}
 
-    pub fn broadcast(&self, item: T) {
-        // PANIC: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
-        if self.sender().send(item).is_err() {
-            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
-            panic!("watch internal receiver is dropped");
-        }
+impl<A> Predicate<A> for FalsePredicate<'_, A> {
+    fn check(&self, _: &A) -> bool {
+        false
     }
+}
 
-    fn sender(&self) -> &watch::Sender<T> {
-        &self.0
-    }
+pub fn is_onion_address(addr: &Multiaddr) -> bool {
+    let protocol = addr.iter().next();
+    matches!(protocol, Some(Protocol::Onion(_, _)) | Some(Protocol::Onion3(_)))
+}
 
-    pub fn receiver(&self) -> &watch::Receiver<T> {
-        &self.1
-    }
+#[cfg(test)]
+mod test {
+    use super::*;
 
-    pub fn get_receiver(&self) -> watch::Receiver<T> {
-        self.receiver().clone()
+    #[test]
+    fn is_onion_address_test() {
+        let expect_true = [
+            "/onion/aaimaq4ygg2iegci:1234",
+            "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234",
+        ];
+
+        let expect_false = ["/dns4/mikes-node-nook.com:80", "/ip4/1.2.3.4/tcp/1234"];
+
+        expect_true.iter().for_each(|addr| {
+            let addr = addr.parse().unwrap();
+            assert!(is_onion_address(&addr));
+        });
+
+        expect_false.iter().for_each(|addr| {
+            let addr = addr.parse().unwrap();
+            assert!(!is_onion_address(&addr));
+        });
     }
 }

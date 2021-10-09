@@ -1,4 +1,4 @@
-@coinbase_reorg
+@coinbase_reorg @wallet
 Feature: Wallet Monitoring
 
   Scenario: Wallets monitoring coinbase after a reorg
@@ -48,9 +48,7 @@ Feature: Wallet Monitoring
     When I wait 30 seconds
     And I list all COINBASE transactions for wallet WALLET_A1
     And I list all COINBASE transactions for wallet WALLET_B1
-    Then the number of coinbase transactions for wallet WALLET_A1 and wallet WALLET_B1 are 3 less
-    # TODO: Uncomment this step when wallets can handle reorg
-#    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
+    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
 
   # 18+ mins on circle ci
   @long-running

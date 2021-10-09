@@ -43,6 +43,7 @@ use crate::{
         LMDBDatabase,
         MmrTree,
         PrunedOutput,
+        UtxoMinedInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -272,7 +273,7 @@ impl BlockchainBackend for TempDatabase {
             .fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_output(output_hash)
     }
 
@@ -367,6 +368,16 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_total_size_stats()
+    }
+
+    fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
     }
 }
 

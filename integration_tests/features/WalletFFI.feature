@@ -92,9 +92,10 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
+        And I start TXO validation on ffi wallet FFI_WALLET
+        And I start TX validation on ffi wallet FFI_WALLET
+        Then I wait for ffi wallet FFI_WALLET to receive 1 mined
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
-        And I start STXO validation on ffi wallet FFI_WALLET
-        And I start UTXO validation on ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
