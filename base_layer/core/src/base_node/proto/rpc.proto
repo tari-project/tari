@@ -39,7 +39,7 @@ message FindChainSplitResponse {
   // An ordered list of headers starting from next header after the matching hash, up until `FindChainSplitRequest::count`
   repeated tari.core.BlockHeader headers = 1;
   // The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to know how far back a split occurs.
-  uint32 fork_hash_index = 2;
+  uint64 fork_hash_index = 2;
   /// The current header height of this node
   uint64 tip_height = 3;
 }
