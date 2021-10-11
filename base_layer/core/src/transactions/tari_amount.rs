@@ -23,7 +23,7 @@
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 
-use crate::transactions::helpers::display_currency;
+use crate::transactions::helpers;
 use std::{
     fmt::{Display, Error, Formatter},
     iter::Sum,
@@ -204,7 +204,7 @@ impl From<MicroTari> for FormattedMicroTari {
 
 impl Display for FormattedMicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} µT", display_currency(self.0 as f64, 0, ","))
+        write!(f, "{} µT", helpers::display_currency_decimal(self.0, 0, 0, ","))
     }
 }
 
@@ -219,7 +219,7 @@ impl From<Tari> for FormattedTari {
 
 impl Display for FormattedTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} T", display_currency(self.0, 2, ","))
+        write!(f, "{} T", helpers::display_currency(self.0, 2, ","))
     }
 }
 
