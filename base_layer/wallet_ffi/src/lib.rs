@@ -156,7 +156,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsSecretKey,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
@@ -2596,7 +2596,10 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                            saf_config: SafConfig {
+                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field

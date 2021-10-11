@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl, version::DhtProtocolVersion};
+use crate::{
+    network_discovery::NetworkDiscoveryConfig,
+    storage::DbConnectionUrl,
+    store_forward::SafConfig,
+    version::DhtProtocolVersion,
+};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -33,10 +38,10 @@ pub struct DhtConfig {
     /// Default: 20
     pub outbound_buffer_size: usize,
     /// The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour
-    /// Default: [DEFAULT_NUM_NEIGHBOURING_NODES](self::DEFAULT_NUM_NEIGHBOURING_NODES)
+    /// Default: 8
     pub num_neighbouring_nodes: usize,
     /// Number of random peers to include
-    /// Default: [DEFAULT_NUM_RANDOM_NODES](self::DEFAULT_NUM_RANDOM_NODES)
+    /// Default: 4
     pub num_random_nodes: usize,
     /// Send to this many peers when using the broadcast strategy
     /// Default: 8
@@ -44,30 +49,7 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    /// The amount of seconds added to the current time (Utc) which will then be used to check if the message has
-    /// expired or not when processing the message
-    /// Default: 10800
-    pub saf_msg_validity: Duration,
-    /// The maximum number of messages that can be stored using the Store-and-forward middleware.
-    /// Default: 100,000
-    pub saf_msg_storage_capacity: usize,
-    /// A request to retrieve stored messages will be ignored if the requesting node is
-    /// not within one of this nodes _n_ closest nodes.
-    /// Default 8
-    pub saf_num_closest_nodes: usize,
-    /// The maximum number of messages to return from a store and forward retrieval request.
-    /// Default: 100
-    pub saf_max_returned_messages: usize,
-    /// The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
-    /// Default: 6 hours
-    pub saf_low_priority_msg_storage_ttl: Duration,
-    /// The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-    /// Default: 3 days
-    pub saf_high_priority_msg_storage_ttl: Duration,
-    /// The limit on the message size to store in SAF storage in bytes. Default 500 KiB
-    pub saf_max_message_size: usize,
-    /// When true, store and forward messages are requested from peers on connect (Default: true)
-    pub saf_auto_request: bool,
+    pub saf_config: SafConfig,
     /// The max capacity of the message hash cache
     /// Default: 2,500
     pub dedup_cache_capacity: usize,
@@ -127,7 +109,10 @@ impl DhtConfig {
     pub fn default_local_test() -> Self {
         Self {
             database_url: DbConnectionUrl::Memory,
-            saf_auto_request: false,
+            saf_config: SafConfig {
+                auto_request: false,
+                ..Default::default()
+            },
             auto_join: false,
             network_discovery: NetworkDiscoveryConfig {
                 // If a test requires the peer probe they should explicitly enable it
@@ -150,13 +135,7 @@ impl Default for DhtConfig {
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
-            saf_num_closest_nodes: 10,
-            saf_max_returned_messages: 50,
-            saf_msg_storage_capacity: 100_000,
-            saf_low_priority_msg_storage_ttl: Duration::from_secs(6 * 60 * 60), // 6 hours
-            saf_high_priority_msg_storage_ttl: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
-            saf_auto_request: true,
-            saf_max_message_size: 512 * 1024,
+            saf_config: Default::default(),
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,
@@ -172,7 +151,6 @@ impl Default for DhtConfig {
             flood_ban_max_msg_count: 10000,
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(2 * 60 * 60),
-            saf_msg_validity: Duration::from_secs(10800),
         }
     }
 }
