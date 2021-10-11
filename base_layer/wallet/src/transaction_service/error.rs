@@ -23,7 +23,7 @@
 use crate::{
     error::WalletStorageError,
     output_manager_service::error::OutputManagerError,
-    transaction_service::storage::database::DbKey,
+    transaction_service::storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
 };
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
@@ -190,6 +190,8 @@ pub enum TransactionStorageError {
     OutOfRangeError(#[from] OutOfRangeError),
     #[error("Error converting a type: `{0}`")]
     ConversionError(#[from] TransactionConversionError),
+    #[error("Completed transaction conversion error: `{0}`")]
+    CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
     #[error("R2d2 error")]
