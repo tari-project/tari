@@ -171,7 +171,7 @@ pub enum OutputManagerStorageError {
 
 impl From<OutputManagerError> for ExitCodes {
     fn from(err: OutputManagerError) -> Self {
-        log::error!(target: crate::error::ERROR_LOG_TARGET, "{}", err);
+        log::error!(target: crate::error::LOG_TARGET, "{}", err);
         Self::WalletError(err.to_string())
     }
 }

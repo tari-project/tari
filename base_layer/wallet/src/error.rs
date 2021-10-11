@@ -86,12 +86,12 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
 }
 
-pub const ERROR_LOG_TARGET: &str = "tari::application";
+pub const LOG_TARGET: &str = "tari::application";
 
 impl From<WalletError> for ExitCodes {
     fn from(err: WalletError) -> Self {
         // TODO: Log that outside
-        log::error!(target: ERROR_LOG_TARGET, "{}", err);
+        log::error!(target: LOG_TARGET, "{}", err);
         Self::WalletError(err.to_string())
     }
 }
