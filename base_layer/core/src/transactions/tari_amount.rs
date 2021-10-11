@@ -24,7 +24,9 @@ use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 
 use crate::transactions::helpers;
+use decimal_rs::Decimal;
 use std::{
+    convert::TryInto,
     fmt::{Display, Error, Formatter},
     iter::Sum,
     ops::{Add, Mul},
@@ -157,9 +159,10 @@ impl std::str::FromStr for MicroTari {
     }
 }
 
+// TODO: Implement `TryFrom` instead
 impl From<Tari> for MicroTari {
     fn from(v: Tari) -> Self {
-        MicroTari((v.0 * 1e6) as u64)
+        MicroTari((v.0 * 1_000_000u32).into_parts().0 as u64)
     }
 }
 
@@ -209,7 +212,7 @@ impl Display for FormattedMicroTari {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-pub struct FormattedTari(pub f64);
+pub struct FormattedTari(pub Decimal);
 
 impl From<Tari> for FormattedTari {
     fn from(v: Tari) -> Self {
@@ -219,17 +222,19 @@ impl From<Tari> for FormattedTari {
 
 impl Display for FormattedTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} T", helpers::display_currency(self.0, 2, ","))
+        write!(f, "{} T", helpers::display_currency(self.0.into(), 2, ","))
     }
 }
 
+use derive_more::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
+
 /// A convenience struct for representing full Tari. You should **never** use Tari in consensus calculations, because
 /// Tari wraps a floating point value. Use MicroTari for that instead.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-pub struct Tari(f64);
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem)]
+pub struct Tari(Decimal);
 
-newtype_ops! { [Tari] {add sub} {:=} Self Self }
-newtype_ops! { [Tari] {mul div rem} {:=} Self f64 }
+// newtype_ops! { [Tari] {add sub} {:=} Self Self }
+// newtype_ops! { [Tari] {mul div rem} {:=} Self f64 }
 
 impl Tari {
     pub fn formatted(self) -> FormattedTari {
@@ -245,19 +250,19 @@ impl Display for Tari {
 
 impl From<Tari> for f64 {
     fn from(v: Tari) -> Self {
-        v.0
+        v.0.try_into().unwrap()
     }
 }
 
 impl From<f64> for Tari {
     fn from(v: f64) -> Self {
-        Tari(v)
+        Tari(v.try_into().unwrap())
     }
 }
 
 impl From<MicroTari> for Tari {
     fn from(v: MicroTari) -> Self {
-        Tari(v.0 as f64 * 1e-6)
+        Self(Decimal::from(v.0) / 1_000_000)
     }
 }
 
