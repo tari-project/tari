@@ -42,7 +42,7 @@ pub enum BlockHeaderSyncError {
     #[error("Sync failed for all peers")]
     SyncFailedAllPeers,
     #[error("Peer sent a found hash index that was out of range (Expected less than {0}, Found: {1})")]
-    FoundHashIndexOutOfRange(u32, u32),
+    FoundHashIndexOutOfRange(u64, u64),
     #[error("Failed to ban peer: {0}")]
     FailedToBan(ConnectivityError),
     #[error("Connectivity Error: {0}")]
