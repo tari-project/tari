@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari mining node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2018"
 
 [dependencies]
@@ -12,7 +12,7 @@ tari_core = { path = "../../base_layer/core",  default-features = false }
 tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_app_grpc = {  path = "../tari_app_grpc" }
-
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 crossbeam = "0.8"
 futures = "0.3"
 log = { version = "0.4", features = ["std"] }
@@ -34,6 +34,5 @@ chrono = "0.4"
 hex = "0.4.2"
 
 [dev-dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 prost-types = "0.8"
 chrono = "0.4"
