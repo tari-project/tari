@@ -5147,12 +5147,9 @@ mod test {
     use libc::{c_char, c_uchar, c_uint};
     use tempfile::tempdir;
 
-    use tari_common_types::emoji;
+    use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_test_utils::random;
-    use tari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        transaction_service::storage::models::TransactionStatus,
-    };
+    use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
 
     use crate::*;
 
