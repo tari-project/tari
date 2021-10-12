@@ -119,7 +119,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Reinstate a cancelled inbound output
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
-    fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    fn get_balance(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+    ) -> Result<Balance, OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -275,9 +278,12 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerStorageError> {
+    pub async fn get_balance(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+    ) -> Result<Balance, OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.get_balance(current_chain_tip))
+        tokio::task::spawn_blocking(move || db_clone.get_balance(current_tip_for_time_lock_calculation))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))?
     }
