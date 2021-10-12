@@ -786,6 +786,7 @@ async fn test_get_balance() {
     let balance = oms.get_balance().await.unwrap();
 
     assert_eq!(output_val, balance.available_balance);
+    assert_eq!(output_val, balance.time_locked_balance.unwrap());
     assert_eq!(recv_value + change_val, balance.pending_incoming_balance);
     assert_eq!(output_val, balance.pending_outgoing_balance);
 }
@@ -803,13 +804,16 @@ async fn sending_transaction_with_short_term_clear() {
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
     oms.add_output(uo).await.unwrap();
 
-    let fee_per_gram = MicroTari::from(4);
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, available_balance);
+    assert_eq!(balance.time_locked_balance.unwrap(), available_balance);
+
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
     let _stp = oms
         .prepare_transaction_to_send(
             OsRng.next_u64(),
             MicroTari::from(1000),
-            fee_per_gram,
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -818,6 +822,8 @@ async fn sending_transaction_with_short_term_clear() {
         .unwrap();
 
     let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroTari::from(0));
+    assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 
     drop(oms);
@@ -825,6 +831,7 @@ async fn sending_transaction_with_short_term_clear() {
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
+    assert_eq!(balance.time_locked_balance.unwrap(), available_balance);
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = oms
@@ -845,6 +852,8 @@ async fn sending_transaction_with_short_term_clear() {
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.available_balance, MicroTari::from(0));
+    assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 }
 
@@ -1124,6 +1133,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value)
     );
+    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
@@ -1224,6 +1234,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value)
     );
+    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
 
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 2);
 
@@ -1272,6 +1283,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
 
     // Trigger another validation and only Output3 should be checked
     oms.validate_txos().await.unwrap();
@@ -1377,6 +1389,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) - MicroTari::from(901_240)
     );
+    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
 
     // Now we will update the mined_height in the responses so that the outputs on the reorged chain are confirmed
     // Output 1:    Spent in Block 5 - Confirmed
@@ -1436,6 +1449,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
 }
 
 #[tokio::test]

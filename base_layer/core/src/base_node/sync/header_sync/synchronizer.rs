@@ -374,7 +374,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             peer
         );
 
-        if fork_hash_index >= block_hashes.len() as u32 {
+        if fork_hash_index >= block_hashes.len() as u64 {
             let _ = self
                 .ban_peer_long(peer.clone(), BanReason::SplitHashGreaterThanHashes {
                     fork_hash_index,
@@ -382,7 +382,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 })
                 .await;
             return Err(BlockHeaderSyncError::FoundHashIndexOutOfRange(
-                block_hashes.len() as u32,
+                block_hashes.len() as u64,
                 fork_hash_index,
             ));
         }
@@ -658,7 +658,7 @@ enum BanReason {
          ({num_block_hashes})"
     )]
     SplitHashGreaterThanHashes {
-        fork_hash_index: u32,
+        fork_hash_index: u64,
         num_block_hashes: usize,
     },
     #[error("Peer sent invalid header: {0}")]
