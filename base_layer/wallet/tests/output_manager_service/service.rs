@@ -20,37 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::support::{
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, make_input_with_features, TestParams},
 };
-use futures::FutureExt;
 use rand::{rngs::OsRng, RngCore};
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcClientConfig, RpcStatus},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    test_utils::node_identity::build_node_identity,
     types::CommsSecretKey,
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
+    blocks::BlockHeader,
     consensus::ConsensusConstantsBuilder,
+    crypto::tari_utilities::Hashable,
+    proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::{uT, MicroTari},
-        transaction::{KernelFeatures, OutputFeatures, Transaction},
-        transaction_protocol::{
-            recipient::RecipientState,
-            sender::TransactionSenderMessage,
-            single_receiver::SingleReceiverTransactionProtocol,
-            TxId,
-        },
+        transaction::OutputFeatures,
+        transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         SenderTransactionProtocol,
     },
@@ -66,27 +60,30 @@ use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
-    base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
+    base_node_service::{
+        handle::{BaseNodeEvent, BaseNodeServiceHandle},
+        mock_base_node_service::MockBaseNodeService,
+        service::BaseNodeState,
+    },
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, OutputManagerDatabase, WriteOperation},
-            models::DbUnblindedOutput,
+            database::{OutputManagerBackend, OutputManagerDatabase},
             sqlite_db::OutputManagerSqliteDatabase,
             OutputStatus,
         },
-        TxoValidationType,
+        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
-    types::ValidationRetryStrategy,
 };
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
-    time,
+    time::sleep,
 };
 
 #[allow(clippy::type_complexity)]
@@ -95,12 +92,13 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     with_connection: bool,
 ) -> (
     OutputManagerHandle,
+    WalletConnectivityMock,
     Shutdown,
     TransactionServiceHandle,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-    ConnectivityManagerMockState,
+    broadcast::Sender<Arc<BaseNodeEvent>>,
 ) {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
@@ -117,14 +115,15 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
-    let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-    let connectivity_mock_state = connectivity_mock.get_shared_state();
-    task::spawn(connectivity_mock.run());
+    let wallet_connectivity_mock = create_wallet_connectivity_mock();
+    // let (connectivity, connectivity_mock) = create_connectivity_mock();
+    // let connectivity_mock_state = connectivity_mock.get_shared_state();
+    // task::spawn(connectivity_mock.run());
 
     let service = BaseNodeWalletRpcMockService::new();
     let rpc_service_state = service.get_state();
@@ -134,14 +133,14 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     let mut mock_server = MockRpcServer::new(server, server_node_identity.clone());
-
     mock_server.serve();
 
     if with_connection {
-        let connection = mock_server
+        let mut connection = mock_server
             .create_connection(server_node_identity.to_peer(), protocol_name.into())
             .await;
-        connectivity_mock_state.add_active_connection(connection).await;
+
+        wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
@@ -158,7 +157,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
-        connectivity_manager,
+        wallet_connectivity_mock.clone(),
         CommsSecretKey::default(),
     )
     .await
@@ -169,45 +168,14 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     (
         output_manager_service_handle,
+        wallet_connectivity_mock,
         shutdown,
         ts_handle,
         mock_server,
         server_node_identity,
         rpc_service_state,
-        connectivity_mock_state,
+        event_publisher_bns,
     )
-}
-
-async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: OutputManagerHandle) -> Transaction {
-    let factories = CryptoFactories::default();
-
-    let sender_tx_id = stp.get_tx_id().unwrap();
-    // Is there change? Unlikely not to be but the random amounts MIGHT produce a no change output situation
-    if stp.get_amount_to_self().unwrap() > MicroTari::from(0) {
-        let pt = oms.get_pending_transactions().await.unwrap();
-        assert_eq!(pt.len(), 1);
-        assert_eq!(
-            pt.get(&sender_tx_id).unwrap().outputs_to_be_received[0]
-                .unblinded_output
-                .value,
-            stp.get_amount_to_self().unwrap()
-        );
-    }
-    let msg = stp.build_single_round_message().unwrap();
-    let b = TestParams::new(&mut OsRng);
-    let recv_info = SingleReceiverTransactionProtocol::create(
-        &msg,
-        b.nonce,
-        b.spend_key,
-        OutputFeatures::default(),
-        &factories,
-        None,
-    )
-    .unwrap();
-    stp.add_single_recipient_info(recv_info, &factories.range_proof)
-        .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
-    stp.get_transaction().unwrap().clone()
 }
 
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
@@ -218,6 +186,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     Shutdown,
     TransactionServiceHandle,
     BaseNodeServiceHandle,
+    broadcast::Sender<Arc<BaseNodeEvent>>,
 ) {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
@@ -234,14 +203,11 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
-    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
     mock_base_node_service.set_base_node_state(height);
     task::spawn(mock_base_node_service.run());
-
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-    let _connectivity_mock_state = connectivity_mock.get_shared_state();
-    task::spawn(connectivity_mock.run());
+    let connectivity = create_wallet_connectivity_mock();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
@@ -258,7 +224,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         constants,
         shutdown.to_signal(),
         base_node_service_handle.clone(),
-        connectivity_manager,
+        connectivity,
         CommsSecretKey::default(),
     )
     .await
@@ -272,6 +238,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown,
         ts_handle,
         base_node_service_handle,
+        event_publisher_bns,
     )
 }
 
@@ -318,7 +285,7 @@ async fn fee_estimate() {
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
     let factories = CryptoFactories::default();
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
     oms.add_output(uo).await.unwrap();
@@ -355,7 +322,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     // no chain metadata
-    let (mut oms, _shutdown, _, _) =
+    let (mut oms, _shutdown, _, _, _) =
         setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), None).await;
 
     // no utxos - not enough funds
@@ -451,7 +418,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _) =
+    let (mut oms, _shutdown, _, _, _) =
         setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), Some(6)).await;
 
     // no utxos - not enough funds
@@ -561,123 +528,13 @@ async fn test_utxo_selection_with_chain_metadata() {
 }
 
 #[tokio::test]
-async fn sending_transaction_and_confirmation() {
-    let factories = CryptoFactories::default();
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
-
-    let (_ti, uo) = make_input(
-        &mut OsRng.clone(),
-        MicroTari::from(100 + OsRng.next_u64() % 1000),
-        &factories.commitment,
-    );
-    oms.add_output(uo.clone()).await.unwrap();
-    match oms.add_output(uo).await {
-        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::DuplicateOutput)) => {},
-        _ => panic!("Incorrect error message"),
-    };
-    let num_outputs = 20;
-    for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-        );
-        oms.add_output(uo).await.unwrap();
-    }
-
-    let stp = oms
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            MicroTari::from(1000),
-            None,
-            MicroTari::from(20),
-            None,
-            "".to_string(),
-            script!(Nop),
-        )
-        .await
-        .unwrap();
-
-    let sender_tx_id = stp.get_tx_id().unwrap();
-
-    let tx = complete_transaction(stp, oms.clone()).await;
-
-    let rewind_public_keys = oms.get_rewind_public_keys().await.unwrap();
-
-    // 1 of the 2 outputs should be rewindable, there should be 2 outputs due to change but if we get unlucky enough
-    // that there is no change we will skip this aspect of the test
-    if tx.body.outputs().len() > 1 {
-        let mut num_rewound = 0;
-
-        let output = tx.body.outputs()[0].clone();
-        if output
-            .rewind_range_proof_value_only(
-                &factories.range_proof,
-                &rewind_public_keys.rewind_public_key,
-                &rewind_public_keys.rewind_blinding_public_key,
-            )
-            .is_ok()
-        {
-            num_rewound += 1;
-        }
-
-        let output = tx.body.outputs()[1].clone();
-        if output
-            .rewind_range_proof_value_only(
-                &factories.range_proof,
-                &rewind_public_keys.rewind_public_key,
-                &rewind_public_keys.rewind_blinding_public_key,
-            )
-            .is_ok()
-        {
-            num_rewound += 1;
-        }
-        assert_eq!(num_rewound, 1, "Should only be 1 rewindable output");
-    }
-
-    oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone())
-        .await
-        .unwrap();
-
-    assert_eq!(
-        oms.get_pending_transactions().await.unwrap().len(),
-        0,
-        "Should have no pending tx"
-    );
-    assert_eq!(
-        oms.get_spent_outputs().await.unwrap().len(),
-        tx.body.inputs().len(),
-        "# Outputs should equal number of sent inputs"
-    );
-    assert_eq!(
-        oms.get_unspent_outputs().await.unwrap().len(),
-        num_outputs + 1 - oms.get_spent_outputs().await.unwrap().len() + tx.body.outputs().len() - 1,
-        "Unspent outputs"
-    );
-
-    if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
-        // if we dont have change, we did not move the index forward
-        if tx.body.outputs().len() > 1 {
-            assert_eq!(km.primary_key_index, 1);
-        } else {
-            assert_eq!(km.primary_key_index, 0);
-        }
-    } else {
-        panic!("No Key Manager set");
-    }
-}
-
-#[tokio::test]
 async fn send_not_enough_funds() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
@@ -707,12 +564,10 @@ async fn send_not_enough_funds() {
 
 #[tokio::test]
 async fn send_no_change() {
-    let factories = CryptoFactories::default();
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -735,7 +590,7 @@ async fn send_no_change() {
     .await
     .unwrap();
 
-    let mut stp = oms
+    let stp = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(value1 + value2) - fee_without_change,
@@ -748,46 +603,18 @@ async fn send_no_change() {
         .await
         .unwrap();
 
-    let sender_tx_id = stp.get_tx_id().unwrap();
     assert_eq!(stp.get_amount_to_self().unwrap(), MicroTari::from(0));
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
-
-    let msg = stp.build_single_round_message().unwrap();
-
-    let b = TestParams::new(&mut OsRng);
-
-    let recv_info = SingleReceiverTransactionProtocol::create(
-        &msg,
-        b.nonce,
-        b.spend_key,
-        OutputFeatures::default(),
-        &factories,
-        None,
-    )
-    .unwrap();
-
-    stp.add_single_recipient_info(recv_info, &factories.range_proof)
-        .unwrap();
-
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
-
-    let tx = stp.get_transaction().unwrap();
-
-    oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone())
-        .await
-        .unwrap();
-
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 0);
-    assert_eq!(oms.get_spent_outputs().await.unwrap().len(), tx.body.inputs().len());
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
+    assert_eq!(
+        oms.get_balance().await.unwrap().pending_incoming_balance,
+        MicroTari::from(0)
+    );
 }
-
 #[tokio::test]
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
@@ -828,37 +655,13 @@ async fn send_not_enough_for_change() {
 }
 
 #[tokio::test]
-async fn receiving_and_confirmation() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
-
-    let value = MicroTari::from(5000);
-    let (tx_id, sender_message) = generate_sender_transaction_message(value);
-    let rtp = oms.get_recipient_transaction(sender_message).await.unwrap();
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
-
-    let output = match rtp.state {
-        RecipientState::Finalized(s) => s.output,
-        RecipientState::Failed(_) => panic!("Should not be in Failed state"),
-    };
-
-    oms.confirm_transaction(tx_id, vec![], vec![output]).await.unwrap();
-
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 0);
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 1);
-}
-
-#[tokio::test]
 async fn cancel_transaction() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -898,92 +701,28 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
 
     let value = MicroTari::from(5000);
     let (tx_id, sender_message) = generate_sender_transaction_message(value);
     let _rtp = oms.get_recipient_transaction(sender_message).await.unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
 
-    let pending_txs = oms.get_pending_transactions().await.unwrap();
-
-    assert_eq!(pending_txs.len(), 1);
-
-    let output = pending_txs
-        .get(&tx_id)
-        .unwrap()
-        .outputs_to_be_received
-        .first()
-        .unwrap()
-        .clone();
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.pending_incoming_balance, value);
 
     oms.cancel_transaction(tx_id).await.unwrap();
 
-    let cancelled_output = backend
-        .fetch(&DbKey::OutputsByTxIdAndStatus(tx_id, OutputStatus::CancelledInbound))
-        .unwrap()
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+
+    oms.reinstate_cancelled_inbound_transaction_outputs(tx_id)
+        .await
         .unwrap();
-
-    if let DbValue::AnyOutputs(o) = cancelled_output {
-        let o = o.first().expect("Should be one output in here");
-        assert_eq!(o.commitment, output.commitment);
-    } else {
-        panic!("Should have found cancelled output");
-    }
-
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 0);
-
-    oms.reinstate_cancelled_inbound_transaction(tx_id).await.unwrap();
-
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
 
     let balance = oms.get_balance().await.unwrap();
 
     assert_eq!(balance.pending_incoming_balance, value);
-}
-
-#[tokio::test]
-async fn timeout_transaction() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
-
-    let num_outputs = 20;
-    for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-        );
-        oms.add_output(uo).await.unwrap();
-    }
-    let _stp = oms
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            MicroTari::from(1000),
-            None,
-            MicroTari::from(20),
-            None,
-            "".to_string(),
-            script!(Nop),
-        )
-        .await
-        .unwrap();
-
-    let remaining_outputs = oms.get_unspent_outputs().await.unwrap().len();
-
-    time::sleep(Duration::from_millis(2)).await;
-
-    oms.timeout_transactions(Duration::from_millis(1000)).await.unwrap();
-
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), remaining_outputs);
-
-    oms.timeout_transactions(Duration::from_millis(1)).await.unwrap();
-
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), num_outputs);
 }
 
 #[tokio::test]
@@ -993,7 +732,7 @@ async fn test_get_balance() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let balance = oms.get_balance().await.unwrap();
 
@@ -1037,47 +776,13 @@ async fn test_get_balance() {
 }
 
 #[tokio::test]
-async fn test_confirming_received_output() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
-
-    let value = MicroTari::from(5000);
-    let (tx_id, sender_message) = generate_sender_transaction_message(value);
-    let rtp = oms.get_recipient_transaction(sender_message).await.unwrap();
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
-
-    let output = match rtp.state {
-        RecipientState::Finalized(s) => s.output,
-        RecipientState::Failed(_) => panic!("Should not be in Failed state"),
-    };
-    oms.confirm_transaction(tx_id, vec![], vec![output.clone()])
-        .await
-        .unwrap();
-    assert_eq!(oms.get_balance().await.unwrap().available_balance, value);
-
-    let factories = CryptoFactories::default();
-    let rewind_public_keys = oms.get_rewind_public_keys().await.unwrap();
-    let rewind_result = output
-        .rewind_range_proof_value_only(
-            &factories.range_proof,
-            &rewind_public_keys.rewind_public_key,
-            &rewind_public_keys.rewind_blinding_public_key,
-        )
-        .unwrap();
-    assert_eq!(rewind_result.committed_value, value);
-}
-
-#[tokio::test]
 async fn sending_transaction_with_short_term_clear() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
 
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
@@ -1098,33 +803,10 @@ async fn sending_transaction_with_short_term_clear() {
         .unwrap();
 
     let balance = oms.get_balance().await.unwrap();
-    let expected_change = balance.pending_incoming_balance;
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 
     drop(oms);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
-
-    let balance = oms.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, available_balance);
-
-    // Check that a unconfirm Pending Transaction can be cancelled
-    let stp = oms
-        .prepare_transaction_to_send(
-            TxId::new_random(),
-            MicroTari::from(1000),
-            None,
-            MicroTari::from(20),
-            None,
-            "".to_string(),
-            script!(Nop),
-        )
-        .await
-        .unwrap();
-    let sender_tx_id = stp.get_tx_id().unwrap();
-
-    let balance = oms.get_balance().await.unwrap();
-    assert_eq!(balance.pending_outgoing_balance, available_balance);
-    oms.cancel_transaction(sender_tx_id).await.unwrap();
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend.clone(), true).await;
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
@@ -1146,19 +828,10 @@ async fn sending_transaction_with_short_term_clear() {
     oms.confirm_pending_transaction(sender_tx_id).await.unwrap();
 
     drop(oms);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.pending_outgoing_balance, available_balance);
-
-    let tx = complete_transaction(stp, oms.clone()).await;
-
-    oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone())
-        .await
-        .unwrap();
-
-    let balance = oms.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, expected_change);
 }
 
 #[tokio::test]
@@ -1166,7 +839,7 @@ async fn coin_split_with_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -1198,7 +871,7 @@ async fn coin_split_no_change() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(25);
     let split_count = 15;
@@ -1231,7 +904,7 @@ async fn handle_coinbase() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let reward1 = MicroTari::from(1000);
     let fees1 = MicroTari::from(500);
@@ -1245,15 +918,12 @@ async fn handle_coinbase() {
 
     let _ = oms.get_coinbase_transaction(1.into(), reward1, fees1, 1).await.unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value1);
     let _tx2 = oms.get_coinbase_transaction(2.into(), reward2, fees2, 1).await.unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
     let tx3 = oms.get_coinbase_transaction(3.into(), reward3, fees3, 2).await.unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 2);
     assert_eq!(
         oms.get_balance().await.unwrap().pending_incoming_balance,
         value2 + value3
@@ -1270,620 +940,476 @@ async fn handle_coinbase() {
         )
         .unwrap();
     assert_eq!(rewind_result.committed_value, value3);
+}
 
-    oms.confirm_transaction(3.into(), vec![], vec![output]).await.unwrap();
+#[tokio::test]
+async fn test_txo_validation() {
+    let factories = CryptoFactories::default();
 
-    assert_eq!(oms.get_pending_transactions().await.unwrap().len(), 1);
-    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 1);
-    assert_eq!(oms.get_balance().await.unwrap().available_balance, value3);
-    assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+    let oms_db = backend.clone();
+
+    let (
+        mut oms,
+        wallet_connectivity,
+        _shutdown,
+        _ts,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        base_node_service_event_publisher,
+    ) = setup_output_manager_service(backend, true).await;
+
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let output1_value = 1_000_000;
+    let output1 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output1_value),
+    );
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
+    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+
+    let output2_value = 2_000_000;
+    let output2 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output2_value),
+    );
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
+
+    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+
+    let output3_value = 4_000_000;
+    let output3 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output3_value),
+    );
+
+    oms.add_output_with_tx_id(3, output3.clone()).await.unwrap();
+
+    let mut block1_header = BlockHeader::new(1);
+    block1_header.height = 1;
+    let mut block4_header = BlockHeader::new(1);
+    block4_header.height = 4;
+
+    let mut block_headers = HashMap::new();
+    block_headers.insert(1, block1_header.clone());
+    block_headers.insert(4, block4_header.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    // These responses will mark outputs 1 and 2 and mined confirmed
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+    ];
+
+    let utxo_query_responses = UtxoQueryResponses {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent in the transaction that produced output4
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![],
+        not_deleted_positions: vec![1, 2],
+        heights_deleted_at: vec![],
+        blocks_deleted_in: vec![],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.validate_txos().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    oms.prepare_transaction_to_send(
+        4,
+        MicroTari::from(900_000),
+        MicroTari::from(10),
+        None,
+        "".to_string(),
+        script!(Nop),
+    )
+    .await
+    .unwrap();
+
+    let recv_value = MicroTari::from(8_000_000);
+    let (_recv_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
+
+    let _ = oms.get_recipient_transaction(sender_message).await.unwrap();
+
+    oms.get_coinbase_transaction(6, MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+        .await
+        .unwrap();
+
+    let mut outputs = oms_db.fetch_pending_incoming_outputs().unwrap();
+    assert_eq!(outputs.len(), 3);
+
+    let o5_pos = outputs
+        .iter()
+        .position(|o| o.unblinded_output.value == MicroTari::from(8_000_000))
+        .unwrap();
+    let output5 = outputs.remove(o5_pos);
+    let o6_pos = outputs
+        .iter()
+        .position(|o| o.unblinded_output.value == MicroTari::from(16_000_000))
+        .unwrap();
+    let output6 = outputs.remove(o6_pos);
+    let output4 = outputs[0].clone();
+
+    let output4_tx_output = output4.unblinded_output.as_transaction_output(&factories).unwrap();
+    let output5_tx_output = output5.unblinded_output.as_transaction_output(&factories).unwrap();
+    let output6_tx_output = output6.unblinded_output.as_transaction_output(&factories).unwrap();
+
+    let balance = oms.get_balance().await.unwrap();
     assert_eq!(
-        oms.get_balance().await.unwrap().pending_outgoing_balance,
-        MicroTari::from(0)
+        balance.available_balance,
+        MicroTari::from(output2_value) + MicroTari::from(output3_value)
     );
-}
-
-#[tokio::test]
-async fn test_utxo_stxo_invalid_txo_validation() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let invalid_value = 666;
-    let invalid_output = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(invalid_value),
-    );
-    let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
-
-    let invalid_db_output = DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap();
-    backend
-        .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-            invalid_db_output.commitment.clone(),
-            Box::new(invalid_db_output),
-        )))
-        .unwrap();
-    backend
-        .invalidate_unspent_output(
-            &DbUnblindedOutput::from_unblinded_output(invalid_output.clone(), &factories).unwrap(),
-        )
-        .unwrap();
-
-    let spent_value1 = 500;
-    let spent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(spent_value1),
-    );
-    let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
-    let spent_db_output1 = DbUnblindedOutput::from_unblinded_output(spent_output1.clone(), &factories).unwrap();
-
-    backend
-        .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_db_output1.commitment.clone(),
-            Box::new(spent_db_output1),
-        )))
-        .unwrap();
-
-    let spent_value2 = 800;
-    let spent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(spent_value2),
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
+    assert_eq!(
+        balance.pending_incoming_balance,
+        MicroTari::from(output1_value) -
+            MicroTari::from(900_300) + //Output4 = output 1 -900_000 and 300 for fees
+            MicroTari::from(8_000_000) +
+            MicroTari::from(16_000_000)
     );
 
-    let spent_db_output2 = DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap();
-    backend
-        .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            spent_db_output2.commitment.clone(),
-            Box::new(spent_db_output2),
-        )))
+    // Output 1:    Spent in Block 5 - Unconfirmed
+    // Output 2:    Mined block 1   Confirmed Block 4
+    // Output 3:    Imported so will have Unspent status.
+    // Output 4:    Received in Block 5 - Unconfirmed - Change from spending Output 1
+    // Output 5:    Received in Block 5 - Unconfirmed
+    // Output 6:    Coinbase from Block 5 - Unconfirmed
+
+    let mut block5_header = BlockHeader::new(1);
+    block5_header.height = 5;
+    block_headers.insert(5, block5_header.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output4_tx_output.clone().into()),
+            mmr_position: 4,
+            mined_height: 5,
+            mined_in_block: block5_header.hash(),
+            output_hash: output4_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output5_tx_output.clone().into()),
+            mmr_position: 5,
+            mined_height: 5,
+            mined_in_block: block5_header.hash(),
+            output_hash: output5_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output6_tx_output.clone().into()),
+            mmr_position: 6,
+            mined_height: 5,
+            mined_in_block: block5_header.hash(),
+            output_hash: output6_tx_output.hash(),
+        },
+    ];
+
+    let mut utxo_query_responses = UtxoQueryResponses {
+        best_block: block5_header.hash(),
+        height_of_longest_chain: 5,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent in the transaction that produced output4
+    let mut query_deleted_response = QueryDeletedResponse {
+        best_block: block5_header.hash(),
+        height_of_longest_chain: 5,
+        deleted_positions: vec![1],
+        not_deleted_positions: vec![2, 4, 5, 6],
+        heights_deleted_at: vec![5],
+        blocks_deleted_in: vec![block5_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+
+    oms.validate_txos().await.unwrap();
+
+    let utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
         .unwrap();
 
-    let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, rpc_service_state, _) =
-        setup_output_manager_service(backend, true).await;
+    assert_eq!(utxo_query_calls[0].len(), 4);
+
+    let query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(
+        balance.available_balance,
+        MicroTari::from(output2_value) + MicroTari::from(output3_value)
+    );
+
+    assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 2);
+
+    assert!(oms.get_spent_outputs().await.unwrap().is_empty());
+
+    // Now we will update the mined_height in the responses so that the outputs are confirmed
+    // Output 1:    Spent in Block 5 - Confirmed
+    // Output 2:    Mined block 1   Confirmed Block 4
+    // Output 3:    Imported so will have Unspent status
+    // Output 4:    Received in Block 5 - Confirmed - Change from spending Output 1
+    // Output 5:    Received in Block 5 - Confirmed
+    // Output 6:    Coinbase from Block 5 - Confirmed
+
+    utxo_query_responses.height_of_longest_chain = 8;
+    utxo_query_responses.best_block = [8u8; 16].to_vec();
+    rpc_service_state.set_utxo_query_response(utxo_query_responses);
+
+    query_deleted_response.height_of_longest_chain = 8;
+    query_deleted_response.best_block = [8u8; 16].to_vec();
+    rpc_service_state.set_query_deleted_response(query_deleted_response);
+
+    oms.validate_txos().await.unwrap();
+
+    let utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    // The spent transaction is not checked during this second validation
+    assert_eq!(utxo_query_calls[0].len(), 4);
+
+    let query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(
+        balance.available_balance,
+        MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
+            MicroTari::from(900_300) + //spent 900_000 and 300 for fees
+            MicroTari::from(8_000_000) +    //output 5
+            MicroTari::from(16_000_000) // output 6
+    );
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
+    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+
+    // Trigger another validation and only Output3 should be checked
+    oms.validate_txos().await.unwrap();
+
+    let utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(utxo_query_calls.len(), 1);
+    assert_eq!(utxo_query_calls[0].len(), 1);
+    assert_eq!(
+        utxo_query_calls[0][0],
+        output3.as_transaction_output(&factories).unwrap().hash()
+    );
+
+    // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
+    // Output 1:    Spent in Block 5 - Unconfirmed
+    // Output 2:    Mined block 1   Confirmed Block 4
+    // Output 3:    Imported so will have Unspent
+    // Output 4:    Received in Block 5 - Unconfirmed - Change from spending Output 1
+    // Output 5:    Reorged out
+    // Output 6:    Reorged out
+    let block5_header_reorg = BlockHeader::new(2);
+    block5_header.height = 5;
+    let mut block_headers = HashMap::new();
+    block_headers.insert(1, block1_header.clone());
+    block_headers.insert(4, block4_header.clone());
+    block_headers.insert(5, block5_header_reorg.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    // Update UtxoResponses to not have the received output5 and coinbase output6
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output4_tx_output.clone().into()),
+            mmr_position: 4,
+            mined_height: 5,
+            mined_in_block: block5_header_reorg.hash(),
+            output_hash: output4_tx_output.hash(),
+        },
+    ];
+
+    let mut utxo_query_responses = UtxoQueryResponses {
+        best_block: block5_header_reorg.hash(),
+        height_of_longest_chain: 5,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent in the transaction that produced output4
+    let mut query_deleted_response = QueryDeletedResponse {
+        best_block: block5_header_reorg.hash(),
+        height_of_longest_chain: 5,
+        deleted_positions: vec![1],
+        not_deleted_positions: vec![2, 4, 5, 6],
+        heights_deleted_at: vec![5],
+        blocks_deleted_in: vec![block5_header_reorg.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+
+    // Trigger validation through a base_node_service event
+    base_node_service_event_publisher
+        .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
+        .unwrap();
+
+    let _ = rpc_service_state
+        .wait_pop_get_header_by_height_calls(2, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(
+        balance.available_balance,
+        MicroTari::from(output2_value) + MicroTari::from(output3_value)
+    );
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
+    assert_eq!(
+        balance.pending_incoming_balance,
+        MicroTari::from(output1_value) - MicroTari::from(900_300)
+    );
+
+    // Now we will update the mined_height in the responses so that the outputs on the reorged chain are confirmed
+    // Output 1:    Spent in Block 5 - Confirmed
+    // Output 2:    Mined block 1   Confirmed Block 4
+    // Output 3:    Imported so will have Unspent
+    // Output 4:    Received in Block 5 - Confirmed - Change from spending Output 1
+    // Output 5:    Reorged out
+    // Output 6:    Reorged out
+
+    utxo_query_responses.height_of_longest_chain = 8;
+    utxo_query_responses.best_block = [8u8; 16].to_vec();
+    rpc_service_state.set_utxo_query_response(utxo_query_responses);
+
+    query_deleted_response.height_of_longest_chain = 8;
+    query_deleted_response.best_block = [8u8; 16].to_vec();
+    rpc_service_state.set_query_deleted_response(query_deleted_response);
+
     let mut event_stream = oms.get_event_stream();
 
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
-    );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
+    let validation_id = oms.validate_txos().await.unwrap();
 
-    oms.add_output(unspent_output1.clone()).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    let unspent_value3 = 900;
-    let unspent_output3 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value3),
-    );
-    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
-
-    oms.add_output(unspent_output3.clone()).await.unwrap();
-
-    let unspent_value4 = 901;
-    let unspent_output4 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value4),
-    );
-    let unspent_tx_output4 = unspent_output4.as_transaction_output(&factories).unwrap();
-
-    oms.add_output(unspent_output4.clone()).await.unwrap();
-
-    rpc_service_state.set_utxos(vec![invalid_output.as_transaction_output(&factories).unwrap()]);
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
 
-    oms.validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::Limited(5))
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
 
-    let _fetch_utxo_calls = rpc_service_state
-        .wait_pop_fetch_utxos_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
+    let delay = sleep(Duration::from_secs(30));
     tokio::pin!(delay);
-    let mut success = false;
-    loop {
-        tokio::select! {
-            Ok(event) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Invalid) = &*event {
-                   success = true;
-                   break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(success, "Did not receive validation success event");
-
-    let outputs = oms.get_unspent_outputs().await.unwrap();
-
-    assert_eq!(outputs.len(), 5);
-
-    rpc_service_state.set_utxos(vec![
-        unspent_tx_output1,
-        invalid_tx_output,
-        unspent_tx_output4,
-        unspent_tx_output3,
-    ]);
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .unwrap();
-
-    let _fetch_utxo_calls = rpc_service_state
-        .wait_pop_fetch_utxos_calls(3, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut success = false;
-    loop {
-        tokio::select! {
-            Ok(event) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Unspent) = &*event {
-                   success = true;
-                   break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(success, "Did not receive validation success event");
-
-    let outputs = oms.get_unspent_outputs().await.unwrap();
-
-    assert_eq!(outputs.len(), 4);
-    assert!(outputs.iter().any(|o| o == &unspent_output1));
-    assert!(outputs.iter().any(|o| o == &unspent_output3));
-    assert!(outputs.iter().any(|o| o == &unspent_output4));
-    assert!(outputs.iter().any(|o| o == &invalid_output));
-
-    rpc_service_state.set_utxos(vec![spent_tx_output1]);
-
-    oms.validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .unwrap();
-
-    let _fetch_utxo_calls = rpc_service_state
-        .wait_pop_fetch_utxos_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut success = false;
-    loop {
-        tokio::select! {
-            Ok(msg) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) = (*msg).clone() {
-                    success = true;
-                    break;
-                };
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(success, "Did not receive validation success event");
-
-    let outputs = oms.get_unspent_outputs().await.unwrap();
-
-    assert_eq!(outputs.len(), 5);
-    assert!(outputs.iter().any(|o| o == &spent_output1));
-}
-
-#[tokio::test]
-async fn test_base_node_switch_during_validation() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (
-        mut oms,
-        _shutdown,
-        _ts,
-        _mock_rpc_server,
-        server_node_identity,
-        mut rpc_service_state,
-        _connectivity_mock_state,
-    ) = setup_output_manager_service(backend, true).await;
-    let mut event_stream = oms.get_event_stream();
-
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
-    );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
-
-    oms.add_output(unspent_output1).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    let unspent_value3 = 900;
-    let unspent_output3 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value3),
-    );
-    let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
-
-    oms.add_output(unspent_output3).await.unwrap();
-
-    // First RPC server state
-    rpc_service_state.set_utxos(vec![unspent_tx_output1, unspent_tx_output3]);
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(8)));
-
-    // New base node we will switch to
-    let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .unwrap();
-
-    let _fetch_utxo_calls = rpc_service_state
-        .wait_pop_fetch_utxos_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    oms.set_base_node_public_key(new_server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut abort = false;
-    loop {
-        tokio::select! {
-            Ok(msg) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationAborted(_,_) = (*msg).clone() {
-                    abort = true;
-                    break;
-                }
-            }
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(abort, "Did not receive validation abort");
-}
-
-#[tokio::test]
-async fn test_txo_validation_connection_timeout_retries() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, _rpc_service_state, _connectivity_mock_state) =
-        setup_output_manager_service(backend, false).await;
-    let mut event_stream = oms.get_event_stream();
-
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
-    );
-
-    oms.add_output(unspent_output1).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60));
-    tokio::pin!(delay);
-    let mut timeout = 0;
-    let mut failed = 0;
-    loop {
-        tokio::select! {
-            Ok(event) = event_stream.recv() => {
-                match &*event {
-                    OutputManagerEvent::TxoValidationTimedOut(_,_) => {
-                       timeout+=1;
-                    },
-                     OutputManagerEvent::TxoValidationFailure(_,_) => {
-                       failed+=1;
-                    },
-                    _ => (),
-                }
-
-                if timeout+failed >= 3 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert_eq!(failed, 1);
-    assert_eq!(timeout, 2);
-}
-
-#[tokio::test]
-async fn test_txo_validation_rpc_error_retries() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, rpc_service_state, _connectivity_mock_state) =
-        setup_output_manager_service(backend, true).await;
-    let mut event_stream = oms.get_event_stream();
-    rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
-
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
-    );
-
-    oms.add_output(unspent_output1).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut failed = 0;
+    let mut validation_completed = false;
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                if let Ok(msg) = event {
-                    if let OutputManagerEvent::TxoValidationFailure(_,_) = (*msg).clone() {
-                        failed+=1;
+                 if let OutputManagerEvent::TxoValidationSuccess(id) = &*event.unwrap(){
+                    if id == &validation_id {
+                        validation_completed = true;
+                        break;
                     }
                 }
-
-                if failed >= 1 {
-                    break;
-                }
             },
             () = &mut delay => {
                 break;
             },
         }
     }
-    assert_eq!(failed, 1);
-}
+    assert!(validation_completed, "Validation protocol should complete");
 
-#[tokio::test]
-async fn test_txo_validation_rpc_timeout() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (
-        mut oms,
-        _shutdown,
-        _ts,
-        _mock_rpc_server,
-        server_node_identity,
-        mut rpc_service_state,
-        _connectivity_mock_state,
-    ) = setup_output_manager_service(backend, true).await;
-    let mut event_stream = oms.get_event_stream();
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(120)));
-
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
+    let balance = oms.get_balance().await.unwrap();
+    assert_eq!(
+        balance.available_balance,
+        MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
+            MicroTari::from(900_300)
     );
-
-    oms.add_output(unspent_output1).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1))
-        .await
-        .unwrap();
-
-    let delay =
-        time::sleep(RpcClientConfig::default().timeout_with_grace_period().unwrap() + Duration::from_secs(30)).fuse();
-    tokio::pin!(delay);
-    let mut failed = 0;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-                if let Ok(msg) = event {
-                     if let OutputManagerEvent::TxoValidationFailure(_,_) = &*msg {
-                         failed+=1;
-                    }
-                }
-
-                if failed >= 1 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert_eq!(failed, 1);
-}
-
-#[tokio::test]
-async fn test_txo_validation_base_node_not_synced() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-
-    let (mut oms, _shutdown, _ts, _mock_rpc_server, server_node_identity, rpc_service_state, _connectivity_mock_state) =
-        setup_output_manager_service(backend, true).await;
-    let mut event_stream = oms.get_event_stream();
-    rpc_service_state.set_is_synced(false);
-
-    let unspent_value1 = 500;
-    let unspent_output1 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value1),
-    );
-    let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
-
-    oms.add_output(unspent_output1.clone()).await.unwrap();
-
-    let unspent_value2 = 800;
-    let unspent_output2 = create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(unspent_value2),
-    );
-
-    oms.add_output(unspent_output2).await.unwrap();
-
-    oms.set_base_node_public_key(server_node_identity.public_key().clone())
-        .await
-        .unwrap();
-
-    oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(5))
-        .await
-        .unwrap();
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut delayed = 0;
-    loop {
-        tokio::select! {
-            Ok(event) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationDelayed(_,_) = &*event {
-                    delayed += 1;
-                }
-                if delayed >= 2 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert_eq!(delayed, 2);
-
-    rpc_service_state.set_is_synced(true);
-    rpc_service_state.set_utxos(vec![unspent_tx_output1]);
-
-    let delay = time::sleep(Duration::from_secs(60)).fuse();
-    tokio::pin!(delay);
-    let mut success = false;
-    loop {
-        tokio::select! {
-            Ok(event) = event_stream.recv() => {
-                if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*event {
-                    success = true;
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(success, "Did not receive validation success event");
-
-    let outputs = oms.get_unspent_outputs().await.unwrap();
-
-    assert_eq!(outputs.len(), 1);
-    assert!(outputs.iter().any(|o| o == &unspent_output1));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
+    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
 }
 
 #[tokio::test]
@@ -1905,7 +1431,7 @@ async fn test_oms_key_manager_discrepancy() {
     mock_base_node_service.set_default_base_node_state();
     task::spawn(mock_base_node_service.run());
 
-    let (connectivity_manager, _connectivity_mock) = create_connectivity_mock();
+    let wallet_connectivity = create_wallet_connectivity_mock();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
@@ -1922,7 +1448,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants.clone(),
         shutdown.to_signal(),
         basenode_service_handle.clone(),
-        connectivity_manager.clone(),
+        wallet_connectivity.clone(),
         master_key1.clone(),
     )
     .await
@@ -1941,7 +1467,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants.clone(),
         shutdown.to_signal(),
         basenode_service_handle.clone(),
-        connectivity_manager.clone(),
+        wallet_connectivity.clone(),
         master_key1,
     )
     .await
@@ -1960,7 +1486,7 @@ async fn test_oms_key_manager_discrepancy() {
         constants,
         shutdown.to_signal(),
         basenode_service_handle,
-        connectivity_manager,
+        wallet_connectivity,
         master_key2,
     )
     .await;
@@ -1969,28 +1495,4 @@ async fn test_oms_key_manager_discrepancy() {
         output_manager_service3,
         Err(OutputManagerError::MasterSecretKeyMismatch)
     ));
-}
-
-#[tokio::test]
-#[ignore = "to be fixed"]
-async fn get_coinbase_tx_for_same_height() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let (mut oms, _shutdown, _, _, _, _, _) =
-        setup_output_manager_service(OutputManagerSqliteDatabase::new(connection, None), true).await;
-
-    oms.get_coinbase_transaction(1.into(), 100_000.into(), 100.into(), 1)
-        .await
-        .unwrap();
-
-    let pending_transactions = oms.get_pending_transactions().await.unwrap();
-    assert!(pending_transactions.values().any(|p| p.tx_id == TxId::from(1)));
-
-    oms.get_coinbase_transaction(2.into(), 100_000.into(), 100.into(), 1)
-        .await
-        .unwrap();
-
-    let pending_transactions = oms.get_pending_transactions().await.unwrap();
-    assert!(!pending_transactions.values().any(|p| p.tx_id == TxId::from(1)));
-    assert!(pending_transactions.values().any(|p| p.tx_id == TxId::from(2)));
 }

@@ -232,6 +232,8 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+# tor_proxy_bypass_for_outbound_tcp = false;
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -281,10 +283,10 @@ data_dir = "igor"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141", 
-    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141", 
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141", 
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141", 
+    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
+    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141",
+    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
+    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
 ]
 
 # This allowlist provides a method to force syncing from any known nodes you may choose, for example if you have a
@@ -392,6 +394,8 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 # When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+# tor_proxy_bypass_for_outbound_tcp = false;
 
 ########################################################################################################################
 #                                                                                                                      #

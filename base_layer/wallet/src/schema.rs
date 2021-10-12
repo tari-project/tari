@@ -24,6 +24,7 @@ table! {
         valid -> Integer,
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
+        mined_in_block -> Nullable<Binary>,
     }
 }
 
@@ -51,7 +52,7 @@ table! {
 
 table! {
     key_manager_states (id) {
-        id -> Nullable<BigInt>,
+        id -> Integer,
         master_key -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
@@ -93,7 +94,6 @@ table! {
         flags -> Integer,
         maturity -> BigInt,
         status -> Integer,
-        tx_id -> Nullable<BigInt>,
         hash -> Nullable<Binary>,
         script -> Binary,
         input_data -> Binary,
@@ -117,6 +117,13 @@ table! {
         tx_id -> BigInt,
         short_term -> Integer,
         timestamp -> Timestamp,
+        mined_height -> Nullable<BigInt>,
+        mined_in_block -> Nullable<Binary>,
+        mined_mmr_position -> Nullable<BigInt>,
+        marked_deleted_at_height -> Nullable<BigInt>,
+        marked_deleted_in_block -> Nullable<Binary>,
+        received_in_tx_id -> Nullable<BigInt>,
+        spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
     }
 }
@@ -137,6 +144,5 @@ allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
-    pending_transaction_outputs,
     wallet_settings,
 );

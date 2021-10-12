@@ -32,7 +32,7 @@ use tari_core::transactions::{
 };
 
 use crate::output_manager_service::{
-    error::OutputManagerError,
+    error::{OutputManagerError, OutputManagerStorageError},
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
@@ -110,7 +110,18 @@ where TBackend: OutputManagerBackend + 'static
                 .await?;
 
             let db_output = DbUnblindedOutput::from_unblinded_output(output.clone(), &self.factories)?;
-            self.db.add_unspent_output(db_output).await?;
+            let output_hex = db_output.commitment.to_hex();
+            if let Err(e) = self.db.add_unspent_output(db_output).await {
+                match e {
+                    OutputManagerStorageError::DuplicateOutput => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
+                        );
+                    },
+                    _ => return Err(OutputManagerError::from(e)),
+                }
+            }
 
             trace!(
                 target: LOG_TARGET,

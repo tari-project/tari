@@ -1,4 +1,4 @@
-@routing_mechanism
+@routing_mechanism @wallet
 Feature: Wallet Routing Mechanism
 
 Scenario Outline: Wallets transacting via specified routing mechanism only

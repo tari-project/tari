@@ -1,6 +1,6 @@
 [package]
 name = "test_faucet"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -16,12 +16,11 @@ serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0"
 
 [dependencies.tari_core]
-version = "^0.10"
-path = "../../base_layer/core/"
+path = "../../base_layer/core"
 default-features = false
-features = ["transactions", "avx2"]
+features = ["transactions"]
 
 [dependencies.tokio]
 version = "^1.10"
 default-features = false
-features = ["fs",  "rt-multi-thread", "macros", "io-util", "sync"]
+features = ["fs", "rt-multi-thread", "macros", "io-util", "sync"]

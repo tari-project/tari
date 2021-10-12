@@ -31,12 +31,14 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
         pruned_output::PrunedOutput,
+        utxo_mined_info::UtxoMinedInfo,
         BlockAddResult,
         BlockchainBackend,
         ChainBlock,
         ChainHeader,
         DbBasicStats,
         DbTotalSizeStats,
+        DeletedBitmap,
         HistoricalBlock,
         HorizonData,
         MmrTree,
@@ -293,7 +295,7 @@ where B: BlockchainBackend
     // Fetch the utxo
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<PrunedOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_output(&hash)?.map(|(out, _index, _)| out))
+        Ok(db.fetch_output(&hash)?.map(|mined_info| mined_info.output))
     }
 
     pub fn fetch_unspent_output_by_commitment(
@@ -322,7 +324,22 @@ where B: BlockchainBackend
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
-            result.push(output.map(|(out, mmr_index, _)| (out, deleted.bitmap().contains(mmr_index))));
+            result
+                .push(output.map(|mined_info| (mined_info.output, deleted.bitmap().contains(mined_info.mmr_position))));
+        }
+        Ok(result)
+    }
+
+    pub fn fetch_utxos_and_mined_info(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<Option<UtxoMinedInfo>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let output = db.fetch_output(&hash)?;
+            result.push(output);
         }
         Ok(result)
     }
@@ -937,6 +954,23 @@ where B: BlockchainBackend
         ))
     }
 
+    pub fn fetch_deleted_bitmap_at_tip(&self) -> Result<DeletedBitmap, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_deleted_bitmap()
+    }
+
+    pub fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
+        if mmr_positions.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let db = self.db_read_access()?;
+        db.fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
+    }
+
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let lock = self.db_read_access()?;
         lock.get_stats()
@@ -1315,19 +1349,10 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
     db: &T,
     commitment: Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    match db.fetch_output(&commitment.to_vec()) {
-        Ok(output) => match output {
-            Some((_output, leaf, _height)) => {
-                let header = db.fetch_header_containing_utxo_mmr(leaf as u64)?;
-                fetch_block_by_hash(db, header.hash().to_owned())
-            },
-            None => Ok(None),
-        },
-        Err(_) => Err(ChainStorageError::ValueNotFound {
-            entity: "Output",
-            field: "Commitment",
-            value: commitment.to_hex(),
-        }),
+    let output = db.fetch_output(&commitment.to_vec())?;
+    match output {
+        Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash),
+        None => Ok(None),
     }
 }
 

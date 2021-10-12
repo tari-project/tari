@@ -24,6 +24,7 @@ use crate::proto::liveness::MetadataKey;
 use chrono::{NaiveDateTime, Utc};
 use std::{
     collections::{hash_map::RandomState, HashMap},
+    convert::TryInto,
     time::Duration,
 };
 use tari_comms::peer_manager::NodeId;
@@ -224,12 +225,14 @@ impl AverageLatency {
 
     /// Calculate the average of the recorded samples
     pub fn calc_average(&self) -> u32 {
-        let samples = &self.samples;
-        if samples.is_empty() {
-            return 0;
-        }
-
-        samples.iter().fold(0, |sum, x| sum + *x) / samples.len() as u32
+        self.samples
+            .iter()
+            .map(|x| u64::from(*x))
+            .fold(0, u64::saturating_add)
+            .checked_div(self.samples.len() as u64)
+            .unwrap_or_default()
+            .try_into()
+            .unwrap_or(u32::MAX)
     }
 }
 

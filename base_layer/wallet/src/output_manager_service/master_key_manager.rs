@@ -47,9 +47,7 @@ const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
 const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
-pub(crate) struct MasterKeyManager<TBackend>
-where TBackend: OutputManagerBackend + 'static
-{
+pub(crate) struct MasterKeyManager<TBackend> {
     utxo_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     utxo_script_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,

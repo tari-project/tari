@@ -107,7 +107,6 @@ pub struct GlobalConfig {
     pub transaction_event_channel_size: usize,
     pub base_node_event_channel_size: usize,
     pub output_manager_event_channel_size: usize,
-    pub base_node_update_publisher_channel_size: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -464,9 +463,6 @@ fn convert_node_config(
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
 
-    let key = "wallet.base_node_update_publisher_channel_size";
-    let base_node_update_publisher_channel_size = optional(cfg.get_int(key))?.unwrap_or(50) as usize;
-
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(key)
@@ -748,7 +744,6 @@ fn convert_node_config(
         transaction_event_channel_size,
         base_node_event_channel_size,
         output_manager_event_channel_size,
-        base_node_update_publisher_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
@@ -888,6 +883,9 @@ fn network_transport_config(
                 None => None,
             };
 
+            let key = config_string(app_str, network, "tor_proxy_bypass_for_outbound_tcp");
+            let tor_proxy_bypass_for_outbound_tcp = optional(cfg.get_bool(&key))?.unwrap_or(false);
+
             Ok(CommsTransport::TorHiddenService {
                 control_server_address,
                 auth,
@@ -895,6 +893,7 @@ fn network_transport_config(
                 forward_address,
                 onion_port,
                 tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
             })
         },
         "socks5" => {
@@ -1035,6 +1034,7 @@ pub enum CommsTransport {
         auth: TorControlAuthentication,
         onion_port: NonZeroU16,
         tor_proxy_bypass_addresses: Vec<Multiaddr>,
+        tor_proxy_bypass_for_outbound_tcp: bool,
     },
     /// Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
     Socks5 {

@@ -227,6 +227,10 @@ impl CompleteDeletedBitmap {
     pub fn dissolve(self) -> (Bitmap, u64, HashOutput) {
         (self.deleted, self.height, self.hash)
     }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.deleted.serialize()
+    }
 }
 
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {
