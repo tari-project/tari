@@ -135,8 +135,8 @@ Feature: Wallet Monitoring
     And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
 
     When I co-mine <numBlocks> blocks via merge mining proxy PROXY1 and mining node MINER2
-    # This wait is here to give a chance for re-orgs to settle out
-    Then I wait 30 seconds
+#     This wait is here to give a chance for re-orgs to settle out
+    And I wait 30 seconds
     Then all nodes are on the same chain at height <numBlocks>
 
     And mining node MINER_SEED_A mines 5 blocks
