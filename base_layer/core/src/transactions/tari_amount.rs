@@ -210,7 +210,11 @@ impl From<MicroTari> for FormattedMicroTari {
 
 impl Display for FormattedMicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} µT", helpers::display_currency_decimal(self.0, 0, 0, ","))
+        let value = format!("{}", self.0);
+        let formatted = helpers::format_currency(&value, ',');
+        f.write_str(&formatted)?;
+        f.write_str(" µT")?;
+        Ok(())
     }
 }
 
@@ -225,7 +229,11 @@ impl From<Tari> for FormattedTari {
 
 impl Display for FormattedTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} T", helpers::display_currency(self.0.into(), 2, ","))
+        let value = format!("{:.2}", self.0);
+        let formatted = helpers::format_currency(&value, ',');
+        f.write_str(&formatted)?;
+        f.write_str(" T")?;
+        Ok(())
     }
 }
 

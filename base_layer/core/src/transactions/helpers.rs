@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use num::pow;
 use rand::rngs::OsRng;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -561,12 +560,6 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
     (tx, utxos)
 }
 
-pub fn display_currency(value: f64, precision: usize, separator: &str) -> String {
-    let whole = value as u64;
-    let decimal = ((value - whole as f64) * pow(10_f64, precision)).round() as u64;
-    display_currency_decimal(whole, decimal, precision, separator)
-}
-
 /// Return a currency styled `String`
 /// # Examples
 ///
@@ -575,27 +568,25 @@ pub fn display_currency(value: f64, precision: usize, separator: &str) -> String
 /// assert_eq!(String::from("12,345.12"), display_currency(12345.12, 2, ","));
 /// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
 /// ```
-pub fn display_currency_decimal(whole: u64, decimal: u64, precision: usize, separator: &str) -> String {
-    let formatted_whole_value = whole
-        .to_string()
-        .chars()
-        .rev()
-        .enumerate()
-        .fold(String::new(), |acc, (i, c)| {
-            if i != 0 && i % 3 == 0 {
-                format!("{}{}{}", acc, separator, c)
-            } else {
-                format!("{}{}", acc, c)
+pub fn format_currency(value: &str, separator: char) -> String {
+    let mut iter = value.splitn(2, '.');
+    match (iter.next(), iter.next()) {
+        (Some(whole), None) => whole.into(),
+        (Some(whole), Some(decimal)) => {
+            let len = whole.len();
+            let mut buffer = String::with_capacity(len / 3 + len);
+            for (i, c) in whole.chars().rev().enumerate() {
+                buffer.push(c);
+                if i > 0 && i % 3 == 0 {
+                    buffer.push(separator);
+                }
             }
-        })
-        .chars()
-        .rev()
-        .collect::<String>();
-
-    if precision > 0 {
-        format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
-    } else {
-        formatted_whole_value
+            buffer.push_str(decimal);
+            buffer
+        },
+        other => {
+            unreachable!("splitn(2, '.') shouldn't return: {:?}", other);
+        },
     }
 }
 
