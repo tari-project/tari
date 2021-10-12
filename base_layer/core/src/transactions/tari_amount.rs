@@ -24,9 +24,10 @@ use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 
 use crate::transactions::helpers;
-use decimal_rs::Decimal;
+use decimal_rs::{Decimal, DecimalConvertError};
+use derive_more::{Add, AddAssign, Div, From, Into, Mul, Rem, Sub, SubAssign};
 use std::{
-    convert::TryInto,
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     iter::Sum,
     ops::{Add, Mul},
@@ -142,17 +143,19 @@ impl std::str::FromStr for MicroTari {
         if is_micro_tari {
             processed
                 .parse::<u64>()
+                // TODO: Why we compare it with `0` here? It's unsigned.
                 .map(|v| MicroTari::from(v.max(0)))
                 .map_err(|e| MicroTariError::ParseError(e.to_string()))
         } else {
             processed
-                .parse::<f64>()
+                .parse::<Decimal>()
                 .map_err(|e| MicroTariError::ParseError(e.to_string()))
                 .map(|v| {
-                    if v < 0.0 {
+                    if v.is_sign_negative() {
                         Err(MicroTariError::ParseError("value cannot be negative".to_string()))
                     } else {
-                        Ok(MicroTari::from(Tari::from(v.max(0.0))))
+                        // TODO: Check. It can't be `NaN` anymore. Still we need `.max(0.0)` check?
+                        Ok(MicroTari::from(Tari::from(v)))
                     }
                 })?
         }
@@ -226,15 +229,10 @@ impl Display for FormattedTari {
     }
 }
 
-use derive_more::{Add, AddAssign, Div, Mul, Rem, Sub, SubAssign};
-
 /// A convenience struct for representing full Tari. You should **never** use Tari in consensus calculations, because
 /// Tari wraps a floating point value. Use MicroTari for that instead.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem, From, Into)]
 pub struct Tari(Decimal);
-
-// newtype_ops! { [Tari] {add sub} {:=} Self Self }
-// newtype_ops! { [Tari] {mul div rem} {:=} Self f64 }
 
 impl Tari {
     pub fn formatted(self) -> FormattedTari {
@@ -248,15 +246,13 @@ impl Display for Tari {
     }
 }
 
-impl From<Tari> for f64 {
-    fn from(v: Tari) -> Self {
-        v.0.try_into().unwrap()
-    }
-}
+pub type TariConvertError = DecimalConvertError;
 
-impl From<f64> for Tari {
-    fn from(v: f64) -> Self {
-        Tari(v.try_into().unwrap())
+impl TryFrom<f64> for Tari {
+    type Error = TariConvertError;
+
+    fn try_from(v: f64) -> Result<Self, Self::Error> {
+        Decimal::try_from(v).map(Self)
     }
 }
 
