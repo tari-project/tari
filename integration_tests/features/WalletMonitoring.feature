@@ -1,6 +1,7 @@
-@coinbase_reorg @wallet
+@wallet-monitoring
 Feature: Wallet Monitoring
 
+  @wallet
   Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
@@ -17,7 +18,6 @@ Feature: Wallet Monitoring
     Then wallet WALLET_A1 has 10 coinbase transactions
     Then all COINBASE transactions for wallet WALLET_A1 are valid
     Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
-    When I wait 1 seconds
         #
         # Chain 2:
         #   Collects 10 coinbases into one wallet
@@ -33,13 +33,10 @@ Feature: Wallet Monitoring
     Then wallet WALLET_B1 has 10 coinbase transactions
     Then all COINBASE transactions for wallet WALLET_B1 are valid
     Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
-    When I wait 1 seconds
         #
         # Connect Chain 1 and 2
         #
     And I have a SHA3 miner NODE_C connected to all seed nodes
-        # Wait for the reorg to filter through
-    When I wait 30 seconds
     Then all nodes are at height 10
         # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
     And mining node NODE_C mines 6 blocks
@@ -51,7 +48,7 @@ Feature: Wallet Monitoring
     Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
 
   # 18+ mins on circle ci
-  @long-running
+  @long-running @wallet
   Scenario: Wallets monitoring normal transactions after a reorg
     Given I do not expect all automated transactions to succeed
         #
@@ -76,7 +73,6 @@ Feature: Wallet Monitoring
     Then node NODE_A1 is at height 110
     Then wallet WALLET_A2 detects all transactions as Mined_Confirmed
     Then all NORMAL transactions for wallet WALLET_A1 are valid
-    When I wait 1 seconds
         #
         # Chain 2:
         #   Collects 10 coinbases into one wallet, send 7 transactions
@@ -99,19 +95,14 @@ Feature: Wallet Monitoring
     Then node NODE_B1 is at height 110
     Then wallet WALLET_B2 detects all transactions as Mined_Confirmed
     Then all NORMAL transactions for wallet WALLET_B1 are valid
-    When I wait 1 seconds
         #
         # Connect Chain 1 and 2
         #
     And I have a SHA3 miner NODE_C connected to all seed nodes
-        # Wait for the reorg to filter through
-    When I wait 30 seconds
     Then all nodes are at height 110
         # When tip advances past required confirmations, invalid coinbases still being monitored will be cancelled.
     And mining node NODE_C mines 6 blocks
     Then all nodes are at height 116
-        # Wait for coinbase statuses to change in the wallet
-    When I wait 30 seconds
     And I list all NORMAL transactions for wallet WALLET_A1
     And I list all NORMAL transactions for wallet WALLET_B1
     # TODO: Uncomment this step when wallets can handle reorg
@@ -135,8 +126,6 @@ Feature: Wallet Monitoring
     And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
 
     When I co-mine <numBlocks> blocks via merge mining proxy PROXY1 and mining node MINER2
-    # This wait is here to give a chance for re-orgs to settle out
-    Then I wait 30 seconds
     Then all nodes are on the same chain at height <numBlocks>
 
     And mining node MINER_SEED_A mines 5 blocks
@@ -145,14 +134,14 @@ Feature: Wallet Monitoring
     When I wait 1 seconds
     Then wallets WALLET1,WALLET2 should have <numBlocks> spendable coinbase outputs
 
-    @flaky
+    @flaky @wallet
     Examples:
       | numBlocks | endBlocks |
       | 10        | 15        |
-      | 100       | 105       |
 
-    @long-running
+    @long-running @wallet
     Examples:
         | numBlocks | endBlocks |
+        | 100       | 105       |
         | 1000      | 1005      |
         | 4500      | 4505      |

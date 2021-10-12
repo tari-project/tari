@@ -434,6 +434,11 @@ class BaseNodeClient {
     };
   }
 
+  async initial_sync_achieved() {
+    let result = await this.client.GetTipInfo().sendMessage({});
+    return result.initial_sync_achieved;
+  }
+
   static async create(port) {
     const client = new BaseNodeClient();
     await client.connect(port);

@@ -1,6 +1,7 @@
+@wallet-transfer
 Feature: Wallet Transfer
 
-  @flaky @long-running
+  @flaky @long-running @wallet
   Scenario: As a wallet I want to submit multiple transfers
     Given I have a seed node NODE
     # Add a 2nd node otherwise initial sync will not succeed
@@ -23,7 +24,7 @@ Feature: Wallet Transfer
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_Confirmed
 
-  @long-running
+  @long-running @wallet
   Scenario: As a wallet I want to submit transfers to myself
     Given I have a seed node NODE
     # Add a 2nd node otherwise initial sync will not succeed

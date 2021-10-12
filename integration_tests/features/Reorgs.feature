@@ -25,7 +25,7 @@ Feature: Reorgs
     And node B is at height 10
     And node C is at height 10
 
-  @critical
+  @critical @base-node
   Scenario: Node rolls back reorg on invalid block
     Given I have a seed node SA
     And I have a base node B connected to seed SA
@@ -39,7 +39,7 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-  @critical @reorg
+  @reorg @base-node
   Scenario: Pruned mode reorg simple
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -63,7 +63,7 @@ Feature: Reorgs
     When I start base node NODE1
     Then all nodes are at height 20
 
-  @critical @reorg
+  @critical @reorg @base-node
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -94,7 +94,7 @@ Feature: Reorgs
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
-      @critical @reorg
+  @critical @reorg @base-node
   Scenario: Zero-conf reorg with spending
     Given I do not expect all automated transactions to succeed
     Given I have a base node NODE1 connected to all seed nodes
@@ -138,7 +138,6 @@ Feature: Reorgs
     When I start base node NODE2
     Then all nodes are on the same chain tip
 
-  @long-running
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:
@@ -212,13 +211,53 @@ Feature: Reorgs
     And I connect node SEED_A1 to node SEED_B1 and wait <SYNC_TIME> seconds
     When I mine 10 blocks on SEED_A1
     Then all nodes are on the same chain tip
-    @critical
+    @base-node
     Examples:
-        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 5      | 10     | 15    | 20   | 20        |
+      | X1 | Y1 | X2 | Y2 | SYNC_TIME |
+      | 5  | 10 | 15 | 20 | 1        |
 
-    @long-running
+    @long-running @base-node
     Examples:
         | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 100    | 125    | 150   | 175  | 30        |
-        | 1010   | 1110   | 1210  | 1310 | 60        |
+        | 100    | 125    | 150   | 175  | 1         |
+        | 1010   | 1110   | 1210  | 1310 | 1         |
+
+  @reorg  @base-node
+  Scenario: Full block sync with small reorg
+    Given I have a base node NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    And I have a base node NODE2 connected to node NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    Then all nodes are at height 5
+    Given I stop node NODE2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
+    Then node NODE1 is at height 10
+    Given I stop node NODE1
+    And I start base node NODE2
+    And mining node MINER2 mines 7 blocks with min difficulty 2 and max difficulty 100000
+    Then node NODE2 is at height 12
+    When I start base node NODE1
+    Then all nodes are on the same chain at height 12
+
+  @reorg @long-running @base-node
+  Scenario: Full block sync with large reorg
+    Given I have a base node NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    And I have a base node NODE2 connected to node NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    Then all nodes are at height 5
+    Given I stop node NODE2
+    And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
+    Then node NODE1 is at height 1006
+    Given I stop node NODE1
+    And I start base node NODE2
+    And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
+    Then node NODE2 is at height 1505
+    When I start base node NODE1
+    Then all nodes are on the same chain at height 1505
