@@ -273,7 +273,8 @@ impl From<MicroTari> for Tari {
 #[cfg(test)]
 mod test {
     use super::{MicroTari, Tari};
-    use std::str::FromStr;
+    use std::{convert::TryFrom, str::FromStr};
+
     #[test]
     fn micro_tari_arithmetic() {
         let mut a = MicroTari::from(500);
@@ -310,7 +311,7 @@ mod test {
         let micro_tari = MicroTari::from(99_100_000);
         let s = format!("{}", micro_tari.formatted());
         assert_eq!(micro_tari, MicroTari::from_str(s.as_str()).unwrap());
-        let tari = Tari::from(1.12);
+        let tari = Tari::try_from(1.12).unwrap();
         let s = format!("{}", tari.formatted());
         assert_eq!(MicroTari::from(tari), MicroTari::from_str(s.as_str()).unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5000000").unwrap());
@@ -326,38 +327,38 @@ mod test {
     #[test]
     fn add_tari_and_microtari() {
         let a = MicroTari::from(100_000);
-        let b = Tari::from(0.23);
+        let b = Tari::try_from(0.23).unwrap();
         let sum: Tari = b + a.into();
-        assert_eq!(sum, Tari::from(0.33));
+        assert_eq!(sum, Tari::try_from(0.33).unwrap());
     }
 
     #[test]
     fn tari_arithmetic() {
-        let mut a = Tari::from(1.5);
-        let b = Tari::from(2.25);
-        assert_eq!(a + b, Tari::from(3.75));
-        assert_eq!(a - b, Tari::from(-0.75));
-        assert_eq!(a * 10.0, Tari::from(15.0));
-        assert_eq!(b / 2.0, Tari::from(1.125));
+        let mut a = Tari::try_from(1.5).unwrap();
+        let b = Tari::try_from(2.25).unwrap();
+        assert_eq!(a + b, Tari::try_from(3.75).unwrap());
+        assert_eq!(a - b, Tari::try_from(-0.75).unwrap());
+        assert_eq!(a * 10.0, Tari::try_from(15.0).unwrap());
+        assert_eq!(b / 2.0, Tari::try_from(1.125).unwrap());
         a += b;
-        assert_eq!(a, Tari::from(3.75));
-        a -= Tari::from(0.75);
-        assert_eq!(a, Tari::from(3.0));
+        assert_eq!(a, Tari::try_from(3.75).unwrap());
+        a -= Tari::try_from(0.75).unwrap();
+        assert_eq!(a, Tari::try_from(3.0).unwrap());
     }
 
     #[test]
     fn tari_display() {
-        let s = format!("{}", Tari::from(1.234));
+        let s = format!("{}", Tari::try_from(1.234).unwrap());
         assert_eq!(s, "1.234000 T");
-        let s = format!("{}", Tari::from(99.100));
+        let s = format!("{}", Tari::try_from(99.100).unwrap());
         assert_eq!(s, "99.100000 T");
     }
 
     #[test]
     fn formatted_tari_display() {
-        let s = format!("{}", Tari::from(1.234).formatted());
+        let s = format!("{}", Tari::try_from(1.234).unwrap().formatted());
         assert_eq!(s, "1.23 T");
-        let s = format!("{}", Tari::from(99999.100).formatted());
+        let s = format!("{}", Tari::try_from(99999.100).unwrap().formatted());
         assert_eq!(s, "99,999.10 T");
     }
 }

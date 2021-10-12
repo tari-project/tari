@@ -577,7 +577,7 @@ pub fn format_currency(value: &str, separator: char) -> String {
             let mut buffer = String::with_capacity(len / 3 + len);
             for (i, c) in whole.chars().rev().enumerate() {
                 buffer.push(c);
-                if i > 0 && i % 3 == 0 {
+                if i > 0 && i % 3 == 0 && i != len {
                     buffer.push(separator);
                 }
             }
@@ -593,18 +593,14 @@ pub fn format_currency(value: &str, separator: char) -> String {
 #[cfg(test)]
 #[allow(clippy::excessive_precision)]
 mod test {
+    use super::format_currency;
+
     #[test]
-    fn display_currency() {
-        assert_eq!(String::from("0.00"), super::display_currency(0.0f64, 2, ","));
-        assert_eq!(String::from("0.000000000000"), super::display_currency(0.0f64, 12, ","));
-        assert_eq!(
-            String::from("123,456.123456789"),
-            super::display_currency(123_456.123_456_789_012_f64, 9, ",")
-        );
-        assert_eq!(
-            String::from("123,456"),
-            super::display_currency(123_456.123_456_789_012_f64, 0, ",")
-        );
-        assert_eq!(String::from("1,234"), super::display_currency(1234.1f64, 0, ","));
+    fn test_format_currency() {
+        assert_eq!("0.00", format_currency("0.00", ','));
+        assert_eq!("0.000000000000", format_currency("0.000000000000", ','));
+        assert_eq!("123,456.123456789", format_currency("123456.123456789", ','));
+        assert_eq!("123,456", format_currency("123456", ','));
+        assert_eq!("123", format_currency("123", ','));
     }
 }
