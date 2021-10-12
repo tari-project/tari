@@ -33,7 +33,7 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
+use tari_core::transactions::transaction::TransactionOutput;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
@@ -51,7 +51,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    fn fetch_pending_outgoing_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
     fn set_received_output_mined_height(
         &self,
@@ -119,6 +118,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
     /// Reinstate a cancelled inbound output
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    /// Return the available, time locked, pending incoming and pending outgoing balance
+    fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -276,69 +277,9 @@ where T: OutputManagerBackend + 'static
 
     pub async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        let db_clone2 = self.db.clone();
-        let db_clone3 = self.db.clone();
-        let db_clone4 = self.db.clone();
-
-        let unspent_outputs = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::UnspentOutputs) {
-            Ok(None) => log_error(
-                DbKey::UnspentOutputs,
-                OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
-            ),
-            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
-            Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
-            Err(e) => log_error(DbKey::UnspentOutputs, e),
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        let pending_incoming_outputs = tokio::task::spawn_blocking(move || db_clone2.fetch_pending_incoming_outputs())
+        tokio::task::spawn_blocking(move || db_clone.get_balance(current_chain_tip))
             .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        let pending_outgoing_outputs = tokio::task::spawn_blocking(move || db_clone3.fetch_pending_outgoing_outputs())
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        let time_locked_balance = if let Some(tip) = current_chain_tip {
-            let time_locked_outputs = tokio::task::spawn_blocking(move || {
-                db_clone4.fetch(&DbKey::TimeLockedUnspentOutputs(tip))?.ok_or_else(|| {
-                    OutputManagerStorageError::UnexpectedResult("Time-locked Outputs cannot be retrieved".to_string())
-                })
-            })
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-            if let DbValue::UnspentOutputs(time_locked_uo) = time_locked_outputs {
-                Some(
-                    time_locked_uo
-                        .iter()
-                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
-                )
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let available_balance = unspent_outputs
-            .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-
-        let pending_incoming = pending_incoming_outputs
-            .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-
-        let pending_outgoing = pending_outgoing_outputs
-            .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
-
-        Ok(Balance {
-            available_balance,
-            time_locked_balance,
-            pending_incoming_balance: pending_incoming,
-            pending_outgoing_balance: pending_outgoing,
-        })
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))?
     }
 
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
