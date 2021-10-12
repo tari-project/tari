@@ -24,24 +24,19 @@ mod dedup_cache;
 
 pub use dedup_cache::DedupCacheDatabase;
 
-use crate::{actor::DhtRequester, inbound::DhtInboundMessage};
-use digest::Digest;
+use crate::{actor::DhtRequester, inbound::DecryptedDhtMessage};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use std::task::Poll;
-use tari_comms::{pipeline::PipelineError, types::Challenge};
+use tari_comms::pipeline::PipelineError;
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
 
-fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
-    Challenge::new().chain(&message.body).finalize().to_vec()
-}
-
 /// # DHT Deduplication middleware
 ///
-/// Takes in a `DhtInboundMessage` and checks the message signature cache for duplicates.
+/// Takes in a `DecryptedDhtMessage` and checks the message signature cache for duplicates.
 /// If a duplicate message is detected, it is discarded.
 #[derive(Clone)]
 pub struct DedupMiddleware<S> {
@@ -60,9 +55,9 @@ impl<S> DedupMiddleware<S> {
     }
 }
 
-impl<S> Service<DhtInboundMessage> for DedupMiddleware<S>
+impl<S> Service<DecryptedDhtMessage> for DedupMiddleware<S>
 where
-    S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
     S::Future: Send,
 {
     type Error = PipelineError;
@@ -73,22 +68,22 @@ where
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, mut message: DhtInboundMessage) -> Self::Future {
+    fn call(&mut self, mut message: DecryptedDhtMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         let allowed_message_occurrences = self.allowed_message_occurrences;
         Box::pin(async move {
-            let hash = hash_inbound_message(&message);
             trace!(
                 target: LOG_TARGET,
                 "Inserting message hash {} for message {} (Trace: {})",
-                hash.to_hex(),
+                message.hash.to_hex(),
                 message.tag,
                 message.dht_header.message_tag
             );
 
+            // TODO check if a reference is enough
             message.dedup_hit_count = dht_requester
-                .add_message_to_dedup_cache(hash, message.source_peer.public_key.clone())
+                .add_message_to_dedup_cache(message.hash.clone(), message.source_peer.public_key.clone())
                 .await?;
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
@@ -142,10 +137,15 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
+        inbound::{DecryptionLayer, DhtInboundMessage},
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
+    use futures::future;
+    use std::sync::{Arc, Mutex};
+    use tari_comms::test_utils::mocks::create_connectivity_mock;
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
+    use tower::service_fn;
 
     #[test]
     fn process_message() {
@@ -165,14 +165,20 @@ mod test {
         let node_identity = make_node_identity();
         let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false, false);
 
-        rt.block_on(dedup.call(msg.clone())).unwrap();
+        // TODO clean up tests, maybe use new maker instead
+        let (connectivity, _) = create_connectivity_mock();
+        let service_decrypt = DecryptionLayer::new(Default::default(), node_identity.clone(), connectivity);
+        let decrypted_msg = decrypt_dht_message(&rt, &service_decrypt, msg);
+
+        rt.block_on(dedup.call(decrypted_msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
 
         mock_state.set_number_of_message_hits(4);
-        rt.block_on(dedup.call(msg)).unwrap();
+        rt.block_on(dedup.call(decrypted_msg)).unwrap();
         assert_eq!(spy.call_count(), 1);
         // Drop dedup so that the DhtMock will stop running
         drop(dedup);
+        drop(service_decrypt);
     }
 
     #[test]
@@ -187,7 +193,15 @@ mod test {
             false,
             false,
         );
-        let hash1 = hash_inbound_message(&msg);
+
+        let rt = Runtime::new().unwrap();
+        let (connectivity, _) = create_connectivity_mock();
+        let service_decrypt = DecryptionLayer::new(Default::default(), node_identity.clone(), connectivity);
+
+        // TODO test fails as, presumably, this is not a valid message test123
+        // TODO make a valid message, fix expected hash
+        let decrypted1 = decrypt_dht_message(&rt, &service_decrypt, msg);
+        assert!(decrypted1.decryption_succeeded());
 
         let node_identity = make_node_identity();
         let msg = make_dht_inbound_message(
@@ -197,10 +211,31 @@ mod test {
             false,
             false,
         );
-        let hash2 = hash_inbound_message(&msg);
 
-        assert_eq!(hash1, hash2);
-        let subjects = &[hash1, hash2];
+        let decrypted2 = decrypt_dht_message(&rt, &service_decrypt, msg);
+        assert!(decrypted2.decryption_succeeded());
+
+        assert_eq!(decrypted1.hash, decrypted2.hash);
+        let subjects = &[decrypted1.hash, decrypted2.hash];
         assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
+    }
+
+    fn decrypt_dht_message(
+        rt: &Runtime,
+        service_decrypt: &DecryptionLayer,
+        msg: DhtInboundMessage,
+    ) -> DecryptedDhtMessage {
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        rt.block_on(service_decrypt.layer(service).call(msg)).unwrap();
+
+        let res = result.lock().unwrap().take().unwrap();
+        res
     }
 }

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::envelope::{DhtMessageFlags, DhtMessageHeader};
+use digest::Digest;
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -29,8 +30,12 @@ use std::{
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::Peer,
-    types::CommsPublicKey,
+    types::{Challenge, CommsPublicKey},
 };
+
+fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
+    Challenge::new().chain(&message.body).finalize().to_vec()
+}
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
@@ -84,6 +89,7 @@ pub struct DecryptedDhtMessage {
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
     pub dedup_hit_count: u32,
+    pub hash: Vec<u8>,
 }
 
 impl DecryptedDhtMessage {
@@ -104,6 +110,7 @@ impl DecryptedDhtMessage {
         message: DhtInboundMessage,
     ) -> Self {
         Self {
+            hash: hash_inbound_message(&message),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -118,6 +125,7 @@ impl DecryptedDhtMessage {
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
+            hash: hash_inbound_message(&message),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin: None,
