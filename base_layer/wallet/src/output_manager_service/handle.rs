@@ -56,7 +56,6 @@ pub enum OutputManagerRequest {
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(TxId),
-    ConfirmTransaction((TxId, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction {
         tx_id: TxId,
         amount: MicroTari,
@@ -80,8 +79,6 @@ pub enum OutputManagerRequest {
         fee_per_gram: MicroTari,
     },
     CancelTransaction(TxId),
-    TimeoutTransactions(Duration),
-    GetPendingTransactions,
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
