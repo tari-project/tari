@@ -102,21 +102,6 @@ table! {
         metadata_signature_nonce -> Binary,
         metadata_signature_u_key -> Binary,
         metadata_signature_v_key -> Binary,
-        metadata -> Nullable<Binary>,
-        features_asset_public_key -> Nullable<Binary>,
-        features_mint_asset_public_key -> Nullable<Binary>,
-        features_mint_asset_owner_commitment -> Nullable<Binary>,
-        features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
-        features_parent_public_key -> Nullable<Binary>,
-        features_unique_id -> Nullable<Binary>,
-    }
-}
-
-table! {
-    pending_transaction_outputs (tx_id) {
-        tx_id -> BigInt,
-        short_term -> Integer,
-        timestamp -> Timestamp,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
         mined_mmr_position -> Nullable<BigInt>,
@@ -125,6 +110,13 @@ table! {
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
+        metadata -> Nullable<Binary>,
+        features_asset_public_key -> Nullable<Binary>,
+        features_mint_asset_public_key -> Nullable<Binary>,
+        features_mint_asset_owner_commitment -> Nullable<Binary>,
+        features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
+        features_parent_public_key -> Nullable<Binary>,
+        features_unique_id -> Nullable<Binary>,
     }
 }
 

@@ -36,3 +36,25 @@ pub type KeyDigest = Blake256;
 
 /// Specify the Hash function used when constructing challenges during transaction building
 pub type HashDigest = Blake256;
+
+pub(crate) trait PersistentKeyManager {
+    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
+}
+
+pub(crate) struct MockPersistentKeyManager {
+    key_manager: KeyManager<PrivateKey, KeyDigest>,
+}
+
+impl MockPersistentKeyManager {
+    pub fn new() -> Self {
+        Self {
+            key_manager: KeyManager::new(&mut OsRng),
+        }
+    }
+}
+
+impl PersistentKeyManager for MockPersistentKeyManager {
+    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError> {
+        Ok(PublicKey::from_secret_key(&self.key_manager.next_key().unwrap().k))
+    }
+}

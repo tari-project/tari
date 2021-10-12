@@ -526,7 +526,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
@@ -777,7 +777,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
     fn update_mined_height(
         &self,
-        tx_id: u64,
+        tx_id: TxId,
         is_valid: bool,
         mined_height: u64,
         mined_in_block: BlockHash,
@@ -843,7 +843,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn set_transaction_as_unmined(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
         match CompletedTransactionSql::find(tx_id, &(*conn)) {
             Ok(v) => {

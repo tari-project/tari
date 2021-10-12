@@ -20,15 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{
-        error::OutputManagerError,
-        service::Balance,
-        storage::{database::PendingTransactionOutputs, models::KnownOneSidedPaymentScript},
-        tasks::TxoValidationType,
-        TxId,
-    },
-    types::ValidationRetryStrategy,
+use crate::output_manager_service::{
+    error::OutputManagerError,
+    service::Balance,
+    storage::models::KnownOneSidedPaymentScript,
 };
 use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc, time::Duration};
@@ -87,11 +82,6 @@ pub enum OutputManagerRequest {
     CancelTransaction(TxId),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
-    GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
-    ConfirmPendingTransaction(u64),
-    PrepareToSendTransaction((TxId, MicroTari, MicroTari, Option<u64>, String, TariScript)),
-    CreatePayToSelfTransaction((TxId, MicroTari, MicroTari, Option<u64>, String)),
-    CancelTransaction(u64),
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
@@ -188,7 +178,7 @@ pub enum OutputManagerResponse {
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
-    Transaction((u64, Transaction, MicroTari, MicroTari)),
+    Transaction((TxId, Transaction, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
@@ -219,20 +209,20 @@ pub enum OutputManagerEvent {
 impl fmt::Display for OutputManagerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OutputManagerEvent::TxoValidationTimedOut(tx, validation_type) => {
-                write!(f, "TxoValidationTimedOut for {}: {}", tx, validation_type)
+            OutputManagerEvent::TxoValidationTimedOut(tx) => {
+                write!(f, "TxoValidationTimedOut for {}", tx)
             },
-            OutputManagerEvent::TxoValidationSuccess(tx, validation_type) => {
-                write!(f, "TxoValidationSuccess for {}: {}", tx, validation_type)
+            OutputManagerEvent::TxoValidationSuccess(tx) => {
+                write!(f, "TxoValidationSuccess for {}", tx)
             },
-            OutputManagerEvent::TxoValidationFailure(tx, validation_type) => {
-                write!(f, "TxoValidationFailure for {}: {}", tx, validation_type)
+            OutputManagerEvent::TxoValidationFailure(tx) => {
+                write!(f, "TxoValidationFailure for {}", tx)
             },
-            OutputManagerEvent::TxoValidationAborted(tx, validation_type) => {
-                write!(f, "TxoValidationAborted for {}: {}", tx, validation_type)
+            OutputManagerEvent::TxoValidationAborted(tx) => {
+                write!(f, "TxoValidationAborted for {}", tx)
             },
-            OutputManagerEvent::TxoValidationDelayed(tx, validation_type) => {
-                write!(f, "TxoValidationDelayed for {}: {}", tx, validation_type)
+            OutputManagerEvent::TxoValidationDelayed(tx) => {
+                write!(f, "TxoValidationDelayed for {}", tx)
             },
             OutputManagerEvent::Error(error) => {
                 write!(f, "Error {}", error)
@@ -436,7 +426,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CancelTransaction(tx_id))
@@ -491,7 +481,7 @@ impl OutputManagerHandle {
     }
 
     /// Create a coin split transaction.
-    /// Returns (tx_id, tx, fee, utxos_total_value).
+    /// Returns (tx_id, tx, utxos_total_value).
     pub async fn create_coin_split(
         &mut self,
         amount_per_split: MicroTari,

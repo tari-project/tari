@@ -151,13 +151,13 @@ impl fmt::Debug for DbKey {
         // Add in i64 representatives for easy debugging in sqlite. This should probably be removed at some point
         match self {
             PendingOutboundTransaction(tx_id) => {
-                write!(f, "PendingOutboundTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "PendingOutboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             PendingInboundTransaction(tx_id) => {
-                write!(f, "PendingInboundTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "PendingInboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             CompletedTransaction(tx_id) => {
-                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             PendingOutboundTransactions => {
                 write!(f, "PendingOutboundTransactions ")
@@ -181,18 +181,20 @@ impl fmt::Debug for DbKey {
                 write!(
                     f,
                     "CancelledPendingOutboundTransaction ({}u64, {}i64)",
-                    tx_id, *tx_id as i64
+                    tx_id,
+                    i64::from(*tx_id)
                 )
             },
             CancelledPendingInboundTransaction(tx_id) => {
                 write!(
                     f,
                     "CancelledPendingInboundTransaction ({}u64, {}i64)",
-                    tx_id, *tx_id as i64
+                    tx_id,
+                    i64::from(*tx_id)
                 )
             },
             AnyTransaction(tx_id) => {
-                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
         }
     }

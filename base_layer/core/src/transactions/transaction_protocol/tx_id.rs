@@ -91,6 +91,12 @@ impl From<TxId> for u64 {
     }
 }
 
+impl From<TxId> for i64 {
+    fn from(s: TxId) -> Self {
+        s.0 as i64
+    }
+}
+
 impl fmt::Display for TxId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)

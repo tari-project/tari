@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use aes_gcm::{Aes256Gcm, Error as AeadError};
-use diesel::{RunQueryDsl, SqliteConnection};
+use diesel::SqliteConnection;
 
 use tari_core::{crypto::tari_utilities::ByteArray, transactions::transaction_protocol::TxId};
 

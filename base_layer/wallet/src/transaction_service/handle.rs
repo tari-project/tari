@@ -30,7 +30,10 @@ use crate::{
 use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, transaction_protocol::TxId};
+use tari_core::{
+    tari_utilities::hex::Hex,
+    transactions::{tari_amount::MicroTari, transaction::Transaction, transaction_protocol::TxId},
+};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -85,10 +88,28 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
-            Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
-            Self::SendOneSidedTransaction(k, v, _, msg) => {
-                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
-            },
+            Self::SendTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
+            Self::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendOneSidedTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
                 "ImportUtxo (from {}, {}, {} with maturity: {})",
@@ -211,14 +232,22 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionImported(tx) => {
                 write!(f, "TransactionImported for {}", tx)
             },
-            TransactionEvent::TransactionMined(tx) => {
-                write!(f, "TransactionMined for {}", tx)
+            TransactionEvent::TransactionMined { tx_id, is_valid } => {
+                write!(f, "TransactionMined for {}. is_valid: {}", tx_id, is_valid)
             },
             TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
                 write!(f, "TransactionMinedRequestTimedOut for {}", tx)
             },
-            TransactionEvent::TransactionMinedUnconfirmed(tx, height) => {
-                write!(f, "TransactionMinedUnconfirmed for {} at height:{}", tx, height)
+            TransactionEvent::TransactionMinedUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid,
+            } => {
+                write!(
+                    f,
+                    "TransactionMinedUnconfirmed for {} with num confirmations: {}. is_valid: {}",
+                    tx_id, num_confirmations, is_valid
+                )
             },
             TransactionEvent::TransactionValidationTimedOut(tx) => {
                 write!(f, "TransactionValidationTimedOut for {}", tx)
@@ -234,9 +263,6 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionValidationDelayed(tx) => {
                 write!(f, "TransactionValidationDelayed for {}", tx)
-            },
-            TransactionEvent::TransactionBaseNodeConnectionProblem(tx) => {
-                write!(f, "TransactionBaseNodeConnectionProblem for {}", tx)
             },
             TransactionEvent::Error(error) => {
                 write!(f, "Error:{}", error)

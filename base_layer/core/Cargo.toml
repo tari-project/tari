@@ -55,7 +55,7 @@ rand = "0.8"
 randomx-rs = { version = "1.1.9", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
-strum_macros = "0.17.1"
+strum_macros = "^0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["time", "sync", "macros"] }
 ttl_cache = "0.5.1"

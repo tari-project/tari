@@ -32,6 +32,7 @@ use crate::{
             models::{CompletedTransaction, TransactionStatus},
         },
     },
+    OperationId,
 };
 use log::*;
 use std::{
@@ -86,13 +87,13 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError> {
         let mut base_node_wallet_client = self
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
             .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id)?;
+            .for_protocol(self.operation_id.as_u64())?;
 
         self.check_for_reorgs(&mut *base_node_wallet_client).await?;
         info!(
@@ -103,14 +104,14 @@ where
             .db
             .fetch_unconfirmed_transactions()
             .await
-            .for_protocol(self.operation_id)
+            .for_protocol(self.operation_id.as_u64())
             .unwrap();
 
         for batch in unmined_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
-                .for_protocol(self.operation_id)?;
+                .for_protocol(self.operation_id.as_u64())?;
             info!(
                 target: LOG_TARGET,
                 "Base node returned {} as mined and {} as unmined",
@@ -172,12 +173,8 @@ where
             target: LOG_TARGET,
             "Checking last mined transactions to see if the base node has re-orged"
         );
-        while let Some(last_mined_transaction) = self
-            .db
-            .fetch_last_mined_transaction()
-            .await
-            .for_protocol(self.operation_id)?
-        {
+        let op_id = self.operation_id.as_u64();
+        while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().await.for_protocol(op_id)? {
             let mined_height = last_mined_transaction
                 .mined_height
                 .ok_or_else(|| {
@@ -185,7 +182,7 @@ where
                         "fetch_last_mined_transaction() should return a transaction with a mined_height".to_string(),
                     )
                 })
-                .for_protocol(self.operation_id)?;
+                .for_protocol(op_id)?;
             let mined_in_block_hash = last_mined_transaction
                 .mined_in_block
                 .clone()
@@ -195,12 +192,12 @@ where
                             .to_string(),
                     )
                 })
-                .for_protocol(self.operation_id)?;
+                .for_protocol(op_id)?;
 
             let block_at_height = self
                 .get_base_node_block_at_height(mined_height, client)
                 .await
-                .for_protocol(self.operation_id)?;
+                .for_protocol(op_id)?;
 
             if block_at_height.is_none() || block_at_height.unwrap() != mined_in_block_hash {
                 // Chain has reorged since we last
@@ -356,7 +353,7 @@ where
                 num_confirmations >= self.config.num_confirmations_required,
             )
             .await
-            .for_protocol(self.operation_id)?;
+            .for_protocol(self.operation_id.as_u64())?;
 
         if num_confirmations >= self.config.num_confirmations_required {
             self.publish_event(TransactionEvent::TransactionMined {
@@ -401,7 +398,7 @@ where
                 num_confirmations >= self.config.num_confirmations_required,
             )
             .await
-            .for_protocol(self.operation_id)?;
+            .for_protocol(self.operation_id.as_u64())?;
 
         if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, true).await {
             warn!(
@@ -422,7 +419,7 @@ where
         self.db
             .set_transaction_as_unmined(tx.tx_id)
             .await
-            .for_protocol(self.operation_id)?;
+            .for_protocol(self.operation_id.as_u64())?;
 
         if tx.status == TransactionStatus::Coinbase {
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, false).await {

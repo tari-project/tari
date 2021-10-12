@@ -27,7 +27,6 @@ use crate::{
             database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
         },
-        TxId,
     },
     schema::{key_manager_states, known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::WalletDbConnection,
@@ -513,7 +512,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             diesel::update(
                 outputs::table.filter(
                     outputs::received_in_tx_id
-                        .eq(Some(tx_id as i64))
+                        .eq(Some(i64::from(tx_id)))
                         .and(outputs::coinbase_block_height.is_not_null()),
                 ),
             )
@@ -675,7 +674,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for output in outputs.iter() {
-            if output.received_in_tx_id == Some(tx_id as i64) {
+            if output.received_in_tx_id == Some(i64::from(tx_id)) {
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::CancelledInbound),
@@ -683,7 +682,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     },
                     &(*conn),
                 )?;
-            } else if output.spent_in_tx_id == Some(tx_id as i64) {
+            } else if output.spent_in_tx_id == Some(i64::from(tx_id)) {
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::Unspent),
@@ -950,7 +949,7 @@ impl NewOutputSql {
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
-            received_in_tx_id: received_in_tx_id.map(|i| i as i64),
+            received_in_tx_id: received_in_tx_id.map(i64::from),
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
@@ -1116,8 +1115,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(i64::from(tx_id)))
+                    .or(outputs::spent_in_tx_id.eq(Some(i64::from(tx_id)))),
             )
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
@@ -1131,8 +1130,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(i64::from(tx_id)))
+                    .or(outputs::spent_in_tx_id.eq(Some(i64::from(tx_id)))),
             )
             .filter(
                 outputs::status
@@ -1394,6 +1393,14 @@ pub struct UpdateOutputSql {
     metadata_signature_u_key: Option<Vec<u8>>,
 }
 
+#[derive(AsChangeset)]
+#[table_name = "outputs"]
+#[changeset_options(treat_none_as_null = "true")]
+/// This struct is used to set the contained field to null
+pub struct NullOutputSql {
+    tx_id: Option<i64>,
+}
+
 /// Map a Rust friendly UpdateOutput to the Sql data type form
 impl From<UpdateOutput> for UpdateOutputSql {
     fn from(u: UpdateOutput) -> Self {
@@ -1403,8 +1410,8 @@ impl From<UpdateOutput> for UpdateOutputSql {
             script_private_key: u.script_private_key,
             metadata_signature_nonce: u.metadata_signature_nonce,
             metadata_signature_u_key: u.metadata_signature_u_key,
-            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(|t| t as i64)),
-            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(|t| t as i64)),
+            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(|t| i64::from(t))),
+            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(|t| i64::from(t))),
         }
     }
 }

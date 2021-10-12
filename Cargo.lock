@@ -4138,39 +4138,15 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.19.5"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b89a286a7e3b5720b9a477b23253bc50debac207c8d21505f8e70b36792f11b5"
+checksum = "f7ac893c7d471c8a21f31cfe213ec4f6d9afeed25537c772e08ef3f005f8729e"
 
 [[package]]
 name = "strum_macros"
-version = "0.17.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e6e163a520367c465f59e0a61a23cfae3b10b6546d78b6f672a382be79f7110"
-dependencies = [
- "heck",
- "proc-macro2 1.0.29",
- "quote 1.0.10",
- "syn 1.0.80",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87c85aa3f8ea653bfd3ddf25f7ee357ee4d204731f6aa9ad04002306f6e2774c"
-dependencies = [
- "heck",
- "proc-macro2 1.0.29",
- "quote 1.0.10",
- "syn 1.0.80",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.19.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e61bb0be289045cb80bfce000512e32d09f8337e54c186725da381377ad1f8d5"
+checksum = "339f799d8b549e3744c7ac7feb216383e4005d94bdb22561b3ab8f3b808ae9fb"
 dependencies = [
  "heck",
  "proc-macro2 1.0.29",
@@ -4279,7 +4255,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "strum",
- "strum_macros 0.19.4",
+ "strum_macros",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -4309,7 +4285,7 @@ dependencies = [
  "rustyline",
  "rustyline-derive",
  "strum",
- "strum_macros 0.18.0",
+ "strum_macros",
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
@@ -4541,7 +4517,7 @@ dependencies = [
  "rpassword",
  "rustyline",
  "strum",
- "strum_macros 0.19.4",
+ "strum_macros",
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
@@ -4596,7 +4572,7 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "sha3",
- "strum_macros 0.17.1",
+ "strum_macros",
  "tari_common",
  "tari_common_types",
  "tari_comms",
@@ -5020,6 +4996,8 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
+ "strum",
+ "strum_macros",
  "tari_common",
  "tari_common_types",
  "tari_comms",

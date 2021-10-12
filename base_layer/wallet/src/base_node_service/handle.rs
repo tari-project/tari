@@ -52,9 +52,6 @@ impl fmt::Display for BaseNodeEvent {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
             },
-            BaseNodeEvent::BaseNodePeerSet(peer) => {
-                write!(f, "BaseNodePeerSet:{}", peer)
-            },
         }
     }
 }

@@ -32,7 +32,9 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput, transaction_protocol::TxId};
+
+use super::OutputStatus;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
