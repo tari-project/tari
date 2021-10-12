@@ -1,14 +1,14 @@
-@wallet-query
+@wallet-query @wallet
 Feature: Wallet Querying
 
-  @wallet
+
   Scenario: As a wallet I want to query the status of utxos in blocks
     Given I have a seed node WalletSeedA
     When I mine a block on WalletSeedA with coinbase CB1
     Then node WalletSeedA is at height 1
     Then the UTXO CB1 has been mined according to WalletSeedA
 
-  @critical @wallet
+  @critical
   Scenario: As a wallet I want to submit a transaction
     # Using GRPC
     Given I have a seed node SeedA
@@ -21,7 +21,7 @@ Feature: Wallet Querying
     Then the UTXO UTX1 has been mined according to SeedA
 
 
-  @critical @wallet
+  @critical
   Scenario: As a wallet I cannot submit a locked coinbase transaction
     # Using GRPC
     Given I have a seed node SeedA

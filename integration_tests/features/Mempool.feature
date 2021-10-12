@@ -1,7 +1,7 @@
-@mempool
+@mempool @base-node
 Feature: Mempool
 
-  @critical @base-node @flaky
+  @critical @flaky
   Scenario: Transactions are propagated through a network
     #
     # The randomness of the TX1 propagation can result in this test not passing.
@@ -18,7 +18,7 @@ Feature: Mempool
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
-  @critical @base-node @flaky
+  @critical @flaky
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -35,7 +35,7 @@ Feature: Mempool
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
-  @base-node @broken
+  @broken
   Scenario: Clear out mempool
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -62,7 +62,7 @@ Feature: Mempool
     Then SENDER has TX3 in MINED state
 
 
-  @critical @base-node
+  @critical
   Scenario: Double spend
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -79,7 +79,7 @@ Feature: Mempool
     Then SENDER has TX1 in UNKNOWN state
     Then SENDER has TX2 in MINED state
 
- @long-running @base-node
+ @long-running
   Scenario: Double spend eventually ends up as not stored
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -96,7 +96,7 @@ Feature: Mempool
     Then SENDER has TX1 in NOT_STORED state
     Then SENDER has TX2 in MINED state
 
-  @critical @base-node
+  @critical
   Scenario: Mempool clearing out invalid transactions after a reorg
     Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
@@ -120,8 +120,7 @@ Feature: Mempool
     Then NODE_A has TXA in NOT_STORED state
     Then NODE_A has TXB in MINED state
 
-
-  @critical @base-node
+  @critical
   Scenario: Zero-conf transactions
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -154,7 +153,6 @@ Feature: Mempool
     Then SENDER has TX12 in MINED state
     Then SENDER has TX13 in MINED state
 
-  @base-node
   Scenario: Mempool unconfirmed transactions
     Given I have 1 seed nodes
     And I have a base node BN1 connected to all seed nodes
@@ -172,7 +170,6 @@ Feature: Mempool
     When I submit transaction TX5 to BN1
     Then I wait until base node BN1 has 5 unconfirmed transactions in its mempool
 
-  @base-node
   Scenario: Mempool unconfirmed transaction to mined transaction
     Given I have 1 seed nodes
     And I have a base node BN1 connected to all seed nodes

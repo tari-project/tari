@@ -1,7 +1,7 @@
-@wallet-recovery
+@wallet-recovery @wallet
 Feature: Wallet Recovery
 
-    @wallet
+
     Scenario: Wallet recovery with connected base node staying online
         Given I have a seed node NODE
         And I have 1 base nodes connected to all seed nodes
@@ -20,7 +20,6 @@ Feature: Wallet Recovery
         Then all nodes are at height 20
         Then I wait for wallet WALLET_C to have at least 100000 uT
 
-     @wallet
     Scenario Outline: Multiple Wallet recovery from seed node
         Given I have a seed node NODE
         And I have wallet WALLET_A connected to all seed nodes
@@ -44,7 +43,7 @@ Feature: Wallet Recovery
             | 10        |
 
     # fails often on circle CI
-    @critical @flaky @wallet
+    @critical @flaky
     Scenario: Recover one-sided payments
         Given I have a seed node NODE
         And I have 1 base nodes connected to all seed nodes

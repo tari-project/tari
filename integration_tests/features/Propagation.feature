@@ -1,4 +1,4 @@
-@propagation
+@propagation @base-node
 Feature: Block Propagation
 
   Scenario Outline: Blocks are propagated through the network
@@ -8,19 +8,18 @@ Feature: Block Propagation
     And mining node MINER mines <NumBlocks> blocks
     Then all nodes are at height <NumBlocks>
 
-    @base-node
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 1           | 5         |
 
-    @base-node @long-running
+    @long-running
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 10          | 5         |
       | 4        | 10          | 5         |
       | 8        | 40          | 10        |
 
-  @critical @base-node
+  @critical
   Scenario: Simple propagation
     Given I have 2 seed nodes
     And I have 4 base nodes connected to all seed nodes
@@ -29,7 +28,7 @@ Feature: Block Propagation
     Then node MINER is at height 5
     Then all nodes are at height 5
 
-  @critical @base-node
+  @critical
   Scenario: Duplicate block is rejected
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -44,7 +43,6 @@ Feature: Block Propagation
     When I mine 1 blocks on MINER
     Then all nodes are at height 2
 
-  @base-node
   Scenario: Submit orphan
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -58,7 +56,7 @@ Feature: Block Propagation
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
 
-  @base-node @non-sync-propagation
+  @non-sync-propagation
   Scenario: Nodes should never switch to block sync but stay synced via propagation
     Given I have 1 seed nodes
     Given I have a SHA3 miner MINER connected to all seed nodes
@@ -72,8 +70,6 @@ Feature: Block Propagation
     Given mining node MINER mines 15 blocks
     Then all nodes are at height 20
 
-
-  @base-node
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
     Given I have a SHA3 miner MINER connected to all seed nodes
@@ -92,7 +88,7 @@ Feature: Block Propagation
     Then node MINER is at height 7
     Then all nodes are at height 7
 
-  @base-node @critical
+  @critical
   Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes

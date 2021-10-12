@@ -1,7 +1,7 @@
-@transaction-info
+@transaction-info @wallet
 Feature: Transaction Info
 
-@long-running @wallet
+@long-running
 Scenario: Get Transaction Info
     Given I have a seed node NODE
         # TODO: This test takes an hour if only one base node is used

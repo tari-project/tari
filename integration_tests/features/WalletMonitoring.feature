@@ -1,7 +1,6 @@
-@wallet-monitoring
+@wallet-monitoring  @wallet
 Feature: Wallet Monitoring
 
-  @wallet
   Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
@@ -48,7 +47,7 @@ Feature: Wallet Monitoring
     Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
 
   # 18+ mins on circle ci
-  @long-running @wallet
+  @long-running
   Scenario: Wallets monitoring normal transactions after a reorg
     Given I do not expect all automated transactions to succeed
         #
@@ -134,12 +133,12 @@ Feature: Wallet Monitoring
     When I wait 1 seconds
     Then wallets WALLET1,WALLET2 should have <numBlocks> spendable coinbase outputs
 
-    @flaky @wallet
+    @flaky
     Examples:
       | numBlocks | endBlocks |
       | 10        | 15        |
 
-    @long-running @wallet
+    @long-running
     Examples:
         | numBlocks | endBlocks |
         | 100       | 105       |

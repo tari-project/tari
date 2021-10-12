@@ -1,7 +1,7 @@
-@wallet-transact
+@wallet-transact @wallet
 Feature: Wallet Transactions
 
-  @critical @wallet @flaky
+  @critical @flaky
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -31,7 +31,6 @@ Feature: Wallet Transactions
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
-  @wallet
   Scenario: Wallet imports unspent output
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -54,7 +53,7 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I check if last imported transactions are valid in wallet WALLET_C
 
-  @critical @wallet
+  @critical
   Scenario: Wallet imports spent outputs that become invalidated
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -85,7 +84,7 @@ Feature: Wallet Transactions
     # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
     #Then I check if last imported transactions are invalid in wallet WALLET_C
 
-  @critical @flaky @wallet
+  @critical @flaky
   Scenario: Wallet imports reorged outputs that become invalidated
     # Chain 1
     Given I have a seed node SEED_B
@@ -129,7 +128,7 @@ Feature: Wallet Transactions
     # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
     # Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
-  @critical @wallet @flaky
+  @critical @flaky
   Scenario: Wallet imports faucet UTXO
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -153,7 +152,6 @@ Feature: Wallet Transactions
     Then all nodes are at height 15
     Then I wait for wallet WALLET_C to have at least 400000 uT
 
-    @wallet
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -176,7 +174,6 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_B
     Then I check if wallet WALLET_B has 5 transactions
 
-  @wallet
   Scenario: Wallet clearing out invalid transactions after a reorg
     #
     # Chain 1:
@@ -231,7 +228,7 @@ Feature: Wallet Transactions
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
 
-  @critical @wallet
+  @critical
   Scenario: Short wallet clearing out invalid transactions after a reorg
     #
     # Chain 1:
@@ -287,7 +284,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 6
 
   # runs 8mins on circle ci
-  @long-running @wallet
+  @long-running
   Scenario: Wallet SAF negotiation and cancellation with offline peers
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
