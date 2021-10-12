@@ -633,10 +633,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
     }
 
-    fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError> {
+    fn get_balance(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+    ) -> Result<Balance, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
-        OutputSql::get_balance(tip, &(*conn))
+        OutputSql::get_balance(current_tip_for_time_lock_calculation, &(*conn))
     }
 
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
@@ -1037,7 +1040,10 @@ impl OutputSql {
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
-    pub fn get_balance(tip: Option<u64>, conn: &SqliteConnection) -> Result<Balance, OutputManagerStorageError> {
+    pub fn get_balance(
+        current_tip_for_time_lock_calculation: Option<u64>,
+        conn: &SqliteConnection,
+    ) -> Result<Balance, OutputManagerStorageError> {
         #[derive(QueryableByName, Clone)]
         struct BalanceQueryResult {
             #[sql_type = "diesel::sql_types::BigInt"]
@@ -1045,7 +1051,7 @@ impl OutputSql {
             #[sql_type = "diesel::sql_types::Text"]
             category: String,
         }
-        let balance_query_result = if let Some(val) = tip {
+        let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             let balance_query = sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
                  FROM outputs WHERE status = ? \
@@ -1063,7 +1069,7 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
-                .bind::<diesel::sql_types::BigInt, _>(val as i64)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
