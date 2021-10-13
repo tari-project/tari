@@ -119,7 +119,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -127,7 +127,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -135,7 +135,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::EncumberedToBeReceived, Some(tx_id));
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
