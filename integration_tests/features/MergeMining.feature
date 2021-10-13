@@ -1,7 +1,6 @@
-@merge-mining
+@merge-mining @base-node
   Feature: Merge Mining
 
-    @critical
     Scenario: Merge Mining Functionality Test Without Submitting To Origin
       Given I have a seed node NODE
       And I have wallet WALLET connected to all seed nodes
@@ -13,7 +12,6 @@
       When I submit a block through proxy PROXY
       Then Proxy response block submission is valid without submitting to origin
 
-    @critical
     Scenario: Merge Mining Functionality Test With Submitting To Origin
       Given I have a seed node NODE
       And I have wallet WALLET connected to all seed nodes
