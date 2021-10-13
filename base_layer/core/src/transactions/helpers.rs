@@ -569,25 +569,23 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
 /// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
 /// ```
 pub fn format_currency(value: &str, separator: char) -> String {
+    let full_len = value.len();
+    let mut buffer = String::with_capacity(full_len / 3 + full_len);
     let mut iter = value.splitn(2, '.');
-    match (iter.next(), iter.next()) {
-        (Some(whole), None) => whole.into(),
-        (Some(whole), Some(decimal)) => {
-            let len = whole.len();
-            let mut buffer = String::with_capacity(len / 3 + len);
-            for (i, c) in whole.chars().rev().enumerate() {
-                buffer.push(c);
-                if i > 0 && i % 3 == 0 && i != len {
-                    buffer.push(separator);
-                }
-            }
-            buffer.push_str(decimal);
-            buffer
-        },
-        other => {
-            unreachable!("splitn(2, '.') shouldn't return: {:?}", other);
-        },
+    let whole = iter.next().unwrap_or("");
+    let mut idx = whole.len() as isize - 1;
+    for c in whole.chars() {
+        buffer.push(c);
+        if idx > 0 && idx % 3 == 0 {
+            buffer.push(separator);
+        }
+        idx -= 1;
     }
+    if let Some(decimal) = iter.next() {
+        buffer.push('.');
+        buffer.push_str(decimal);
+    }
+    buffer
 }
 
 #[cfg(test)]
@@ -602,5 +600,8 @@ mod test {
         assert_eq!("123,456.123456789", format_currency("123456.123456789", ','));
         assert_eq!("123,456", format_currency("123456", ','));
         assert_eq!("123", format_currency("123", ','));
+        assert_eq!("7,123", format_currency("7123", ','));
+        assert_eq!(".00", format_currency(".00", ','));
+        assert_eq!("00.", format_currency("00.", ','));
     }
 }
