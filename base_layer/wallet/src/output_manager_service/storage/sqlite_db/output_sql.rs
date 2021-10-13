@@ -120,17 +120,21 @@ impl OutputSql {
         status: OutputStatus,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
         Ok(outputs::table
-            .filter(outputs::tx_id.eq(Some(tx_id.as_u64() as i64)))
+            .filter(received.or(spent))
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
     }
 
     /// Find outputs via tx_id
     pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(columns::tx_id.eq(Some(tx_id.as_u64() as i64)))
-            .load(conn)?)
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
+        Ok(outputs::table.filter(received.or(spent)).load(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
@@ -138,8 +142,11 @@ impl OutputSql {
         tx_id: TxId,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
         Ok(outputs::table
-            .filter(columns::tx_id.eq(Some(tx_id.as_u64() as i64)))
+            .filter(received.or(spent))
             .filter(
                 columns::status
                     .eq(OutputStatus::EncumberedToBeReceived as i32)

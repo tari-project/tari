@@ -28,7 +28,7 @@ use crate::{
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
         },
     },
-    schema::{key_manager_states, known_one_sided_payment_scripts, outputs},
+    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, outputs::columns},
     storage::sqlite_utilities::WalletDbConnection,
     util::{
         diesel_ext::ExpectedRowsExtension,
@@ -119,7 +119,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None);
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -127,7 +127,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id));
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None);
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -135,7 +135,12 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::EncumberedToBeReceived, Some(tx_id));
+                let mut new_output = NewOutputSql::new(
+                    *o,
+                    OutputStatus::EncumberedToBeReceived,
+                    Some(tx_id),
+                    coinbase_block_height,
+                );
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -566,8 +571,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for co in outputs_to_receive {
-            let mut new_output =
-                NewOutputSql::new(co.clone(), OutputStatus::ShortTermEncumberedToBeReceived, Some(tx_id));
+            let mut new_output = NewOutputSql::new(
+                co.clone(),
+                OutputStatus::ShortTermEncumberedToBeReceived,
+                Some(tx_id),
+                None,
+            );
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -1039,7 +1048,8 @@ pub struct UpdateOutputSql {
 #[changeset_options(treat_none_as_null = "true")]
 /// This struct is used to set the contained field to null
 pub struct NullOutputSql {
-    tx_id: Option<i64>,
+    received_in_tx_id: Option<i64>,
+    spent_in_tx_id: Option<i64>,
 }
 
 /// Map a Rust friendly UpdateOutput to the Sql data type form
@@ -1449,7 +1459,7 @@ mod test {
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None);
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1458,7 +1468,7 @@ mod test {
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None);
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1684,12 +1694,12 @@ mod test {
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None);
         output.commit(&conn).unwrap();
 
         let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
-        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None);
         output2.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");

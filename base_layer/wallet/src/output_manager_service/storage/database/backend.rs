@@ -6,7 +6,6 @@ use crate::output_manager_service::{
     },
 };
 use aes_gcm::Aes256Gcm;
-use std::time::Duration;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::transactions::{
     transaction::{OutputFlags, TransactionOutput},
@@ -20,24 +19,44 @@ use tari_core::transactions::{
 pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
-
     /// Fetch outputs that can be spent
     fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-
+    /// Fetch outputs with specific features for a given asset public key
     fn fetch_by_features_asset_public_key(
         &self,
         public_key: PublicKey,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
-
+    /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
+    fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Retrieve outputs that have not been found or confirmed in the block chain yet
+    fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
-    /// This method is called when a pending transaction is to be confirmed. It must move the `outputs_to_be_spent` and
-    /// `outputs_to_be_received` from a `PendingTransactionOutputs` record into the `unspent_outputs` and
-    /// `spent_outputs` collections.
-    fn confirm_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_pending_outgoing_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+
+    fn set_received_output_mined_height(
+        &self,
+        hash: Vec<u8>,
+        mined_height: u64,
+        mined_in_block: Vec<u8>,
+        mmr_position: u64,
+        confirmed: bool,
+    ) -> Result<(), OutputManagerStorageError>;
+
+    fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+
+    fn mark_output_as_spent(
+        &self,
+        hash: Vec<u8>,
+        mark_deleted_at_height: u64,
+        mark_deleted_in_block: Vec<u8>,
+        confirmed: bool,
+    ) -> Result<(), OutputManagerStorageError>;
+
+    fn mark_output_as_unspent(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
     /// This method encumbers the specified outputs into a `PendingTransactionOutputs` record. This is a short term
     /// encumberance in case the app is closed or crashes before transaction neogtiation is complete. These will be
     /// cleared on startup of the service.
@@ -57,31 +76,31 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
     /// need to be recovered.
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
-    /// This method must run through all the `PendingTransactionOutputs` and test if any have existed for longer that
-    /// the specified duration. If they have they should be cancelled.
-    fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError>;
     /// This method will increment the currently stored key index for the key manager config. Increment this after each
     /// key is generated
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
     /// This method will set the currently stored key index for the key manager
     fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError>;
-    /// If an unspent output is detected as invalid (i.e. not available on the blockchain) then it should be moved to
-    /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
-    fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
+    /// This method will update an output's metadata signature, akin to 'finalize output'
+    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
-    /// Check to see if there exist any pending transaction with a blockheight equal that provided and cancel those
-    /// pending transaction outputs.
-    fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError>;
     /// Apply encryption to the backend.
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
-    /// Update a Spent output to be Unspent
-    fn update_spent_output_to_unspent(
-        &self,
-        commitment: &Commitment,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 
-    fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
+    /// Get the output that was most recently mined, ordered descending by mined height
+    fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Get the output that was most recently spent, ordered descending by mined height
+    fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
+    /// Check if there is a pending coinbase transaction at this block height, if there is clear it.
+    fn clear_pending_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+    ) -> Result<(), OutputManagerStorageError>;
+    /// Set if a coinbase output is abandoned or not
+    fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
+    /// Reinstate a cancelled inbound output
+    fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
 }
