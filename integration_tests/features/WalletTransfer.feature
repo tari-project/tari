@@ -1,3 +1,4 @@
+@wallet-transfer @wallet
 Feature: Wallet Transfer
 
   @flaky @long-running

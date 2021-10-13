@@ -1,4 +1,4 @@
-@propagation
+@propagation @base-node
 Feature: Block Propagation
 
   Scenario Outline: Blocks are propagated through the network
@@ -7,19 +7,16 @@ Feature: Block Propagation
     And I have a SHA3 miner MINER connected to all seed nodes
     And mining node MINER mines <NumBlocks> blocks
     Then all nodes are at height <NumBlocks>
-    @critical
+
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 1           | 5         |
 
+    @long-running
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 10          | 5         |
       | 4        | 10          | 5         |
-
-    @long-running
-    Examples:
-      | NumSeeds | NumNonSeeds | NumBlocks |
       | 8        | 40          | 10        |
 
   @critical
@@ -31,6 +28,7 @@ Feature: Block Propagation
     Then node MINER is at height 5
     Then all nodes are at height 5
 
+  @critical
   Scenario: Duplicate block is rejected
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -58,41 +56,39 @@ Feature: Block Propagation
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
 
-  @non-sync-propagation @long-running
+  @non-sync-propagation
   Scenario: Nodes should never switch to block sync but stay synced via propagation
     Given I have 1 seed nodes
     Given I have a SHA3 miner MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
     Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
     # Wait for node to so start and get into listening mode
-    When I wait 100 seconds
+    Then node LAG1 has reached initial sync
+    Then node LAG2 has reached initial sync
     When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Given mining node MINER mines 15 blocks
     Then all nodes are at height 20
 
-  @long-running
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
     Given I have a SHA3 miner MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
     Given mining node MINER mines 1 blocks
-    When I wait 100 seconds
+    Then all nodes are at height 1
     When I stop node LAG1
-    When I wait 10 seconds
     And mining node MINER mines 5 blocks
-    When I wait 100 seconds
+    Then node MINER is at height 6
     When I start base node LAG1
     # Wait for node to so start and get into listening mode
-    When I wait 100 seconds
-    Then node MINER is at height 6
+    Then node LAG1 has reached initial sync
     #node was shutdown, so it never received the propagation messages
     Then node LAG1 is at height 1
     Given mining node MINER mines 1 blocks
     Then node MINER is at height 7
-    When I wait 20 seconds
     Then all nodes are at height 7
 
+  @critical
   Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes

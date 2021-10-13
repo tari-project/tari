@@ -1,12 +1,14 @@
 @base-node-connectivity
 Feature: Base Node Connectivity
 
+    @critical @base-node
     Scenario: Basic connectivity between 2 nodes
         Given I have a seed node SEED_A
         And I have a base node NODE_A connected to all seed nodes
         When I wait for NODE_A to connect to SEED_A
         Then SEED_A is connected to NODE_A
 
+    @critical @base-node @wallet
     Scenario: Basic connectivity between nodes and wallet
         Given I have a seed node SEED_A
         And I have wallet WALLET_A connected to all seed nodes

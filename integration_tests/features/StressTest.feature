@@ -33,11 +33,11 @@ Feature: Stress Test
         Examples:
             | NumTransactions | NumCoinsplitsNeeded | NumNodes | MonitoringTimeout |
             | 10              | 1                   | 3        | 10                |
-            | 100             | 1                   | 3        | 10                |
 
         @long-running
         Examples:
             | NumTransactions | NumCoinsplitsNeeded | NumNodes | MonitoringTimeout |
+            | 100             | 1                   | 3        | 10                |
             | 1000            | 3                   | 3        | 60                |
 
         @long-running
