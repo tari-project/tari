@@ -358,7 +358,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0
     );
 
-    let cancelled_tx_id = completed_txs_map[&1].tx_id;
+    let cancelled_tx_id = completed_txs_map[&1.into()].tx_id;
     assert!(runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());

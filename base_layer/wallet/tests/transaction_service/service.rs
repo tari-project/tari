@@ -32,7 +32,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::{rngs::OsRng, RngCore};
+use rand::rngs::OsRng;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -5152,7 +5152,7 @@ fn dont_broadcast_invalid_transactions() {
     );
 
     let completed_tx1 = CompletedTransaction {
-        tx_id: 1,
+        tx_id: 1.into(),
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
