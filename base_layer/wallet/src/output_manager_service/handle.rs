@@ -26,18 +26,11 @@ use crate::output_manager_service::{
     storage::models::KnownOneSidedPaymentScript,
 };
 use aes_gcm::Aes256Gcm;
-use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc, time::Duration};
+use std::{fmt, fmt::Formatter, sync::Arc};
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{
-        OutputFeatures,
-        Transaction,
-        TransactionInput,
-        TransactionOutput,
-        UnblindedOutput,
-        UnblindedOutputBuilder,
-    },
+    transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
     transaction_protocol::{sender::TransactionSenderMessage, TxId},
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,

@@ -31,7 +31,7 @@ use tari_core::transactions::transaction_protocol::TxId;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerEvent, TxId},
+    output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::{broadcast, RwLock};
