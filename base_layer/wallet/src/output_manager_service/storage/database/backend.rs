@@ -1,5 +1,6 @@
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
+    service::Balance,
     storage::{
         database::{DbKey, DbValue, WriteOperation},
         models::DbUnblindedOutput,
@@ -35,7 +36,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
     fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    fn fetch_pending_outgoing_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 
     fn set_received_output_mined_height(
         &self,
@@ -103,4 +103,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
     /// Reinstate a cancelled inbound output
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    /// Return the available, time locked, pending incoming and pending outgoing balance
+    fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
 }

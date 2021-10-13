@@ -23,6 +23,7 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
+        service::Balance,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
@@ -371,24 +372,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_pending_outgoing_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let conn = self.database_connection.acquire_lock();
-
-        let mut outputs = OutputSql::index_status(OutputStatus::EncumberedToBeSpent, &conn)?;
-        outputs.extend(OutputSql::index_status(
-            OutputStatus::ShortTermEncumberedToBeSpent,
-            &conn,
-        )?);
-        outputs.extend(OutputSql::index_status(OutputStatus::SpentMinedUnconfirmed, &conn)?);
-        for o in outputs.iter_mut() {
-            self.decrypt_if_necessary(o)?;
-        }
-        outputs
-            .iter()
-            .map(|o| DbUnblindedOutput::try_from(o.clone()))
-            .collect::<Result<Vec<_>, _>>()
-    }
-
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
 
@@ -692,6 +675,15 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             None => Ok(None),
         }
+    }
+
+    fn get_balance(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+    ) -> Result<Balance, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        OutputSql::get_balance(current_tip_for_time_lock_calculation, &(*conn))
     }
 
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {

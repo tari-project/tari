@@ -1,3 +1,4 @@
+@wallet-cli
 Feature: Wallet CLI
 
     Scenario: As a user I want to change base node for a wallet via command line
@@ -20,8 +21,6 @@ Feature: Wallet CLI
         Then the password of wallet WALLET is not kensentme
         Then the password of wallet WALLET is changedpwd
 
-    # takes 1min+ on circle ci
-    @long-running
     Scenario: As a user I want to get balance via command line
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
@@ -31,6 +30,7 @@ Feature: Wallet CLI
         And I stop wallet WALLET
         Then I get balance of wallet WALLET is at least 1000000 uT via command line
 
+    @long-running
     Scenario: As a user I want to send tari via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
@@ -49,6 +49,7 @@ Feature: Wallet CLI
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
+    @long-running
     Scenario: As a user I want to send one-sided via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
@@ -66,6 +67,7 @@ Feature: Wallet CLI
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
+    @long-running
     Scenario: As a user I want to make-it-rain via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
@@ -84,6 +86,7 @@ Feature: Wallet CLI
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 84500 uT
 
+    @long-running
     Scenario: As a user I want to coin-split via command line
         Given I have a seed node SEED
         And I have a base node BASE connected to seed SEED
