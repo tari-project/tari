@@ -45,6 +45,10 @@
   npm test -- --tags "@critical"
   ./run-tests.sh --tags "@critical"
 
+    # Runs all critical tests base node tests
+  npm test -- --tags "@critical AND @base-node"
+  ./run-tests.sh --tags "@critical AND @base-node"
+
    # Runs all critical tests, but not @long-running and not @tbroken
   npm test -- --tags "@critical and not @long-running and not @broken"
   ```

@@ -961,12 +961,40 @@ Then(
   "all nodes are at height {int}",
   { timeout: 1200 * 1000 },
   async function (height) {
-    await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
-      const currTip = await client.getTipHeight();
-      console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
-      expect(currTip).to.equal(height);
-    });
+    await waitFor(
+      async () => {
+        let result = true;
+        await this.forEachClientAsync(async (client, name) => {
+          await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
+          const currTip = await client.getTipHeight();
+          console.log(
+            `Node ${name} is at tip: ${currTip} (should be ${height})`
+          );
+          result = result && currTip == height;
+        });
+        return result;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+  }
+);
+
+Then(
+  /node (.*) has reached initial sync/,
+  { timeout: 21 * 60 * 1000 },
+  async function (node) {
+    const client = this.getClient(node);
+    await waitForPredicate(
+      async () => (await client.initial_sync_achieved()) === true,
+      20 * 60 * 1000,
+      1000
+    );
+    let result = await this.getClient(node).initial_sync_achieved();
+    console.log(`Node ${node} response is: ${result}`);
+    expect(result).to.equal(true);
   }
 );
 
