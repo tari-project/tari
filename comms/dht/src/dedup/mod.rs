@@ -81,7 +81,6 @@ where
                 message.dht_header.message_tag
             );
 
-            // TODO check if a reference is enough
             message.dedup_hit_count = dht_requester
                 .add_message_to_dedup_cache(message.hash.clone(), message.source_peer.public_key.clone())
                 .await?;
@@ -137,15 +136,11 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        inbound::{DecryptionLayer, DhtInboundMessage},
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
-    use futures::future;
-    use std::sync::{Arc, Mutex};
-    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use tari_comms::wrap_in_envelope_body;
     use tari_test_utils::panic_context;
     use tokio::runtime::Runtime;
-    use tower::service_fn;
 
     #[test]
     fn process_message() {
@@ -163,12 +158,8 @@ mod test {
 
         assert!(dedup.poll_ready(&mut cx).is_ready());
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(&node_identity, Vec::new(), DhtMessageFlags::empty(), false, false);
-
-        // TODO clean up tests, maybe use new maker instead
-        let (connectivity, _) = create_connectivity_mock();
-        let service_decrypt = DecryptionLayer::new(Default::default(), node_identity.clone(), connectivity);
-        let decrypted_msg = decrypt_dht_message(&rt, &service_decrypt, msg);
+        let inbound_message = make_dht_inbound_message(&node_identity, vec![], DhtMessageFlags::empty(), false, false);
+        let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
 
         rt.block_on(dedup.call(decrypted_msg.clone())).unwrap();
         assert_eq!(spy.call_count(), 1);
@@ -178,64 +169,35 @@ mod test {
         assert_eq!(spy.call_count(), 1);
         // Drop dedup so that the DhtMock will stop running
         drop(dedup);
-        drop(service_decrypt);
     }
 
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
         const EXPECTED_HASH: &str = "90cccd774db0ac8c6ea2deff0e26fc52768a827c91c737a2e050668d8c39c224";
+
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(
+        let dht_message = make_dht_inbound_message(
             &node_identity,
             TEST_MSG.to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,
         );
-
-        let rt = Runtime::new().unwrap();
-        let (connectivity, _) = create_connectivity_mock();
-        let service_decrypt = DecryptionLayer::new(Default::default(), node_identity.clone(), connectivity);
-
-        // TODO test fails as, presumably, this is not a valid message test123
-        // TODO make a valid message, fix expected hash
-        let decrypted1 = decrypt_dht_message(&rt, &service_decrypt, msg);
-        assert!(decrypted1.decryption_succeeded());
+        let decrypted1 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
         let node_identity = make_node_identity();
-        let msg = make_dht_inbound_message(
+        let dht_message = make_dht_inbound_message(
             &node_identity,
             TEST_MSG.to_vec(),
             DhtMessageFlags::empty(),
             false,
             false,
         );
-
-        let decrypted2 = decrypt_dht_message(&rt, &service_decrypt, msg);
-        assert!(decrypted2.decryption_succeeded());
+        let decrypted2 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
         assert_eq!(decrypted1.hash, decrypted2.hash);
         let subjects = &[decrypted1.hash, decrypted2.hash];
         assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
-    }
-
-    fn decrypt_dht_message(
-        rt: &Runtime,
-        service_decrypt: &DecryptionLayer,
-        msg: DhtInboundMessage,
-    ) -> DecryptedDhtMessage {
-        let result = Arc::new(Mutex::new(None));
-        let service = service_fn({
-            let result = result.clone();
-            move |msg: DecryptedDhtMessage| {
-                *result.lock().unwrap() = Some(msg);
-                future::ready(Result::<(), PipelineError>::Ok(()))
-            }
-        });
-        rt.block_on(service_decrypt.layer(service).call(msg)).unwrap();
-
-        let res = result.lock().unwrap().take().unwrap();
-        res
     }
 }
