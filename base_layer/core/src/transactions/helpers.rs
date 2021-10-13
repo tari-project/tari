@@ -564,9 +564,9 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
 /// # Examples
 ///
 /// ```
-/// use tari_core::transactions::helpers::display_currency;
-/// assert_eq!(String::from("12,345.12"), display_currency(12345.12, 2, ","));
-/// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
+/// use tari_core::transactions::helpers::format_currency;
+/// assert_eq!("12,345.12", format_currency("12345.12", ','));
+/// assert_eq!("12,345", format_currency("12345", ','));
 /// ```
 pub fn format_currency(value: &str, separator: char) -> String {
     let full_len = value.len();

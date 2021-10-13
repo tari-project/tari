@@ -25,9 +25,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::transactions::helpers;
 use decimal_rs::{Decimal, DecimalConvertError};
-use derive_more::{Add, AddAssign, Div, From, Into, Mul, Rem, Sub, SubAssign};
+use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
     iter::Sum,
     ops::{Add, Mul},
@@ -165,7 +165,7 @@ impl std::str::FromStr for MicroTari {
 // TODO: Implement `TryFrom` instead
 impl From<Tari> for MicroTari {
     fn from(v: Tari) -> Self {
-        MicroTari((v.0 * 1_000_000u32).into_parts().0 as u64)
+        MicroTari((v.0 * 1_000_000u32).try_into().unwrap())
     }
 }
 
@@ -239,7 +239,9 @@ impl Display for FormattedTari {
 
 /// A convenience struct for representing full Tari. You should **never** use Tari in consensus calculations, because
 /// Tari wraps a floating point value. Use MicroTari for that instead.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem, From, Into)]
+#[derive(
+    Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem, From, Into, FromStr,
+)]
 pub struct Tari(Decimal);
 
 impl Tari {
@@ -256,6 +258,7 @@ impl Display for Tari {
 
 pub type TariConvertError = DecimalConvertError;
 
+// TODO: Remove `f64` completely! Using it is the bad idea in general.
 impl TryFrom<f64> for Tari {
     type Error = TariConvertError;
 
@@ -324,12 +327,18 @@ mod test {
         assert!(MicroTari::from_str("5garbage T").is_err());
     }
 
+    /// With `Decimal` the test with floats is not valid anymore:
+    /// ```
+    /// thread 'transactions::tari_amount::test::add_tari_and_microtari' panicked at 'assertion failed: `(left == right)`
+    /// left: `Tari(Decimal { int_val: 33000000000000001000000000000000000000, scale: 38, negative: false })`,
+    /// right: `Tari(Decimal { int_val: 33000000000000002, scale: 17, negative: false })`',
+    /// ```
     #[test]
     fn add_tari_and_microtari() {
         let a = MicroTari::from(100_000);
-        let b = Tari::try_from(0.23).unwrap();
+        let b = Tari::from_str("0.23").unwrap();
         let sum: Tari = b + a.into();
-        assert_eq!(sum, Tari::try_from(0.33).unwrap());
+        assert_eq!(sum, Tari::from_str("0.33").unwrap());
     }
 
     #[test]
