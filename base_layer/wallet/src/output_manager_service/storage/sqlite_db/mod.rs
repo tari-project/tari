@@ -1079,8 +1079,8 @@ impl From<UpdateOutput> for UpdateOutputSql {
             script_private_key: u.script_private_key,
             metadata_signature_nonce: u.metadata_signature_nonce,
             metadata_signature_u_key: u.metadata_signature_u_key,
-            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(|t| i64::from(t))),
-            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(|t| i64::from(t))),
+            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(i64::from)),
+            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(i64::from)),
         }
     }
 }

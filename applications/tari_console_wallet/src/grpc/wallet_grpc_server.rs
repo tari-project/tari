@@ -378,7 +378,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let asset_public_key = transaction
             .body
             .outputs()
-            .into_iter()
+            .iter()
             .filter_map(|tx| match tx.features.asset.clone() {
                 Some(asset) => Some(asset.public_key),
                 None => None,
