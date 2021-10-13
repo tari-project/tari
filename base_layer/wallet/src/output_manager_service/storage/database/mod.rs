@@ -31,8 +31,12 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput, transaction_protocol::TxId};
+use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFlags, TransactionOutput},
+    transaction_protocol::TxId,
+};
 
 use super::OutputStatus;
 
@@ -331,6 +335,21 @@ where T: OutputManagerBackend + 'static
 
     pub fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.fetch_spendable_outputs()
+    }
+
+    pub async fn fetch_with_features(
+        &self,
+        feature: OutputFlags,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        db_clone.fetch_with_features(feature)
+    }
+
+    pub fn fetch_by_features_asset_public_key(
+        &self,
+        public_key: PublicKey,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        self.db.fetch_by_features_asset_public_key(public_key)
     }
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {

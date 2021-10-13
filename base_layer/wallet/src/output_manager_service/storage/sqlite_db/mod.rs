@@ -301,6 +301,32 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(result)
     }
 
+    fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
+        }
+
+        outputs
+            .iter()
+            .map(|o| DbUnblindedOutput::try_from(o.clone()))
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    fn fetch_by_features_asset_public_key(
+        &self,
+        public_key: PublicKey,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let mut o: OutputSql = outputs::table
+            .filter(columns::features_asset_public_key.eq(public_key.to_vec()))
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .first(&*conn)?;
+        self.decrypt_if_necessary(&mut o)?;
+        o.try_into()
+    }
+
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let mut outputs = OutputSql::index_marked_deleted_in_block_is_null(&(*conn))?;
@@ -1584,7 +1610,7 @@ mod test {
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None);
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);

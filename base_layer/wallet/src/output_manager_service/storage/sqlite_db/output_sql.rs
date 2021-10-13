@@ -228,6 +228,57 @@ impl OutputSql {
         )?;
         Ok(())
     }
+
+    /// Find a particular Output, if it exists and is in the specified Spent state
+    pub fn find_pending_coinbase_at_block_height(
+        block_height: u64,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.ne(OutputStatus::Unspent as i32))
+            .filter(outputs::coinbase_block_height.eq(block_height as i64))
+            .first::<OutputSql>(conn)?)
+    }
+
+    pub fn index_unconfirmed(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::status
+                    .eq(OutputStatus::UnspentMinedUnconfirmed as i32)
+                    .or(outputs::mined_in_block.is_null()),
+            )
+            .order(outputs::id.asc())
+            .load(conn)?)
+    }
+
+    pub fn index_marked_deleted_in_block_is_null(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+                    .filter(outputs::marked_deleted_in_block.is_null())
+                    // Only return mined
+                    .filter(outputs::mined_in_block.is_not_null())
+                    .order(outputs::id.asc())
+                    .load(conn)?)
+    }
+
+    pub fn first_by_mined_height_desc(conn: &SqliteConnection) -> Result<Option<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::mined_height.is_not_null())
+            .order(outputs::mined_height.desc())
+            .first(conn)
+            .optional()?)
+    }
+
+    pub fn first_by_marked_deleted_height_desc(
+        conn: &SqliteConnection,
+    ) -> Result<Option<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::marked_deleted_at_height.is_not_null())
+            .order(outputs::marked_deleted_at_height.desc())
+            .first(conn)
+            .optional()?)
+    }
 }
 
 impl Encryptable<Aes256Gcm> for OutputSql {
