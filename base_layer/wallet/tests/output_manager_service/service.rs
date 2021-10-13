@@ -44,7 +44,7 @@ use tari_core::{
         helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::{uT, MicroTari},
         transaction::OutputFeatures,
-        transaction_protocol::sender::TransactionSenderMessage,
+        transaction_protocol::{sender::TransactionSenderMessage, TxId},
         CryptoFactories,
         SenderTransactionProtocol,
     },
@@ -74,9 +74,7 @@ use tari_wallet::{
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             sqlite_db::OutputManagerSqliteDatabase,
-            OutputStatus,
         },
-        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
 };
@@ -976,7 +974,7 @@ async fn test_txo_validation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone()).await.unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -987,7 +985,7 @@ async fn test_txo_validation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone()).await.unwrap();
 
     let output3_value = 4_000_000;
     let output3 = create_unblinded_output(
@@ -997,7 +995,7 @@ async fn test_txo_validation() {
         MicroTari::from(output3_value),
     );
 
-    oms.add_output_with_tx_id(3, output3.clone()).await.unwrap();
+    oms.add_output_with_tx_id(3.into(), output3.clone()).await.unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;
@@ -1057,8 +1055,9 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms.prepare_transaction_to_send(
-        4,
+        4.into(),
         MicroTari::from(900_000),
+        None,
         MicroTari::from(10),
         None,
         "".to_string(),
@@ -1072,7 +1071,7 @@ async fn test_txo_validation() {
 
     let _ = oms.get_recipient_transaction(sender_message).await.unwrap();
 
-    oms.get_coinbase_transaction(6, MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+    oms.get_coinbase_transaction(6.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
         .await
         .unwrap();
 

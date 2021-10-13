@@ -4388,7 +4388,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         .runtime
         .block_on((*wallet).wallet.transaction_service.validate_transactions())
     {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);

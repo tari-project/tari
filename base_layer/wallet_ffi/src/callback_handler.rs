@@ -54,10 +54,7 @@ use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_core::transactions::transaction_protocol::TxId;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::{
-        handle::{OutputManagerEvent, OutputManagerEventReceiver},
-        TxId,
-    },
+    output_manager_service::handle::{OutputManagerEvent, OutputManagerEventReceiver},
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
         storage::{
@@ -121,8 +118,8 @@ where TBackend: TransactionBackend + 'static
         callback_direct_send_result: unsafe extern "C" fn(u64, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
-        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+        callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
         info!(
@@ -809,14 +806,14 @@ mod test {
             .unwrap();
         tx_sender
             .send(Arc::new(TransactionEvent::TransactionMined {
-                tx_id: 2u64,
+                tx_id: 2.into(),
                 is_valid: true,
             }))
             .unwrap();
 
         tx_sender
             .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed {
-                tx_id: 2u64,
+                tx_id: 2.into(),
                 num_confirmations: 22u64,
                 is_valid: true,
             }))
