@@ -49,12 +49,16 @@
 //! and false that the process timed out and new one will be started
 
 use log::*;
+use std::sync::{Arc, Mutex};
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::handle::{OutputManagerEvent, OutputManagerEventReceiver},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
+        service::Balance,
+    },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
         storage::{
@@ -65,6 +69,23 @@ use tari_wallet::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
+
+/// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
+/// before the panic is used.
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        match $e.$m() {
+            Ok(lock) => lock,
+            Err(poisoned) => {
+                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
+        }
+    };
+    ($e:expr) => {
+        acquire_lock!($e, lock)
+    };
+}
 
 #[derive(Clone, Copy)]
 enum CallbackValidationResults {
@@ -87,14 +108,17 @@ where TBackend: TransactionBackend + 'static
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
+    output_manager_service: OutputManagerHandle,
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
+    balance_cache: Arc<Mutex<Balance>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -105,6 +129,7 @@ where TBackend: TransactionBackend + 'static
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
+        output_manager_service: OutputManagerHandle,
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
@@ -118,6 +143,7 @@ where TBackend: TransactionBackend + 'static
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
@@ -163,6 +189,10 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "BalanceUpdatedCallback -> Assigning Fn:  {:?}", callback_balance_updated
+        );
+        info!(
+            target: LOG_TARGET,
             "TransactionValidationCompleteCallback -> Assigning Fn:  {:?}", callback_transaction_validation_complete
         );
         info!(
@@ -181,14 +211,17 @@ where TBackend: TransactionBackend + 'static
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
+            callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
+            output_manager_service,
             dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
+            balance_cache: Arc::new(Mutex::new(Balance::zero())),
         }
     }
 
@@ -209,33 +242,43 @@ where TBackend: TransactionBackend + 'static
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
                                     self.receive_transaction_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedTransactionReply(tx_id) => {
                                     self.receive_transaction_reply_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                     self.receive_finalized_transaction_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
                                     self.receive_direct_send_result(tx_id, result);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
                                     self.receive_store_and_forward_send_result(tx_id, result);
+                                    self.trigger_balance_refresh().await;
                                 },
-                                 TransactionEvent::TransactionCancelled(tx_id) => {
+                                TransactionEvent::TransactionCancelled(tx_id) => {
                                     self.receive_transaction_cancellation(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
                                     self.receive_transaction_broadcast_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
                                     self.receive_transaction_mined_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationSuccess(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationFailure(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Failure);
@@ -245,6 +288,12 @@ where TBackend: TransactionBackend + 'static
                                 },
                                 TransactionEvent::TransactionValidationDelayed(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::BaseNodeNotInSync);
+                                },
+                                TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
+                                TransactionEvent::TransactionImported(_tx_id) |
+                                TransactionEvent::TransactionCompletedImmediately(_tx_id)
+                                => {
+                                    self.trigger_balance_refresh().await;
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -260,6 +309,7 @@ where TBackend: TransactionBackend + 'static
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.output_validation_complete_event(request_key,  CallbackValidationResults::Success);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 OutputManagerEvent::TxoValidationFailure(request_key) => {
                                     self.output_validation_complete_event(request_key,  CallbackValidationResults::Failure);
@@ -344,6 +394,33 @@ where TBackend: TransactionBackend + 'static
                 }
             },
             Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn trigger_balance_refresh(&mut self) {
+        match self.output_manager_service.get_balance().await {
+            Ok(balance) => {
+                let mut cached_balance = acquire_lock!(self.balance_cache);
+                if balance != (*cached_balance).clone() {
+                    *cached_balance = balance.clone();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Calling Update Balance callback function: available {}, time locked {:?}, incoming {}, \
+                         outgoing {}",
+                        balance.available_balance,
+                        balance.time_locked_balance,
+                        balance.pending_incoming_balance,
+                        balance.pending_outgoing_balance
+                    );
+                    let boxing = Box::into_raw(Box::new(balance));
+                    unsafe {
+                        (self.callback_balance_updated)(boxing);
+                    }
+                }
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not obtain balance ({:?})", e);
+            },
         }
     }
 
@@ -530,9 +607,13 @@ mod test {
         SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
-        output_manager_service::handle::OutputManagerEvent,
+        output_manager_service::{
+            handle::{OutputManagerEvent, OutputManagerHandle},
+            service::Balance,
+        },
         test_utils::make_wallet_database_connection,
         transaction_service::{
             handle::TransactionEvent,
@@ -544,6 +625,116 @@ mod test {
         },
     };
     use tokio::{runtime::Runtime, sync::broadcast};
+
+    use futures::StreamExt;
+    use tari_service_framework::reply_channel::Receiver;
+    use tari_shutdown::ShutdownSignal;
+    use tari_wallet::output_manager_service::{
+        error::OutputManagerError,
+        handle::{OutputManagerRequest, OutputManagerResponse},
+    };
+    use tokio::time::Instant;
+
+    /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
+    /// before the panic is used.
+    macro_rules! acquire_lock {
+        ($e:expr, $m:ident) => {
+            match $e.$m() {
+                Ok(lock) => lock,
+                Err(poisoned) => {
+                    log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+                    poisoned.into_inner()
+                },
+            }
+        };
+        ($e:expr) => {
+            acquire_lock!($e, lock)
+        };
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct ResponseState {
+        balance: Arc<Mutex<Balance>>,
+    }
+
+    impl ResponseState {
+        pub fn new() -> Self {
+            Self {
+                balance: Arc::new(Mutex::new(Balance::zero())),
+            }
+        }
+
+        /// Set the mock server balance response
+        pub fn set_balance(&mut self, balance: Balance) {
+            let mut lock = acquire_lock!(self.balance);
+            *lock = balance;
+        }
+
+        /// Get the mock server balance value
+        pub fn get_balance(&mut self) -> Balance {
+            let lock = acquire_lock!(self.balance);
+            (*lock).clone()
+        }
+    }
+
+    pub struct MockOutputManagerService {
+        request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+        state: ResponseState,
+        shutdown_signal: Option<ShutdownSignal>,
+    }
+
+    impl MockOutputManagerService {
+        pub fn new(
+            request_stream: Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>,
+            shutdown_signal: ShutdownSignal,
+        ) -> Self {
+            Self {
+                request_stream: Some(request_stream),
+                state: ResponseState::new(),
+                shutdown_signal: Some(shutdown_signal),
+            }
+        }
+
+        pub async fn run(mut self) -> Result<(), OutputManagerError> {
+            let shutdown_signal = self
+                .shutdown_signal
+                .take()
+                .expect("Output Manager Service initialized without shutdown signal");
+
+            let mut request_stream = self
+                .request_stream
+                .take()
+                .expect("Output Manager Service initialized without request_stream")
+                .take_until(shutdown_signal);
+
+            while let Some(request_context) = request_stream.next().await {
+                // Incoming requests
+                let (request, reply_tx) = request_context.split();
+                let response = self.handle_request(request);
+                let _ = reply_tx.send(response);
+            }
+
+            Ok(())
+        }
+
+        fn handle_request(
+            &mut self,
+            request: OutputManagerRequest,
+        ) -> Result<OutputManagerResponse, OutputManagerError> {
+            match request {
+                OutputManagerRequest::GetBalance => Ok(OutputManagerResponse::Balance(self.state.get_balance())),
+                _ => Err(OutputManagerError::InvalidResponseError(format!(
+                    "Request '{}' not defined for MockOutputManagerService!",
+                    request
+                ))),
+            }
+        }
+
+        /// Returns a clone of the response state to enable updating after the service started
+        pub fn get_response_state(&mut self) -> ResponseState {
+            self.state.clone()
+        }
+    }
 
     struct CallbackState {
         pub received_tx_callback_called: bool,
@@ -558,6 +749,7 @@ mod test {
         pub tx_cancellation_callback_called_inbound: bool,
         pub tx_cancellation_callback_called_outbound: bool,
         pub callback_txo_validation_complete: u32,
+        pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
     }
@@ -574,6 +766,7 @@ mod test {
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
                 callback_txo_validation_complete: 0,
+                callback_balance_updated: 0,
                 callback_transaction_validation_complete: 0,
                 tx_cancellation_callback_called_completed: false,
                 tx_cancellation_callback_called_inbound: false,
@@ -655,24 +848,26 @@ mod test {
             5 => lock.tx_cancellation_callback_called_outbound = true,
             _ => (),
         }
-
         drop(lock);
         Box::from_raw(tx);
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: u8) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-
         lock.callback_txo_validation_complete += result as u32;
-
         drop(lock);
+    }
+
+    unsafe extern "C" fn balance_updated_callback(balance: *mut Balance) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.callback_balance_updated += 1;
+        drop(lock);
+        Box::from_raw(balance);
     }
 
     unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: u64, result: u8) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-
         lock.callback_transaction_validation_complete += result as u32;
-
         drop(lock);
     }
 
@@ -682,6 +877,7 @@ mod test {
 
         let (connection, _tempdir) = make_wallet_database_connection(None);
         let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
+
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
             1u64,
@@ -733,34 +929,54 @@ mod test {
         };
 
         runtime
-            .block_on(db.add_pending_inbound_transaction(1u64, inbound_tx))
+            .block_on(db.add_pending_inbound_transaction(1u64, inbound_tx.clone()))
             .unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(2u64, completed_tx))
+            .block_on(db.insert_completed_transaction(2u64, completed_tx.clone()))
             .unwrap();
         runtime
             .block_on(db.add_pending_inbound_transaction(4u64, inbound_tx_cancelled))
             .unwrap();
         runtime.block_on(db.cancel_pending_transaction(4u64)).unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled))
+            .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled.clone()))
             .unwrap();
         runtime.block_on(db.cancel_completed_transaction(5u64)).unwrap();
         runtime
-            .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx))
+            .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx.clone()))
             .unwrap();
         runtime.block_on(db.cancel_pending_transaction(3u64)).unwrap();
 
-        let (tx_sender, tx_receiver) = broadcast::channel(20);
-        let (oms_sender, oms_receiver) = broadcast::channel(20);
-        let (dht_sender, dht_receiver) = broadcast::channel(20);
+        let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
+        let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
+        let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
+
+        let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+        let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();
+        let mut mock_output_manager_service =
+            MockOutputManagerService::new(oms_request_receiver, shutdown_signal.to_signal());
+        let mut balance = Balance {
+            available_balance: completed_tx.amount +
+                completed_tx.fee +
+                completed_tx_cancelled.amount +
+                completed_tx_cancelled.fee,
+            time_locked_balance: None,
+            pending_incoming_balance: inbound_tx.amount,
+            pending_outgoing_balance: outbound_tx.amount + outbound_tx.fee,
+        };
+        let mut mock_output_manager_service_state = mock_output_manager_service.get_response_state();
+        mock_output_manager_service_state.set_balance(balance.clone());
+        runtime.spawn(mock_output_manager_service.run());
+        assert_eq!(balance, runtime.block_on(oms_handle.get_balance()).unwrap());
+
         let callback_handler = CallbackHandler::new(
             db,
-            tx_receiver,
-            oms_receiver,
-            dht_receiver,
+            transaction_event_receiver,
+            oms_event_receiver,
+            oms_handle,
+            dht_event_receiver,
             shutdown_signal.to_signal(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             received_tx_callback,
@@ -773,32 +989,83 @@ mod test {
             store_and_forward_send_callback,
             tx_cancellation_callback,
             txo_validation_complete_callback,
+            balance_updated_callback,
             transaction_validation_complete_callback,
             saf_messages_received_callback,
         );
 
         runtime.spawn(callback_handler.start());
+        let mut callback_balance_updated = 0;
 
-        tx_sender
+        // The balance updated callback is bundled with other callbacks and will only fire if the balance actually
+        // changed from an initial zero balance.
+        // Balance updated should be detected with following event, total = 1 times
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64)))
             .unwrap();
-        tx_sender
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            {
+                let lock = CALLBACK_STATE.lock().unwrap();
+                if lock.callback_balance_updated == 1 {
+                    callback_balance_updated = 1;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(callback_balance_updated, 1);
+
+        balance.time_locked_balance = Some(completed_tx_cancelled.amount);
+        mock_output_manager_service_state.set_balance(balance.clone());
+        // Balance updated should be detected with following event, total = 2 times
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2u64)))
             .unwrap();
-        tx_sender
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            {
+                let lock = CALLBACK_STATE.lock().unwrap();
+                if lock.callback_balance_updated == 2 {
+                    callback_balance_updated = 2;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(callback_balance_updated, 2);
+
+        balance.pending_incoming_balance += inbound_tx.amount;
+        mock_output_manager_service_state.set_balance(balance.clone());
+        // Balance updated should be detected with following event, total = 3 times
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2u64)))
             .unwrap();
-        tx_sender
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            {
+                let lock = CALLBACK_STATE.lock().unwrap();
+                if lock.callback_balance_updated == 3 {
+                    callback_balance_updated = 3;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(callback_balance_updated, 3);
+
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionBroadcast(2u64)))
             .unwrap();
-        tx_sender
+
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionMined {
                 tx_id: 2u64,
                 is_valid: true,
             }))
             .unwrap();
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id: 2u64,
                 num_confirmations: 22u64,
@@ -806,89 +1073,123 @@ mod test {
             }))
             .unwrap();
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2u64, true)))
             .unwrap();
-        tx_sender
+
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
                 2u64, true,
             )))
             .unwrap();
-        tx_sender
+
+        balance.pending_outgoing_balance += outbound_tx.amount;
+        mock_output_manager_service_state.set_balance(balance.clone());
+        // Balance updated should be detected with following event, total = 4 times
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(3u64)))
             .unwrap();
-        tx_sender
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            {
+                let lock = CALLBACK_STATE.lock().unwrap();
+                if lock.callback_balance_updated == 4 {
+                    callback_balance_updated = 4;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(callback_balance_updated, 4);
+
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(4u64)))
             .unwrap();
-        tx_sender
+
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
             .unwrap();
 
-        oms_sender
+        balance.available_balance -= completed_tx_cancelled.amount;
+        mock_output_manager_service_state.set_balance(balance);
+        // Balance updated should be detected with following event, total = 5 times
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
             .unwrap();
+        let start = Instant::now();
+        while start.elapsed().as_secs() < 10 {
+            {
+                let lock = CALLBACK_STATE.lock().unwrap();
+                if lock.callback_balance_updated == 5 {
+                    callback_balance_updated = 5;
+                    break;
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(callback_balance_updated, 5);
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
             .unwrap();
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationFailure(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
             .unwrap();
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationAborted(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
             .unwrap();
 
-        oms_sender
+        oms_event_sender
             .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
             .unwrap();
 
-        tx_sender
+        transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1u64)))
             .unwrap();
 
-        dht_sender
+        dht_event_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
 
@@ -908,6 +1209,7 @@ mod test {
         assert!(lock.tx_cancellation_callback_called_outbound);
         assert!(lock.saf_messages_received);
         assert_eq!(lock.callback_txo_validation_complete, 18);
+        assert_eq!(lock.callback_balance_updated, 5);
         assert_eq!(lock.callback_transaction_validation_complete, 6);
 
         drop(lock);

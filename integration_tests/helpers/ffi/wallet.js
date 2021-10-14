@@ -119,6 +119,10 @@ class Wallet {
       InterfaceFFI.createCallbackTxoValidationComplete(
         this.onTxoValidationComplete
       );
+    this.callback_balance_updated =
+      InterfaceFFI.createCallbackBalanceUpdated(
+        this.onBalanceUpdated
+      );
     this.callback_transaction_validation_complete =
       InterfaceFFI.createCallbackTransactionValidationComplete(
         this.onTransactionValidationComplete
@@ -165,6 +169,7 @@ class Wallet {
       this.callback_store_and_forward_send_result,
       this.callback_transaction_cancellation,
       this.callback_txo_validation_complete,
+      this.callback_balance_updated,
       this.callback_transaction_validation_complete,
       this.callback_saf_message_received
     );
@@ -422,6 +427,7 @@ class Wallet {
         this.callback_store_and_forward_send_result =
         this.callback_transaction_cancellation =
         this.callback_txo_validation_complete =
+        this.callback_balance_updated =
         this.callback_transaction_validation_complete =
         this.callback_saf_message_received =
         this.recoveryProgressCallback =

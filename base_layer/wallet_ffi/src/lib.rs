@@ -193,7 +193,7 @@ use crate::{
     tasks::recovery_event_monitoring,
 };
 
-mod callback_handler;
+pub mod callback_handler;
 mod enums;
 mod error;
 mod tasks;
@@ -210,6 +210,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
@@ -2730,6 +2731,8 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
+/// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
@@ -2765,6 +2768,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     recovery_in_progress: *mut bool,
@@ -2899,6 +2903,7 @@ pub unsafe extern "C" fn wallet_create(
                 TransactionDatabase::new(transaction_backend),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
+                w.output_manager_service.clone(),
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
@@ -2912,6 +2917,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
+                callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
             );
@@ -5172,6 +5178,7 @@ mod test {
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
+        pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
     }
 
@@ -5188,6 +5195,7 @@ mod test {
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
+                callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
             }
         }
@@ -5308,6 +5316,10 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn balance_updated_callback(_balance: *mut TariBalance) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -5646,6 +5658,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5684,6 +5697,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5788,6 +5802,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5834,6 +5849,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5863,6 +5879,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5887,6 +5904,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5932,6 +5950,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6006,6 +6025,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6155,6 +6175,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6208,6 +6229,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,

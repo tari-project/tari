@@ -4952,6 +4952,7 @@ dependencies = [
  "tari_crypto",
  "tari_key_manager",
  "tari_p2p",
+ "tari_service_framework",
  "tari_shutdown",
  "tari_test_utils",
  "tari_utilities",

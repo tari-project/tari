@@ -1485,6 +1485,7 @@ class WalletFFI {
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
+    callback_balance_updated,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1506,6 +1507,7 @@ class WalletFFI {
         callback_store_and_forward_send_result,
         callback_transaction_cancellation,
         callback_txo_validation_complete,
+        callback_balance_updated,
         callback_transaction_validation_complete,
         callback_saf_message_received,
         this.recovery_in_progress,
