@@ -16,6 +16,7 @@ Feature: Stress Test
         When I wait for wallet WALLET_A to have at least 5100000000 uT
 
         Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
+        When I wait 30 seconds
         When mining node MINER mines 3 blocks
         When mining node MINER mines <NumCoinsplitsNeeded> blocks
         Then all nodes are on the same chain tip
@@ -31,7 +32,7 @@ Feature: Stress Test
         # Then wallet WALLET_B detects all transactions as Mined_Confirmed
         Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_Confirmed
 
-        @flaky
+        @flaky @current
         Examples:
             | NumTransactions | NumCoinsplitsNeeded | NumNodes | MonitoringTimeout |
             | 10              | 1                   | 3        | 10                |

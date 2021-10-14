@@ -139,6 +139,7 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I have wallet WALLET_B connected to all seed nodes
     And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I wait 10 seconds
     When mining node MINER mines 6 blocks
     Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
@@ -147,6 +148,7 @@ Feature: Wallet Transactions
     Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    When I wait 10 seconds
     Then wallet WALLET_C detects all transactions are at least Broadcast
     When mining node MINER mines 6 blocks
     Then all nodes are at height 17
@@ -166,6 +168,7 @@ Feature: Wallet Transactions
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I wait 30 seconds
     When wallet WALLET_A detects all transactions are at least Broadcast
     Then mining node MINER mines 5 blocks
     Then all nodes are at height 15
