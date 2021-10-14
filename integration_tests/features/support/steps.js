@@ -39,21 +39,9 @@ Given("I have {int} seed nodes", { timeout: 20 * 1000 }, async function (n) {
   await Promise.all(promises);
 });
 
-Given(
-  /I do not expect all automated transactions to succeed/,
-  { timeout: 20 * 1000 },
-  async function () {
-    this.checkAutoTransactions = false;
-  }
-);
-
-Given(
-  /I expect all automated transactions to succeed/,
-  { timeout: 20 * 1000 },
-  async function () {
-    this.checkAutoTransactions = true;
-  }
-);
+Then(/all transactions must have succeeded/, function () {
+  expect(this.lastTransactionsSucceeded).to.be(true);
+});
 
 Given(
   /I have a base node (.*) connected to all seed nodes/,
