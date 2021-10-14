@@ -8,5 +8,6 @@ ALTER TABLE outbound_transactions
     ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0;
 
 UPDATE completed_transactions
-SET cancelled = 1, status = 1
+SET cancelled = 1,
+    status    = 1
 WHERE status = 5;

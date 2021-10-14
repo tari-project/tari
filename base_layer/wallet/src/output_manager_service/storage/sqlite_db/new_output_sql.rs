@@ -45,7 +45,6 @@ pub struct NewOutputSql {
     pub flags: i32,
     pub maturity: i64,
     pub status: i32,
-    pub tx_id: Option<i64>,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
@@ -60,10 +59,17 @@ pub struct NewOutputSql {
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
     pub metadata_signature_v_key: Vec<u8>,
+    pub received_in_tx_id: Option<i64>,
+    pub coinbase_block_height: Option<i64>,
 }
 
 impl NewOutputSql {
-    pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
+    pub fn new(
+        output: DbUnblindedOutput,
+        status: OutputStatus,
+        received_in_tx_id: Option<TxId>,
+        coinbase_block_height: Option<u64>,
+    ) -> Self {
         Self {
             commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
@@ -71,7 +77,7 @@ impl NewOutputSql {
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
-            tx_id: tx_id.map(|i| i.as_u64() as i64),
+            received_in_tx_id: received_in_tx_id.map(i64::from),
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
@@ -95,6 +101,7 @@ impl NewOutputSql {
             metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
             metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
             metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
+            coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
         }
     }
 

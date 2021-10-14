@@ -25,21 +25,21 @@
 macro_rules! setter {
     (
      $(#[$outer:meta])*
-     $func:ident, $name: ident, Option<$type: ty>
+     $func:ident, $($name: ident).+, Option<$type: ty>
  ) => {
         $(#[$outer])*
         pub fn $func(mut self, val: $type) -> Self {
-            self.$name = Some(val);
+            self.$($name).+ = Some(val);
             self
         }
     };
     (
         $(#[$outer:meta])*
-        $func:ident, $name: ident, $type: ty
+        $func:ident, $($name: ident).+, $type: ty
     ) => {
         $(#[$outer])*
         pub fn $func(mut self, val: $type) -> Self {
-            self.$name = val;
+            self.$($name).+ = val;
             self
         }
     };

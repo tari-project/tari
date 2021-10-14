@@ -24,21 +24,33 @@ use crate::{
     multiaddr::Multiaddr,
     socks,
     socks::Socks5Client,
-    transports::{dns::SystemDnsResolver, tcp::TcpTransport, Transport},
+    transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
 };
-use std::io;
+use log::*;
+use std::{
+    fmt::{Debug, Formatter},
+    io,
+    sync::Arc,
+};
 use tokio::net::TcpStream;
 
-// /// SO_KEEPALIVE setting for the SOCKS TCP connection
-// const SOCKS_SO_KEEPALIVE: Duration = Duration::from_millis(1500);
+const LOG_TARGET: &str = "comms::transports::socks";
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SocksConfig {
     pub proxy_address: Multiaddr,
     pub authentication: socks::Authentication,
-    /// If the dialed address matches any of these addresses, the SOCKS proxy is bypassed and direct TCP connection is
-    /// used.
-    pub proxy_bypass_addresses: Vec<Multiaddr>,
+    pub proxy_bypass_predicate: Arc<dyn Predicate<Multiaddr> + Send + Sync>,
+}
+
+impl Debug for SocksConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SocksConfig")
+            .field("proxy_address", &self.proxy_address)
+            .field("authentication", &self.authentication)
+            .field("proxy_bypass_predicate", &"...")
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -58,7 +70,6 @@ impl SocksTransport {
     pub fn create_socks_tcp_transport() -> TcpTransport {
         let mut tcp_transport = TcpTransport::new();
         tcp_transport.set_nodelay(true);
-        // .set_keepalive(Some(SOCKS_SO_KEEPALIVE))
         tcp_transport.set_dns_resolver(SystemDnsResolver);
         tcp_transport
     }
@@ -96,7 +107,8 @@ impl Transport for SocksTransport {
 
     async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
         // Bypass the SOCKS proxy and connect to the address directly
-        if self.socks_config.proxy_bypass_addresses.contains(&addr) {
+        if self.socks_config.proxy_bypass_predicate.check(&addr) {
+            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
             return self.tcp_transport.dial(addr).await;
         }
 
@@ -108,7 +120,7 @@ impl Transport for SocksTransport {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::socks::Authentication;
+    use crate::{socks::Authentication, transports::predicate::FalsePredicate};
 
     #[test]
     fn new() {
@@ -116,7 +128,7 @@ mod test {
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),
-            proxy_bypass_addresses: vec![],
+            proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
         });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);

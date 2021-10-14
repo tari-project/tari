@@ -1,5 +1,5 @@
 <h3>Tip</h3>
-<table border="1">
+<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
     <thead>
     <tr>
         <th>Chain height</th>
@@ -15,10 +15,10 @@
     </tr>
     </tbody>
 </table>
-
+<br />
 
 <h3>Proof of work split</h3>
-<table border="1">
+<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
     <thead>
     <tr>
         <th rowspan="2">&nbsp;</th>
@@ -51,10 +51,39 @@
     </tr>
     </tbody>
 </table>
+<br />
 
+<table width="100%">
+  <tr>
+    <td>
+      <h3>Block times (minutes)</h3>
+      Target time: 2 minutes
+      <h3>All</h3>
+      <pre>{{chart this.blockTimes 15 }}
+      </pre>
+    </td>
+    <td>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>Monero</h3>
+      Target time: 3.3 minutes
+      <pre>{{chart this.moneroTimes 15 }}
+      </pre>
+    </td>
+    <td>
+      <h3>SHA3</h3>
+      Target time: 5 minutes
+      <pre>{{chart this.shaTimes 15 }}
+      </pre>
+    </td>
+  </tr>
+</table>
+<br />
 
-
-<table border="1">
+<h2>{{title}}</h2>
+<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
     <thead>
     <tr>
         <th>Height</th>
@@ -90,9 +119,10 @@
     <a href="/?from={{from}}&limit=50">50</a>
     <a href="/?from={{from}}&limit=100">100</a>
 </p>
+<br />
 
 <h2>Mempool</h2>
-<table border="1">
+<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
     <thead>
     <tr>
         <th>Excess</th>
@@ -116,24 +146,4 @@
     {{/each}}
     </tbody>
 </table>
-
-
-
-<h3>Block times (minutes)</h3>
-Target time: 2 minutes
-<h3>All</h3>
-<pre>
-    {{chart this.blockTimes 15 }}
-</pre>
-
-<h3>Monero</h3>
-Target time: 3.3 minutes
-<pre>{{chart this.moneroTimes 15 }}
-</pre>
-
-<h3>SHA3</h3>
-Target time: 5 minutes
-
-<pre>{{chart this.shaTimes 15 }}
-</pre>
-<h1>{{title}}</h1>
+<br />

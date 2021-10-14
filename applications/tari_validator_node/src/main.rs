@@ -96,7 +96,10 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
 fn build_runtime() -> Result<Runtime, ExitCodes> {
     let mut builder = runtime::Builder::new_multi_thread();
-    builder.enable_all().build().map_err(|_e| ExitCodes::UnknownError)
+    builder
+        .enable_all()
+        .build()
+        .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
 async fn run_dan_node<TMempoolService: MempoolService + Clone + Send>(

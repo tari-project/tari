@@ -20,17 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 use std::cmp::Ordering;
-
-use tari_crypto::script::{ExecutionStack, TariScript};
-
-use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
+use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
 };
-
-use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
+use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -38,6 +35,11 @@ pub struct DbUnblindedOutput {
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
     pub status: OutputStatus,
+    pub mined_height: Option<u64>,
+    pub mined_in_block: Option<BlockHash>,
+    pub mined_mmr_position: Option<u64>,
+    pub marked_deleted_at_height: Option<u64>,
+    pub marked_deleted_in_block: Option<BlockHash>,
 }
 
 impl DbUnblindedOutput {
@@ -51,6 +53,11 @@ impl DbUnblindedOutput {
             commitment: tx_out.commitment,
             unblinded_output: output,
             status: OutputStatus::NotStored,
+            mined_height: None,
+            mined_in_block: None,
+            mined_mmr_position: None,
+            marked_deleted_at_height: None,
+            marked_deleted_in_block: None,
         })
     }
 
@@ -65,6 +72,11 @@ impl DbUnblindedOutput {
             commitment: tx_out.commitment,
             unblinded_output: output,
             status: OutputStatus::NotStored,
+            mined_height: None,
+            mined_in_block: None,
+            mined_mmr_position: None,
+            marked_deleted_at_height: None,
+            marked_deleted_in_block: None,
         })
     }
 }

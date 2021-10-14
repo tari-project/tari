@@ -3,6 +3,7 @@ use crate::{
     chain_storage::{
         accumulated_data::DeletedBitmap,
         pruned_output::PrunedOutput,
+        utxo_mined_info::UtxoMinedInfo,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
         ChainBlock,
@@ -105,7 +106,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(PrunedOutput, u32, u64)>, ChainStorageError>;
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
     /// set, otherwise None is returned.
@@ -175,4 +176,10 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns total size information about each internal database. This call may be very slow and will obtain a read
     /// lock for the duration.
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError>;
+
+    /// Returns a (block height/hash) tuple for each mmr position of the height it was spent, or None if it is not spent
+    fn fetch_header_hash_by_deleted_mmr_positions(
+        &self,
+        mmr_positions: Vec<u32>,
+    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError>;
 }
