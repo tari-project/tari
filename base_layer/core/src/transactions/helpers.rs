@@ -22,7 +22,6 @@
 
 use std::sync::Arc;
 
-use num::pow;
 use rand::rngs::OsRng;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -565,51 +564,44 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
 /// # Examples
 ///
 /// ```
-/// use tari_core::transactions::helpers::display_currency;
-/// assert_eq!(String::from("12,345.12"), display_currency(12345.12, 2, ","));
-/// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
+/// use tari_core::transactions::helpers::format_currency;
+/// assert_eq!("12,345.12", format_currency("12345.12", ','));
+/// assert_eq!("12,345", format_currency("12345", ','));
 /// ```
-pub fn display_currency(value: f64, precision: usize, separator: &str) -> String {
-    let whole = value as usize;
-    let decimal = ((value - whole as f64) * pow(10_f64, precision)).round() as usize;
-    let formatted_whole_value = whole
-        .to_string()
-        .chars()
-        .rev()
-        .enumerate()
-        .fold(String::new(), |acc, (i, c)| {
-            if i != 0 && i % 3 == 0 {
-                format!("{}{}{}", acc, separator, c)
-            } else {
-                format!("{}{}", acc, c)
-            }
-        })
-        .chars()
-        .rev()
-        .collect::<String>();
-
-    if precision > 0 {
-        format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
-    } else {
-        formatted_whole_value
+pub fn format_currency(value: &str, separator: char) -> String {
+    let full_len = value.len();
+    let mut buffer = String::with_capacity(full_len / 3 + full_len);
+    let mut iter = value.splitn(2, '.');
+    let whole = iter.next().unwrap_or("");
+    let mut idx = whole.len() as isize - 1;
+    for c in whole.chars() {
+        buffer.push(c);
+        if idx > 0 && idx % 3 == 0 {
+            buffer.push(separator);
+        }
+        idx -= 1;
     }
+    if let Some(decimal) = iter.next() {
+        buffer.push('.');
+        buffer.push_str(decimal);
+    }
+    buffer
 }
 
 #[cfg(test)]
 #[allow(clippy::excessive_precision)]
 mod test {
+    use super::format_currency;
+
     #[test]
-    fn display_currency() {
-        assert_eq!(String::from("0.00"), super::display_currency(0.0f64, 2, ","));
-        assert_eq!(String::from("0.000000000000"), super::display_currency(0.0f64, 12, ","));
-        assert_eq!(
-            String::from("123,456.123456789"),
-            super::display_currency(123_456.123_456_789_012_f64, 9, ",")
-        );
-        assert_eq!(
-            String::from("123,456"),
-            super::display_currency(123_456.123_456_789_012_f64, 0, ",")
-        );
-        assert_eq!(String::from("1,234"), super::display_currency(1234.1f64, 0, ","));
+    fn test_format_currency() {
+        assert_eq!("0.00", format_currency("0.00", ','));
+        assert_eq!("0.000000000000", format_currency("0.000000000000", ','));
+        assert_eq!("123,456.123456789", format_currency("123456.123456789", ','));
+        assert_eq!("123,456", format_currency("123456", ','));
+        assert_eq!("123", format_currency("123", ','));
+        assert_eq!("7,123", format_currency("7123", ','));
+        assert_eq!(".00", format_currency(".00", ','));
+        assert_eq!("00.", format_currency("00.", ','));
     }
 }
