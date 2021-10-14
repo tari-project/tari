@@ -34,7 +34,11 @@ use tari_comms::{
 };
 
 fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
-    Challenge::new().chain(&message.body).finalize().to_vec()
+    Challenge::new()
+        .chain(&message.dht_header.origin_mac)
+        .chain(&message.body)
+        .finalize()
+        .to_vec()
 }
 
 #[derive(Debug, Clone)]
