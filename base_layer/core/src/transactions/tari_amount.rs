@@ -52,6 +52,8 @@ pub struct MicroTari(pub u64);
 pub enum MicroTariError {
     #[error("Failed to parse value: {0}")]
     ParseError(String),
+    #[error("Failed to convert value: {0}")]
+    ConversionError(#[from] DecimalConvertError),
 }
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
@@ -155,17 +157,18 @@ impl std::str::FromStr for MicroTari {
                         Err(MicroTariError::ParseError("value cannot be negative".to_string()))
                     } else {
                         // TODO: Check. It can't be `NaN` anymore. Still we need `.max(0.0)` check?
-                        Ok(MicroTari::from(Tari::from(v)))
+                        Tari::from(v).try_into().map_err(MicroTariError::from)
                     }
                 })?
         }
     }
 }
 
-// TODO: Implement `TryFrom` instead
-impl From<Tari> for MicroTari {
-    fn from(v: Tari) -> Self {
-        MicroTari((v.0 * 1_000_000u32).try_into().unwrap())
+impl TryFrom<Tari> for MicroTari {
+    type Error = DecimalConvertError;
+
+    fn try_from(v: Tari) -> Result<Self, Self::Error> {
+        (v.0 * 1_000_000u32).try_into().map(Self)
     }
 }
 
@@ -316,7 +319,10 @@ mod test {
         assert_eq!(micro_tari, MicroTari::from_str(s.as_str()).unwrap());
         let tari = Tari::try_from(1.12).unwrap();
         let s = format!("{}", tari.formatted());
-        assert_eq!(MicroTari::from(tari), MicroTari::from_str(s.as_str()).unwrap());
+        assert_eq!(
+            MicroTari::try_from(tari).unwrap(),
+            MicroTari::from_str(s.as_str()).unwrap()
+        );
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5000000").unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000").unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000 uT").unwrap());
