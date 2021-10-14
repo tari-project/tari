@@ -256,11 +256,11 @@ impl Display for Tari {
     }
 }
 
-pub type TariConvertError = DecimalConvertError;
+pub type TariConversionError = DecimalConvertError;
 
 // TODO: Remove `f64` completely! Using it is the bad idea in general.
 impl TryFrom<f64> for Tari {
-    type Error = TariConvertError;
+    type Error = TariConversionError;
 
     fn try_from(v: f64) -> Result<Self, Self::Error> {
         Decimal::try_from(v).map(Self)
