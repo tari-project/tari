@@ -30,6 +30,8 @@ Feature: Stress Test
         Then while mining via SHA3 miner MINER all transactions in wallet WALLET_A are found to be Mined_Confirmed
         # Then wallet WALLET_B detects all transactions as Mined_Confirmed
         Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_Confirmed
+
+        @flaky
         Examples:
             | NumTransactions | NumCoinsplitsNeeded | NumNodes | MonitoringTimeout |
             | 10              | 1                   | 3        | 10                |
