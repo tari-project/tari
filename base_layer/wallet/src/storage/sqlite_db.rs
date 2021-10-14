@@ -55,6 +55,7 @@ use tari_crypto::{
         ByteArray,
     },
 };
+use tokio::time::Instant;
 
 const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 
@@ -214,15 +215,21 @@ impl WalletSqliteDatabase {
     }
 
     fn insert_key_value_pair(&self, kvp: DbKeyValuePair) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
+        let kvp_text;
         match kvp {
             DbKeyValuePair::MasterSecretKey(sk) => {
+                kvp_text = "MasterSecretKey";
                 self.set_master_secret_key(&sk, &(*conn))?;
             },
             DbKeyValuePair::TorId(node_id) => {
+                kvp_text = "TorId";
                 self.set_tor_id(node_id, &(*conn))?;
             },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
+                kvp_text = "BaseNodeChainMetadata";
                 self.set_chain_metadata(metadata, &(*conn))?;
             },
             DbKeyValuePair::ClientKeyValue(k, v) => {
@@ -238,28 +245,47 @@ impl WalletSqliteDatabase {
                 self.encrypt_if_necessary(&mut client_key_value)?;
 
                 client_key_value.set(&conn)?;
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - insert_key_value_pair 'ClientKeyValue': lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
 
                 return Ok(value_to_return.map(|v| DbValue::ClientValue(v.value)));
             },
             DbKeyValuePair::CommsAddress(ca) => {
+                kvp_text = "CommsAddress";
                 WalletSettingSql::new(DbKey::CommsAddress.to_string(), ca.to_string()).set(&conn)?;
             },
             DbKeyValuePair::CommsFeatures(cf) => {
+                kvp_text = "CommsFeatures";
                 WalletSettingSql::new(DbKey::CommsFeatures.to_string(), cf.bits().to_string()).set(&conn)?;
             },
         }
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - insert_key_value_pair '{}': lock {} + db_op {} = {} ms",
+            kvp_text,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
         Ok(None)
     }
 
     fn remove_key(&self, k: DbKey) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
         match k {
             DbKey::MasterSecretKey => {
                 let _ = WalletSettingSql::clear(DbKey::MasterSecretKey.to_string(), &conn)?;
             },
             DbKey::MasterPublicKey => return Err(WalletStorageError::OperationNotSupported),
-            DbKey::ClientKey(k) => {
-                if ClientKeyValueSql::clear(&k, &conn)? {
+            DbKey::ClientKey(ref k) => {
+                if ClientKeyValueSql::clear(k, &conn)? {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
@@ -276,13 +302,23 @@ impl WalletSqliteDatabase {
                 let _ = WalletSettingSql::clear(DbKey::TorId.to_string(), &conn)?;
             },
         };
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - remove_key '{}': lock {} + db_op {} = {} ms",
+            k,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
         Ok(None)
     }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
 
         let result = match key {
             DbKey::MasterSecretKey => self.get_master_secret_key(&conn)?.map(DbValue::MasterSecretKey),
@@ -305,6 +341,14 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::CommsFeatures => self.get_comms_features(&conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&conn)?.map(DbValue::BaseNodeChainMetadata),
         };
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
+            key,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
         Ok(result)
     }
@@ -322,7 +366,9 @@ impl WalletBackend for WalletSqliteDatabase {
             return Err(WalletStorageError::AlreadyEncrypted);
         }
 
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
         let secret_key_str = match WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)? {
             None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSecretKey)),
             Some(sk) => sk,
@@ -352,6 +398,13 @@ impl WalletBackend for WalletSqliteDatabase {
         }
 
         (*current_cipher) = Some(cipher);
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
         Ok(())
     }
@@ -363,7 +416,9 @@ impl WalletBackend for WalletSqliteDatabase {
         } else {
             return Ok(());
         };
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
         let secret_key_str = match WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)? {
             None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSecretKey)),
             Some(sk) => sk,
@@ -397,6 +452,13 @@ impl WalletBackend for WalletSqliteDatabase {
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
         Ok(())
     }
@@ -411,7 +473,9 @@ fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
     cipher: Option<Aes256Gcm>,
 ) -> Result<(), WalletStorageError> {
+    let start = Instant::now();
     let conn = database_connection.acquire_lock();
+    let acquire_lock = start.elapsed();
     let secret_key = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)?;
     let db_public_key = WalletSettingSql::get(DbKey::MasterPublicKey.to_string(), &conn)?;
 
@@ -498,6 +562,13 @@ fn check_db_encryption_status(
             WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key_hex).set(&conn)?;
         }
     }
+    trace!(
+        target: LOG_TARGET,
+        "sqlite profile - check_db_encryption_status: lock {} + db_op {} = {} ms",
+        acquire_lock.as_millis(),
+        (start.elapsed() - acquire_lock).as_millis(),
+        start.elapsed().as_millis()
+    );
 
     Ok(())
 }

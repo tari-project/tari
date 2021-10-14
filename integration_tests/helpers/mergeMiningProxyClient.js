@@ -38,6 +38,7 @@ class MergeMiningProxyClient {
       id: "0",
       method: "submit_block",
       params: [block],
+      timeout: 60,
     });
     return res.data;
   }
@@ -96,7 +97,9 @@ class MergeMiningProxyClient {
       }
       await this.submitBlock(block);
     } while (tipHeight + 1 < height);
-    return await this.baseNodeClient.getTipHeight();
+    tipHeight = await this.baseNodeClient.getTipHeight();
+    console.log("[mmProxy client] Tip is at target height", tipHeight);
+    return tipHeight;
   }
 }
 
