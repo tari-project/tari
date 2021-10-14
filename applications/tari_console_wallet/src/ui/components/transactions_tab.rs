@@ -230,7 +230,7 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
-            let status = if t.cancelled && t.status == TransactionStatus::Coinbase {
+            let status = if (t.cancelled || !t.valid) && t.status == TransactionStatus::Coinbase {
                 "Abandoned".to_string()
             } else if t.cancelled {
                 "Cancelled".to_string()

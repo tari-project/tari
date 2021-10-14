@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::handle::TransactionServiceHandle,
@@ -34,13 +35,7 @@ use log::*;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
 use tari_core::transactions::CryptoFactories;
-use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
-};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
 pub mod error;
@@ -49,9 +44,7 @@ pub mod utxo_scanning;
 
 const LOG_TARGET: &str = "wallet::utxo_scanner_service::initializer";
 
-pub struct UtxoScannerServiceInitializer<T>
-where T: WalletBackend + 'static
-{
+pub struct UtxoScannerServiceInitializer<T> {
     interval: Duration,
     backend: Option<WalletDatabase<T>>,
     factories: CryptoFactories,
@@ -83,11 +76,10 @@ where T: WalletBackend + 'static
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(target: LOG_TARGET, "Utxo scanner initialization");
 
-        let (sender, receiver) = reply_channel::unbounded();
         let (event_sender, _) = broadcast::channel(200);
 
         // Register handle before waiting for handles to be ready
-        let utxo_scanner_handle = UtxoScannerHandle::new(sender, event_sender.clone());
+        let utxo_scanner_handle = UtxoScannerHandle::new(event_sender.clone());
         context.register_handle(utxo_scanner_handle);
 
         let backend = self
@@ -101,7 +93,8 @@ where T: WalletBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let comms_connectivity = handles.expect_handle::<ConnectivityRequester>();
+            let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
             let scanning_service = UtxoScannerService::<T>::builder()
                 .with_peers(vec![])
@@ -110,13 +103,13 @@ where T: WalletBackend + 'static
                 .with_mode(UtxoScannerMode::Scanning)
                 .build_with_resources(
                     backend,
-                    connectivity_manager,
+                    comms_connectivity,
+                    wallet_connectivity.get_current_base_node_watcher(),
                     output_manager_service,
                     transaction_service,
                     node_identity,
                     factories,
                     handles.get_shutdown_signal(),
-                    receiver,
                     event_sender,
                 )
                 .run();

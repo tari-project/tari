@@ -1,6 +1,7 @@
-@routing_mechanism
+@wallet-routing_mechanism @wallet
 Feature: Wallet Routing Mechanism
 
+@flaky
 Scenario Outline: Wallets transacting via specified routing mechanism only
     Given I have a seed node NODE
     And I have <NumBaseNodes> base nodes connected to all seed nodes
@@ -31,7 +32,7 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     Then all wallets detect all transactions as Mined_Confirmed
         # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
-    @critical
+    @long-running
     Examples:
         | NumBaseNodes | NumWallets | Mechanism                |
         |  5           |  5         | DirectAndStoreAndForward |

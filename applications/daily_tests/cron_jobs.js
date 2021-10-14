@@ -136,7 +136,7 @@ async function main() {
 
   // ------------------------- CRON ------------------------- //
   new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
-  new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
+  //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
   new CronJob("0 6 * * *", () =>
     runBaseNodeSyncTest(SyncType.Archival)
   ).start();

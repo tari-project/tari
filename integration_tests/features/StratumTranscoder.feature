@@ -8,7 +8,6 @@ Feature: Stratum Transcoder
     And I have wallet WALLET2 connected to all seed nodes
     And I have wallet WALLET3 connected to all seed nodes
     And I have wallet WALLET4 connected to all seed nodes
-    And I wait 10 seconds
     # For funds
     And I have a merge mining proxy FUNDS connected to NODE and WALLET1 with default config
     When I merge mine 10 blocks via FUNDS

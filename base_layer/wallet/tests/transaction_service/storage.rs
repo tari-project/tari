@@ -273,6 +273,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -317,13 +318,25 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(retrieved_completed_tx.last_send_timestamp.is_some());
     assert!(retrieved_completed_tx.confirmations.is_none());
 
+    assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
+
     runtime
-        .block_on(db.set_transaction_confirmations(retrieved_completed_tx.tx_id, 1))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true))
         .unwrap();
+
+    assert_eq!(
+        runtime
+            .block_on(db.fetch_last_mined_transaction())
+            .unwrap()
+            .unwrap()
+            .tx_id,
+        completed_txs[0].tx_id
+    );
+
     let retrieved_completed_tx = runtime
         .block_on(db.get_completed_transaction(completed_txs[0].tx_id))
         .unwrap();
-    assert_eq!(retrieved_completed_tx.confirmations, Some(1));
+    assert_eq!(retrieved_completed_tx.confirmations, Some(5));
 
     let any_completed_tx = runtime
         .block_on(db.get_any_transaction(completed_txs[0].tx_id))
@@ -335,8 +348,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-    let num_completed_txs = completed_txs.len();
+    let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
+    let num_completed_txs = completed_txs_map.len();
     assert_eq!(
         runtime
             .block_on(db.get_cancelled_completed_transactions())
@@ -345,15 +358,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0
     );
 
-    let cancelled_tx_id = completed_txs[&1.into()].tx_id;
+    let cancelled_tx_id = completed_txs_map[&1.into()].tx_id;
     assert!(runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
         .block_on(db.cancel_completed_transaction(cancelled_tx_id))
         .unwrap();
-    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-    assert_eq!(completed_txs.len(), num_completed_txs - 1);
+    let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
+    assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
 
     runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
@@ -524,6 +537,17 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled outbound tx");
     }
+
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+
+    assert_eq!(unmined_txs.len(), 4);
+
+    runtime
+        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
+        .unwrap();
+
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    assert_eq!(unmined_txs.len(), 5);
 }
 
 #[test]

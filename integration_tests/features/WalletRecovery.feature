@@ -1,7 +1,7 @@
-@wallet-recovery
+@wallet-recovery @wallet
 Feature: Wallet Recovery
 
-    @critical
+
     Scenario: Wallet recovery with connected base node staying online
         Given I have a seed node NODE
         And I have 1 base nodes connected to all seed nodes
@@ -34,6 +34,10 @@ Feature: Wallet Recovery
         Examples:
             | NumWallets |
             | 1        |
+
+        @long-running
+        Examples:
+            | NumWallets |
             | 2        |
             | 5        |
             | 10        |

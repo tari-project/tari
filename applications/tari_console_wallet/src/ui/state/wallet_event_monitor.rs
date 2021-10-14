@@ -30,6 +30,7 @@ use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_core::transactions::transaction_protocol::TxId;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
+    connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
@@ -66,6 +67,7 @@ impl WalletEventMonitor {
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
         let wallet_connectivity = self.app_state_inner.read().await.get_wallet_connectivity();
         let mut connectivity_status = wallet_connectivity.get_connectivity_status_watch();
+        let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
         let mut software_update_notif = self
@@ -90,13 +92,13 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_received(tx_id);
                                     },
-                                    TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
-                                        self.trigger_confirmations_refresh(tx_id, confirmations).await;
+                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                        self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
-                                        notifier.transaction_mined_unconfirmed(tx_id, confirmations);
+                                        notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
                                     },
-                                    TransactionEvent::TransactionMined(tx_id) => {
+                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
                                         self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
@@ -171,6 +173,13 @@ impl WalletEventMonitor {
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
+                    _ = base_node_changed.changed() => {
+                        let peer = base_node_changed.borrow().as_ref().cloned();
+                        if let Some(peer) = peer {
+                            self.trigger_base_node_peer_refresh(peer).await;
+                            self.trigger_balance_refresh();
+                        }
+                    }
                     result = base_node_events.recv() => {
                         match result {
                             Ok(msg) => {
@@ -179,10 +188,6 @@ impl WalletEventMonitor {
                                 match (*msg).clone() {
                                     BaseNodeEvent::BaseNodeStateChanged(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
-                                    }
-                                    BaseNodeEvent::BaseNodePeerSet(peer) => {
-                                        self.trigger_base_node_peer_refresh(*peer).await;
-                                        self.trigger_balance_refresh();
                                     }
                                 }
                             },
@@ -196,8 +201,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                              self.app_state_inner.write().await.add_event(EventListItem{event_type: "OutputManagerEvent".to_string(), desc: (&*msg).to_string() });
-                                if let OutputManagerEvent::TxoValidationSuccess(_,_) = &*msg {
+                                if let OutputManagerEvent::TxoValidationSuccess(_) = &*msg {
                                     self.trigger_balance_refresh();
                                 }
                             },

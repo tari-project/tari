@@ -23,7 +23,6 @@
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -34,22 +33,17 @@ pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
 #[derive(Debug)]
 pub enum BaseNodeServiceRequest {
     GetChainMetadata,
-    SetBaseNodePeer(Box<Peer>),
-    GetBaseNodePeer,
     GetBaseNodeLatency,
 }
 /// API Response enum
 #[derive(Debug)]
 pub enum BaseNodeServiceResponse {
     ChainMetadata(Option<ChainMetadata>),
-    BaseNodePeerSet,
-    BaseNodePeer(Option<Box<Peer>>),
     Latency(Option<Duration>),
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
-    BaseNodePeerSet(Box<Peer>),
 }
 
 impl fmt::Display for BaseNodeEvent {
@@ -57,9 +51,6 @@ impl fmt::Display for BaseNodeEvent {
         match self {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
-            },
-            BaseNodeEvent::BaseNodePeerSet(peer) => {
-                write!(f, "BaseNodePeerSet:{}", peer)
             },
         }
     }
@@ -91,24 +82,6 @@ impl BaseNodeServiceHandle {
     pub async fn get_chain_metadata(&mut self) -> Result<Option<ChainMetadata>, BaseNodeServiceError> {
         match self.handle.call(BaseNodeServiceRequest::GetChainMetadata).await?? {
             BaseNodeServiceResponse::ChainMetadata(metadata) => Ok(metadata),
-            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
-        match self
-            .handle
-            .call(BaseNodeServiceRequest::SetBaseNodePeer(Box::new(peer)))
-            .await??
-        {
-            BaseNodeServiceResponse::BaseNodePeerSet => Ok(()),
-            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, BaseNodeServiceError> {
-        match self.handle.call(BaseNodeServiceRequest::GetBaseNodePeer).await?? {
-            BaseNodeServiceResponse::BaseNodePeer(peer) => Ok(peer.map(|p| *p)),
             _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }

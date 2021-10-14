@@ -39,6 +39,7 @@ pub struct TransactionServiceConfig {
     pub max_tx_query_batch_size: usize,
     pub transaction_routing_mechanism: TransactionRoutingMechanism,
     pub transaction_event_channel_size: usize,
+    pub transaction_mempool_resubmission_window: Duration,
 }
 
 impl Default for TransactionServiceConfig {
@@ -53,9 +54,10 @@ impl Default for TransactionServiceConfig {
             resend_response_cooldown: Duration::from_secs(300),
             pending_transaction_cancellation_timeout: Duration::from_secs(259200), // 3 Days
             num_confirmations_required: 3,
-            max_tx_query_batch_size: 5000,
+            max_tx_query_batch_size: 20,
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
             transaction_event_channel_size: 1000,
+            transaction_mempool_resubmission_window: Duration::from_secs(600),
         }
     }
 }

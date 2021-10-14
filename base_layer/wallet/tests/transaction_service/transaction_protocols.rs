@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::support::{
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::make_input,
+};
 use chrono::Utc;
 use futures::StreamExt;
 use rand::rngs::OsRng;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_comms::{
     peer_manager::PeerFeatures,
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService, RpcStatus},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -38,6 +40,16 @@ use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
+    },
+    blocks::BlockHeader,
+    crypto::tari_utilities::Hashable,
+    proto::{
+        base_node::{
+            TxLocation as TxLocationProto,
+            TxQueryBatchResponse as TxQueryBatchResponseProto,
+            TxQueryBatchResponses as TxQueryBatchResponsesProto,
+        },
+        types::Signature as SignatureProto,
     },
     transactions::{
         helpers::schema_to_transaction,
@@ -51,6 +63,7 @@ use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
 use tari_wallet::{
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
@@ -58,7 +71,7 @@ use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
-        error::TransactionServiceError,
+        error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -71,16 +84,10 @@ use tari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
-    types::ValidationRetryStrategy,
+    util::watch::Watch,
 };
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
-
-use crate::support::{
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_input,
-};
-use std::{sync::Arc, time::Duration};
 
 // Just in case other options become apparent in later testing
 #[derive(PartialEq)]
@@ -92,25 +99,18 @@ pub enum TxProtocolTestConfig {
 pub async fn setup(
     config: TxProtocolTestConfig,
 ) -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase>,
-    ConnectivityManagerMockState,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
     BaseNodeWalletRpcMockState,
-    broadcast::Sender<Duration>,
     Shutdown,
     TempDir,
     TransactionEventReceiver,
+    WalletConnectivityMock,
 ) {
     let client_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
-
-    let connectivity_mock_state = connectivity_mock.get_shared_state();
-
-    connectivity_mock.spawn();
 
     let service = BaseNodeWalletRpcMockService::new();
     let rpc_service_state = service.get_state();
@@ -118,21 +118,24 @@ pub async fn setup(
     let server = BaseNodeWalletRpcServer::new(service);
     let protocol_name = server.as_protocol_name();
 
-    let mut mock_server = MockRpcServer::new(server, server_node_identity.clone());
+    let mut mock_rpc_server = MockRpcServer::new(server, server_node_identity.clone());
+    mock_rpc_server.serve();
 
-    mock_server.serve();
+    let wallet_connectivity = create_wallet_connectivity_mock();
 
     if config == TxProtocolTestConfig::WithConnection {
-        let connection = mock_server
+        let mut connection = mock_rpc_server
             .create_connection(server_node_identity.to_peer(), protocol_name.into())
             .await;
-        connectivity_mock_state.add_active_connection(connection).await;
+
+        wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
 
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
     let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection, None));
 
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
@@ -154,7 +157,7 @@ pub async fn setup(
         db,
         output_manager_service: output_manager_service_handle,
         outbound_message_service: outbound_message_requester,
-        connectivity_manager,
+        connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
         node_identity: client_node_identity,
         factories: CryptoFactories::default(),
@@ -166,19 +169,16 @@ pub async fn setup(
         shutdown_signal: shutdown.to_signal(),
     };
 
-    let (timeout_update_publisher, _) = broadcast::channel(20);
-
     (
         resources,
-        connectivity_mock_state,
         outbound_mock_state,
-        mock_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         shutdown,
         temp_dir,
         ts_event_receiver,
+        wallet_connectivity,
     )
 }
 
@@ -187,6 +187,7 @@ pub async fn add_transaction_to_database(
     amount: MicroTari,
     valid: bool,
     status: Option<TransactionStatus>,
+    coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
     let factories = CryptoFactories::default();
@@ -204,7 +205,7 @@ pub async fn add_transaction_to_database(
         "Test".to_string(),
         Utc::now().naive_local(),
         TransactionDirection::Outbound,
-        None,
+        coinbase_block_height,
     );
     completed_tx1.valid = valid;
     db.insert_completed_transaction(tx_id, completed_tx1).await.unwrap();
@@ -218,7 +219,6 @@ pub async fn oms_reply_channel_task(
     while let Some(request_context) = receiver.next().await {
         let (request, reply_tx) = request_context.split();
         let response = match request {
-            OutputManagerRequest::ConfirmTransaction(_) => Ok(OutputManagerResponse::TransactionConfirmed),
             OutputManagerRequest::CancelTransaction(_) => Ok(OutputManagerResponse::TransactionCancelled),
             _ => Err(OutputManagerError::InvalidResponseError(
                 "Unhandled request type".to_string(),
@@ -229,53 +229,46 @@ pub async fn oms_reply_channel_task(
     }
 }
 
-/// A happy path test by submitting a transaction into the mempool, have it mined but unconfirmed and then confirmed.
+/// A happy path test by submitting a transaction into the mempool
 #[tokio::test]
 #[allow(clippy::identity_op)]
-async fn tx_broadcast_protocol_submit_success_i() {
+async fn tx_broadcast_protocol_submit_success() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
-        mut transaction_event_receiver,
+        _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    let protocol = TransactionBroadcastProtocol::new(
-        2.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let timeout_watch = Watch::new(Duration::from_secs(1));
+
+    let protocol = TransactionBroadcastProtocol::new(2.into(), resources.clone(), timeout_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Fails because there is no transaction in the database to be broadcast
     assert!(join_handle.await.unwrap().is_err());
 
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
 
     let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
     assert!(db_completed_tx.confirmations.is_none());
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_watch.get_receiver());
 
-    let join_handle = task::spawn(protocol.execute());
+    task::spawn(protocol.execute());
 
     // Set Base Node response to be not synced but in mempool
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -301,161 +294,52 @@ async fn tx_broadcast_protocol_submit_success_i() {
         .await
         .unwrap();
 
-    // Set Base Node response to be mined but unconfirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: false,
-        height_of_longest_chain: 10,
-    });
-    // Wait for 1 query
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(2, Duration::from_secs(5))
-        .await
-        .unwrap();
-
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
-
-    // Set Base Node response to be mined but unconfirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-        height_of_longest_chain: 10,
-    });
-    // Wait for 1 query
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(2, Duration::from_secs(5))
-        .await
-        .unwrap();
-
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedUnconfirmed);
-    assert_eq!(db_completed_tx.confirmations, Some(1));
-
-    // Set base node response to mined and confirmed but not synced
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
-        is_synced: false,
-        height_of_longest_chain: 10,
-    });
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
-        .await
-        .unwrap();
-    // lets wait for the transaction service event to notify us of a confirmed tx
-    // We need to do this to ensure that the wallet db has been updated to "Mined"
-    loop {
-        let v = transaction_event_receiver.recv().await;
-        let event = v.unwrap();
-        match (*event).clone() {
-            TransactionEvent::TransactionMined(_) => {
-                break;
-            },
-            _ => continue,
-        }
-    }
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
-
-    // Set base node response to mined and confirmed and synced
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
-        is_synced: true,
-        height_of_longest_chain: 10,
-    });
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
-
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
-    assert_eq!(
-        db_completed_tx.confirmations,
-        Some(resources.config.num_confirmations_required)
-    );
-    assert_eq!(
-        db_completed_tx.mined_height,
-        Some(10 - resources.config.num_confirmations_required)
-    );
-
     // Check that the appropriate events were emitted
     let delay = sleep(Duration::from_secs(5));
     tokio::pin!(delay);
     let mut broadcast = false;
-    let mut unconfirmed = false;
-    let mut confirmed = false;
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                match &*event.unwrap() {
-                        TransactionEvent::TransactionMinedUnconfirmed(_, confirmations) => if *confirmations == 1 {
-                            unconfirmed = true;
-                        }
-                        TransactionEvent::TransactionMined(_) => {
-                            confirmed = true;
-                        },
-                        TransactionEvent::TransactionBroadcast(_) => {
-                            broadcast = true;
-                        },
-                        _ => (),
-                        }
+                if let TransactionEvent::TransactionBroadcast(_) = &*event.unwrap() {
+                   broadcast = true;
+                }
             },
             () = &mut delay => {
                 break;
             },
         }
     }
-    assert!(
-        unconfirmed,
-        "Should have received at least 1 TransactionEvent::TransactionMinedUnconfirmed event"
-    );
-    assert!(confirmed, "Should have received a confirmed event");
+
     assert!(broadcast, "Should have received a broadcast event");
 }
-
 /// Test submitting a transaction that is immediately rejected
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_rejection() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
         accepted: false,
@@ -487,7 +371,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         tokio::select! {
             event = event_stream.recv() => {
                 if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
-                cancelled = true;
+                    cancelled = true;
                 }
             },
             () = &mut delay => {
@@ -506,19 +390,17 @@ async fn tx_broadcast_protocol_submit_rejection() {
 async fn tx_broadcast_protocol_restart_protocol_as_query() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
 
     // Set Base Node query response to be not stored, as if the base node does not have the tx in its pool
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -529,15 +411,16 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         height_of_longest_chain: 0,
     });
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
 
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
     let join_handle = task::spawn(protocol.execute());
 
     // Check if in mempool (its not)
@@ -556,7 +439,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         height_of_longest_chain: 0,
     });
 
-    // Should receive a resummission call
+    // Should receive a resubmission call
     let _ = rpc_service_state
         .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
         .await
@@ -583,50 +466,47 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
 }
 
-/// This test will submit a Tx which will be accepted and then dropped from the mempool, resulting in a resubmit which
-/// will be rejected and result in a cancelled transaction
+/// This test will submit a Tx which will be accepted on submission but rejected on query, intially it will be done
+/// slower than the resubmission window but then the resubmission window will be reduced so the transaction will be
+/// reject twice within the window resulting in a cancelled transaction
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let (
-        resources,
-        _connectivity_mock_state,
+        mut resources,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let mut event_stream = resources.event_publisher.subscribe();
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    resources.config.transaction_mempool_resubmission_window = Duration::from_secs(3);
+    resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
+
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
-    // Accepted in the mempool but not mined yet
-    // Wait for 1 query
-    let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
-        .await
-        .unwrap();
-
-    // Set Base Node response to be rejected by mempool
+    // Accepted in the mempool on submit but not query
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::NotStored,
         block_hash: None,
@@ -635,28 +515,20 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         height_of_longest_chain: 0,
     });
 
-    // Set Base Node to reject resubmission
-    rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
-        accepted: false,
-        rejection_reason: TxSubmissionRejectionReason::TimeLocked,
-        is_synced: true,
-    });
-
     // Wait for 1 query
     let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+        .wait_pop_transaction_query_calls(1, Duration::from_secs(30))
         .await
         .unwrap();
 
     let _ = rpc_service_state
-        .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
+        .wait_pop_submit_transaction_calls(2, Duration::from_secs(30))
         .await
         .unwrap();
 
     // Check that the protocol ends with rejection error
     if let Err(e) = join_handle.await.unwrap() {
-        println!("{:?}", e);
-        if let TransactionServiceError::MempoolRejectionTimeLocked = e.error {
+        if let TransactionServiceError::MempoolRejection = e.error {
         } else {
             panic!("Tx broadcast Should have failed with mempool rejection for being time locked");
         }
@@ -688,219 +560,23 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     assert!(cancelled, "Should have cancelled transaction");
 }
 
-/// This test will submit a tx which is accepted and mined but unconfirmed, then the next query it will not exist
-/// resulting in a resubmission which we will let run to being mined with success
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        mut transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
-
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    // Wait for the correct amount of queries
-    if let Err(e) = rpc_service_state
-        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
-        .await
-    {
-        println!("  {}", e)
-    }
-
-    // Accepted in the mempool but not mined yet
-    // Wait for the correct amount of queries
-    if let Err(e) = rpc_service_state
-        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
-        .await
-    {
-        println!("  {}", e)
-    }
-
-    // Set Base Node response to be mined but unconfirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-    // Wait for the correct amount of queries
-    if let Err(e) = rpc_service_state
-        .wait_pop_transaction_query_calls(4, Duration::from_secs(5))
-        .await
-    {
-        println!("  {}", e)
-    }
-
-    // Wait for the "TransactionMinedUnconfirmed" tx event to ensure that the wallet db state is "MinedUnconfirmed"
-    let mut count = 0u16;
-    loop {
-        let v = transaction_event_receiver.recv().await;
-        let event = v.unwrap();
-        match (*event).clone() {
-            TransactionEvent::TransactionMinedUnconfirmed(_, _) => {
-                break;
-            },
-            _ => {
-                count += 1;
-                if count >= 10 {
-                    break;
-                }
-                continue;
-            },
-        }
-    }
-
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedUnconfirmed);
-
-    // Set base node response to mined and confirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::NotStored,
-        block_hash: None,
-        confirmations: 0,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-
-    // Should receive a resubmission call
-    let _ = rpc_service_state
-        .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
-        .await
-        .expect("Should receive a resubmission call");
-
-    // Set Base Node response to be mined and confirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required as u64 + 1u64,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
-
-    // Check transaction status is updated
-    let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
-}
-
-/// Test being unable to connect and then connection becoming available.
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_broadcast_protocol_connection_problem() {
-    let (
-        resources,
-        connectivity_mock_state,
-        _outbound_mock_state,
-        mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithoutConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-
-    let mut event_stream = resources.event_publisher.subscribe();
-
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
-
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    // Check that the connection problem event was emitted at least twice
-    let delay = sleep(Duration::from_secs(10));
-    tokio::pin!(delay);
-    let mut connection_issues = 0;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-                if let TransactionEvent::TransactionBaseNodeConnectionProblem(_) = &*event.unwrap() {
-                connection_issues+=1;
-                }
-                if connection_issues >= 2 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(connection_issues >= 2, "Should have retried connection at least twice");
-
-    // Now we add the connection
-    let connection = mock_rpc_server
-        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
-        .await;
-    connectivity_mock_state.add_active_connection(connection).await;
-
-    // Check that the protocol ends with success
-    // Set Base Node response to be mined and confirmed
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required as u64 + 1u64,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-    let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
-}
-
-/// Submit a transaction that is Already Mined for the submission, the subsequent query should confirm the transaction
+/// Submit a transaction that is Already Mined for the submission, should end up being completed as the validation will
+/// deal with it
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_already_mined() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
 
     // Set Base Node to respond with AlreadyMined
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
@@ -909,14 +585,15 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         is_synced: true,
     });
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
@@ -941,15 +618,11 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
-    assert_eq!(result.unwrap(), TxId::from(1));
+    assert_eq!(result.unwrap(), 1);
 
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
-    assert_eq!(
-        db_completed_tx.mined_height,
-        Some(10 - resources.config.num_confirmations_required)
-    );
+    assert_eq!(db_completed_tx.status, TransactionStatus::Completed);
 }
 
 /// A test to see that the broadcast protocol can handle a change to the base node address while it runs.
@@ -957,36 +630,44 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 #[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let (
-        resources,
-        connectivity_mock_state,
+        mut resources,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
 
-    add_transaction_to_database(1.into(), 1 * T, true, None, resources.db.clone()).await;
+    add_transaction_to_database(1.into(), 1 * T, true, None, None, resources.db.clone()).await;
 
-    let protocol = TransactionBroadcastProtocol::new(
-        1.into(),
-        resources.clone(),
-        Duration::from_secs(1),
-        server_node_identity.public_key().clone(),
-        timeout_update_publisher.subscribe(),
-        base_node_update_publisher.subscribe(),
-    );
+    resources.config.broadcast_monitoring_timeout = Duration::from_secs(60);
+
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::NotStored,
+        block_hash: None,
+        confirmations: 1,
+        is_synced: true,
+        height_of_longest_chain: 0,
+    });
+
+    let timeout_update_watch = Watch::new(Duration::from_secs(1));
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let protocol = TransactionBroadcastProtocol::new(1.into(), resources.clone(), timeout_update_watch.get_receiver());
 
     let join_handle = task::spawn(protocol.execute());
 
-    // Accepted in the mempool but not mined yet
-    // Wait for 2 queries
+    // Wait for 1 queries
     let _ = rpc_service_state
-        .wait_pop_transaction_query_calls(2, Duration::from_secs(5))
+        .wait_pop_transaction_query_calls(1, Duration::from_secs(205))
         .await
         .unwrap();
 
@@ -1000,48 +681,34 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let mut new_mock_server = MockRpcServer::new(new_server, new_server_node_identity.clone());
     new_mock_server.serve();
 
-    let connection = new_mock_server
+    let mut connection = new_mock_server
         .create_connection(new_server_node_identity.to_peer(), protocol_name.into())
         .await;
-    connectivity_mock_state.add_active_connection(connection).await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
-    // Set new Base Node response to be mined but unconfirmed
+    // Set new Base Node response to be accepted
     new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
+        location: TxLocation::InMempool,
         block_hash: None,
-        confirmations: 1,
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
 
     // Change Base Node
-    base_node_update_publisher
-        .send(new_server_node_identity.public_key().clone())
-        .unwrap();
-
-    // Update old base node to reject the tx to check that the protocol is using the new base node
-    // Set Base Node query response to be InMempool as if the base node does not have the tx in its pool
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::NotStored,
-        block_hash: None,
-        confirmations: 0,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
+    wallet_connectivity.notify_base_node_set(new_server_node_identity.to_peer());
 
     // Wait for 1 query
     let _ = new_rpc_service_state
-        .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
+        .wait_pop_transaction_query_calls(1, Duration::from_secs(20))
         .await
         .unwrap();
 
-    // Set base node response to mined and confirmed
-    new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
+    // Update old base node to reject the tx to check that the protocol is using the new base node
+    rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
+        accepted: false,
+        rejection_reason: TxSubmissionRejectionReason::Orphan,
         is_synced: true,
-        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -1050,697 +717,471 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 
     // Check transaction status is updated
     let db_completed_tx = resources.db.get_completed_transaction(1.into()).await.unwrap();
-    assert_eq!(db_completed_tx.status, TransactionStatus::MinedConfirmed);
+    assert_eq!(db_completed_tx.status, TransactionStatus::Broadcast);
 }
 
-/// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
-/// valid.
+/// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to
+/// completed
 #[tokio::test]
 #[allow(clippy::identity_op)]
-async fn tx_validation_protocol_tx_becomes_valid() {
+async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     let (
         resources,
-        _connectivity_mock_state,
         _outbound_mock_state,
-        _mock_rpc_server,
+        mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-        _timeout_update_publisher,
         _shutdown,
         _temp_dir,
         _transaction_event_receiver,
+        wallet_connectivity,
     ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     add_transaction_to_database(
         1.into(),
         1 * T,
         true,
-        Some(TransactionStatus::MinedConfirmed),
+        Some(TransactionStatus::Broadcast),
+        None,
         resources.db.clone(),
     )
     .await;
     add_transaction_to_database(
         2.into(),
         2 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-    add_transaction_to_database(
-        3.into(),
-        3 * T,
         true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-    add_transaction_to_database(
-        4.into(),
-        4 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
+        Some(TransactionStatus::Completed),
+        None,
         resources.db.clone(),
     )
     .await;
 
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
+    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
+
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(
+            tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+        )),
+        location: TxLocationProto::from(TxLocation::Mined) as i32,
+        block_hash: Some([1u8; 16].to_vec()),
+        confirmations: 0,
+        block_height: 1,
+    }];
+
+    let mut batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        height_of_longest_chain: 0,
-    });
+        tip_hash: Some([1u8; 16].to_vec()),
+        height_of_longest_chain: 1,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
 
     rpc_service_state.set_is_synced(false);
 
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+
     let protocol = TransactionValidationProtocol::new(
         1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::UntilSuccess,
+        resources.db.clone(),
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
 
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(6, Duration::from_secs(60))
-        .await
-        .unwrap();
+    // Check that the protocol ends with error due to base node not being synced
+    let result = join_handle.await.unwrap();
+    assert!(matches!(
+        result,
+        Err(TransactionServiceProtocolError {
+            id: 1,
+            error: TransactionServiceError::BaseNodeNotSynced,
+        })
+    ));
 
     rpc_service_state.set_is_synced(true);
 
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert!(result.is_ok());
-
-    // Check transaction status is updated
-    let db_completed_txs = resources.db.get_completed_transactions().await.unwrap();
-
-    for tx in db_completed_txs.values() {
-        assert!(tx.valid, "TxId: {} should be valid", tx.tx_id);
-    }
-}
-
-/// Validate completed transaction, the transaction should become invalid
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_tx_becomes_invalid() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::NotStored,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-
     let protocol = TransactionValidationProtocol::new(
-        1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::UntilSuccess,
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert!(result.is_ok());
-
-    // Check transaction status is updated
-    let db_completed_txs = resources.db.get_completed_transactions().await.unwrap();
-
-    for tx in db_completed_txs.values() {
-        assert!(!tx.valid, "TxId: {} should be invalid", tx.tx_id);
-    }
-}
-
-/// Validate completed transactions, the transaction should become invalid
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_tx_becomes_unconfirmed() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    // Set Base Node to respond with AlreadyMined
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-
-    let protocol = TransactionValidationProtocol::new(
-        1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::UntilSuccess,
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert!(result.is_ok());
-
-    // Check transaction status is updated
-    let db_completed_txs = resources.db.get_completed_transactions().await.unwrap();
-
-    for tx in db_completed_txs.values() {
-        assert_eq!(
-            tx.status,
-            TransactionStatus::MinedUnconfirmed,
-            "TxId: {} should be unconfirmed",
-            tx.tx_id
-        );
-    }
-}
-
-/// Test the validation protocol reacts correctly to a change in base node and redoes the full validation based on the
-/// new base node
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_tx_ends_on_base_node_end() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        mut rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe();
-
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    add_transaction_to_database(
         2.into(),
-        2 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
         resources.db.clone(),
-    )
-    .await;
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
+    );
 
-    add_transaction_to_database(
+    let join_handle = task::spawn(protocol.execute());
+    let result = join_handle.await.unwrap();
+    assert!(result.is_ok());
+
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+
+    assert_eq!(
+        completed_txs.get(&1.into()).unwrap().status,
+        TransactionStatus::Broadcast
+    );
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
+        TransactionStatus::MinedUnconfirmed
+    );
+
+    // set Tx2 back to unmined
+    batch_query_response.responses = vec![];
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
+
+    let protocol = TransactionValidationProtocol::new(
         3.into(),
-        3 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
         resources.db.clone(),
-    )
-    .await;
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
+    );
 
-    add_transaction_to_database(
+    let join_handle = task::spawn(protocol.execute());
+    let result = join_handle.await.unwrap();
+    assert!(result.is_ok());
+
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
+        TransactionStatus::Completed
+    );
+
+    // Now the tx will be fully mined
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(
+            tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+        )),
+        location: TxLocationProto::from(TxLocation::Mined) as i32,
+        block_hash: Some([5u8; 16].to_vec()),
+        confirmations: 4,
+        block_height: 5,
+    }];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
+        is_synced: true,
+        tip_hash: Some([5u8; 16].to_vec()),
+        height_of_longest_chain: 5,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
+
+    let protocol = TransactionValidationProtocol::new(
         4.into(),
-        4 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
         resources.db.clone(),
-    )
-    .await;
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
+    );
 
-    add_transaction_to_database(
-        5.into(),
-        5 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
+    let join_handle = task::spawn(protocol.execute());
+    let result = join_handle.await.unwrap();
+    assert!(result.is_ok());
+
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
+        TransactionStatus::MinedConfirmed
+    );
+    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 4);
+}
+
+/// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to
+/// completed
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn tx_validation_protocol_reorg() {
+    let (
+        resources,
+        _outbound_mock_state,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _shutdown,
+        _temp_dir,
+        _transaction_event_receiver,
+        wallet_connectivity,
+    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    for i in 1..=5 {
+        add_transaction_to_database(
+            i.into(),
+            i * T,
+            true,
+            Some(TransactionStatus::Broadcast),
+            None,
+            resources.db.clone(),
+        )
+        .await;
+    }
 
     add_transaction_to_database(
         6.into(),
         6 * T,
         true,
-        Some(TransactionStatus::MinedConfirmed),
+        Some(TransactionStatus::Coinbase),
+        Some(8),
+        resources.db.clone(),
+    )
+    .await;
+    add_transaction_to_database(
+        7.into(),
+        7 * T,
+        true,
+        Some(TransactionStatus::Coinbase),
+        Some(9),
         resources.db.clone(),
     )
     .await;
 
-    // Set Base Node to respond with AlreadyMined
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
+    let mut block_headers = HashMap::new();
+    for i in 0..=10 {
+        let mut block_header = BlockHeader::new(1);
+        block_header.height = i;
+        block_headers.insert(i, block_header.clone());
+    }
+    rpc_service_state.set_blocks(block_headers.clone());
 
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
+    let tx1 = resources.db.get_completed_transaction(1.into()).await.unwrap();
+    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
+    let tx3 = resources.db.get_completed_transaction(3.into()).await.unwrap();
+    let tx4 = resources.db.get_completed_transaction(4.into()).await.unwrap();
+    let tx5 = resources.db.get_completed_transaction(5.into()).await.unwrap();
+    let coinbase_tx1 = resources.db.get_completed_transaction(6.into()).await.unwrap();
+    let coinbase_tx2 = resources.db.get_completed_transaction(7.into()).await.unwrap();
+
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&5).unwrap().hash()),
+            confirmations: 5,
+            block_height: 5,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&6).unwrap().hash()),
+            confirmations: 4,
+            block_height: 6,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&7).unwrap().hash()),
+            confirmations: 3,
+            block_height: 7,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx4.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            confirmations: 2,
+            block_height: 8,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                coinbase_tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            confirmations: 2,
+            block_height: 8,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&9).unwrap().hash()),
+            confirmations: 1,
+            block_height: 9,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                coinbase_tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&9).unwrap().hash()),
+            confirmations: 1,
+            block_height: 9,
+        },
+    ];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
+        is_synced: true,
+        tip_hash: Some(block_headers.get(&10).unwrap().hash()),
+        height_of_longest_chain: 10,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
 
     let protocol = TransactionValidationProtocol::new(
         1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(10),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::UntilSuccess,
+        resources.db.clone(),
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    // Setup new RPC Server
-    let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    // Change Base Node
-    base_node_update_publisher
-        .send(new_server_node_identity.public_key().clone())
-        .unwrap();
-
-    // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    let delay = sleep(Duration::from_secs(1));
-    tokio::pin!(delay);
-    let mut aborted = false;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-                 if let TransactionEvent::TransactionValidationAborted(_) = &*event.unwrap() {
-                 aborted = true;
-                 }
-            },
-            () = &mut delay => {
-                break;
-            },
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+    let mut unconfirmed_count = 0;
+    let mut confirmed_count = 0;
+    for (_k, tx) in completed_txs.iter() {
+        if tx.status == TransactionStatus::MinedUnconfirmed {
+            unconfirmed_count += 1;
+        }
+        if tx.status == TransactionStatus::MinedConfirmed {
+            confirmed_count += 1;
         }
     }
-    assert!(aborted, "Validation protocol should have aborted");
-}
+    assert_eq!(confirmed_count, 3);
+    assert_eq!(unconfirmed_count, 4);
 
-/// Test the validation protocol reacts correctly when the RPC client returns an error between calls.
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_rpc_client_broken_between_calls() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        mut rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
+    // Now we will reorg to new blocks 8 and 9, tx 4 will disappear and tx5 will appear in block 9, coinbase_tx2 should
+    // become invalid and coinbase_tx1 should return to coinbase status
 
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
+    let _ = block_headers.remove(&9);
+    let _ = block_headers.remove(&10);
+    let mut block_header = BlockHeader::new(2);
+    block_header.height = 8;
+    block_headers.insert(8, block_header.clone());
 
-    add_transaction_to_database(
-        2.into(),
-        2 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
+    rpc_service_state.set_blocks(block_headers.clone());
 
-    add_transaction_to_database(
-        3.into(),
-        3 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&5).unwrap().hash()),
+            confirmations: 4,
+            block_height: 5,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&6).unwrap().hash()),
+            confirmations: 3,
+            block_height: 6,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&7).unwrap().hash()),
+            confirmations: 2,
+            block_height: 7,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                coinbase_tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some(block_headers.get(&8).unwrap().hash()),
+            confirmations: 1,
+            block_height: 8,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(
+                coinbase_tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+            )),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+    ];
 
-    add_transaction_to_database(
-        4.into(),
-        4 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    add_transaction_to_database(
-        5.into(),
-        5 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    add_transaction_to_database(
-        6.into(),
-        6 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    // Set Base Node to respond with AlreadyMined
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        height_of_longest_chain: 0,
-    });
+        tip_hash: Some(block_headers.get(&8).unwrap().hash()),
+        height_of_longest_chain: 8,
+    };
 
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
+    let _ = rpc_service_state.take_get_header_by_height_calls();
 
     let protocol = TransactionValidationProtocol::new(
-        1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(10),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::UntilSuccess,
+        2.into(),
+        resources.db.clone(),
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
     );
 
     let join_handle = task::spawn(protocol.execute());
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60))
-        .await
-        .unwrap();
-
-    rpc_service_state.set_rpc_status_error(None);
-    rpc_service_state.set_response_delay(None);
-
-    // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    // Check transaction status is updated
-    let db_completed_txs = resources.db.get_completed_transactions().await.unwrap();
-
-    for tx in db_completed_txs.values() {
-        assert!(tx.valid, "TxId: {} should be valid", tx.tx_id);
-    }
-}
-
-/// Test the validation protocol reacts correctly when the RPC client returns an error between calls and only retry
-/// finite amount of times
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        mut rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe();
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    add_transaction_to_database(
-        2.into(),
-        2 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    // Set Base Node to respond with AlreadyMined
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-        height_of_longest_chain: 0,
-    });
-    rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
-
-    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
-
-    let protocol = TransactionValidationProtocol::new(
-        1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(5),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::Limited(2),
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    let _ = rpc_service_state
-        .wait_pop_transaction_batch_query_calls(3, Duration::from_secs(60))
+    let _calls = rpc_service_state
+        .wait_pop_get_header_by_height_calls(5, Duration::from_secs(30))
         .await
         .unwrap();
 
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert!(result.is_err());
+    assert_eq!(rpc_service_state.take_get_header_by_height_calls().len(), 0);
 
-    // Check that the connection problem event was emitted at least twice
-    let delay = sleep(Duration::from_secs(10));
-    tokio::pin!(delay);
-    let mut timeouts = 0i32;
-    let mut failures = 0i32;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-            log::error!("EVENT: {:?}", event);
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionValidationTimedOut(_) => {
-                        timeouts +=1 ;
-                    }
-                    TransactionEvent::TransactionValidationFailure(_) => {
-                        failures +=1 ;
-                    }
-                    _ => (),
-                }
-                if failures + timeouts >= 4 {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(timeouts >= 3, "Should have timed out twice");
-    assert!(failures >= 1, "Should have failed");
-}
-
-/// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
-/// valid.
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn tx_validation_protocol_base_node_not_synced() {
-    let (
-        resources,
-        _connectivity_mock_state,
-        _outbound_mock_state,
-        _mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
-        _timeout_update_publisher,
-        _shutdown,
-        _temp_dir,
-        _transaction_event_receiver,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
-    let (base_node_update_publisher, _) = broadcast::channel(20);
-    let (_timeout_update_publisher, _) = broadcast::channel(20);
-    let mut event_stream = resources.event_publisher.subscribe();
-
-    add_transaction_to_database(
-        1.into(),
-        1 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-    add_transaction_to_database(
-        2.into(),
-        2 * T,
-        false,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-    add_transaction_to_database(
-        3.into(),
-        3 * T,
-        true,
-        Some(TransactionStatus::MinedConfirmed),
-        resources.db.clone(),
-    )
-    .await;
-
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: resources.config.num_confirmations_required,
-        is_synced: false,
-        height_of_longest_chain: 0,
-    });
-
-    rpc_service_state.set_is_synced(false);
-
-    let protocol = TransactionValidationProtocol::new(
-        1.into(),
-        resources.clone(),
-        server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
-        base_node_update_publisher.subscribe(),
-        _timeout_update_publisher.subscribe(),
-        ValidationRetryStrategy::Limited(0),
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+    assert_eq!(
+        completed_txs.get(&4.into()).unwrap().status,
+        TransactionStatus::Completed
     );
+    assert_eq!(
+        completed_txs.get(&5.into()).unwrap().status,
+        TransactionStatus::MinedUnconfirmed
+    );
+    assert_eq!(completed_txs.get(&5.into()).cloned().unwrap().mined_height.unwrap(), 8);
+    assert_eq!(completed_txs.get(&5.into()).cloned().unwrap().confirmations.unwrap(), 1);
 
-    let join_handle = task::spawn(protocol.execute());
-
-    // Check that the protocol ends with success
-    let result = join_handle.await.unwrap();
-    assert!(result.is_err());
-
-    let delay = sleep(Duration::from_secs(10));
-    tokio::pin!(delay);
-    let mut delayed = 0i32;
-    let mut failures = 0i32;
-    loop {
-        tokio::select! {
-            event = event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionValidationDelayed(_) => {
-                        delayed +=1 ;
-                    }
-                    TransactionEvent::TransactionValidationFailure(_) => {
-                        failures +=1 ;
-                    }
-                    _ => (),
-                }
-
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(delayed >= 1, "Should have been delayed");
-    assert_eq!(failures, 0, "Should not have failed when BN is not synced");
+    assert!(!completed_txs.get(&6.into()).unwrap().valid);
+    assert_eq!(
+        completed_txs.get(&7.into()).unwrap().status,
+        TransactionStatus::Coinbase
+    );
 }

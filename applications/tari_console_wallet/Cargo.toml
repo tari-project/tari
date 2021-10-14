@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -30,8 +30,8 @@ qrcode = { version = "0.12" }
 regex = "1.5.4"
 rpassword = "5.0"
 rustyline = "6.0"
-strum = "^0.19"
-strum_macros = "^0.19"
+strum = "^0.22"
+strum_macros = "^0.22"
 tokio = { version = "1.11", features = ["signal"] }
 thiserror = "1.0.26"
 tonic = "0.5.2"
@@ -46,7 +46,6 @@ opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio"] }
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.10"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 

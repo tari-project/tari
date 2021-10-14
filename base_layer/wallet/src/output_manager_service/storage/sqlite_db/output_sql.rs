@@ -1,6 +1,7 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
+        service::Balance,
         storage::{
             sqlite_db::{AeadError, NullOutputSql, UpdateOutput, UpdateOutputSql},
             OutputStatus,
@@ -10,8 +11,8 @@ use crate::{
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 use aes_gcm::Aes256Gcm;
-use diesel::{prelude::*, SqliteConnection};
-use tari_core::transactions::{transaction::OutputFlags, transaction_protocol::TxId};
+use diesel::{prelude::*, sql_query, SqliteConnection};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFlags, transaction_protocol::TxId};
 
 #[derive(Clone, Debug, Queryable, QueryableByName, Identifiable, PartialEq)]
 #[table_name = "outputs"]
@@ -23,7 +24,6 @@ pub struct OutputSql {
     pub flags: i32,
     pub maturity: i64,
     pub status: i32,
-    pub tx_id: Option<i64>,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
@@ -32,6 +32,14 @@ pub struct OutputSql {
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
     pub metadata_signature_v_key: Vec<u8>,
+    pub mined_height: Option<i64>,
+    pub mined_in_block: Option<Vec<u8>>,
+    pub mined_mmr_position: Option<i64>,
+    pub marked_deleted_at_height: Option<i64>,
+    pub marked_deleted_in_block: Option<Vec<u8>>,
+    pub received_in_tx_id: Option<i64>,
+    pub spent_in_tx_id: Option<i64>,
+    pub coinbase_block_height: Option<i64>,
     pub metadata: Option<Vec<u8>>,
     pub features_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
@@ -113,17 +121,21 @@ impl OutputSql {
         status: OutputStatus,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
         Ok(outputs::table
-            .filter(outputs::tx_id.eq(Some(tx_id.as_u64() as i64)))
+            .filter(received.or(spent))
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
     }
 
     /// Find outputs via tx_id
     pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(columns::tx_id.eq(Some(tx_id.as_u64() as i64)))
-            .load(conn)?)
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
+        Ok(outputs::table.filter(received.or(spent)).load(conn)?)
     }
 
     /// Find outputs via tx_id that are encumbered. Any outputs that are encumbered cannot be marked as spent.
@@ -131,8 +143,11 @@ impl OutputSql {
         tx_id: TxId,
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        let tx_id = Some(tx_id.as_u64() as i64);
+        let received = outputs::received_in_tx_id.eq(tx_id);
+        let spent = outputs::spent_in_tx_id.eq(tx_id);
         Ok(outputs::table
-            .filter(columns::tx_id.eq(Some(tx_id.as_u64() as i64)))
+            .filter(received.or(spent))
             .filter(
                 columns::status
                     .eq(OutputStatus::EncumberedToBeReceived as i32)
@@ -213,6 +228,158 @@ impl OutputSql {
             conn,
         )?;
         Ok(())
+    }
+
+    /// Find a particular Output, if it exists and is in the specified Spent state
+    pub fn find_pending_coinbase_at_block_height(
+        block_height: u64,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.ne(OutputStatus::Unspent as i32))
+            .filter(outputs::coinbase_block_height.eq(block_height as i64))
+            .first::<OutputSql>(conn)?)
+    }
+
+    pub fn index_unconfirmed(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::status
+                    .eq(OutputStatus::UnspentMinedUnconfirmed as i32)
+                    .or(outputs::mined_in_block.is_null()),
+            )
+            .order(outputs::id.asc())
+            .load(conn)?)
+    }
+
+    pub fn index_marked_deleted_in_block_is_null(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+                    .filter(outputs::marked_deleted_in_block.is_null())
+                    // Only return mined
+                    .filter(outputs::mined_in_block.is_not_null())
+                    .order(outputs::id.asc())
+                    .load(conn)?)
+    }
+
+    pub fn first_by_mined_height_desc(conn: &SqliteConnection) -> Result<Option<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::mined_height.is_not_null())
+            .order(outputs::mined_height.desc())
+            .first(conn)
+            .optional()?)
+    }
+
+    pub fn first_by_marked_deleted_height_desc(
+        conn: &SqliteConnection,
+    ) -> Result<Option<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::marked_deleted_at_height.is_not_null())
+            .order(outputs::marked_deleted_at_height.desc())
+            .first(conn)
+            .optional()?)
+    }
+
+    /// Return the available, time locked, pending incoming and pending outgoing balance
+    pub fn get_balance(
+        current_tip_for_time_lock_calculation: Option<u64>,
+        conn: &SqliteConnection,
+    ) -> Result<Balance, OutputManagerStorageError> {
+        #[derive(QueryableByName, Clone)]
+        struct BalanceQueryResult {
+            #[sql_type = "diesel::sql_types::BigInt"]
+            amount: i64,
+            #[sql_type = "diesel::sql_types::Text"]
+            category: String,
+        }
+        let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
+            let balance_query = sql_query(
+                    "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
+                     FROM outputs WHERE status = ? \
+                     UNION ALL \
+                     SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
+                     FROM outputs WHERE status = ? AND maturity > ? \
+                     UNION ALL \
+                     SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
+                     FROM outputs WHERE status = ? OR status = ? OR status = ? \
+                     UNION ALL \
+                     SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
+                     FROM outputs WHERE status = ? OR status = ? OR status = ?",
+                )
+                    // available_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                    // time_locked_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                    .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                    // pending_incoming_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                    // pending_outgoing_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
+            balance_query.load::<BalanceQueryResult>(conn)?
+        } else {
+            let balance_query = sql_query(
+                    "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
+                     FROM outputs WHERE status = ? \
+                     UNION ALL \
+                     SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
+                     FROM outputs WHERE status = ? OR status = ? OR status = ? \
+                     UNION ALL \
+                     SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
+                     FROM outputs WHERE status = ? OR status = ? OR status = ?",
+                )
+                    // available_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                    // pending_incoming_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                    // pending_outgoing_balance
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeSpent as i32)
+                    .bind::<diesel::sql_types::Integer, _>(OutputStatus::SpentMinedUnconfirmed as i32);
+            balance_query.load::<BalanceQueryResult>(conn)?
+        };
+        let mut available_balance = None;
+        let mut time_locked_balance = Some(None);
+        let mut pending_incoming_balance = None;
+        let mut pending_outgoing_balance = None;
+        for balance in balance_query_result.clone() {
+            match balance.category.as_str() {
+                "available_balance" => available_balance = Some(MicroTari::from(balance.amount as u64)),
+                "time_locked_balance" => time_locked_balance = Some(Some(MicroTari::from(balance.amount as u64))),
+                "pending_incoming_balance" => pending_incoming_balance = Some(MicroTari::from(balance.amount as u64)),
+                "pending_outgoing_balance" => pending_outgoing_balance = Some(MicroTari::from(balance.amount as u64)),
+                _ => {
+                    return Err(OutputManagerStorageError::UnexpectedResult(
+                        "Unexpected category in balance query".to_string(),
+                    ))
+                },
+            }
+        }
+
+        Ok(Balance {
+            available_balance: available_balance.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult("Available balance could not be calculated".to_string())
+            })?,
+            time_locked_balance: time_locked_balance.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult("Time locked balance could not be calculated".to_string())
+            })?,
+            pending_incoming_balance: pending_incoming_balance.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult(
+                    "Pending incoming balance could not be calculated".to_string(),
+                )
+            })?,
+            pending_outgoing_balance: pending_outgoing_balance.ok_or_else(|| {
+                OutputManagerStorageError::UnexpectedResult(
+                    "Pending outgoing balance could not be calculated".to_string(),
+                )
+            })?,
+        })
     }
 }
 

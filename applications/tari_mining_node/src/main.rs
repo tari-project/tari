@@ -47,9 +47,13 @@ use std::{
     time::Instant,
 };
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
-use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
+use tari_app_utilities::{
+    initialization::init_configuration,
+    utilities::{ExitCodes, ExitCodes::ConfigError},
+};
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader};
 use tari_core::blocks::BlockHeader;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
@@ -74,12 +78,16 @@ async fn main_inner() -> Result<(), ExitCodes> {
     config.num_mining_threads = global.num_mining_threads;
     config.validate_tip_timeout_sec = global.validate_tip_timeout_sec;
     config.mining_worker_name = global.mining_worker_name.clone();
+    config.mining_wallet_address = global.mining_wallet_address.clone();
+    config.mining_pool_address = global.mining_pool_address.clone();
     debug!("{:?}", bootstrap);
     debug!("{:?}", config);
 
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
+        let _ = RistrettoPublicKey::from_hex(&miner_address)
+            .map_err(|_| ConfigError("Miner is not configured with a valid wallet address.".to_string()))?;
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", &config.mining_worker_name);
         }

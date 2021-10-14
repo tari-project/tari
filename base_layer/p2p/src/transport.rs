@@ -61,14 +61,22 @@ pub struct TorConfig {
     /// If the underlying SOCKS transport encounters these addresses, bypass the proxy and dial directly using the
     /// TcpTransport
     pub tor_proxy_bypass_addresses: Vec<Multiaddr>,
+    /// Use a direct TCP/IP connection if a TCP address is given instead of the tor proxy. This is worse for privacy
+    /// but can use the full available connection bandwidth
+    pub tor_proxy_bypass_for_outbound_tcp: bool,
 }
 
 impl fmt::Display for TorConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "control_server_addr = {}, control_server_auth = {}, {}, socks_address_override = {:?}",
-            self.control_server_addr, self.control_server_auth, self.port_mapping, self.socks_address_override
+            "control_server_addr: {}, control_server_auth: {}, {}, socks_address_override: {:?}, \
+             tor_proxy_bypass_outbound_tcp_addresses = {:?}",
+            self.control_server_addr,
+            self.control_server_auth,
+            self.port_mapping,
+            self.socks_address_override,
+            self.tor_proxy_bypass_for_outbound_tcp
         )
     }
 }

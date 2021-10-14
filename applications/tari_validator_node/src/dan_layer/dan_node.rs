@@ -52,7 +52,7 @@ use tari_comms::{
     socks,
     tor,
     tor::TorIdentity,
-    transports::SocksConfig,
+    transports::{predicate::FalsePredicate, SocksConfig},
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     NodeIdentity,
@@ -253,7 +253,7 @@ impl DanNode {
                 tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                     proxy_address,
                     authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
-                    proxy_bypass_addresses: vec![],
+                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
                 }),
             },
             CommsTransport::TorHiddenService {
@@ -263,6 +263,7 @@ impl DanNode {
                 auth,
                 onion_port,
                 tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
             } => {
                 let identity = Some(&self.config.base_node_tor_identity_file)
                     .filter(|p| p.exists())
@@ -297,6 +298,7 @@ impl DanNode {
                     socks_address_override,
                     socks_auth: socks::Authentication::None,
                     tor_proxy_bypass_addresses,
+                    tor_proxy_bypass_for_outbound_tcp,
                 })
             },
             CommsTransport::Socks5 {
@@ -307,7 +309,7 @@ impl DanNode {
                 socks_config: SocksConfig {
                     proxy_address,
                     authentication: convert_socks_authentication(auth),
-                    proxy_bypass_addresses: vec![],
+                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
                 },
                 listener_address,
             },

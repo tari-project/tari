@@ -37,6 +37,7 @@ use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::connectivity_service::WalletConnectivityInterface;
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage, TxId},
@@ -53,27 +54,27 @@ pub enum TransactionReceiveProtocolStage {
     WaitForFinalize,
 }
 
-pub struct TransactionReceiveProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
-{
+pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
     source_pubkey: CommsPublicKey,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
-    resources: TransactionServiceResources<TBackend>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
-impl<TBackend> TransactionReceiveProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
+impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
+where
+    TBackend: TransactionBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         id: TxId,
         source_pubkey: CommsPublicKey,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
-        resources: TransactionServiceResources<TBackend>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
     ) -> Self {

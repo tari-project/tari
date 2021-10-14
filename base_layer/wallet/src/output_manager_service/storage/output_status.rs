@@ -27,10 +27,10 @@ use core::{
         Result::{Err, Ok},
     },
 };
-use std::{fmt, fmt::Formatter};
+use strum_macros::Display;
 
 /// The status of a given output
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Copy, Clone, Debug, PartialEq, Display)]
 pub enum OutputStatus {
     Unspent,
     Spent,
@@ -38,6 +38,11 @@ pub enum OutputStatus {
     EncumberedToBeSpent,
     Invalid,
     CancelledInbound,
+    UnspentMinedUnconfirmed,
+    ShortTermEncumberedToBeReceived,
+    ShortTermEncumberedToBeSpent,
+    SpentMinedUnconfirmed,
+    AbandonedCoinbase,
     NotStored,
 }
 
@@ -52,36 +57,13 @@ impl TryFrom<i32> for OutputStatus {
             3 => Ok(OutputStatus::EncumberedToBeSpent),
             4 => Ok(OutputStatus::Invalid),
             5 => Ok(OutputStatus::CancelledInbound),
-            6 => Ok(OutputStatus::NotStored),
+            6 => Ok(OutputStatus::UnspentMinedUnconfirmed),
+            7 => Ok(OutputStatus::ShortTermEncumberedToBeReceived),
+            8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
+            9 => Ok(OutputStatus::SpentMinedUnconfirmed),
+            10 => Ok(OutputStatus::AbandonedCoinbase),
+            11 => Ok(OutputStatus::NotStored),
             _ => Err(OutputManagerStorageError::ConversionError),
-        }
-    }
-}
-
-impl fmt::Display for OutputStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            OutputStatus::Unspent => {
-                write!(f, "Unspent")
-            },
-            OutputStatus::Spent => {
-                write!(f, "Spent")
-            },
-            OutputStatus::EncumberedToBeReceived => {
-                write!(f, "EncumberedToBeReceived")
-            },
-            OutputStatus::EncumberedToBeSpent => {
-                write!(f, "EncumberedToBeSpent")
-            },
-            OutputStatus::Invalid => {
-                write!(f, "Invalid")
-            },
-            OutputStatus::CancelledInbound => {
-                write!(f, "CancelledInbound")
-            },
-            OutputStatus::NotStored => {
-                write!(f, "NotStored")
-            },
         }
     }
 }

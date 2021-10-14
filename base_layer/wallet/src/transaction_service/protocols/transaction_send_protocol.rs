@@ -20,19 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    config::TransactionRoutingMechanism,
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::{TransactionEvent, TransactionServiceResponse},
-    service::TransactionServiceResources,
-    storage::{
-        database::TransactionBackend,
-        models::{CompletedTransaction, OutboundTransaction, TransactionDirection, TransactionStatus},
-    },
-    tasks::{
-        send_finalized_transaction::send_finalized_transaction_message,
-        send_transaction_cancelled::send_transaction_cancelled_message,
-        wait_on_dial::wait_on_dial,
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        config::TransactionRoutingMechanism,
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::{TransactionEvent, TransactionServiceResponse},
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, OutboundTransaction, TransactionDirection, TransactionStatus},
+        },
+        tasks::{
+            send_finalized_transaction::send_finalized_transaction_message,
+            send_transaction_cancelled::send_transaction_cancelled_message,
+            wait_on_dial::wait_on_dial,
+        },
     },
 };
 use chrono::Utc;
@@ -71,9 +74,7 @@ pub enum TransactionSendProtocolStage {
     WaitForReply,
 }
 
-pub struct TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
-{
+pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
@@ -82,18 +83,20 @@ where TBackend: TransactionBackend + 'static
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
-    resources: TransactionServiceResources<TBackend>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<TBackend> TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
+impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
+where
+    TBackend: TransactionBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         id: TxId,
-        resources: TransactionServiceResources<TBackend>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
