@@ -999,6 +999,22 @@ Then(
 );
 
 Then(
+  /node (.*) is in state (.*)/,
+  { timeout: 21 * 60 * 1000 },
+  async function (node, state) {
+    const client = this.getClient(node);
+    await waitForPredicate(
+      async () => (await client.get_node_state()) == state,
+      20 * 60 * 1000,
+      1000
+    );
+    let result = await this.getClient(node).get_node_state();
+    console.log(`Node ${node} is in the current state: ${result}`);
+    expect(result).to.equal(state);
+  }
+);
+
+Then(
   /(.*) does not have a new software update/,
   { timeout: 1200 * 1000 },
   async function (name) {
@@ -2679,7 +2695,7 @@ Then(
 );
 
 Then(
-  /while mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
+  /while mining via node (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
   { timeout: 1200 * 1000 },
   async function (nodeName, walletName) {
     const wallet = this.getWallet(walletName);
@@ -2738,12 +2754,13 @@ Then(
 );
 
 Then(
-  /while merge mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
+  /while mining via SHA3 miner (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
   { timeout: 3600 * 1000 },
-  async function (mmProxy, walletName) {
+  async function (miner, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
+    const miningNode = this.getMiningNode(miner);
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
@@ -2774,7 +2791,8 @@ Then(
           if (await walletClient.isTransactionMinedConfirmed(txIds[i])) {
             return true;
           } else {
-            await this.mergeMineBlock(mmProxy);
+            await miningNode.init(1, null, 1, 100000, false, null);
+            await miningNode.startNew();
             return false;
           }
         },
