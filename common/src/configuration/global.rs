@@ -23,7 +23,13 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, merge_mining_config::MergeMiningConfig, Network, ValidatorNodeConfig},
+    configuration::{
+        bootstrap::ApplicationType,
+        merge_mining_config::MergeMiningConfig,
+        BaseNodeConfig,
+        Network,
+        ValidatorNodeConfig,
+    },
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
@@ -73,8 +79,7 @@ pub struct GlobalConfig {
     pub core_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
-    pub grpc_enabled: bool,
-    pub grpc_base_node_address: SocketAddr,
+    pub base_node_config: Option<BaseNodeConfig>,
     pub grpc_console_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
@@ -309,28 +314,35 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    // GPRC enabled
-    let key = config_string("base_node", net_str, "grpc_enabled");
-    let grpc_enabled = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let mut base_node_config = None;
+    if application == ApplicationType::BaseNode {
+        let mut bn_config = BaseNodeConfig::default();
+        // GPRC enabled
+        let key = "base_node.grpc_enabled";
+        let grpc_enabled = cfg.get_bool(key).unwrap_or_default();
 
-    let key = config_string("base_node", net_str, "grpc_base_node_address");
-    let grpc_base_node_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        bn_config.grpc_address = if grpc_enabled {
+            let key = "base_node.grpc_address";
+            let addr = cfg.get_str(key).unwrap_or_else(|_| "127.0.0.1:18142".to_string());
 
-    let key = config_string("base_node", net_str, "grpc_console_wallet_address");
+            let grpc_address = addr
+                .parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+
+            Some(grpc_address)
+        } else {
+            None
+        };
+        base_node_config = Some(bn_config);
+    }
+
+    let key = "wallet.grpc_address";
     let grpc_console_wallet_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         .and_then(|addr| {
             addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         })?;
 
     // Peer and DNS seeds
@@ -586,40 +598,61 @@ fn convert_node_config(
 
     let merge_mining_config = match application {
         ApplicationType::MergeMiningProxy => {
-            let key = config_string("merge_mining_proxy", net_str, "monerod_url");
+            let key = "merge_mining_proxy.monerod_url";
             let monerod_url = cfg
-                .get_str(&key)
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
-            let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
+            let key = "merge_mining_proxy.monerod_use_auth";
             let monerod_use_auth = cfg
-                .get_bool(&key)
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+                .get_bool(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
-            let key = config_string("merge_mining_proxy", net_str, "monerod_username");
+            let key = "merge_mining_proxy.monerod_username";
             let monerod_username = cfg
-                .get_str(&key)
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
-            let key = config_string("merge_mining_proxy", net_str, "monerod_password");
+            let key = "merge_mining_proxy.monerod_password";
             let monerod_password = cfg
-                .get_str(&key)
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
-            let key = config_string("merge_mining_proxy", net_str, "proxy_host_address");
+            let key = "merge_mining_proxy.proxy_host_address";
             let proxy_host_address = cfg
-                .get_str(&key)
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 .and_then(|addr| {
                     addr.parse::<SocketAddr>()
-                        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 })?;
+
+            let key = "merge_mining_proxy.base_node_grpc_address";
+            let base_node_grpc_address = cfg
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<SocketAddr>()
+                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                })?;
+
+            let key = "merge_mining_proxy.wallet_grpc_address";
+            let wallet_grpc_address = cfg
+                .get_str(key)
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<SocketAddr>()
+                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                })?;
+
             Some(MergeMiningConfig {
                 monerod_url,
                 monerod_use_auth,
                 monerod_username,
                 monerod_password,
                 proxy_host_address,
+                base_node_grpc_address,
+                wallet_grpc_address,
             })
         },
         _ => None,
@@ -710,8 +743,7 @@ fn convert_node_config(
         core_threads,
         base_node_identity_file,
         public_address,
-        grpc_enabled,
-        grpc_base_node_address,
+        base_node_config,
         grpc_console_wallet_address,
         peer_seeds,
         dns_seeds,

@@ -67,6 +67,18 @@ class CustomWorld {
     return res;
   }
 
+  currentBaseNodeName() {
+    return Object.keys(this.nodes)[0];
+  }
+
+  currentWalletName() {
+    return Object.keys(this.wallets)[0];
+  }
+
+  currentWallet() {
+    return Object.values(this.wallets)[0];
+  }
+
   /// Create but don't add the node
   createNode(name, options) {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
@@ -434,12 +446,12 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
-  console.log("Finished compilation.");
-  console.log("Loading FFI interface..");
-  await InterfaceFFI.init();
-  console.log("FFI interface loaded.");
+  // console.log("Compiling wallet FFI...");
+  // await InterfaceFFI.compile();
+  // console.log("Finished compilation.");
+  // console.log("Loading FFI interface..");
+  // await InterfaceFFI.init();
+  // console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
 });
@@ -456,6 +468,7 @@ After(async function (testCase) {
   await stopAndHandleLogs(this.wallets, testCase, this);
   await stopAndHandleLogs(this.walletsFFI, testCase, this);
   await stopAndHandleLogs(this.miners, testCase, this);
+  await stopAndHandleLogs(this.dan_nodes, testCase, this);
 });
 
 async function stopAndHandleLogs(objects, testCase, context) {

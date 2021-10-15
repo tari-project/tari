@@ -51,7 +51,7 @@ use tari_app_utilities::{
     initialization::init_configuration,
     utilities::{ExitCodes, ExitCodes::ConfigError},
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader, GlobalConfig};
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader};
 use tari_core::blocks::BlockHeader;
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};
@@ -141,7 +141,7 @@ async fn main_inner() -> Result<(), ExitCodes> {
         config.mine_on_tip_only = global.mine_on_tip_only;
         debug!("mine_on_tip_only is {}", config.mine_on_tip_only);
 
-        let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
+        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(ExitCodes::grpc)?;
 
         let mut blocks_found: u64 = 0;
         loop {
@@ -153,7 +153,7 @@ async fn main_inner() -> Result<(), ExitCodes> {
                     loop {
                         debug!("Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
-                        match connect(&config, &global).await {
+                        match connect(&config).await {
                             Ok((nc, wc)) => {
                                 node_conn = nc;
                                 wallet_conn = wc;
@@ -193,16 +193,13 @@ async fn main_inner() -> Result<(), ExitCodes> {
     }
 }
 
-async fn connect(
-    config: &MinerConfig,
-    global: &GlobalConfig,
-) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_addr(global);
+async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
+    let base_node_addr = config.base_node_grpc_address.clone();
     info!("Connecting to base node at {}", base_node_addr);
-    let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
-    let wallet_addr = config.wallet_addr(global);
+    let node_conn = BaseNodeClient::connect(base_node_addr).await?;
+    let wallet_addr = config.wallet_grpc_address.clone();
     info!("Connecting to wallet at {}", wallet_addr);
-    let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
+    let wallet_conn = WalletClient::connect(wallet_addr).await?;
 
     Ok((node_conn, wallet_conn))
 }

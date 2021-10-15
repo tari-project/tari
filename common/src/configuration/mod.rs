@@ -40,11 +40,13 @@ pub mod global;
 pub mod loader;
 mod network;
 pub use network::Network;
+mod base_node_config;
 mod merge_mining_config;
 pub mod seconds;
 pub mod utils;
 mod validator_node_config;
 pub mod writer;
 
+pub use base_node_config::BaseNodeConfig;
 pub use merge_mining_config::MergeMiningConfig;
 pub use validator_node_config::ValidatorNodeConfig;

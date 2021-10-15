@@ -22,13 +22,7 @@
 
 use std::net::SocketAddr;
 
-#[derive(Debug, Clone)]
-pub struct MergeMiningConfig {
-    pub monerod_url: String,
-    pub monerod_use_auth: bool,
-    pub monerod_username: String,
-    pub monerod_password: String,
-    pub proxy_host_address: SocketAddr,
-    pub base_node_grpc_address: SocketAddr,
-    pub wallet_grpc_address: SocketAddr,
+#[derive(Debug, Clone, Default)]
+pub struct BaseNodeConfig {
+    pub grpc_address: Option<SocketAddr>,
 }

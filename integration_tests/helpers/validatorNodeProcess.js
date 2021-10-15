@@ -28,15 +28,19 @@ class ValidatorNodeProcess {
     this.name = `ValidatorNode${this.port}-${this.name}`;
     this.nodeFile = this.nodeFile || "nodeid.json";
 
+    let instance = 0;
     do {
       this.baseDir = `${this.options.baseDir}/${dateFormat(
         new Date(),
         "yyyymmddHHMM"
-      )}/${this.name}`;
+      )}/${instance}/${this.name}`;
       // Some tests failed during testing because the next base node process started in the previous process
       // directory therefore using the previous blockchain database
       if (fs.existsSync(this.baseDir)) {
-        sleep(1000);
+        instance++;
+      } else {
+        fs.mkdirSync(this.baseDir, { recursive: true });
+        break;
       }
     } while (fs.existsSync(this.baseDir));
     const args = ["--base-path", ".", "--init", "--create-id"];
@@ -111,8 +115,7 @@ class ValidatorNodeProcess {
 
   run(cmd, args) {
     return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
+      if (!fs.existsSync(this.baseDir + "/log")) {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
