@@ -1,4 +1,4 @@
-@transaction-info
+@transaction-info @wallet
 Feature: Transaction Info
 
 @long-running
@@ -29,8 +29,8 @@ Scenario: Get Transaction Info
     Then wallet WALLET_B detects all transactions as Mined_Unconfirmed
         # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
-    And mining node MINER mines 11 blocks
-    Then all nodes are at height 16
+    And mining node MINER mines 10 blocks
+    Then all nodes are at height 15
     Then wallet WALLET_A detects all transactions as Mined_Confirmed
     Then wallet WALLET_B detects all transactions as Mined_Confirmed
         # TODO: This wait is needed to stop base nodes from shutting down

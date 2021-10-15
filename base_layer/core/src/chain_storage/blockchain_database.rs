@@ -670,21 +670,67 @@ where B: BlockchainBackend
 
     pub fn prepare_new_block(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
         let NewBlockTemplate { header, mut body, .. } = template;
+        if header.height == 0 {
+            return Err(ChainStorageError::InvalidArguments {
+                func: "prepare_new_block",
+                arg: "template",
+                message: "Invalid height for NewBlockTemplate: must be greater than 0".to_string(),
+            });
+        }
+
         body.sort(header.version);
         let mut header = BlockHeader::from(header);
         // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
         // to increase the timestamp to be greater than the median timestamp
-        let height = header.height - 1;
+        let prev_block_height = header.height - 1;
         let min_height = header.height.saturating_sub(
             self.consensus_manager
                 .consensus_constants(header.height)
                 .get_median_timestamp_count() as u64,
         );
+
         let db = self.db_read_access()?;
-        let timestamps = fetch_headers(&*db, min_height, height)?
+        let tip_header = db.fetch_tip_header()?;
+        if header.height != tip_header.height() + 1 {
+            return Err(ChainStorageError::InvalidArguments {
+                func: "prepare_new_block",
+                arg: "template",
+                message: format!(
+                    "Expected new block template height to be {} but was {}",
+                    tip_header.height() + 1,
+                    header.height
+                ),
+            });
+        }
+        if header.prev_hash != *tip_header.hash() {
+            return Err(ChainStorageError::InvalidArguments {
+                func: "prepare_new_block",
+                arg: "template",
+                message: format!(
+                    "Expected new block template previous hash to be set to the current tip hash ({}) but was {}",
+                    tip_header.hash().to_hex(),
+                    header.prev_hash.to_hex()
+                ),
+            });
+        }
+
+        let timestamps = fetch_headers(&*db, min_height, prev_block_height)?
             .iter()
             .map(|h| h.timestamp)
             .collect::<Vec<_>>();
+        if timestamps.is_empty() {
+            return Err(ChainStorageError::DataInconsistencyDetected {
+                function: "prepare_new_block",
+                details: format!(
+                    "No timestamps were returned within heights {} - {} by the database despite the tip header height \
+                     being {}",
+                    min_height,
+                    prev_block_height,
+                    tip_header.height()
+                ),
+            });
+        }
+
         let median_timestamp = calc_median_timestamp(&timestamps);
         if median_timestamp > header.timestamp {
             header.timestamp = median_timestamp.increase(1);

@@ -35,36 +35,37 @@ async-trait = "0.1.50"
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
+sha3 = "0.9"
 bytes = "0.5"
 chrono = { version = "0.4.6", features = ["serde"] }
 croaring = { version = "=0.4.5", optional = true }
+decimal-rs = "0.1.20"
 digest = "0.9.0"
-fs2 = "0.3.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
+fs2 = "0.3.0"
 hex = "0.4.2"
-integer-encoding = "3.0.2"
 lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 log = "0.4"
 monero = { version = "^0.13.0", features = ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
 num = "0.3"
-num-format = "0.4.0"
 prost = "0.8.0"
 prost-types = "0.8.0"
 rand = "0.8"
 randomx-rs = { version = "1.1.9", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
-sha3 = "0.9"
 strum_macros = "0.17.1"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["time", "sync", "macros"] }
-tracing = "0.1.26"
-tracing-attributes = "*"
-tracing-futures = "*"
 ttl_cache = "0.5.1"
 uint = { version = "0.9", default-features = false }
+num-format = "0.4.0"
+tracing = "0.1.26"
+tracing-futures = "*"
+tracing-attributes = "*"
+derive_more = "0.99.16"
 
 [dev-dependencies]
 tari_p2p = { version = "^0.11", path = "../../base_layer/p2p", features = ["test-mocks"] }
