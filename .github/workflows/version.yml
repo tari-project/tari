@@ -21,9 +21,19 @@ jobs:
           git_push_gpgsign: false
       - name: install
         run: |
-          echo "this is a lot faster than building from source 🤷"
-          curl -o /tmp/cws -L https://github.com/delta1/cargo-workspaces/releases/download/v0.2.24/cargo-workspaces-v0.2.24-x86_64-linux-gnu
-          chmod +x /tmp/cws
+          echo "This is a lot faster than building from source ⚡"
+          curl -o /tmp/cargo-workspaces -L https://github.com/tari-project/cargo-workspaces/releases/download/v0.2.24/cargo-workspaces-v0.2.24-x86_64-linux-gnu
+          HASH=$(shasum /tmp/cargo-workspaces)
+          EXPECTED="94901503e751564153392c8f93bfebdc349e650c  /tmp/cargo-workspaces"
+          if [ "$HASH" != "$EXPECTED" ]; then
+            echo "Well, this is awkward.";
+            echo "The hash of the downloaded binary doesn't match what's expected.";
+            echo "Either the binary has been innocently changed without updating the expected hash,"
+            echo "or it's compromised and you're under attack!"
+            echo "Bailing out."
+            exit 1
+          fi
+          chmod +x /tmp/cargo-workspaces
       - name: git config
         run: |
           git config --global user.name "tari-deploy"
@@ -31,10 +41,10 @@ jobs:
       - name: crates list
         run: |
           pwd
-          /tmp/cws workspaces list
+          /tmp/cargo-workspaces workspaces list
       - name: bump patch version
         run: |
-          /tmp/cws workspaces version patch \
+          /tmp/cargo-workspaces workspaces version patch \
           --no-git-tag \
           --sign-commit \
           --no-global-tag \
