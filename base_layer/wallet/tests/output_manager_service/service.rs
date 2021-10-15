@@ -838,7 +838,7 @@ async fn sending_transaction_with_short_term_clear() {
         .prepare_transaction_to_send(
             OsRng.next_u64(),
             MicroTari::from(1000),
-            fee_per_gram,
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),

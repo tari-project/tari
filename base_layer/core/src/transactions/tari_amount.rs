@@ -20,12 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::display_currency::display_currency;
-use newtype_ops::newtype_ops;
-use serde::{Deserialize, Serialize};
-use crate::transactions::helpers;
+use super::format_currency;
 use decimal_rs::{Decimal, DecimalConvertError};
 use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
@@ -214,7 +213,7 @@ impl From<MicroTari> for FormattedMicroTari {
 impl Display for FormattedMicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = format!("{}", self.0);
-        let formatted = helpers::format_currency(&value, ',');
+        let formatted = format_currency(&value, ',');
         f.write_str(&formatted)?;
         f.write_str(" µT")?;
         Ok(())
@@ -233,7 +232,7 @@ impl From<Tari> for FormattedTari {
 impl Display for FormattedTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = format!("{:.2}", self.0);
-        let formatted = helpers::format_currency(&value, ',');
+        let formatted = format_currency(&value, ',');
         f.write_str(&formatted)?;
         f.write_str(" T")?;
         Ok(())

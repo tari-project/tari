@@ -20,35 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use rand::rngs::OsRng;
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
-};
-
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    fee::Fee,
-    tari_amount::MicroTari,
-    transaction::{
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        Transaction,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-        UnblindedOutput,
+use crate::{
+    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        fee::Fee,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            UnblindedOutput,
+        },
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        weight::TransactionWeight,
+        SenderTransactionProtocol,
     },
-    transaction_protocol::{build_challenge, TransactionMetadata},
-    SenderTransactionProtocol,
 };
 use rand::rngs::OsRng;
 use std::sync::Arc;
@@ -601,50 +592,4 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
-}
-
-/// Return a currency styled `String`
-/// # Examples
-///
-/// ```
-/// use tari_core::transactions::helpers::format_currency;
-/// assert_eq!("12,345.12", format_currency("12345.12", ','));
-/// assert_eq!("12,345", format_currency("12345", ','));
-/// ```
-pub fn format_currency(value: &str, separator: char) -> String {
-    let full_len = value.len();
-    let mut buffer = String::with_capacity(full_len / 3 + full_len);
-    let mut iter = value.splitn(2, '.');
-    let whole = iter.next().unwrap_or("");
-    let mut idx = whole.len() as isize - 1;
-    for c in whole.chars() {
-        buffer.push(c);
-        if idx > 0 && idx % 3 == 0 {
-            buffer.push(separator);
-        }
-        idx -= 1;
-    }
-    if let Some(decimal) = iter.next() {
-        buffer.push('.');
-        buffer.push_str(decimal);
-    }
-    buffer
-}
-
-#[cfg(test)]
-#[allow(clippy::excessive_precision)]
-mod test {
-    use super::format_currency;
-
-    #[test]
-    fn test_format_currency() {
-        assert_eq!("0.00", format_currency("0.00", ','));
-        assert_eq!("0.000000000000", format_currency("0.000000000000", ','));
-        assert_eq!("123,456.123456789", format_currency("123456.123456789", ','));
-        assert_eq!("123,456", format_currency("123456", ','));
-        assert_eq!("123", format_currency("123", ','));
-        assert_eq!("7,123", format_currency("7123", ','));
-        assert_eq!(".00", format_currency(".00", ','));
-        assert_eq!("00.", format_currency("00.", ','));
-    }
 }

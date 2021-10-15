@@ -6,10 +6,12 @@ pub use crypto_factories::CryptoFactories;
 mod coinbase_builder;
 pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
 
-pub mod display_currency;
 pub mod fee;
 pub mod tari_amount;
 pub mod transaction;
+
+mod format_currency;
+pub use format_currency::format_currency;
 
 pub mod transaction_protocol;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
