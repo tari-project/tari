@@ -1,0 +1,25 @@
+{
+  "name": "tari_dns",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Update DNS records for auto-update",
+  "scripts": {
+    "update": "DEBUG=dns node --no-deprecation update.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tari-project/tari.git"
+  },
+  "author": "The Tari Development Community",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tari-project/tari/issues"
+  },
+  "homepage": "https://github.com/tari-project/tari#readme",
+  "devDependencies": {},
+  "dependencies": {
+    "cloudflare": "^2.9.1",
+    "debug": "^4.3.2",
+    "dotenv": "^10.0.0"
+  }
+}
