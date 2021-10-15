@@ -271,14 +271,6 @@ where
             })
             .await?;
 
-        if !batch_response.is_synced {
-            info!(
-                target: LOG_TARGET,
-                "Base Node reports not being synced, aborting transaction validation"
-            );
-            return Err(TransactionServiceError::BaseNodeNotSynced);
-        }
-
         for response_proto in batch_response.responses {
             let response = TxQueryBatchResponse::try_from(response_proto)
                 .map_err(TransactionServiceError::ProtobufConversionError)?;
