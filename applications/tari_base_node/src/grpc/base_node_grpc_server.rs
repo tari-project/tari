@@ -324,19 +324,34 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let num_headers = cmp::min(num_headers, LIST_HEADERS_MAX_NUM_HEADERS);
         let (mut tx, rx) = mpsc::channel(LIST_HEADERS_PAGE_SIZE);
 
-        let headers: Vec<u64> = if request.from_height != 0 {
+        let from_height = cmp::min(request.from_height, tip);
+
+        let headers: Vec<u64> = if from_height != 0 {
             match sorting {
-                Sorting::Desc => ((cmp::max(0, request.from_height as i64 - num_headers as i64 + 1) as u64)..=
-                    request.from_height)
-                    .rev()
-                    .collect(),
-                Sorting::Asc => (request.from_height..(request.from_height + num_headers)).collect(),
+                Sorting::Desc => {
+                    let from = match from_height.overflowing_sub(num_headers) {
+                        (_, true) => 0,
+                        (res, false) => res + 1,
+                    };
+                    (from..=from_height).rev().collect()
+                },
+                Sorting::Asc => {
+                    let to = match from_height.overflowing_add(num_headers) {
+                        (_, true) => u64::MAX,
+                        (res, false) => res,
+                    };
+                    (from_height..to).collect()
+                },
             }
         } else {
             match sorting {
-                Sorting::Desc => ((cmp::max(0, tip as i64 - num_headers as i64 + 1) as u64)..=tip)
-                    .rev()
-                    .collect(),
+                Sorting::Desc => {
+                    let from = match tip.overflowing_sub(num_headers) {
+                        (_, true) => 0,
+                        (res, false) => res + 1,
+                    };
+                    (from..=tip).rev().collect()
+                },
                 Sorting::Asc => (0..num_headers).collect(),
             }
         };
@@ -447,6 +462,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let new_block = match handler.get_new_block(block_template).await {
             Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(Status::invalid_argument(message));
+            },
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -722,9 +740,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
+        let state: tari_rpc::BaseNodeState = (&(*status_watch.borrow()).state_info).into();
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
             initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
+            base_node_state: state.into(),
         };
 
         debug!(target: LOG_TARGET, "Sending MetaData response to client");

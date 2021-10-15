@@ -297,7 +297,7 @@ async fn mining_cycle(
         } else {
             display_report(&report, config).await;
         }
-        if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_timeout_sec() {
+        if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_interval() {
             validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
             reporting_timeout = Instant::now();
         }

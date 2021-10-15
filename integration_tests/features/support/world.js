@@ -155,7 +155,6 @@ class CustomWorld {
       const txn = new TransactionBuilder();
       txn.addInput(input);
       const txOutput = txn.addOutput(txn.getSpendableAmount());
-      this.addTransactionOutput(height + 1, txOutput);
       const completedTx = txn.build();
       const submitResult = await this.getClient(name).submitTransaction(
         completedTx
@@ -169,6 +168,8 @@ class CustomWorld {
       }
       if (submitResult.result == "ACCEPTED") {
         i++;
+        // we should only add a spendable output if the transaction is added to the blockchain
+        this.addTransactionOutput(height + 1, txOutput);
       }
       if (i > 9) {
         //this is to make sure the blocks stay relatively empty so that the tests don't take too long

@@ -69,6 +69,15 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(time_locked_outputs.len(), 0);
     let time_locked_balance = unspent_outputs[4].unblinded_output.value;
 
+    for i in 0..4usize {
+        let balance = runtime.block_on(db.get_balance(Some(i as u64))).unwrap();
+        let mut sum = MicroTari::from(0);
+        for output in unspent_outputs.iter().take(5).skip(i + 1) {
+            sum += output.unblinded_output.value;
+        }
+        assert_eq!(balance.time_locked_balance.unwrap(), sum);
+    }
+
     unspent_outputs.sort();
 
     let outputs = runtime.block_on(db.fetch_sorted_unspent_outputs()).unwrap();
