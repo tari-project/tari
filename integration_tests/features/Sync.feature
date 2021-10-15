@@ -101,20 +101,20 @@ Feature: Block Sync
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
     # Allow reorg to filter through
-    When I wait <SYNC_TIME> seconds
+    Then node SYNCER is in state LISTENING
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:
-      | X1  | Y1 | SYNC_TIME |
-      | 101 | 10 | 1       |
+      | X1  | Y1 |
+      | 101 | 10 |
 
     @long-running
     Examples:
-      | X1   | Y1 | SYNC_TIME |
-      | 501  | 50 | 20        |
-      | 999  | 50 | 60        |
-      | 1000 | 50 | 60        |
-      | 1001 | 50 | 60        |
+      | X1   | Y1 |
+      | 501  | 50 |
+      | 999  | 50 |
+      | 1000 | 50 |
+      | 1001 | 50 |
 
 
   Scenario: Pruned mode network only

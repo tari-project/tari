@@ -21,16 +21,20 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::Block,
-    chain_storage::BlockchainDatabase,
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
+    proof_of_work::Difficulty,
     tari_utilities::Hashable,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
         BlockSpec,
     },
-    transactions::transaction::{Transaction, UnblindedOutput},
+    transactions::{
+        tari_amount::T,
+        transaction::{Transaction, UnblindedOutput},
+    },
 };
 use std::sync::Arc;
 use tari_common::configuration::Network;
@@ -159,6 +163,12 @@ mod fetch_headers {
     fn it_returns_genesis() {
         let db = setup();
         let headers = db.fetch_headers(0..).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(0..0).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(0..=0).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(..).unwrap();
         assert_eq!(headers.len(), 1);
     }
 
@@ -430,5 +440,43 @@ mod fetch_total_size_stats {
         let stats = db.fetch_total_size_stats().unwrap();
         // Returns one per db
         assert_eq!(stats.sizes().len(), 20);
+    }
+}
+
+mod prepare_new_block {
+    use super::*;
+
+    #[test]
+    fn it_errors_for_genesis_block() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
+        let err = db.prepare_new_block(template).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+    }
+
+    #[test]
+    fn it_errors_for_non_tip_template() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let next_block = BlockHeader::from_previous(genesis.header());
+        let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        // This would cause a panic if the sanity checks were not there
+        template.header.height = 100;
+        let err = db.prepare_new_block(template.clone()).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+        template.header.height = 1;
+        template.header.prev_hash[0] += 1;
+        let err = db.prepare_new_block(template).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+    }
+    #[test]
+    fn it_prepares_the_first_block() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let next_block = BlockHeader::from_previous(genesis.header());
+        let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let block = db.prepare_new_block(template).unwrap();
+        assert_eq!(block.header.height, 1);
     }
 }
