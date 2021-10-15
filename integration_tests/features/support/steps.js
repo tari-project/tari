@@ -903,7 +903,11 @@ Then(
     await this.forEachClientAsync(async (client, name) => {
       await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
       const currTip = await client.getTipHeader();
-      console.log("the node is at tip ", currTip);
+      console.log(
+        `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
+          "hex"
+        )})`
+      );
       expect(currTip.height).to.equal(height);
       if (!tipHash) {
         tipHash = currTip.hash.toString("hex");
@@ -929,7 +933,6 @@ Then(
         let height = null;
         let result = true;
         await this.forEachClientAsync(async (client, name) => {
-          await waitFor(async () => client.getTipHeight(), 115 * 1000);
           const currTip = await client.getTipHeader();
           if (!tipHash) {
             tipHash = currTip.hash.toString("hex");

@@ -23,6 +23,7 @@
 use super::error::CommandError;
 use log::*;
 use std::{
+    convert::TryFrom,
     fs::File,
     io::{LineWriter, Write},
     str::FromStr,
@@ -661,7 +662,7 @@ pub async fn command_runner(
                 }
                 if count > 0 {
                     let average = f64::from(sum) / count as f64;
-                    let average = Tari::from(average / 1_000_000f64);
+                    let average = Tari::try_from(average / 1_000_000f64)?;
                     println!("Average value UTXO   : {}", average);
                 }
                 if let Some(max) = values.iter().max() {

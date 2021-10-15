@@ -75,6 +75,10 @@ pub fn check_timestamp_ftl(
 }
 
 /// Returns the median timestamp for the provided timestamps.
+///
+/// ## Panics
+/// When an empty slice is given as this is undefined for median average.
+/// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     assert!(
         !timestamps.is_empty(),
