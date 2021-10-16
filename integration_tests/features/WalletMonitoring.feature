@@ -1,6 +1,8 @@
 @wallet-monitoring  @wallet
 Feature: Wallet Monitoring
 
+
+@flaky
   Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
