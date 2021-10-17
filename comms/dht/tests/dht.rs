@@ -625,6 +625,160 @@ async fn dht_propagate_dedup() {
 
 #[tokio::test]
 #[allow(non_snake_case)]
+async fn dht_do_not_store_invalid_message_in_dedup() {
+    let mut config = dht_config();
+    config.dedup_allowed_message_occurrences = 3;
+
+    // Node C receives messages from A and B
+    let mut node_C = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
+
+    // Node B forwards a message from A but modifies it
+    let mut node_B = make_node(
+        "node_B",
+        PeerFeatures::COMMUNICATION_NODE,
+        config.clone(),
+        Some(node_C.to_peer()),
+    )
+    .await;
+
+    // Node A creates a message sends it to B, B modifies it, sends it to C; Node A sends message to C
+    let node_A = make_node("node_A", PeerFeatures::COMMUNICATION_NODE, config.clone(), [
+        node_B.to_peer(),
+        node_C.to_peer(),
+    ])
+    .await;
+
+    log::info!(
+        "NodeA = {}, NodeB = {}, NodeC = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+        node_C.node_identity().node_id().short_str(),
+    );
+
+    // Connect the peers that should be connected
+    node_A
+        .comms
+        .connectivity()
+        .dial_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    node_A
+        .comms
+        .connectivity()
+        .dial_peer(node_C.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    node_B
+        .comms
+        .connectivity()
+        .dial_peer(node_C.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    let mut node_C_messaging = node_C.messaging_events.subscribe();
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    // Just a message to test connectivity between Node A -> Node C, and to get the header from
+    let out_msg = OutboundDomainMessage::new(123, Person {
+        name: "John Conway".into(),
+        age: 82,
+    });
+
+    node_A
+        .dht
+        .outbound_requester()
+        .send_message(
+            SendMessageParams::new()
+                .propagate(NodeDestination::Unknown, vec![node_C.node_identity().node_id().clone()])
+                .with_destination(NodeDestination::Unknown)
+                .finish(),
+            out_msg,
+        )
+        .await
+        .unwrap();
+
+    // Get the message that was received by Node B
+    let mut msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
+    let bytes = msg.decryption_result.unwrap().to_encoded_bytes();
+
+    // Clone header without modification
+    let header_unmodified = msg.dht_header.clone();
+
+    // Modify the header
+    msg.dht_header.message_type = DhtMessageType::from_i32(3i32).unwrap();
+
+    // Forward modified message to Node C - Should get us banned
+    node_B
+        .dht
+        .outbound_requester()
+        .send_raw(
+            SendMessageParams::new()
+                .propagate(NodeDestination::Unknown, vec![msg.source_peer.node_id.clone()])
+                .with_destination(NodeDestination::Unknown)
+                .with_dht_header(msg.dht_header)
+                .finish(),
+            bytes.clone(),
+        )
+        .await
+        .unwrap();
+
+    node_A
+        .dht
+        .outbound_requester()
+        .send_raw(
+            SendMessageParams::new()
+                .propagate(NodeDestination::Unknown, vec![])
+                .with_dht_header(header_unmodified)
+                .finish(),
+            bytes,
+        )
+        .await
+        .unwrap();
+
+    // Node C receives the correct message from Node A
+    let msg = node_C
+        .next_inbound_message(Duration::from_secs(10))
+        .await
+        .expect("Node C expected an inbound message but it never arrived");
+    assert!(msg.decryption_succeeded());
+    log::info!("Received message {}", msg.tag);
+    let person = msg
+        .decryption_result
+        .unwrap()
+        .decode_part::<Person>(1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(person.name, "John Conway");
+    // TODO Test not working as it receives the message only if dedup_allowed_message_occurrences > 1
+
+    let node_A_id = node_A.node_identity().node_id().clone();
+    let node_B_id = node_B.node_identity().node_id().clone();
+
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
+
+    // Check the message flow BEFORE deduping
+    let received = filter_received(collect_try_recv!(node_C_messaging, timeout = Duration::from_secs(20)));
+
+    let received_from_a = count_messages_received(&received, &[&node_A_id]);
+    let received_from_b = count_messages_received(&received, &[&node_B_id]);
+
+    assert_eq!(received_from_a, 1);
+    assert_eq!(received_from_b, 1);
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
 async fn dht_repropagate() {
     let mut config = dht_config();
     config.dedup_allowed_message_occurrences = 3;
