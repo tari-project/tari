@@ -178,13 +178,10 @@ impl ConsensusDecoding for OutputFeatures {
                 ),
             ));
         }
+        // Decode safety: read_varint will stop reading the varint after 10 bytes
         let maturity = reader.read_varint()?;
         let flags = OutputFlags::consensus_decode(reader)?;
-        Ok(Self {
-            flags,
-            // Decode safety: read_varint allows a maximum of a 10-byte varint
-            maturity,
-        })
+        Ok(Self { flags, maturity })
     }
 }
 
@@ -246,10 +243,10 @@ impl ConsensusDecoding for OutputFlags {
         // SAFETY: we have 3 options here:
         // 1. error if unsupported flags are used, meaning that every new flag will be a hard fork
         // 2. truncate unsupported flags, means different hashes will be produced for the same block
-        // 3. ignore unsupported flags, which could be set at any time and persisted to the database.
+        // 3. ignore unsupported flags, which could be set at any time and persisted to the blockchain.
         //   Once those flags are defined at some point in the future, depending on the functionality of the flag,
         //   a consensus rule may be needed that ignores flags prior to a given block height.
-        // Option 3 is the best tradeoff
+        // Option 3 is used here
         Ok(unsafe { OutputFlags::from_bits_unchecked(u8::from_le_bytes(buf)) })
     }
 }
