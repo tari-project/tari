@@ -28,7 +28,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
     transactions::transaction::TransactionKernel,
@@ -42,6 +42,7 @@ pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 use crate::{
     base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
+    chain_storage::ChainHeader,
     transactions::transaction::TransactionOutput,
 };
 use tari_common_types::types::{Commitment, HashOutput, Signature};
@@ -82,10 +83,14 @@ impl LocalNodeCommsInterface {
     }
 
     /// Request the block header of the current tip at the block height
-    pub async fn get_blocks(&mut self, block_heights: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
+    pub async fn get_blocks(
+        &mut self,
+        start: u64,
+        end_inclusive: u64,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingBlocks(block_heights))
+            .call(NodeCommsRequest::FetchMatchingBlocks { start, end_inclusive })
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -93,11 +98,16 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the block header of the current tip at the block height
-    pub async fn get_headers(&mut self, block_heights: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
+    /// Request the block headers with the given range of heights. The returned headers are ordered from lowest to
+    /// highest block height
+    pub async fn get_headers(
+        &mut self,
+        start: u64,
+        end_inclusive: u64,
+    ) -> Result<Vec<ChainHeader>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchHeaders(block_heights))
+            .call(NodeCommsRequest::FetchHeaders { start, end_inclusive })
             .await??
         {
             NodeCommsResponse::BlockHeaders(headers) => Ok(headers),
@@ -204,7 +214,7 @@ impl LocalNodeCommsInterface {
     }
 
     /// Return header matching the given hash. If the header cannot be found `Ok(None)` is returned.
-    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<BlockHeader>, CommsInterfaceError> {
+    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<ChainHeader>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetHeaderByHash(hash))

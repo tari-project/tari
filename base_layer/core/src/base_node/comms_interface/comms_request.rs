@@ -38,13 +38,13 @@ pub struct MmrStateRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
-    FetchHeaders(Vec<u64>),
+    FetchHeaders { start: u64, end_inclusive: u64 },
     FetchHeadersWithHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchMatchingUtxos(Vec<HashOutput>),
     FetchMatchingTxos(Vec<HashOutput>),
-    FetchMatchingBlocks(Vec<u64>),
-    FetchBlocksWithHashes(Vec<HashOutput>),
+    FetchMatchingBlocks { start: u64, end_inclusive: u64 },
+    FetchBlocksByHash(Vec<HashOutput>),
     FetchBlocksWithKernels(Vec<Signature>),
     FetchBlocksWithUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
@@ -65,13 +65,17 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
-            FetchHeaders(v) => write!(f, "FetchHeaders (n={})", v.len()),
+            FetchHeaders { start, end_inclusive } => {
+                write!(f, "FetchHeaders ({}-{})", start, end_inclusive)
+            },
             FetchHeadersWithHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
             FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
-            FetchMatchingBlocks(v) => write!(f, "FetchMatchingBlocks (n={})", v.len()),
-            FetchBlocksWithHashes(v) => write!(f, "FetchBlocksWithHashes (n={})", v.len()),
+            FetchMatchingBlocks { start, end_inclusive } => {
+                write!(f, "FetchMatchingBlocks ({}-{})", start, end_inclusive)
+            },
+            FetchBlocksByHash(v) => write!(f, "FetchBlocksByHash (n={})", v.len()),
             FetchBlocksWithKernels(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),
             FetchBlocksWithUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),

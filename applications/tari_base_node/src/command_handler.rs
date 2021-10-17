@@ -128,14 +128,9 @@ impl CommandHandler {
             status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
-
-            let last_header = node
-                .get_headers(vec![metadata.height_of_longest_chain()])
-                .await
-                .unwrap()
-                .pop()
-                .unwrap();
-            let last_block_time = DateTime::<Utc>::from(last_header.timestamp);
+            let height = metadata.height_of_longest_chain();
+            let last_header = node.get_headers(height, height).await.unwrap().pop().unwrap();
+            let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
             status_line.add_field(
                 "Tip",
                 format!(
@@ -866,8 +861,9 @@ impl CommandHandler {
                 io::stdout().flush().unwrap();
                 // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
                 if height > horizon_height {
-                    match node.get_blocks(vec![height]).await {
-                        Err(_err) => {
+                    match node.get_blocks(height, height).await {
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "{}", err);
                             missing_blocks.push(height);
                         },
                         Ok(mut data) => match data.pop() {
@@ -879,8 +875,8 @@ impl CommandHandler {
                     };
                 }
                 height -= 1;
-                let next_header = node.get_headers(vec![height]).await;
-                if next_header.is_err() {
+                let next_header = node.get_headers(height, height).await.ok().filter(|h| !h.is_empty());
+                if next_header.is_none() {
                     // this header is missing, so we stop here and need to ask for this header
                     missing_headers.push(height);
                 };
@@ -917,9 +913,9 @@ impl CommandHandler {
                 print!("{}", height);
                 io::stdout().flush().unwrap();
 
-                let block = match node.get_blocks(vec![height]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
+                let block = match node.get_blocks(height, height).await {
+                    Err(err) => {
+                        println!("Error in db, could not get block: {}", err);
                         break;
                     },
                     Ok(mut data) => match data.pop() {
@@ -927,14 +923,14 @@ impl CommandHandler {
                         // logging it.
                         Some(historical_block) => historical_block,
                         None => {
-                            println!("Error in db, could not get block");
+                            println!("Error in db, block not found at height {}", height);
                             break;
                         },
                     },
                 };
-                let prev_block = match node.get_blocks(vec![height - 1]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
+                let prev_block = match node.get_blocks(height - 1, height - 1).await {
+                    Err(err) => {
+                        println!("Error in db, could not get block: {}", err);
                         break;
                     },
                     Ok(mut data) => match data.pop() {
@@ -942,7 +938,7 @@ impl CommandHandler {
                         // logging it.
                         Some(historical_block) => historical_block,
                         None => {
-                            println!("Error in db, could not get block");
+                            println!("Error in db, block not found at height {}", height - 1);
                             break;
                         },
                     },

@@ -34,9 +34,9 @@ use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
+        comms_interface::OutboundNodeCommsInterface,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, Validators},

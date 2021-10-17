@@ -20,21 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use futures::StreamExt;
 use helpers::block_builders::append_block;
+use std::sync::Arc;
 use tari_common::configuration::Network;
-use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
-use tari_comms::peer_manager::NodeId;
+use tari_common_types::types::PublicKey;
 use tari_core::{
-    base_node::{
-        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::{
+        InboundNodeCommsHandlers,
+        NodeCommsRequest,
+        NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabaseConfig, DbTransaction, HistoricalBlock, Validators},
-    consensus::{ConsensusManager, NetworkConsensus},
+    chain_storage::{BlockchainDatabaseConfig, DbTransaction, Validators},
+    consensus::ConsensusManager,
     mempool::{Mempool, MempoolConfig},
     test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
     transactions::{
@@ -53,40 +51,14 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::hash::Hashable,
 };
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tokio::sync::broadcast;
-
-use tokio::sync::mpsc;
+use tari_service_framework::reply_channel;
+use tokio::sync::{broadcast, mpsc};
 #[allow(dead_code)]
 mod helpers;
-// use crate::helpers::database::create_test_db;
-
-async fn test_request_responder(
-    receiver: &mut Receiver<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-    response: NodeCommsResponse,
-) {
-    let req_context = receiver.next().await.unwrap();
-    req_context.reply(Ok(response)).unwrap()
-}
 
 fn new_mempool() -> Mempool {
     let mempool_validator = MockValidator::new(true);
     Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator))
-}
-
-#[tokio::test]
-async fn outbound_get_metadata() {
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    let metadata = ChainMetadata::new(5, vec![0u8], 3, 0, 5);
-    let metadata_response = NodeCommsResponse::ChainMetadata(metadata.clone());
-    let (received_metadata, _) = futures::join!(
-        outbound_nci.get_metadata(),
-        test_request_responder(&mut request_receiver, metadata_response)
-    );
-    assert_eq!(received_metadata.unwrap(), metadata);
 }
 
 #[tokio::test]
@@ -153,24 +125,6 @@ async fn inbound_fetch_kernel_by_excess_sig() {
 }
 
 #[tokio::test]
-async fn outbound_fetch_headers() {
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    let mut header = BlockHeader::new(0);
-    header.height = 0;
-    let header_response = NodeCommsResponse::BlockHeaders(vec![header.clone()]);
-    let (received_headers, _) = futures::join!(
-        outbound_nci.fetch_headers(vec![0]),
-        test_request_responder(&mut request_receiver, header_response)
-    );
-    let received_headers = received_headers.unwrap();
-    assert_eq!(received_headers.len(), 1);
-    assert_eq!(received_headers[0], header);
-}
-
-#[tokio::test]
 async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -190,38 +144,17 @@ async fn inbound_fetch_headers() {
     let header = store.fetch_block(0).unwrap().header().clone();
 
     if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchHeaders(vec![0]))
+        .handle_request(NodeCommsRequest::FetchHeaders {
+            start: 0,
+            end_inclusive: 0,
+        })
         .await
     {
         assert_eq!(received_headers.len(), 1);
-        assert_eq!(received_headers[0], header);
+        assert_eq!(*received_headers[0].header(), header);
     } else {
         panic!();
     }
-}
-
-#[tokio::test]
-async fn outbound_fetch_utxos() {
-    let factories = CryptoFactories::default();
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    let (utxo, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        Default::default(),
-        &TariScript::default(),
-    );
-    let hash = utxo.hash();
-    let utxo_response = NodeCommsResponse::TransactionOutputs(vec![utxo.clone()]);
-    let (received_utxos, _) = futures::join!(
-        outbound_nci.fetch_utxos(vec![hash]),
-        test_request_responder(&mut request_receiver, utxo_response)
-    );
-    let received_utxos = received_utxos.unwrap();
-    assert_eq!(received_utxos.len(), 1);
-    assert_eq!(received_utxos[0], utxo);
 }
 
 #[tokio::test]
@@ -265,38 +198,6 @@ async fn inbound_fetch_utxos() {
     } else {
         panic!();
     }
-}
-
-#[tokio::test]
-async fn outbound_fetch_txos() {
-    let factories = CryptoFactories::default();
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    let (txo1, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
-        Default::default(),
-        &TariScript::default(),
-    );
-    let (txo2, _, _) = create_utxo(
-        MicroTari(15_000),
-        &factories,
-        Default::default(),
-        &TariScript::default(),
-    );
-    let hash1 = txo1.hash();
-    let hash2 = txo2.hash();
-    let txo_response = NodeCommsResponse::TransactionOutputs(vec![txo1.clone(), txo2.clone()]);
-    let (received_txos, _) = futures::join!(
-        outbound_nci.fetch_txos(vec![hash1, hash2]),
-        test_request_responder(&mut request_receiver, txo_response)
-    );
-    let received_txos = received_txos.unwrap();
-    assert_eq!(received_txos.len(), 2);
-    assert_eq!(received_txos[0], txo1);
-    assert_eq!(received_txos[1], txo2);
 }
 
 #[tokio::test]
@@ -370,25 +271,6 @@ async fn inbound_fetch_txos() {
 }
 
 #[tokio::test]
-async fn outbound_fetch_blocks() {
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded_channel();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    let network = Network::LocalNet;
-    let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
-    let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
-    let block = HistoricalBlock::new(gb, 0, Default::default(), vec![], 0);
-    let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
-    let (received_blocks, _) = futures::join!(
-        outbound_nci.fetch_blocks(vec![0]),
-        test_request_responder(&mut request_receiver, block_response)
-    );
-    let received_blocks = received_blocks.unwrap();
-    assert_eq!(received_blocks.len(), 1);
-    assert_eq!(received_blocks[0], block);
-}
-
-#[tokio::test]
 async fn inbound_fetch_blocks() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
@@ -408,7 +290,10 @@ async fn inbound_fetch_blocks() {
     let block = store.fetch_block(0).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(vec![0]))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            start: 0,
+            end_inclusive: 0,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -485,7 +370,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(vec![1]))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            start: 1,
+            end_inclusive: 1,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -495,7 +383,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     }
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks(vec![2]))
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
+            start: 2,
+            end_inclusive: 2,
+        })
         .await
     {
         assert_eq!(received_blocks.len(), 1);
