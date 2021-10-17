@@ -71,10 +71,13 @@ class CustomWorld {
 
   async createAndAddNode(name, addresses) {
     const node = this.createNode(name);
-    if (Array.isArray(addresses)) {
-      node.setPeerSeeds(addresses);
-    } else {
-      node.setPeerSeeds([addresses]);
+    console.log(`Creating node ${name} with ${addresses}`);
+    if (addresses) {
+      if (Array.isArray(addresses)) {
+        node.setPeerSeeds(addresses);
+      } else {
+        node.setPeerSeeds([addresses]);
+      }
     }
     await node.startNew();
     await this.addNode(name, node);
