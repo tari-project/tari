@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -18,40 +18,33 @@
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::PoisonError;
-use tari_common::exit_codes::ExitCodes;
-use tari_storage::KeyValStoreError;
-use thiserror::Error;
+use crate::tari_rpc as grpc;
+use tari_core::base_node::state_machine_service::states::{StateInfo, StateInfo::*};
 
-#[derive(Debug, Error, Clone)]
-pub enum PeerManagerError {
-    #[error("The requested peer does not exist")]
-    PeerNotFoundError,
-    #[error("The peer has been banned")]
-    BannedPeer,
-    #[error("A problem has been encountered with the database: {0}")]
-    DatabaseError(#[from] KeyValStoreError),
-    #[error("An error occurred while migrating the database: {0}")]
-    MigrationError(String),
-}
-
-impl From<PeerManagerError> for ExitCodes {
-    fn from(err: PeerManagerError) -> Self {
-        ExitCodes::NetworkError(err.to_string())
+impl From<StateInfo> for grpc::BaseNodeState {
+    fn from(info: StateInfo) -> Self {
+        match info {
+            StartUp => grpc::BaseNodeState::HeaderSync,
+            HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
+            HorizonSync(_) => grpc::BaseNodeState::HorizonSync,
+            BlockSyncStarting => grpc::BaseNodeState::BlockSyncStarting,
+            BlockSync(_) => grpc::BaseNodeState::BlockSync,
+            Listening(_) => grpc::BaseNodeState::Listening,
+        }
     }
 }
 
-impl PeerManagerError {
-    /// Returns true if this error indicates that the peer is not found, otherwise false
-    pub fn is_peer_not_found(&self) -> bool {
-        matches!(self, PeerManagerError::PeerNotFoundError)
-    }
-}
-
-impl<T> From<PoisonError<T>> for PeerManagerError {
-    fn from(_: PoisonError<T>) -> Self {
-        PeerManagerError::DatabaseError(KeyValStoreError::PoisonedAccess)
+impl From<&StateInfo> for grpc::BaseNodeState {
+    fn from(info: &StateInfo) -> Self {
+        match info {
+            StartUp => grpc::BaseNodeState::HeaderSync,
+            HeaderSync(_) => grpc::BaseNodeState::HeaderSync,
+            HorizonSync(_) => grpc::BaseNodeState::HorizonSync,
+            BlockSyncStarting => grpc::BaseNodeState::BlockSyncStarting,
+            BlockSync(_) => grpc::BaseNodeState::BlockSync,
+            Listening(_) => grpc::BaseNodeState::Listening,
+        }
     }
 }

@@ -34,7 +34,10 @@ use tari_crypto::{
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
-use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::{HashDigest, PrivateKey, PublicKey},
+};
 use tari_core::transactions::{
     helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
@@ -49,14 +52,7 @@ use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
         database::{TransactionBackend, TransactionDatabase},
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
-            WalletTransaction,
-        },
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };

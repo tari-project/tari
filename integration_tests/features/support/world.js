@@ -16,7 +16,6 @@ class CustomWorld {
   constructor({ attach, parameters }) {
     // this.variable = 0;
     this.attach = attach;
-    this.checkAutoTransactions = true;
     this.seeds = {};
     this.nodes = {};
     this.proxies = {};
@@ -139,43 +138,37 @@ class CustomWorld {
   }
 
   async createTransactions(name, height) {
+    this.lastTransactionsSucceeded = true;
     let result = true;
     const txInputs = this.transactionOutputs[height];
     if (txInputs == null) {
       return result;
     }
-    // This function is called from steps with timeout = -1. So we need to
-    // write something to the console from time to time. Because otherwise
-    // it will timeout and the tests will be killed.
-    let keepAlive = setInterval(() => {
-      console.log(".");
-    }, 1000 * 60 * 10);
     let i = 0;
+    const client = this.getClient(name);
     for (const input of txInputs) {
+      // console.log(input);
+      // console.log(await client.fetchMatchingUtxos(input.hash));
+
       const txn = new TransactionBuilder();
       txn.addInput(input);
       const txOutput = txn.addOutput(txn.getSpendableAmount());
-      this.addTransactionOutput(height + 1, txOutput);
       const completedTx = txn.build();
-      const submitResult = await this.getClient(name).submitTransaction(
-        completedTx
-      );
-      if (this.checkAutoTransactions && submitResult.result != "ACCEPTED") {
-        console.log(
-          "Automated transaction failed. If this is not intended add step :",
-          "`I do not expect all automated transactions to succeed` !"
-        );
-        result = false;
+
+      const submitResult = await client.submitTransaction(completedTx);
+      if (submitResult.result != "ACCEPTED") {
+        this.lastTransactionsSucceeded = false;
+        // result = false;
+      } else {
+        // Add the output to be spent... assumes it has been mined.
+        this.addTransactionOutput(height + 1, txOutput);
       }
-      if (submitResult.result == "ACCEPTED") {
-        i++;
-      }
+      i++;
       if (i > 9) {
         //this is to make sure the blocks stay relatively empty so that the tests don't take too long
         break;
       }
     }
-    clearInterval(keepAlive);
     console.log(
       `Created ${i} transactions for node: ${name} at height: ${height}`
     );
@@ -363,6 +356,9 @@ class CustomWorld {
 setWorldConstructor(CustomWorld);
 
 BeforeAll({ timeout: 2400000 }, async function () {
+  console.log(
+    "NOTE: Some tests may be excluded based on the profile used in <root>/integration_tests/cucumber.js. If none was specified, `default` profile is used."
+  );
   const baseNode = new BaseNodeProcess("compile");
   console.log("Compiling base node...");
   await baseNode.init();

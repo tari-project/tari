@@ -1,6 +1,8 @@
 @wallet-monitoring  @wallet
 Feature: Wallet Monitoring
 
+
+@flaky
   Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
@@ -49,7 +51,6 @@ Feature: Wallet Monitoring
   # 18+ mins on circle ci
   @long-running
   Scenario: Wallets monitoring normal transactions after a reorg
-    Given I do not expect all automated transactions to succeed
         #
         # Chain 1:
         #   Collects 10 coinbases into one wallet, send 7 transactions

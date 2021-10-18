@@ -1,33 +1,33 @@
 @wallet-transact @wallet
 Feature: Wallet Transactions
 
-  @critical @flaky
+  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
-    When I merge mine 15 blocks via PROXY
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 15 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_A to have at least 55000000000 uT
     And I have wallet WALLET_B connected to all seed nodes
     Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
     Then wallet WALLET_A detects all transactions are at least Broadcast
-    When I merge mine 5 blocks via PROXY
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
     # Spend one of the recovered UTXOs to self in a standard MW transaction
     Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 100
     Then I wait for wallet WALLET_B to have less than 1100000 uT
-    When I merge mine 5 blocks via PROXY
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 25
     Then I wait for wallet WALLET_B to have at least 1900000 uT
     # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     And I have wallet WALLET_C connected to all seed nodes
     Then I send a one-sided transaction of 1500000 uT from WALLET_B to WALLET_C at fee 100
     Then I wait for wallet WALLET_B to have less than 1000000 uT
-    When I merge mine 5 blocks via PROXY
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 30
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
@@ -35,14 +35,14 @@ Feature: Wallet Transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
-    When I merge mine 5 blocks via PROXY
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
     And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When wallet WALLET_A detects all transactions are at least Broadcast
-    Then I merge mine 5 blocks via PROXY
+    Then mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
@@ -58,19 +58,19 @@ Feature: Wallet Transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
-    When I merge mine 5 blocks via PROXY
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
     And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     When wallet WALLET_A detects all transactions are at least Broadcast
-    Then I merge mine 5 blocks via PROXY
+    Then mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
     And wallet WALLET_B detects all transactions are at least Broadcast
-    Then I merge mine 5 blocks via PROXY
+    Then mining node MINER mines 5 blocks
     Then all nodes are at height 15
     When I wait for wallet WALLET_B to have at least 50000 uT
     Then I stop wallet WALLET_B
@@ -133,31 +133,33 @@ Feature: Wallet Transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
-    When I merge mine 5 blocks via PROXY
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I have wallet WALLET_B connected to all seed nodes
     And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    When I merge mine 5 blocks via PROXY
-    Then all nodes are at height 10
+    When I wait 10 seconds
+    When mining node MINER mines 6 blocks
+    Then all nodes are at height 11
     Then I wait for wallet WALLET_B to have at least 1000000 uT
     Then I stop wallet WALLET_B
     When I have wallet WALLET_C connected to all seed nodes
     Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    When I wait 10 seconds
     Then wallet WALLET_C detects all transactions are at least Broadcast
-    When I merge mine 5 blocks via PROXY
-    Then all nodes are at height 15
+    When mining node MINER mines 6 blocks
+    Then all nodes are at height 17
     Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
-    When I merge mine 10 blocks via PROXY
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 10 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
@@ -166,8 +168,9 @@ Feature: Wallet Transactions
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When I wait 30 seconds
     When wallet WALLET_A detects all transactions are at least Broadcast
-    Then I merge mine 5 blocks via PROXY
+    Then mining node MINER mines 5 blocks
     Then all nodes are at height 15
     Then I wait for wallet WALLET_B to have at least 500000 uT
     Then I check if wallet WALLET_B has 5 transactions
@@ -180,7 +183,6 @@ Feature: Wallet Transactions
     #   Collects 7 coinbases into one wallet, send 7 transactions
     #   Stronger chain
     #
-    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A
@@ -235,7 +237,6 @@ Feature: Wallet Transactions
     #   Collects 7 coinbases into one wallet, send 7 transactions
     #   Stronger chain
     #
-    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
     And I have a base node NODE_A1 connected to seed SEED_A
     And I have wallet WALLET_A1 connected to seed node SEED_A

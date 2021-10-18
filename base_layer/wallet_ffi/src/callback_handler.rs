@@ -49,14 +49,12 @@
 //! and false that the process timed out and new one will be started
 
 use log::*;
+use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::{
-        handle::{OutputManagerEvent, OutputManagerEventReceiver},
-        TxId,
-    },
+    output_manager_service::handle::{OutputManagerEvent, OutputManagerEventReceiver},
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
         storage::{
@@ -520,7 +518,10 @@ mod test {
         thread,
         time::Duration,
     };
-    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+    use tari_common_types::{
+        transaction::{TransactionDirection, TransactionStatus},
+        types::{BlindingFactor, PrivateKey, PublicKey},
+    };
     use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
@@ -537,13 +538,7 @@ mod test {
             handle::TransactionEvent,
             storage::{
                 database::TransactionDatabase,
-                models::{
-                    CompletedTransaction,
-                    InboundTransaction,
-                    OutboundTransaction,
-                    TransactionDirection,
-                    TransactionStatus,
-                },
+                models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
                 sqlite_db::TransactionServiceSqliteDatabase,
             },
         },
