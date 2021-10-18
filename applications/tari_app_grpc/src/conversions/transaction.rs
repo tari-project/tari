@@ -22,6 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::transaction::{self as tx, TxId};
 use tari_core::{
     crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
     transactions::transaction::Transaction,
@@ -54,44 +55,38 @@ impl TryFrom<grpc::Transaction> for Transaction {
     }
 }
 
-#[cfg(feature = "wallet")]
-mod wallet {
-    use super::*;
-    use tari_wallet::{output_manager_service::TxId, transaction_service::storage::models};
-
-    impl From<models::TransactionStatus> for grpc::TransactionStatus {
-        fn from(status: models::TransactionStatus) -> Self {
-            use models::TransactionStatus::*;
-            match status {
-                Completed => grpc::TransactionStatus::Completed,
-                Broadcast => grpc::TransactionStatus::Broadcast,
-                MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
-                MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
-                Imported => grpc::TransactionStatus::Imported,
-                Pending => grpc::TransactionStatus::Pending,
-                Coinbase => grpc::TransactionStatus::Coinbase,
-            }
+impl From<tx::TransactionDirection> for grpc::TransactionDirection {
+    fn from(status: tx::TransactionDirection) -> Self {
+        use tx::TransactionDirection::*;
+        match status {
+            Unknown => grpc::TransactionDirection::Unknown,
+            Inbound => grpc::TransactionDirection::Inbound,
+            Outbound => grpc::TransactionDirection::Outbound,
         }
     }
+}
 
-    impl From<models::TransactionDirection> for grpc::TransactionDirection {
-        fn from(status: models::TransactionDirection) -> Self {
-            use models::TransactionDirection::*;
-            match status {
-                Unknown => grpc::TransactionDirection::Unknown,
-                Inbound => grpc::TransactionDirection::Inbound,
-                Outbound => grpc::TransactionDirection::Outbound,
-            }
+impl From<tx::TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: tx::TransactionStatus) -> Self {
+        use tx::TransactionStatus::*;
+        match status {
+            Completed => grpc::TransactionStatus::Completed,
+            Broadcast => grpc::TransactionStatus::Broadcast,
+            MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
+            MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
+            Imported => grpc::TransactionStatus::Imported,
+            Pending => grpc::TransactionStatus::Pending,
+            Coinbase => grpc::TransactionStatus::Coinbase,
         }
     }
+}
 
-    impl grpc::TransactionInfo {
-        pub fn not_found(tx_id: TxId) -> Self {
-            Self {
-                tx_id,
-                status: grpc::TransactionStatus::NotFound as i32,
-                ..Default::default()
-            }
+impl grpc::TransactionInfo {
+    pub fn not_found(tx_id: TxId) -> Self {
+        Self {
+            tx_id,
+            status: grpc::TransactionStatus::NotFound as i32,
+            ..Default::default()
         }
     }
 }

@@ -699,6 +699,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
+
+[[package]]
 name = "core-foundation"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1058,6 +1064,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
+name = "decimal-rs"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "628081e4b054b20bc00989885feca733c66f19d0e983bb4a3b81b6edcd0b70bc"
+dependencies = [
+ "ethnum",
+ "fast-float",
+ "stack-buf",
+ "thiserror",
+]
+
+[[package]]
 name = "derivative"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1101,6 +1119,19 @@ dependencies = [
  "darling",
  "proc-macro2 1.0.28",
  "quote 1.0.9",
+ "syn 1.0.75",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40eebddd2156ce1bb37b20bbe5151340a31828b1f2d22ba4141f3531710e38df"
+dependencies = [
+ "convert_case",
+ "proc-macro2 1.0.28",
+ "quote 1.0.9",
+ "rustc_version 0.3.3",
  "syn 1.0.75",
 ]
 
@@ -1283,6 +1314,18 @@ dependencies = [
  "regex",
  "termcolor",
 ]
+
+[[package]]
+name = "ethnum"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "887dc6b1e1f9ef25ac52649e19ce610a2520b4c55b48429030782b6c8a70e78a"
+
+[[package]]
+name = "fast-float"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95765f67b4b18863968b4a1bd5bb576f732b29a4a28c7cd84c09fa3e2875f33c"
 
 [[package]]
 name = "fixed-hash"
@@ -3961,6 +4004,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
+name = "stack-buf"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7386b49cb287f6fafbfd3bd604914bccb99fb8d53483f40e1ecfda5d45f3370"
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4136,7 +4185,6 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
- "tari_wallet",
  "tonic",
  "tonic-build",
 ]
@@ -4161,7 +4209,6 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_p2p",
- "tari_wallet",
  "thiserror",
  "tokio 1.11.0",
  "tonic",
@@ -4247,6 +4294,7 @@ dependencies = [
  "tari_storage",
  "tari_test_utils",
  "tempfile",
+ "thiserror",
  "toml 0.5.8",
  "tracing",
  "tracing-opentelemetry",
@@ -4263,6 +4311,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
  "tari_crypto",
+ "thiserror",
  "tokio 1.11.0",
 ]
 
@@ -4431,6 +4480,8 @@ dependencies = [
  "chrono",
  "config",
  "croaring",
+ "decimal-rs",
+ "derive_more",
  "digest",
  "env_logger 0.7.1",
  "fs2",
@@ -4896,18 +4947,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.28"
+version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "283d5230e63df9608ac7d9691adc1dfb6e701225436eb64d0b9a7f0a5a04f6ec"
+checksum = "602eca064b2d83369e2b2f34b09c70b605402801927c65c11071ac911d299b88"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.28"
+version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3884228611f5cd3608e2d409bf7dce832e4eb3135e3f11addbd7e41bd68e71"
+checksum = "bad553cc2c78e8de258400763a647e80e6d1b31ee237275d756f6836d204494c"
 dependencies = [
  "proc-macro2 1.0.28",
  "quote 1.0.9",

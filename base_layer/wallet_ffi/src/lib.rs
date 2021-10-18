@@ -146,6 +146,7 @@ use tokio::runtime::Runtime;
 use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
+    transaction::{TransactionDirection, TransactionStatus},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -176,13 +177,7 @@ use tari_wallet::{
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
@@ -5155,12 +5150,9 @@ mod test {
     use libc::{c_char, c_uchar, c_uint};
     use tempfile::tempdir;
 
-    use tari_common_types::emoji;
+    use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_test_utils::random;
-    use tari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        transaction_service::storage::models::TransactionStatus,
-    };
+    use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
 
     use crate::*;
 

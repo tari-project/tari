@@ -76,7 +76,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -87,6 +86,7 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
+use tari_common_types::transaction::TxId;
 
 const LOG_TARGET: &str = "wallet";
 

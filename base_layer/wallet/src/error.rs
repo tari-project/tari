@@ -31,6 +31,7 @@ use crate::{
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
+use tari_common::exit_codes::ExitCodes;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
@@ -83,6 +84,16 @@ pub enum WalletError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
+}
+
+pub const LOG_TARGET: &str = "tari::application";
+
+impl From<WalletError> for ExitCodes {
+    fn from(err: WalletError) -> Self {
+        // TODO: Log that outside
+        log::error!(target: LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -141,4 +152,15 @@ pub enum WalletStorageError {
     IncorrectPassword,
     #[error("Deprecated operation error")]
     DeprecatedOperation,
+}
+
+impl From<WalletStorageError> for ExitCodes {
+    fn from(err: WalletStorageError) -> Self {
+        use WalletStorageError::*;
+        match err {
+            NoPasswordError => ExitCodes::NoPassword,
+            IncorrectPassword => ExitCodes::IncorrectPassword,
+            e => ExitCodes::WalletError(e.to_string()),
+        }
+    }
 }

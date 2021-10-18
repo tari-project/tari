@@ -1,4 +1,4 @@
-@reorg
+@reorg @base-node
 Feature: Reorgs
 
   @critical
@@ -39,7 +39,7 @@ Feature: Reorgs
     And I mine a block on B at height 4 with an invalid MMR
     Then node B is at tip BTip1
 
-  @critical @reorg
+  @reorg
   Scenario: Pruned mode reorg simple
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -94,9 +94,8 @@ Feature: Reorgs
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
-      @critical @reorg
+  @critical @reorg
   Scenario: Zero-conf reorg with spending
-    Given I do not expect all automated transactions to succeed
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a base node NODE2 connected to node NODE1
     When I mine 14 blocks on NODE1
@@ -138,13 +137,11 @@ Feature: Reorgs
     When I start base node NODE2
     Then all nodes are on the same chain tip
 
-  @long-running
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:
         #   Mine X1 blocks (orphan_storage_capacity default set to 10)
         #
-    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A1
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A1 connected to seed SEED_A1
@@ -168,6 +165,8 @@ Feature: Reorgs
     And I connect node NODE_A1 to node NODE_A3 and wait 1 seconds
     And I connect node NODE_A2 to node NODE_A4 and wait 1 seconds
     And I connect node SEED_A1 to node SEED_A2 and wait <SYNC_TIME> seconds
+    Then node SEED_A1 is in state LISTENING
+    Then node SEED_A2 is in state LISTENING
     When I mine 10 blocks on SEED_A1
     Then all nodes are on the same chain tip
         #
@@ -198,6 +197,8 @@ Feature: Reorgs
     And I connect node NODE_B1 to node NODE_B3 and wait 1 seconds
     And I connect node NODE_B2 to node NODE_B4 and wait 1 seconds
     And I connect node SEED_B1 to node SEED_B2 and wait <SYNC_TIME> seconds
+    Then node SEED_B2 is in state LISTENING
+    Then node SEED_B1 is in state LISTENING
     When I mine 10 blocks on SEED_B1
     Then node SEED_B2 is at the same height as node SEED_B1
     Then node NODE_B1 is at the same height as node SEED_B1
@@ -210,15 +211,57 @@ Feature: Reorgs
     And I connect node NODE_A1 to node NODE_B1 and wait 1 seconds
     And I connect node NODE_A3 to node NODE_B3 and wait 1 seconds
     And I connect node SEED_A1 to node SEED_B1 and wait <SYNC_TIME> seconds
+    Then node SEED_A1 is in state LISTENING
+    Then node SEED_B1 is in state LISTENING
     When I mine 10 blocks on SEED_A1
     Then all nodes are on the same chain tip
-    @critical
+
     Examples:
-        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 5      | 10     | 15    | 20   | 20        |
+      | X1 | Y1 | X2 | Y2 | SYNC_TIME |
+      | 5  | 10 | 15 | 20 | 1        |
 
     @long-running
     Examples:
         | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 100    | 125    | 150   | 175  | 30        |
-        | 1010   | 1110   | 1210  | 1310 | 60        |
+        | 100    | 125    | 150   | 175  | 1         |
+        | 1010   | 1110   | 1210  | 1310 | 1         |
+
+  @reorg
+  Scenario: Full block sync with small reorg
+    Given I have a base node NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    And I have a base node NODE2 connected to node NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    Then all nodes are at height 5
+    Given I stop node NODE2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 1
+    Then node NODE1 is at height 10
+    Given I stop node NODE1
+    And I start base node NODE2
+    And mining node MINER2 mines 7 blocks with min difficulty 2 and max difficulty 100000
+    Then node NODE2 is at height 12
+    When I start base node NODE1
+    Then all nodes are on the same chain at height 12
+
+  @reorg @long-running
+  Scenario: Full block sync with large reorg
+    Given I have a base node NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINER1 connected to base node NODE1 and wallet WALLET1
+    And I have a base node NODE2 connected to node NODE1
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINER2 connected to base node NODE2 and wallet WALLET2
+    And mining node MINER1 mines 5 blocks with min difficulty 1 and max difficulty 10
+    Then all nodes are at height 5
+    Given I stop node NODE2
+    And mining node MINER1 mines 1001 blocks with min difficulty 1 and max difficulty 10
+    Then node NODE1 is at height 1006
+    Given I stop node NODE1
+    And I start base node NODE2
+    And mining node MINER2 mines 1500 blocks with min difficulty 11 and max difficulty 100000
+    Then node NODE2 is at height 1505
+    When I start base node NODE1
+    Then all nodes are on the same chain at height 1505

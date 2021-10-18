@@ -35,7 +35,6 @@ use crate::{
         },
         tasks::TxoValidationTask,
         MasterKeyManager,
-        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
     types::HashDigest,
@@ -50,7 +49,10 @@ use std::{
     fmt::{self, Display},
     sync::Arc,
 };
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_core::{
     consensus::ConsensusConstants,
@@ -201,11 +203,11 @@ where
                 .await
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
-                let current_chain_tip = match self.base_node_service.get_chain_metadata().await {
+                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
                     Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
                     Err(_) => None,
                 };
-                self.get_balance(current_chain_tip)
+                self.get_balance(current_tip_for_time_lock_calculation)
                     .await
                     .map(OutputManagerResponse::Balance)
             },
@@ -406,8 +408,15 @@ where
         Ok(())
     }
 
-    async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
-        let balance = self.resources.db.get_balance(current_chain_tip).await?;
+    async fn get_balance(
+        &self,
+        current_tip_for_time_lock_calculation: Option<u64>,
+    ) -> Result<Balance, OutputManagerError> {
+        let balance = self
+            .resources
+            .db
+            .get_balance(current_tip_for_time_lock_calculation)
+            .await?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }
@@ -938,8 +947,8 @@ where
         let enough_spendable = utxos_total_value > amount + fee_with_change;
 
         if !perfect_utxo_selection && !enough_spendable {
-            let current_chain_tip = chain_metadata.map(|cm| cm.height_of_longest_chain());
-            let balance = self.get_balance(current_chain_tip).await?;
+            let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.height_of_longest_chain());
+            let balance = self.get_balance(current_tip_for_time_lock_calculation).await?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {
                 return Err(OutputManagerError::FundsPending);
