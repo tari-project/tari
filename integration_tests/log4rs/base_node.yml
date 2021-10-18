@@ -14,8 +14,13 @@ appenders:
   # An appender named "stdout" that writes to stdout
   stdout:
     kind: console
+    # Put all errors and warns on stderr so that it gets printed in circle ci
+    target: stderr
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
+      pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
+    filters:
+      - kind: threshold
+        level: warn
 
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
@@ -92,82 +97,75 @@ root:
     - stdout
 
 loggers:
-  # base_layer
+  # Route log events common to every application to all appenders
+  tari::application:
+    level: info
+    appenders:
+      - base_layer
+      - network
+      - other
+    additive: false
+
+  # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: debug
+    level: info
     appenders:
       - base_layer
-    additive: false
-  c::cs::lmdb_db::lmdb_db:
-    level: debug
+  tari:
+    level: info
     appenders:
       - base_layer
-    additive: false
-  c::pow::lwma_diff:
-    level: debug
+
+  # Route log events sent to the "wallet" logger to the "base_layer" appender
+  wallet:
+    level: info
     appenders:
       - base_layer
-    additive: false
-  c::bn::pow::sha3:
-    level: debug
-    appenders:
-      - base_layer
-    additive: false
-  base_node:
-    level: debug
-    appenders:
-      - base_layer
-    additive: false
-  # network
+  # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: debug
+    level: info
     appenders:
       - network
-    additive: false
-  comms::noise:
-    level: error
-    appenders:
-      - network
-    additive: false
+  # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
-    level: debug
+    level: info
     appenders:
       - network
-    additive: false
+
+    # Route log events sent to the "yamux" logger to the "network" appender
   yamux:
-    level: warn
+    level: info
     appenders:
       - network
-    additive: false
+  # Route log events sent to the "mio" logger to the "network" appender
   mio:
-    level: warn
-    appenders:
-      - network
-    additive: false
-  tracing:
     level: error
     appenders:
       - network
-    additive: false
-  # other
+  # Route log events sent to the "rustyline" logger to the "other" appender
   rustyline:
-    level: warn
-    appenders:
-      - other
-    additive: false
-  tokio_util:
-    level: warn
-    appenders:
-      - other
-    additive: false
-  h2:
     level: error
     appenders:
       - other
     additive: false
-  # stress_test
-  stress_test:
-    level: debug
+
+  # Route log events sent to the "tokio_util" logger to the "other" appender
+  tokio_util:
+    level: error
     appenders:
-      - stress_test
-    additive: false
+      - other
+  # Route PGP log events
+  pgp:
+    level: warn
+    appenders:
+      - other
+  # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
+  tari_mm_proxy:
+    level: info
+    appenders:
+      - base_layer
+  # Route log events sent to the "stress_test" logger to the "base_layer" appender
+  stress_test:
+    level: info
+    appenders:
+      - base_layer

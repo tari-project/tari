@@ -42,6 +42,7 @@ use std::{
 };
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    transaction::{TransactionDirection, TransactionStatus},
     types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
@@ -137,13 +138,7 @@ use tari_wallet::{
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
             sqlite_db::TransactionServiceSqliteDatabase,
         },
         TransactionServiceInitializer,
