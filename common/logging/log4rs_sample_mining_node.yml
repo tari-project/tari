@@ -44,11 +44,14 @@ loggers:
     appenders:
       - mining_node
     additive: false
-  tari_mining_node:
+  tari_mining_node::logging:
     level: debug
     appenders:
       - mining_node
+    additive: false
+  tari_mining_node::miner:
+    level: info
+    appenders:
       - stdout
     additive: false
-
 

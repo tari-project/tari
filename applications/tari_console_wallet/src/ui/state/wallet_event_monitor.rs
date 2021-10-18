@@ -23,11 +23,12 @@
 use crate::{notifier::Notifier, ui::state::AppStateInner};
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerEvent, TxId},
+    output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::{broadcast, RwLock};
