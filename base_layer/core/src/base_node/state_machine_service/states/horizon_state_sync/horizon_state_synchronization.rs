@@ -604,10 +604,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .sync_validators
             .final_horizon_state
             .validate(
+                &*self.db().clone().into_inner().db_read_access()?,
                 header.height(),
                 &pruned_utxo_sum,
                 &pruned_kernel_sum,
-                &*self.db().clone().into_inner().db_read_access()?,
             )
             .map_err(HorizonSyncError::FinalStateValidationFailed)?;
 

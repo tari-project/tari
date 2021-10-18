@@ -270,7 +270,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         let previous_accum = self.previous_accum;
         let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;
 
-        if hash == self.previous_accum.hash {
+        if hash == previous_accum.hash {
             return Err(BlockError::BuilderInvalidValue {
                 field: "hash",
                 details: "Hash was set to the same hash that is contained in previous accumulated data".to_string(),

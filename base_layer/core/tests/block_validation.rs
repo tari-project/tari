@@ -432,7 +432,7 @@ OutputFeatures::default()),
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
@@ -457,7 +457,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
@@ -496,7 +496,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
@@ -526,7 +526,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
@@ -553,7 +553,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
