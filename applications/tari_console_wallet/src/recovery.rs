@@ -24,7 +24,7 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
-use tari_app_utilities::utilities::ExitCodes;
+use tari_common::exit_codes::ExitCodes;
 use tari_common_types::types::PrivateKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::mnemonic::to_secretkey;

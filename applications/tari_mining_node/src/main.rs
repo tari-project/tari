@@ -47,11 +47,14 @@ use std::{
     time::Instant,
 };
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
-use tari_app_utilities::{
-    initialization::init_configuration,
-    utilities::{ExitCodes, ExitCodes::ConfigError},
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCodes, ExitCodes::ConfigError},
+    ConfigBootstrap,
+    DefaultConfigLoader,
+    GlobalConfig,
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader, GlobalConfig};
 use tari_core::blocks::BlockHeader;
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};

@@ -24,7 +24,6 @@ use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
     storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
-    TxId,
 };
 use aes_gcm::Aes256Gcm;
 use log::*;
@@ -32,7 +31,10 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, Commitment, HashOutput, PrivateKey},
+};
 use tari_core::transactions::transaction::TransactionOutput;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";

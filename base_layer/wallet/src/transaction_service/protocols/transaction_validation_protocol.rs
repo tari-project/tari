@@ -29,7 +29,7 @@ use crate::{
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionStatus},
+            models::CompletedTransaction,
         },
     },
 };
@@ -39,7 +39,7 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{

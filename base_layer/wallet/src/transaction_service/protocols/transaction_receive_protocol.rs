@@ -20,23 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction, TransactionDirection, TransactionStatus},
-        },
-        tasks::send_transaction_reply::send_transaction_reply,
+use crate::transaction_service::{
+    error::{TransactionServiceError, TransactionServiceProtocolError},
+    handle::TransactionEvent,
+    service::TransactionServiceResources,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, InboundTransaction},
     },
+    tasks::send_transaction_reply::send_transaction_reply,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
@@ -242,12 +240,7 @@ where
             .naive_utc()
             .signed_duration_since(inbound_tx.timestamp)
             .to_std()
-            .map_err(|_| {
-                TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                )
-            })?;
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
             .resources
@@ -272,12 +265,7 @@ where
                     .naive_utc()
                     .signed_duration_since(timestamp)
                     .to_std()
-                    .map_err(|_| {
-                        TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                        )
-                    })?;
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
         };
