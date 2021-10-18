@@ -21,21 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    output_manager_service::TxId,
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
     storage::sqlite_utilities::WalletDbConnection,
     transaction_service::{
-        error::TransactionStorageError,
+        error::{TransactionKeyError, TransactionStorageError},
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-                WalletTransaction,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         },
     },
     util::{
@@ -53,13 +45,23 @@ use std::{
     str::from_utf8,
     sync::{Arc, MutexGuard, RwLock},
 };
-use tari_common_types::types::{BlockHash, PublicKey};
+use tari_common_types::{
+    transaction::{
+        TransactionConversionError,
+        TransactionDirection,
+        TransactionDirectionError,
+        TransactionStatus,
+        TxId,
+    },
+    types::{BlockHash, PublicKey},
+};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
 };
+use thiserror::Error;
 use tokio::time::Instant;
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
@@ -876,10 +878,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
         for c in coinbase_txs.iter_mut() {
             self.decrypt_if_necessary(c)?;
-            let completed_tx = CompletedTransaction::try_from(c.clone()).map_err(|_| {
-                TransactionStorageError::ConversionError("Error converting to CompletedTransaction".to_string())
-            })?;
-
+            let completed_tx = CompletedTransaction::try_from(c.clone())?;
             if completed_tx.amount == amount {
                 return Ok(Some(completed_tx));
             }
@@ -1216,8 +1215,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
     fn try_from(i: InboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: i.tx_id as u64,
-            source_public_key: PublicKey::from_vec(&i.source_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError("Invalid Source Publickey".to_string()))?,
+            source_public_key: PublicKey::from_vec(&i.source_public_key).map_err(TransactionKeyError::Source)?,
             amount: MicroTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol)?,
             status: TransactionStatus::Pending,
@@ -1389,7 +1387,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
         Ok(Self {
             tx_id: o.tx_id as u64,
             destination_public_key: PublicKey::from_vec(&o.destination_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
+                .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(o.amount as u64),
             fee: MicroTari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol)?,
@@ -1643,16 +1641,27 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum CompletedTransactionConversionError {
+    #[error("CompletedTransaction conversion failed by wrong direction: {0}")]
+    DirectionError(#[from] TransactionDirectionError),
+    #[error("CompletedTransaction conversion failed with transaction conversion: {0}")]
+    ConversionError(#[from] TransactionConversionError),
+    #[error("CompletedTransaction conversion failed with json error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("CompletedTransaction conversion failed with key error: {0}")]
+    KeyError(#[from] TransactionKeyError),
+}
+
 impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
-    type Error = TransactionStorageError;
+    type Error = CompletedTransactionConversionError;
 
     fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: c.tx_id as u64,
-            source_public_key: PublicKey::from_vec(&c.source_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError("Invalid source Publickey".to_string()))?,
+            source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
             destination_public_key: PublicKey::from_vec(&c.destination_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
+                .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol)?,
@@ -1706,7 +1715,10 @@ mod test {
     };
     use tempfile::tempdir;
 
-    use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
+    use tari_common_types::{
+        transaction::{TransactionDirection, TransactionStatus},
+        types::{HashDigest, PrivateKey, PublicKey},
+    };
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams},
@@ -1723,13 +1735,7 @@ mod test {
         test_utils::create_consensus_constants,
         transaction_service::storage::{
             database::{DbKey, TransactionBackend},
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
             sqlite_db::{
                 CompletedTransactionSql,
                 InboundTransactionSql,

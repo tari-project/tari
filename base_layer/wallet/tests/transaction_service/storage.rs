@@ -26,7 +26,10 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
-use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::{HashDigest, PrivateKey, PublicKey},
+};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     test_helpers::{create_unblinded_output, TestParams},
@@ -47,14 +50,7 @@ use tari_wallet::{
     test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{TransactionBackend, TransactionDatabase},
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
-            WalletTransaction,
-        },
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };

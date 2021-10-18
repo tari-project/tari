@@ -35,7 +35,6 @@ use crate::{
         },
         tasks::TxoValidationTask,
         MasterKeyManager,
-        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
     types::HashDigest,
@@ -46,7 +45,10 @@ use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{cmp::Ordering, fmt, fmt::Display, sync::Arc};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},

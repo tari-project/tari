@@ -28,6 +28,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -66,7 +67,6 @@ use tari_wallet::{
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
-        TxId,
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
@@ -80,7 +80,7 @@ use tari_wallet::{
         service::TransactionServiceResources,
         storage::{
             database::TransactionDatabase,
-            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+            models::CompletedTransaction,
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },

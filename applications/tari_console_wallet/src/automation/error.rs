@@ -24,7 +24,7 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use chrono_english::DateError;
 use log::*;
-use tari_app_utilities::utilities::ExitCodes;
+use tari_common::exit_codes::ExitCodes;
 use tari_core::transactions::{
     tari_amount::{MicroTariError, TariConversionError},
     transaction::TransactionError,

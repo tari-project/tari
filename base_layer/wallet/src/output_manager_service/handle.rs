@@ -24,11 +24,10 @@ use crate::output_manager_service::{
     error::OutputManagerError,
     service::Balance,
     storage::models::KnownOneSidedPaymentScript,
-    TxId,
 };
 use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
-use tari_common_types::types::PublicKey;
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionOutput, UnblindedOutput},

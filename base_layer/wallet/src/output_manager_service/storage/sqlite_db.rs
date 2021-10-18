@@ -28,7 +28,6 @@ use crate::{
             database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
         },
-        TxId,
     },
     schema::{key_manager_states, known_one_sided_payment_scripts, outputs},
     storage::sqlite_utilities::WalletDbConnection,
@@ -46,7 +45,10 @@ use std::{
     str::from_utf8,
     sync::{Arc, RwLock},
 };
-use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+};
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{

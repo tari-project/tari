@@ -78,6 +78,7 @@
 
 #[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
+pub mod exit_codes;
 #[macro_use]
 mod logging;
 
