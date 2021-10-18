@@ -30,5 +30,5 @@ pub(crate) mod rpc_error;
 pub(crate) mod rpc_request;
 pub(crate) mod rpc_response;
 pub(crate) mod submit_params;
+pub(crate) mod submit_response;
 pub(crate) mod worker_identifier;
-pub(crate) mod worker_status;
