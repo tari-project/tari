@@ -31,8 +31,7 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;

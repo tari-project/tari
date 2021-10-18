@@ -98,7 +98,6 @@ Feature: Mempool
 
   @critical @flaky
   Scenario: Mempool clearing out invalid transactions after a reorg
-    Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A
     And I have a base node NODE_A connected to seed SEED_A
     When I mine a block on NODE_A with coinbase CB_A

@@ -38,7 +38,11 @@ use tokio::{
 };
 
 use tari_common::{configuration::Network, GlobalConfig};
-use tari_common_types::{emoji::EmojiId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::PublicKey,
+};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -52,11 +56,8 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TransactionStatus},
-    },
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
 };
 
@@ -74,10 +75,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
-use tari_wallet::{
-    output_manager_service::handle::OutputManagerHandle,
-    transaction_service::storage::models::TransactionDirection,
-};
+use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
