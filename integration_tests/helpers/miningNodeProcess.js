@@ -175,7 +175,9 @@ class MiningNodeProcess {
     await this.init(numBlocks, height, minDifficulty, 9999999999, true, 1);
     await this.startNew();
     await this.stop();
-    return await this.baseNodeClient.getTipHeight();
+    const tipHeight = await this.baseNodeClient.getTipHeight();
+    console.log(`[${this.name}] Tip at ${tipHeight}`);
+    return tipHeight;
   }
 }
 

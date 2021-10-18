@@ -96,7 +96,7 @@ Feature: Mempool
     Then SENDER has TX1 in NOT_STORED state
     Then SENDER has TX2 in MINED state
 
-  @critical
+  @critical @flaky
   Scenario: Mempool clearing out invalid transactions after a reorg
     Given I do not expect all automated transactions to succeed
     Given I have a seed node SEED_A

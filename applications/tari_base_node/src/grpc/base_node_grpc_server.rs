@@ -462,6 +462,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let new_block = match handler.get_new_block(block_template).await {
             Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(Status::invalid_argument(message));
+            },
             Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
                 let status = Status::with_details(
                     tonic::Code::FailedPrecondition,
@@ -737,9 +740,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
+        let state: tari_rpc::BaseNodeState = (&(*status_watch.borrow()).state_info).into();
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
             initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
+            base_node_state: state.into(),
         };
 
         debug!(target: LOG_TARGET, "Sending MetaData response to client");

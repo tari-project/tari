@@ -108,7 +108,7 @@ impl MinerConfig {
         Duration::from_secs(10)
     }
 
-    pub fn validate_tip_timeout_sec(&self) -> Duration {
+    pub fn validate_tip_interval(&self) -> Duration {
         Duration::from_secs(self.validate_tip_timeout_sec)
     }
 }
