@@ -403,13 +403,12 @@ async fn dht_store_forward() {
         .await
         .unwrap();
 
-    let dest_public_key = Box::new(node_C_node_identity.public_key().clone());
     let params = SendMessageParams::new()
         .broadcast(vec![])
-        .with_encryption(OutboundEncryption::EncryptFor(dest_public_key))
-        .with_destination(NodeDestination::NodeId(Box::new(
-            node_C_node_identity.node_id().clone(),
-        )))
+        .with_encryption(OutboundEncryption::encrypt_for(
+            node_C_node_identity.public_key().clone(),
+        ))
+        .with_destination(node_C_node_identity.node_id().clone().into())
         .finish();
 
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
@@ -570,7 +569,7 @@ async fn dht_propagate_dedup() {
         .outbound_requester()
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::EncryptFor(Box::new(node_D.node_identity().public_key().clone())),
+            OutboundEncryption::encrypt_for(node_D.node_identity().public_key().clone()),
             vec![],
             out_msg,
         )
@@ -627,7 +626,7 @@ async fn dht_propagate_dedup() {
 #[allow(non_snake_case)]
 async fn dht_do_not_store_invalid_message_in_dedup() {
     let mut config = dht_config();
-    config.dedup_allowed_message_occurrences = 3;
+    config.dedup_allowed_message_occurrences = 1;
 
     // Node C receives messages from A and B
     let mut node_C = make_node("node_B", PeerFeatures::COMMUNICATION_NODE, config.clone(), None).await;
@@ -698,8 +697,9 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
         .outbound_requester()
         .send_message(
             SendMessageParams::new()
-                .propagate(NodeDestination::Unknown, vec![node_C.node_identity().node_id().clone()])
-                .with_destination(NodeDestination::Unknown)
+                .direct_node_id(node_B.node_identity().node_id().clone())
+                .with_destination(node_C.node_identity().public_key().clone().into())
+                .force_origin()
                 .finish(),
             out_msg,
         )
@@ -722,8 +722,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
         .outbound_requester()
         .send_raw(
             SendMessageParams::new()
-                .propagate(NodeDestination::Unknown, vec![msg.source_peer.node_id.clone()])
-                .with_destination(NodeDestination::Unknown)
+                .direct_node_id(node_C.node_identity().node_id().clone())
                 .with_dht_header(msg.dht_header)
                 .finish(),
             bytes.clone(),
@@ -731,12 +730,27 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
         .await
         .unwrap();
 
+    async_assert_eventually!(
+        {
+            let n = node_C
+                .comms
+                .peer_manager()
+                .find_by_node_id(node_B.node_identity().node_id())
+                .await
+                .unwrap();
+            n.is_banned()
+        },
+        expect = true,
+        max_attempts = 10,
+        interval = Duration::from_secs(3)
+    );
+
     node_A
         .dht
         .outbound_requester()
         .send_raw(
             SendMessageParams::new()
-                .propagate(NodeDestination::Unknown, vec![])
+                .direct_node_id(node_C.node_identity().node_id().clone())
                 .with_dht_header(header_unmodified)
                 .finish(),
             bytes,
@@ -758,7 +772,6 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
         .unwrap()
         .unwrap();
     assert_eq!(person.name, "John Conway");
-    // TODO Test not working as it receives the message only if dedup_allowed_message_occurrences > 1
 
     let node_A_id = node_A.node_identity().node_id().clone();
     let node_B_id = node_B.node_identity().node_id().clone();
