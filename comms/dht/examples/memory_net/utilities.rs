@@ -716,7 +716,7 @@ impl TestNode {
             loop {
                 match conn_man_event_sub.recv().await {
                     Ok(event) => {
-                        events_tx.send(logger(event)).await.unwrap();
+                        let _ = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(err) => log::error!("{}", err),
