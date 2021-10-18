@@ -45,6 +45,7 @@ pub mod proof_of_work;
 pub mod validation;
 
 #[cfg(any(test, feature = "base_node"))]
+#[macro_use]
 pub mod test_helpers;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]

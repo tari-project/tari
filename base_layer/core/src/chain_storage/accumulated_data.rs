@@ -273,7 +273,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             .hash
             .ok_or_else(|| ChainStorageError::InvalidOperation("hash not provided".to_string()))?;
 
-        if hash == self.previous_accum.hash {
+        if hash == previous_accum.hash {
             return Err(ChainStorageError::InvalidOperation(
                 "Hash was set to the same hash that is contained in previous accumulated data".to_string(),
             ));

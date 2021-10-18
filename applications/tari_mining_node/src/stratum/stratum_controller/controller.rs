@@ -22,10 +22,19 @@
 //
 use crate::{
     stratum,
-    stratum::{stratum_miner::miner::StratumMiner, stratum_types as types},
+    stratum::{stratum_miner::miner::StratumMiner, stratum_statistics::stats, stratum_types as types},
 };
 use log::*;
-use std::{self, sync::mpsc, thread, time::SystemTime};
+use std::{
+    self,
+    sync::{mpsc, Arc, RwLock},
+    thread,
+    time::{Duration, SystemTime},
+};
+
+pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
+pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
+const REPORTING_FREQUENCY: u64 = 20;
 
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
@@ -35,10 +44,12 @@ pub struct Controller {
     current_job_id: u64,
     current_blob: String,
     keep_alive_time: SystemTime,
+    stats: Arc<RwLock<stats::Statistics>>,
+    elapsed: SystemTime,
 }
 
 impl Controller {
-    pub fn new() -> Result<Controller, String> {
+    pub fn new(stats: Arc<RwLock<stats::Statistics>>) -> Result<Controller, String> {
         let (tx, rx) = mpsc::channel::<types::miner_message::MinerMessage>();
         Ok(Controller {
             rx,
@@ -48,6 +59,8 @@ impl Controller {
             current_job_id: 0,
             current_blob: "".to_string(),
             keep_alive_time: SystemTime::now(),
+            stats,
+            elapsed: SystemTime::now(),
         })
     }
 
@@ -55,10 +68,66 @@ impl Controller {
         self.client_tx = Some(client_tx);
     }
 
+    fn display_stats(&mut self, elapsed: Duration) {
+        let mut stats = self.stats.write().unwrap();
+        debug!(target: LOG_TARGET_FILE, "{:?}", stats.mining_stats);
+        info!(
+            target: LOG_TARGET,
+            "{}",
+            "--------------- Mining Statistics ---------------".to_string()
+        );
+        info!(
+            target: LOG_TARGET,
+            "{}",
+            format!("Number of solver threads: {}", stats.mining_stats.solvers)
+        );
+        if stats.mining_stats.solution_stats.found > 0 {
+            info!(
+                target: LOG_TARGET,
+                "{}",
+                format!(
+                    "Estimated combined solver share rate: {:.1$} (S/s)",
+                    stats.mining_stats.sols(),
+                    5
+                )
+            );
+        }
+        info!(
+            target: LOG_TARGET,
+            "{}",
+            format!(
+                "Combined solver hash rate: {:.1$} (Mh/s)",
+                stats.mining_stats.hash_rate(elapsed),
+                5
+            )
+        );
+        info!(
+            target: LOG_TARGET,
+            "{}",
+            format!(
+                "Shares found: {}, accepted: {}, rejected: {}",
+                stats.mining_stats.solution_stats.found,
+                stats.mining_stats.solution_stats.found - stats.mining_stats.solution_stats.rejected,
+                stats.mining_stats.solution_stats.rejected
+            )
+        );
+        info!(
+            target: LOG_TARGET,
+            "{}",
+            "-------------------------------------------------".to_string()
+        );
+    }
+
     pub fn run(&mut self, mut miner: StratumMiner) -> Result<(), stratum::error::Error> {
         loop {
+            if let Ok(report) = self.elapsed.elapsed() {
+                if report.as_secs() >= REPORTING_FREQUENCY {
+                    self.display_stats(report);
+                    self.elapsed = SystemTime::now();
+                }
+            }
             while let Some(message) = self.rx.try_iter().next() {
-                debug!("Miner received message: {:?}", message);
+                debug!(target: LOG_TARGET_FILE, "Miner received message: {:?}", message);
                 let result: Result<(), stratum::error::Error> = match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
                         self.current_height = height;
@@ -72,24 +141,27 @@ impl Controller {
                         )
                     },
                     types::miner_message::MinerMessage::StopJob => {
-                        debug!("Stopping jobs");
+                        debug!(target: LOG_TARGET_FILE, "Stopping jobs");
                         miner.pause_solvers();
                         Ok(())
                     },
                     types::miner_message::MinerMessage::ResumeJob => {
-                        debug!("Resuming jobs");
+                        debug!(target: LOG_TARGET_FILE, "Resuming jobs");
                         miner.resume_solvers();
                         Ok(())
                     },
                     types::miner_message::MinerMessage::Shutdown => {
-                        debug!("Stopping jobs and Shutting down mining controller");
+                        debug!(
+                            target: LOG_TARGET_FILE,
+                            "Stopping jobs and Shutting down mining controller"
+                        );
                         miner.stop_solvers();
                         miner.wait_for_solver_shutdown();
                         Ok(())
                     },
                 };
                 if let Err(e) = result {
-                    error!("Mining Controller Error {:?}", e);
+                    error!(target: LOG_TARGET, "Mining Controller Error {:?}", e);
                 }
             }
 
@@ -103,6 +175,8 @@ impl Controller {
                         ss.job_id, ss.hash, ss.nonce,
                     ));
                 self.keep_alive_time = SystemTime::now();
+                let mut stats = self.stats.write().unwrap();
+                stats.mining_stats.solution_stats.found += 1;
             } else if self.keep_alive_time.elapsed().unwrap().as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
                 let _ = self

@@ -26,7 +26,10 @@ use crate::support::{
 };
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -75,7 +78,6 @@ use tari_wallet::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             sqlite_db::OutputManagerSqliteDatabase,
         },
-        TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
 };
