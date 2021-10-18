@@ -30,13 +30,13 @@ Then(
 When(
   "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
   { timeout: 20 * 1000 },
-  function (amount, sender, receiver, fee) {
+  function (amount, sender, receiver, feePerGram) {
     let ffi_wallet = this.getWallet(sender);
     let result = ffi_wallet.sendTransaction(
       this.getWalletPubkey(receiver),
       amount,
-      fee,
-      `Send from ffi ${sender} to ${receiver} at fee ${fee}`
+      feePerGram,
+      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`
     );
     console.log(result);
   }
