@@ -295,21 +295,21 @@ impl Dht {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(DedupLayer::new(
-                self.dht_requester(),
-                self.config.dedup_allowed_message_occurrences,
-            ))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new(format!(
-                "Inbound [{}]",
-                self.node_identity.node_id().short_str()
-            )))
             .layer(inbound::DecryptionLayer::new(
                 self.config.clone(),
                 self.node_identity.clone(),
                 self.connectivity.clone(),
             ))
+            .layer(DedupLayer::new(
+                self.dht_requester(),
+                self.config.dedup_allowed_message_occurrences,
+            ))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
+            .layer(MessageLoggingLayer::new(format!(
+                "Inbound [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
