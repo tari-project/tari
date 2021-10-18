@@ -361,8 +361,7 @@ fn convert_node_config(
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
     let peer_seeds = match cfg.get_array(&key) {
         Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => optional(cfg.get_str(&key))
-            .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?
+        Err(..) => optional(cfg.get_str(&key))?
             .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
             .unwrap_or_default(),
     };
