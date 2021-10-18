@@ -23,7 +23,7 @@
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -37,7 +37,7 @@ use crate::{
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+            models::CompletedTransaction,
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -60,7 +60,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common_types::types::PrivateKey;
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::PrivateKey,
+};
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
@@ -1258,13 +1261,7 @@ where
                 }
                 // Check if the last reply is beyond the resend cooldown
                 if let Some(timestamp) = inbound_tx.last_send_timestamp {
-                    let elapsed_time = Utc::now()
-                        .naive_utc()
-                        .signed_duration_since(timestamp)
-                        .to_std()
-                        .map_err(|_| {
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string())
-                        })?;
+                    let elapsed_time = Utc::now().naive_utc().signed_duration_since(timestamp).to_std()?;
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,

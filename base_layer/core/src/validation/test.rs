@@ -137,7 +137,7 @@ fn chain_balance_validation() {
     let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator
-        .validate(0, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 0, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
@@ -187,7 +187,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     validator
-        .validate(1, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Try to inflate --------------------------------------------//
@@ -231,6 +231,6 @@ fn chain_balance_validation() {
     db.commit(txn).unwrap();
 
     validator
-        .validate(2, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 2, &utxo_sum, &kernel_sum)
         .unwrap_err();
 }

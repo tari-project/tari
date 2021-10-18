@@ -20,14 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+use crate::stratum::stratum_types::rpc_error::RpcError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct WorkerStatus {
-    pub id: String,
-    pub height: u64,
-    pub difficulty: u64,
-    pub accepted: u64,
-    pub rejected: u64,
-    pub stale: u64,
+pub struct SubmitResponse {
+    pub status: Option<String>,
+    pub error: Option<RpcError>,
 }
