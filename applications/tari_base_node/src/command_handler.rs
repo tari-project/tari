@@ -51,8 +51,8 @@ use tari_core::{
         state_machine_service::states::{PeerMetadata, StatusInfo},
         LocalNodeCommsInterface,
     },
-    blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
+    blocks::{BlockHeader, ChainHeader},
+    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
@@ -77,6 +77,7 @@ pub enum StatusOutput {
 pub struct CommandHandler {
     executor: runtime::Handle,
     config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     dht_metrics_collector: MetricsCollectorHandle,
@@ -96,6 +97,7 @@ impl CommandHandler {
         Self {
             executor,
             config: ctx.config(),
+            consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
@@ -120,6 +122,7 @@ impl CommandHandler {
         let mut metrics = self.dht_metrics_collector.clone();
         let mut rpc_server = self.rpc_server.clone();
         let config = self.config.clone();
+        let consensus_rules = self.consensus_rules.clone();
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
@@ -145,6 +148,7 @@ impl CommandHandler {
                 ),
             );
 
+            let constants = consensus_rules.consensus_constants(metadata.height_of_longest_chain());
             let mempool_stats = mempool.get_mempool_stats().await.unwrap();
             status_line.add_field(
                 "Mempool",
@@ -155,7 +159,7 @@ impl CommandHandler {
                     if mempool_stats.total_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.total_weight / 19500
+                        1 + mempool_stats.total_weight / constants.get_max_block_transaction_weight()
                     },
                 ),
             );
@@ -1000,7 +1004,7 @@ impl CommandHandler {
         pow_algo: Option<PowAlgorithm>,
     ) {
         let db = self.blockchain_db.clone();
-        let network = self.config.network;
+        let consensus_rules = self.consensus_rules.clone();
         self.executor.spawn(async move {
             let mut output = try_or_print!(File::create(&filename));
 
@@ -1016,7 +1020,6 @@ impl CommandHandler {
 
             let start_height = cmp::max(start_height, 1);
             let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
-            let consensus_rules = ConsensusManager::builder(network).build();
 
             writeln!(
                 output,

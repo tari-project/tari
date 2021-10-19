@@ -22,14 +22,12 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::{
-    consensus::{ConsensusConstants, KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-    proof_of_work::PowAlgorithm,
-};
+use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
     fn from(cc: ConsensusConstants) -> Self {
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
+        let weight_params = cc.transaction_weight().params();
         Self {
             coinbase_lock_height: cc.coinbase_lock_height(),
             blockchain_version: cc.blockchain_version().into(),
@@ -43,9 +41,9 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             emission_decay: emission_decay.to_vec(),
             emission_tail: emission_tail.into(),
             min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3).into(),
-            block_weight_inputs: WEIGHT_PER_INPUT,
-            block_weight_outputs: WEIGHT_PER_OUTPUT,
-            block_weight_kernels: KERNEL_WEIGHT,
+            block_weight_inputs: weight_params.input_weight,
+            block_weight_outputs: weight_params.output_weight,
+            block_weight_kernels: weight_params.kernel_weight,
         }
     }
 }

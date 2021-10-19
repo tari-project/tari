@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::BlockHeaderValidationError,
+    blocks::{BlockError, BlockHeaderValidationError},
     chain_storage::ChainStorageError,
     consensus::ConsensusManagerError,
     mempool::MempoolError,
@@ -62,4 +62,6 @@ pub enum CommsInterfaceError {
     ApiError(String),
     #[error("Header not found at {0}")]
     BlockHeaderNotFound(u64),
+    #[error("Block error: {0}")]
+    BlockError(#[from] BlockError),
 }

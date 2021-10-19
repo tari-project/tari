@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-mod prioritized_transaction;
-mod timelocked_transaction;
-
-// Public re-exports
 pub use error::PriorityError;
+
+mod prioritized_transaction;
 pub use prioritized_transaction::{FeePriority, PrioritizedTransaction};
-pub use timelocked_transaction::{TimelockPriority, TimelockedTransaction};

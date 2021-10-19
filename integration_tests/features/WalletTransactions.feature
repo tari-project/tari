@@ -11,21 +11,21 @@ Feature: Wallet Transactions
     Then all nodes are at height 15
     When I wait for wallet WALLET_A to have at least 55000000000 uT
     And I have wallet WALLET_B connected to all seed nodes
-    Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
-    Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 100
+    Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 20
+    Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 20
     Then wallet WALLET_A detects all transactions are at least Broadcast
     When mining node MINER mines 5 blocks
     Then all nodes are at height 20
     Then I wait for wallet WALLET_B to have at least 2000000 uT
     # Spend one of the recovered UTXOs to self in a standard MW transaction
-    Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 100
+    Then I send 900000 uT from wallet WALLET_B to wallet WALLET_B at fee 20
     Then I wait for wallet WALLET_B to have less than 1100000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 25
     Then I wait for wallet WALLET_B to have at least 1900000 uT
     # Make a one-sided payment to a new wallet that is big enough to ensure the second recovered output is spent
     And I have wallet WALLET_C connected to all seed nodes
-    Then I send a one-sided transaction of 1500000 uT from WALLET_B to WALLET_C at fee 100
+    Then I send a one-sided transaction of 1500000 uT from WALLET_B to WALLET_C at fee 20
     Then I wait for wallet WALLET_B to have less than 1000000 uT
     When mining node MINER mines 5 blocks
     Then all nodes are at height 30
@@ -40,7 +40,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
-    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     When wallet WALLET_A detects all transactions are at least Broadcast
     Then mining node MINER mines 5 blocks
     Then all nodes are at height 10
@@ -63,12 +63,12 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
-    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     When wallet WALLET_A detects all transactions are at least Broadcast
     Then mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_B to have at least 1000000 uT
-    When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
+    When I send 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 20
     And wallet WALLET_B detects all transactions are at least Broadcast
     Then mining node MINER mines 5 blocks
     Then all nodes are at height 15
@@ -94,7 +94,7 @@ Feature: Wallet Transactions
     And mining node BM mines 4 blocks with min difficulty 1 and max difficulty 50
     Then I wait for wallet WB to have at least 1000000 uT
     And I have wallet WALLET_RECEIVE_TX connected to base node B
-    And I send 1000000 uT from wallet WB to wallet WALLET_RECEIVE_TX at fee 100
+    And I send 1000000 uT from wallet WB to wallet WALLET_RECEIVE_TX at fee 20
     And wallet WB detects all transactions are at least Broadcast
     Then mining node BM mines 4 blocks with min difficulty 50 and max difficulty 100
     When node B is at height 8
@@ -138,7 +138,7 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     When I have wallet WALLET_B connected to all seed nodes
-    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     When I wait 10 seconds
     When mining node MINER mines 6 blocks
     Then all nodes are at height 11
@@ -147,7 +147,7 @@ Feature: Wallet Transactions
     When I have wallet WALLET_C connected to all seed nodes
     Then I import WALLET_B unspent outputs as faucet outputs to WALLET_C
     Then I wait for wallet WALLET_C to have at least 1000000 uT
-    And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    And I send 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 20
     When I wait 10 seconds
     Then wallet WALLET_C detects all transactions are at least Broadcast
     When mining node MINER mines 6 blocks
@@ -163,11 +163,11 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     Then I have wallet WALLET_B connected to all seed nodes
-    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
-    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     When I wait 30 seconds
     When wallet WALLET_A detects all transactions are at least Broadcast
     Then mining node MINER mines 5 blocks
@@ -195,7 +195,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
     Then node SEED_A is at height 10
     Then node NODE_A1 is at height 10
-    And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
+    And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
     Then wallet WALLET_A1 detects all transactions are at least Broadcast
     #
     # Chain 2:
@@ -214,7 +214,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
     Then node SEED_B is at height 12
     Then node NODE_B1 is at height 12
-    And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
+    And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
     Then wallet WALLET_B1 detects all transactions are at least Broadcast
     #
     # Connect Chain 1 and 2 in stages
@@ -249,7 +249,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
     Then node SEED_A is at height 4
     Then node NODE_A1 is at height 4
-    And I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
+    And I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
     Then wallet WALLET_A1 detects all transactions are at least Broadcast
     #
     # Chain 2:
@@ -268,7 +268,7 @@ Feature: Wallet Transactions
     Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
     Then node SEED_B is at height 5
     Then node NODE_B1 is at height 5
-    And I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
+    And I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
     Then wallet WALLET_B1 detects all transactions are at least Broadcast
     #
     # Connect Chain 1 and 2 in stages
@@ -295,14 +295,14 @@ Feature: Wallet Transactions
     Then all nodes are at height 5
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
     And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
-    And I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 100
+    And I send 100000000 uT from wallet WALLET_A to wallet WALLET_SENDER at fee 20
     When wallet WALLET_SENDER detects all transactions are at least Broadcast
     And mining node MINER mines 5 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_SENDER to have at least 100000000 uT
     And I have wallet WALLET_RECV connected to all seed nodes
     And I stop wallet WALLET_RECV
-    And I send 1000000 uT from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    And I send 1000000 uT from wallet WALLET_SENDER to wallet WALLET_RECV at fee 20
     When wallet WALLET_SENDER detects last transaction is Pending
     Then I stop wallet WALLET_SENDER
     And I start wallet WALLET_RECV
