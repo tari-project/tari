@@ -83,6 +83,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}";
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
+[PreCompile]
+Name: ".\generate_config.bat"; Flags: abortonerror cmdprompt redirectoutput
+
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
@@ -111,7 +114,6 @@ Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_merge_mi
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-; Note: please run generate_config.bat to generate this file first 
 Source: ".\tari_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
