@@ -100,7 +100,7 @@ impl SendTab {
             Spans::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send normal a transaction, "),
+                Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a one-sided transaction."),
             ]),
