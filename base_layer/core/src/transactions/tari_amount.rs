@@ -20,12 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use newtype_ops::newtype_ops;
-use serde::{Deserialize, Serialize};
-
-use crate::transactions::helpers;
+use super::format_currency;
 use decimal_rs::{Decimal, DecimalConvertError};
 use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
@@ -67,9 +66,9 @@ pub const uT: MicroTari = MicroTari(1);
 pub const T: MicroTari = MicroTari(1_000_000);
 
 // You can only add or subtract µT from µT
-newtype_ops! { [MicroTari] {add sub} {:=} Self Self }
-newtype_ops! { [MicroTari] {add sub} {:=} &Self &Self }
-newtype_ops! { [MicroTari] {add sub} {:=} Self &Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} Self Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [MicroTari] {add sub mul div} {:=} Self &Self }
 
 // Multiplication and division only makes sense when µT is multiplied/divided by a scalar
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }
@@ -214,7 +213,7 @@ impl From<MicroTari> for FormattedMicroTari {
 impl Display for FormattedMicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = format!("{}", self.0);
-        let formatted = helpers::format_currency(&value, ',');
+        let formatted = format_currency(&value, ',');
         f.write_str(&formatted)?;
         f.write_str(" µT")?;
         Ok(())
@@ -233,7 +232,7 @@ impl From<Tari> for FormattedTari {
 impl Display for FormattedTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let value = format!("{:.2}", self.0);
-        let formatted = helpers::format_currency(&value, ',');
+        let formatted = format_currency(&value, ',');
         f.write_str(&formatted)?;
         f.write_str(" T")?;
         Ok(())

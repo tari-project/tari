@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{block_header::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::HistoricalBlock,
+    blocks::{Block, BlockHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::Difficulty,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };

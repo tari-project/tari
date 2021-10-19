@@ -250,7 +250,7 @@ async fn build_node_context(
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
-    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+    let mempool = Mempool::new(MempoolConfig::default(), rules.clone(), Arc::new(mempool_validator));
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");

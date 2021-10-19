@@ -15,13 +15,13 @@ Feature: Stress Test
         Then all nodes are on the same chain tip
         When I wait for wallet WALLET_A to have at least 5100000000 uT
 
-        Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
+        Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 4 uT
         When I wait 30 seconds
         When mining node MINER mines 3 blocks
         When mining node MINER mines <NumCoinsplitsNeeded> blocks
         Then all nodes are on the same chain tip
         Then wallet WALLET_A detects all transactions as Mined_Confirmed
-        When I send <NumTransactions> transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 20
+        When I send <NumTransactions> transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # Mine enough blocks for the first block of transactions to be confirmed.
         When mining node MINER mines 4 blocks
         Then all nodes are on the same chain tip
@@ -63,14 +63,14 @@ Feature: Stress Test
         Then all nodes are on the same chain tip
         When I wait for wallet WALLET_A to have at least 15100000000 uT
 
-        Then I coin split tari in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 20 uT
+        Then I coin split tari in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 4 uT
 
         # Make sure enough blocks are mined for the coin split transaction to be confirmed
         When mining node MINER mines 8 blocks
 
         Then all nodes are on the same chain tip
         Then wallet WALLET_A detects all transactions as Mined_Confirmed
-        When I send 2000 transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 20
+        When I send 2000 transactions of 1111 uT each from wallet WALLET_A to wallet WALLET_B at fee_per_gram 4
         # Mine enough blocks for the first block of transactions to be confirmed.
         When mining node MINER mines 4 blocks
         Then all nodes are on the same chain tip

@@ -25,9 +25,16 @@
 #![allow(clippy::ptr_arg)]
 
 use crate::{
-    blocks::{block_header::BlockHeader, Block},
+    blocks::{
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        DeletedBitmap,
+    },
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, DeletedBitmap},
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
@@ -55,8 +62,6 @@ use crate::{
         stats::DbTotalSizeStats,
         utxo_mined_info::UtxoMinedInfo,
         BlockchainBackend,
-        ChainBlock,
-        ChainHeader,
         DbBasicStats,
         DbSize,
         HorizonData,
