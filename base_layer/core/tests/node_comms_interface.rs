@@ -36,8 +36,8 @@ use tari_core::{
     mempool::{Mempool, MempoolConfig},
     test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
     transactions::{
-        helpers::{create_utxo, spend_utxos},
         tari_amount::MicroTari,
+        test_helpers::{create_utxo, spend_utxos},
         transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
@@ -52,13 +52,18 @@ use tari_crypto::{
     tari_utilities::hash::Hashable,
 };
 use tari_service_framework::reply_channel;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
+
+use tari_core::test_helpers::create_consensus_rules;
+use tokio::sync::mpsc;
+
 #[allow(dead_code)]
 mod helpers;
 
 fn new_mempool() -> Mempool {
+    let rules = create_consensus_rules();
     let mempool_validator = MockValidator::new(true);
-    Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator))
+    Mempool::new(MempoolConfig::default(), rules, Arc::new(mempool_validator))
 }
 
 #[tokio::test]
@@ -297,7 +302,6 @@ async fn inbound_fetch_blocks() {
 }
 
 #[tokio::test]
-// Test needs to be updated to new pruned structure.
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
@@ -315,7 +319,11 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     };
     let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
-    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Arc::new(mempool_validator),
+    );
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();

@@ -22,8 +22,9 @@
 
 use super::LOG_TARGET;
 use crate::{
+    blocks::ChainBlock,
     chain_storage,
-    chain_storage::{BlockchainBackend, ChainBlock},
+    chain_storage::BlockchainBackend,
     crypto::tari_utilities::hex::Hex,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };

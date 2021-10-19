@@ -36,8 +36,8 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
     transactions::{
-        helpers::schema_to_transaction,
         tari_amount::T,
+        test_helpers::schema_to_transaction,
         transaction::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },

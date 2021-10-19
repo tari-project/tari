@@ -20,14 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        fee::Fee,
+        tari_amount::*,
+        transaction::{
+            OutputFeatures,
+            TransactionInput,
+            TransactionOutput,
+            UnblindedOutput,
+            MAX_TRANSACTION_INPUTS,
+            MAX_TRANSACTION_OUTPUTS,
+        },
+        transaction_protocol::{
+            recipient::RecipientInfo,
+            sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            RewindData,
+            TransactionMetadata,
+        },
+    },
+};
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
 use std::{
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -35,28 +57,6 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::fixed_set::FixedSet,
 };
-
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    fee::Fee,
-    tari_amount::*,
-    transaction::{
-        OutputFeatures,
-        TransactionInput,
-        TransactionOutput,
-        UnblindedOutput,
-        MAX_TRANSACTION_INPUTS,
-        MAX_TRANSACTION_OUTPUTS,
-        MINIMUM_TRANSACTION_FEE,
-    },
-    transaction_protocol::{
-        recipient::RecipientInfo,
-        sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
-        RewindData,
-        TransactionMetadata,
-    },
-};
-use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
@@ -70,6 +70,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer {
+    consensus_constants: ConsensusConstants,
     num_recipients: usize,
     amounts: FixedSet<MicroTari>,
     lock_height: Option<u64>,
@@ -94,6 +95,7 @@ pub struct SenderTransactionInitializer {
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
     tx_id: Option<u64>,
+    fee: Fee,
 }
 
 pub struct BuildError {
@@ -108,8 +110,10 @@ impl Debug for BuildError {
 }
 
 impl SenderTransactionInitializer {
-    pub fn new(num_recipients: usize) -> Self {
+    pub fn new(num_recipients: usize, consensus_constants: ConsensusConstants) -> Self {
         Self {
+            fee: Fee::new(*consensus_constants.transaction_weight()),
+            consensus_constants,
             num_recipients,
             amounts: FixedSet::new(num_recipients),
             lock_height: None,
@@ -267,6 +271,33 @@ impl SenderTransactionInitializer {
         self
     }
 
+    fn get_total_metadata_size_for_outputs(&self) -> usize {
+        let mut size = 0;
+        size += self.get_output_features().consensus_encode_exact_size() * self.num_recipients;
+        size += self
+            .sender_custom_outputs
+            .iter()
+            .map(|o| {
+                o.features.consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
+            })
+            .sum::<usize>();
+        // TODO: implement iter for FixedSet to avoid the clone
+        size += self
+            .recipient_scripts
+            .clone()
+            .into_vec()
+            .iter()
+            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .sum::<usize>();
+
+        size
+    }
+
+    fn get_output_features(&self) -> OutputFeatures {
+        Default::default()
+    }
+
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
@@ -278,13 +309,36 @@ impl SenderTransactionInitializer {
         let total_to_self = self.sender_custom_outputs.iter().map(|o| o.value).sum::<MicroTari>();
         let total_amount = self.amounts.sum().ok_or("Not all amounts have been provided")?;
         let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
-        let fee_without_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs);
-        let fee_with_change = Fee::calculate(fee_per_gram, 1, num_inputs, num_outputs + 1);
+
+        let metadata_size_without_change = self.get_total_metadata_size_for_outputs();
+        let fee_without_change =
+            self.fee()
+                .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
+
+        let output_features = self.get_output_features();
+        let change_metadata_size = self
+            .change_script
+            .as_ref()
+            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .unwrap_or(0) +
+            output_features.consensus_encode_exact_size();
+
+        let fee_with_change = self.fee().calculate(
+            fee_per_gram,
+            1,
+            num_inputs,
+            num_outputs + 1,
+            metadata_size_without_change + change_metadata_size,
+        );
         let extra_fee = fee_with_change - fee_without_change;
         // Subtract with a check on going negative
-        let change_amount = total_being_spent.checked_sub(total_to_self + total_amount + fee_without_change);
+        let total_input_value = total_to_self + total_amount + fee_without_change;
+        let change_amount = total_being_spent.checked_sub(total_input_value);
         match change_amount {
-            None => Err("You are spending more than you're providing".into()),
+            None => Err(format!(
+                "You are spending ({}) more than you're providing ({}).",
+                total_input_value, total_being_spent
+            )),
             Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(extra_fee);
@@ -302,7 +356,6 @@ impl SenderTransactionInitializer {
                             .as_ref()
                             .ok_or("Change script was not provided")?
                             .clone();
-                        let output_features = OutputFeatures::default();
                         let change_key = self
                             .change_secret
                             .as_ref()
@@ -361,6 +414,10 @@ impl SenderTransactionInitializer {
         self.amounts.clone().into_vec().iter().sum()
     }
 
+    pub(super) fn fee(&self) -> &Fee {
+        &self.fee
+    }
+
     /// Construct a `SenderTransactionProtocol` instance in and appropriate state. The data stored
     /// in the struct is _moved_ into the new struct. If any data is missing, the `self` instance is returned in the
     /// error (so that you can continue building) along with a string listing the missing fields.
@@ -412,7 +469,7 @@ impl SenderTransactionInitializer {
             "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
         );
         // Some checks on the fee
-        if total_fee < MINIMUM_TRANSACTION_FEE {
+        if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
         // Create transaction outputs
@@ -566,7 +623,7 @@ impl SenderTransactionInitializer {
         let state = state
             .initialize()
             .expect("It should be possible to call initialize from Initializing state");
-        Ok(SenderTransactionProtocol { state })
+        Ok(state.into())
     }
 }
 
@@ -583,12 +640,12 @@ mod test {
     };
 
     use crate::{
-        consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
             fee::Fee,
-            helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
             tari_amount::*,
+            test_helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
@@ -606,7 +663,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Start the builder
-        let builder = SenderTransactionInitializer::new(0);
+        let builder = SenderTransactionInitializer::new(0, create_consensus_constants(0));
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
@@ -642,7 +699,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 2);
+        let expected_fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
         // We needed a change input, so this should fail
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
@@ -651,7 +708,7 @@ mod test {
         builder.with_change_secret(p.change_spend_key);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
+        if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
@@ -671,7 +728,8 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-        let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
+        let constants = create_consensus_constants(0);
+        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(MicroTari(4), 1, 1, 1, 0);
 
         let output = create_unblinded_output(
             TariScript::default(),
@@ -680,7 +738,7 @@ mod test {
             MicroTari(500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -688,11 +746,11 @@ mod test {
             .with_output(output, p.sender_offset_private_key)
             .unwrap()
             .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20))
+            .with_fee_per_gram(MicroTari(4))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
+        if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
@@ -712,17 +770,26 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
-        let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
+        let constants = create_consensus_constants(0);
+        let weighting = constants.transaction_weight();
+        let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
+        let fee_for_change_output = weighting.params().output_weight * uT;
         // fee == 340, output = 80
+        // outputs weight: 1060, kernel weight: 10, input weight: 9, output weight: 53,
 
         // Pay out so that I should get change, but not enough to pay for the output
+        let (utxo, input) = create_test_input(
+            // one under the amount required to pay the fee for a change output
+            2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
+            0,
+            &factories.commitment,
+        );
         let output = p.create_unblinded_output(UtxoTestParams {
-            value: MicroTari(500) - expected_fee - MicroTari(50),
+            value: 2000 * uT,
             ..Default::default()
         });
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -730,16 +797,16 @@ mod test {
             .with_output(output, p.sender_offset_private_key)
             .unwrap()
             .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20))
+            .with_fee_per_gram(MicroTari(1))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
-        if let SenderState::Finalizing(info) = result.state {
+        if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
             assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
-            assert_eq!(info.metadata.fee, expected_fee + MicroTari(50), "Fee");
+            assert_eq!(info.metadata.fee, tx_fee + fee_for_change_output - 1 * uT, "Fee");
             assert_eq!(info.outputs.len(), 1, "There should be 1 output");
             assert_eq!(info.inputs.len(), 1, "There should be 1 input");
         } else {
@@ -759,8 +826,9 @@ mod test {
             p.clone(),
             MicroTari(500),
         );
+        let constants = create_consensus_constants(0);
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -782,11 +850,13 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
+        let tx_fee = p.fee().calculate(MicroTari(1), 1, 1, 1, 0);
+        let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
+        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(500));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -798,12 +868,12 @@ mod test {
             .with_fee_per_gram(MicroTari(1))
             .with_recipient_data(
                 0,
-                script.clone(),
+                script,
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+            );
+        // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
@@ -817,7 +887,8 @@ mod test {
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0);
+        let constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -836,7 +907,10 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "You are spending more than you're providing");
+        assert_eq!(
+            err.message,
+            "You are spending (471 µT) more than you're providing (400 µT)."
+        );
     }
 
     #[test]
@@ -848,7 +922,8 @@ mod test {
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(2);
+        let constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionInitializer::new(2, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -859,7 +934,7 @@ mod test {
             .with_output(output, p.sender_offset_private_key.clone())
             .unwrap()
             .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(20))
+            .with_fee_per_gram(MicroTari(4))
             .with_recipient_data(
                 0,
                 script.clone(),
@@ -877,7 +952,7 @@ mod test {
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
-        if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.state {
+        if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.into_state() {
             assert_eq!(s, "Multiple recipients are not supported yet")
         } else {
             panic!("We should not allow multiple recipients at this time");
@@ -891,10 +966,11 @@ mod test {
         let p = TestParams::new();
         let (utxo1, input1) = create_test_input(MicroTari(2000), 0, &factories.commitment);
         let (utxo2, input2) = create_test_input(MicroTari(3000), 0, &factories.commitment);
-        let weight = MicroTari(30);
+        let fee_per_gram = MicroTari(6);
 
         let script = script!(Nop);
-        let expected_fee = Fee::calculate(weight, 1, 2, 3);
+        let constants = create_consensus_constants(0);
+        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 3, 0);
         let output = create_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
@@ -902,7 +978,7 @@ mod test {
             MicroTari(1500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(1);
+        let mut builder = SenderTransactionInitializer::new(1, constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
@@ -913,7 +989,7 @@ mod test {
             .with_input(utxo2, input2)
             .with_amount(0, MicroTari(2500))
             .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(weight)
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 0,
                 script.clone(),
@@ -924,7 +1000,7 @@ mod test {
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
-        if let SenderState::SingleRoundMessageReady(info) = result.state {
+        if let SenderState::SingleRoundMessageReady(info) = result.into_state() {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
             assert_eq!(info.signatures.len(), 0, "Number of signatures");
             assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
@@ -952,8 +1028,9 @@ mod test {
         );
         // Start the builder
         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
-        let weight = MicroTari(30);
-        let mut builder = SenderTransactionInitializer::new(1);
+        let fee_per_gram = MicroTari(6);
+        let constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionInitializer::new(1, constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
@@ -963,7 +1040,7 @@ mod test {
             .with_input(utxo1, input1)
             .with_amount(0, MicroTari(9800))
             .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(weight)
+            .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
                 0,
                 script.clone(),

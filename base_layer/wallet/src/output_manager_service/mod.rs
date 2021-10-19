@@ -35,10 +35,7 @@ use futures::future;
 use log::*;
 pub(crate) use master_key_manager::MasterKeyManager;
 use tari_comms::types::CommsSecretKey;
-use tari_core::{
-    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
-    transactions::CryptoFactories,
-};
+use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -54,7 +51,6 @@ pub mod handle;
 mod master_key_manager;
 mod recovery;
 pub mod resources;
-#[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
 mod tasks;
@@ -115,7 +111,7 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
+        let constants = self.network.create_consensus_constants().pop().unwrap();
         let master_secret_key = self.master_secret_key.clone();
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();

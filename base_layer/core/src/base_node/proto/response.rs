@@ -23,8 +23,7 @@
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
-    blocks::BlockHeader,
-    chain_storage::HistoricalBlock,
+    blocks::{BlockHeader, HistoricalBlock},
     proto,
     proto::{
         base_node as base_node_proto,

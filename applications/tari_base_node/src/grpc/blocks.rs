@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::cmp;
-use tari_core::{base_node::LocalNodeCommsInterface, chain_storage::HistoricalBlock};
+use tari_core::{base_node::LocalNodeCommsInterface, blocks::HistoricalBlock};
 use tonic::Status;
 
 // The maximum number of blocks that can be requested at a time. These will be streamed to the

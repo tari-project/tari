@@ -28,8 +28,7 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, NewBlockTemplate},
-    chain_storage::HistoricalBlock,
+    blocks::{Block, HistoricalBlock, NewBlockTemplate},
     proof_of_work::PowAlgorithm,
     transactions::transaction::TransactionKernel,
 };
@@ -42,7 +41,7 @@ pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 use crate::{
     base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
-    chain_storage::ChainHeader,
+    blocks::ChainHeader,
     transactions::transaction::TransactionOutput,
 };
 use tari_common_types::types::{Commitment, HashOutput, Signature};

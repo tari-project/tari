@@ -22,8 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::NewBlock,
-    chain_storage::HistoricalBlock,
+    blocks::{HistoricalBlock, NewBlock},
 };
 use tari_common_types::types::BlockHash;
 use tari_comms::peer_manager::NodeId;

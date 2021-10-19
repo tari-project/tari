@@ -18,7 +18,7 @@ Feature: Wallet Transfer
     # Ensure the coinbase lock heights have expired
     And mining node MINER mines 5 blocks
     Then all nodes are at height 10
-    When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 100
+    When I transfer 50000 uT from Wallet_A to Wallet_B and Wallet_C at fee 20
     And mining node MINER mines 10 blocks
     Then all nodes are at height 20
     Then all wallets detect all transactions as Mined_Confirmed
@@ -34,7 +34,7 @@ Feature: Wallet Transfer
     Then all nodes are at height 5
       # Ensure the coinbase lock heights have expired
     When I mine 5 blocks on NODE
-    When I transfer 50000 uT to self from wallet Wallet_A at fee 25
+    When I transfer 50000 uT to self from wallet Wallet_A at fee 5
     And I mine 5 blocks on NODE
     Then all nodes are at height 15
     Then all wallets detect all transactions as Mined_Confirmed

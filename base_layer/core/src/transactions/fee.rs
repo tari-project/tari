@@ -20,39 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-    transactions::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE},
-};
+use super::{tari_amount::MicroTari, weight::TransactionWeight};
+use std::cmp::max;
 
-pub struct Fee {}
+#[derive(Debug, Clone, Copy)]
+pub struct Fee(TransactionWeight);
 
 impl Fee {
-    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
-    pub fn calculate(fee_per_gram: MicroTari, num_kernels: usize, num_inputs: usize, num_outputs: usize) -> MicroTari {
-        (Fee::calculate_weight(num_kernels, num_inputs, num_outputs) * u64::from(fee_per_gram)).into()
+    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(101);
+
+    pub fn new(weight: TransactionWeight) -> Self {
+        Self(weight)
     }
 
-    /// Computes the absolute transaction fee using `calculate`, but the resulting fee will always be at least the
-    /// minimum network transaction fee.
-    pub fn calculate_with_minimum(
+    /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
+    /// NB: Each fee calculation should be done independently. No commutative, associative or distributive properties
+    /// are guaranteed to hold between calculations. for e.g. fee(1,1,1,4) + fee(1,1,1,12) != fee(1,1,1,16)
+    pub fn calculate(
+        &self,
         fee_per_gram: MicroTari,
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
+        total_metadata_byte_size: usize,
     ) -> MicroTari {
-        let fee = Fee::calculate(fee_per_gram, num_kernels, num_inputs, num_outputs);
-        if fee < MINIMUM_TRANSACTION_FEE {
-            MINIMUM_TRANSACTION_FEE
-        } else {
-            fee
-        }
+        let weight = self
+            .0
+            .calculate(num_kernels, num_inputs, num_outputs, total_metadata_byte_size);
+        MicroTari::from(weight) * fee_per_gram
     }
 
-    /// Calculate the weight of a transaction based on the number of inputs and outputs
-    pub fn calculate_weight(num_kernels: usize, num_inputs: usize, num_outputs: usize) -> u64 {
-        KERNEL_WEIGHT * num_kernels as u64 +
-            WEIGHT_PER_INPUT * num_inputs as u64 +
-            WEIGHT_PER_OUTPUT * num_outputs as u64
+    /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
+    pub fn normalize(fee: MicroTari) -> MicroTari {
+        max(Self::MINIMUM_TRANSACTION_FEE, fee)
+    }
+}
+
+impl From<TransactionWeight> for Fee {
+    fn from(weight: TransactionWeight) -> Self {
+        Self(weight)
     }
 }
