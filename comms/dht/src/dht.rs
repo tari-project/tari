@@ -541,7 +541,7 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
-            false,
+            true,
         );
 
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
@@ -593,12 +593,12 @@ mod test {
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
         let dht_envelope = make_dht_envelope(
-            &node_identity,
+            &node_identity2,
             encrypted_bytes,
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
-            false,
+            true,
         );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();
