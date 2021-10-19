@@ -596,7 +596,7 @@ impl TransactionInput {
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(self.features.to_consensus_bytes())
+            .chain(self.features.to_v1_bytes())
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.sender_offset_public_key.as_bytes())
