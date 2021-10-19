@@ -568,7 +568,7 @@ async fn dht_propagate_dedup() {
         .dht
         .outbound_requester()
         .propagate(
-            NodeDestination::Unknown,
+            node_D.node_identity().node_id().clone().into(),
             OutboundEncryption::encrypt_for(node_D.node_identity().public_key().clone()),
             vec![],
             out_msg,
