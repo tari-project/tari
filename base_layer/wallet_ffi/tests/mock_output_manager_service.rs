@@ -72,6 +72,12 @@ impl ResponseState {
     }
 }
 
+impl Default for ResponseState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct MockOutputManagerService {
     request_stream: Option<Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     state: ResponseState,

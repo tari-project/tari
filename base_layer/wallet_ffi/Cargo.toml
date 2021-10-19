@@ -44,7 +44,7 @@ default-features = false
 features = ["transactions"]
 
 [lib]
-crate-type = ["staticlib","cdylib"]
+crate-type = ["staticlib","cdylib", "lib"]
 
 [dev-dependencies]
 tempfile = "3.1.0"

@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::mock_output_manager_service::MockOutputManagerService;
-use tari_wallet_ffi::callback_handler::CallbackHandler;
+mod mock_output_manager_service;
 
 use chrono::Utc;
+use mock_output_manager_service::MockOutputManagerService;
 use rand::rngs::OsRng;
 use std::{
     sync::{Arc, Mutex},
@@ -59,7 +59,11 @@ use tari_wallet::{
         },
     },
 };
+use tari_wallet_ffi::callback_handler::CallbackHandler;
 use tokio::{runtime::Runtime, sync::broadcast};
+
+#[macro_use]
+extern crate lazy_static;
 
 struct CallbackState {
     pub received_tx_callback_called: bool,
