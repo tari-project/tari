@@ -14,8 +14,8 @@ use tokio::{sync::mpsc, task};
 
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_core::transactions::{
-    helpers,
     tari_amount::{MicroTari, T},
+    test_helpers,
     transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
                 let script = script!(Nop);
-                let (utxo, key, _) = helpers::create_utxo(value, &fc, feature, &script);
+                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script);
                 print!(".");
                 (utxo, key, value)
             })
@@ -110,7 +110,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
             Err(e) => println!("{}", e.to_string()),
         }
     }
-    let (pk, sig) = helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
+    let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = TransactionKernel {
         features: KernelFeatures::empty(),

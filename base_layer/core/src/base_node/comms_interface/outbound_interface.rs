@@ -22,8 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::{block_header::BlockHeader, NewBlock},
-    chain_storage::HistoricalBlock,
+    blocks::{BlockHeader, HistoricalBlock, NewBlock},
     transactions::transaction::TransactionOutput,
 };
 use log::*;

@@ -28,8 +28,8 @@ use crate::{
     },
     transactions::{
         aggregated_body::AggregateBody,
-        helpers::schema_to_transaction,
         tari_amount::T,
+        test_helpers::schema_to_transaction,
         transaction::TransactionError,
         CoinbaseBuilder,
         CryptoFactories,

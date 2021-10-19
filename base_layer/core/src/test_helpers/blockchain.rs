@@ -22,23 +22,27 @@
 
 use super::{create_block, mine_to_difficulty};
 use crate::{
-    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
+    blocks::{
+        genesis_block::get_weatherwax_genesis_block,
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        DeletedBitmap,
+    },
     chain_storage::{
         create_lmdb_database,
-        BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        ChainBlock,
-        ChainHeader,
         ChainStorageError,
         DbBasicStats,
         DbKey,
         DbTotalSizeStats,
         DbTransaction,
         DbValue,
-        DeletedBitmap,
         HorizonData,
         LMDBDatabase,
         MmrTree,
@@ -49,7 +53,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     crypto::tari_utilities::Hashable,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{block_spec::BlockSpecs, BlockSpec},
+    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
@@ -133,8 +137,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Weatherwax;
-    let rules = ConsensusManager::builder(network).build();
+    let rules = create_consensus_rules();
     create_store_with_consensus(rules)
 }
 

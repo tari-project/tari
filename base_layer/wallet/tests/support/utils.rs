@@ -24,8 +24,8 @@ use rand::{CryptoRng, Rng};
 use std::{fmt::Debug, thread, time::Duration};
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     tari_amount::MicroTari,
+    test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 use tari_crypto::{

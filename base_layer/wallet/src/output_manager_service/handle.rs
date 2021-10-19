@@ -61,7 +61,12 @@ pub enum OutputManagerRequest {
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
-    FeeEstimate((MicroTari, MicroTari, u64, u64)),
+    FeeEstimate {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: usize,
+        num_outputs: usize,
+    },
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
@@ -98,7 +103,16 @@ impl fmt::Display for OutputManagerRequest {
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
-            FeeEstimate(_) => write!(f, "FeeEstimate"),
+            FeeEstimate {
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            } => write!(
+                f,
+                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
+                amount, fee_per_gram, num_kernels, num_outputs
+            ),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
@@ -295,17 +309,17 @@ impl OutputManagerHandle {
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
-        num_kernels: u64,
-        num_outputs: u64,
+        num_kernels: usize,
+        num_outputs: usize,
     ) -> Result<MicroTari, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::FeeEstimate((
+            .call(OutputManagerRequest::FeeEstimate {
                 amount,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
-            )))
+            })
             .await??
         {
             OutputManagerResponse::FeeEstimate(fee) => Ok(fee),

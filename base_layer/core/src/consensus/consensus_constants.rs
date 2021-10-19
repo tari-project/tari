@@ -21,9 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consensus::{network::NetworkConsensus, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
+    consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::tari_amount::{uT, MicroTari, T},
+    transactions::{
+        tari_amount::{uT, MicroTari, T},
+        weight::TransactionWeight,
+    },
 };
 use chrono::{DateTime, Duration, Utc};
 use std::{collections::HashMap, ops::Add};
@@ -62,6 +65,8 @@ pub struct ConsensusConstants {
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
     faucet_value: MicroTari,
+    /// Transaction Weight params
+    transaction_weight: TransactionWeight,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -127,7 +132,11 @@ impl ConsensusConstants {
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
     pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - WEIGHT_PER_OUTPUT - KERNEL_WEIGHT
+        self.max_block_transaction_weight - self.coinbase_weight()
+    }
+
+    pub fn coinbase_weight(&self) -> u64 {
+        self.transaction_weight.calculate(1, 0, 1, 0)
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -178,9 +187,13 @@ impl ConsensusConstants {
         }
     }
 
-    // This is the maximum age a monero merge mined seed can be reused
+    /// The maximum age a monero merge mined seed can be reused
     pub fn max_randomx_seed_height(&self) -> u64 {
         self.max_randomx_seed_height
+    }
+
+    pub fn transaction_weight(&self) -> &TransactionWeight {
+        &self.transaction_weight
     }
 
     pub fn localnet() -> Vec<Self> {
@@ -212,6 +225,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 
@@ -245,6 +259,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
         }]
     }
 
@@ -305,6 +320,7 @@ impl ConsensusConstants {
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos,
                 faucet_value: (5000 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
             },
             ConsensusConstants {
                 effective_from_height: 1400,
@@ -320,6 +336,7 @@ impl ConsensusConstants {
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos2,
                 faucet_value: (5000 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
             },
         ]
     }
@@ -353,6 +370,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
         }]
     }
 
@@ -377,7 +395,10 @@ impl ConsensusConstants {
             blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
-            max_block_transaction_weight: 19500,
+            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+            // weightings
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
@@ -385,6 +406,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 
@@ -418,6 +440,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 }
