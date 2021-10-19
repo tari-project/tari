@@ -31,8 +31,7 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
+use tari_common::{configuration::Network, exit_codes::ExitCodes, DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{
         async_db::AsyncBlockchainDb,

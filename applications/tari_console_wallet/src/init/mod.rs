@@ -26,8 +26,8 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 
-use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
-use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::utilities::create_transport_type;
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_common_types::types::PrivateKey;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},

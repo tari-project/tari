@@ -22,15 +22,17 @@
 
 use crate::{
     error::WalletStorageError,
-    output_manager_service::{error::OutputManagerError, TxId},
-    transaction_service::storage::database::DbKey,
+    output_manager_service::error::OutputManagerError,
+    transaction_service::storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
 };
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
+use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -110,7 +112,9 @@ pub enum TransactionServiceError {
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
-    ConversionError(String),
+    ConversionError(#[from] TransactionConversionError),
+    #[error("duration::OutOfRangeError: {0}")]
+    DurationOutOfRange(#[from] OutOfRangeError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
     #[error("Broadcast recv error: `{0}`")]
@@ -157,6 +161,14 @@ pub enum TransactionServiceError {
 }
 
 #[derive(Debug, Error)]
+pub enum TransactionKeyError {
+    #[error("Invalid source Publickey")]
+    Source(ByteArrayError),
+    #[error("Invalid destination PublicKey")]
+    Destination(ByteArrayError),
+}
+
+#[derive(Debug, Error)]
 pub enum TransactionStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
@@ -171,9 +183,15 @@ pub enum TransactionStorageError {
     #[error("Transaction is already present in the database")]
     TransactionAlreadyExists,
     #[error("Out of range error: `{0}`")]
+    TransactionKeyError(#[from] TransactionKeyError),
+    #[error("Transaction direction error: `{0}`")]
+    TransactionDirectionError(#[from] TransactionDirectionError),
+    #[error("Error converting a type: `{0}`")]
     OutOfRangeError(#[from] OutOfRangeError),
     #[error("Error converting a type: `{0}`")]
-    ConversionError(String),
+    ConversionError(#[from] TransactionConversionError),
+    #[error("Completed transaction conversion error: `{0}`")]
+    CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
     #[error("R2d2 error")]

@@ -28,6 +28,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use rand::rngs::OsRng;
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -66,12 +67,11 @@ use tari_wallet::{
     output_manager_service::{
         error::OutputManagerError,
         handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
-        TxId,
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
+        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -80,7 +80,7 @@ use tari_wallet::{
         service::TransactionServiceResources,
         storage::{
             database::TransactionDatabase,
-            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+            models::CompletedTransaction,
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
@@ -780,33 +780,6 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
-
-    rpc_service_state.set_is_synced(false);
-
-    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
-
-    let protocol = TransactionValidationProtocol::new(
-        1,
-        resources.db.clone(),
-        wallet_connectivity.clone(),
-        resources.config.clone(),
-        resources.event_publisher.clone(),
-        resources.output_manager_service.clone(),
-    );
-
-    let join_handle = task::spawn(protocol.execute());
-
-    // Check that the protocol ends with error due to base node not being synced
-    let result = join_handle.await.unwrap();
-    assert!(matches!(
-        result,
-        Err(TransactionServiceProtocolError {
-            id: 1,
-            error: TransactionServiceError::BaseNodeNotSynced,
-        })
-    ));
-
-    rpc_service_state.set_is_synced(true);
 
     let protocol = TransactionValidationProtocol::new(
         2,

@@ -25,7 +25,7 @@ that the binaries match the hash by opening a terminal (or command prompt) and b
 
 (\*nix)
 
-    sha256sum <PATH_TO_BINARY_INSTALL_FILE>
+    shasum -a256 <PATH_TO_BINARY_INSTALL_FILE>
 
 (Windows)
 

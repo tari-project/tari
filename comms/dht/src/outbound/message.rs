@@ -46,6 +46,10 @@ pub enum OutboundEncryption {
 }
 
 impl OutboundEncryption {
+    pub fn encrypt_for(public_key: CommsPublicKey) -> Self {
+        OutboundEncryption::EncryptFor(Box::new(public_key))
+    }
+
     /// Return the correct DHT flags for the encryption setting
     pub fn flags(&self) -> DhtMessageFlags {
         match self {
