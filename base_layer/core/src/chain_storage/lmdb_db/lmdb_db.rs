@@ -76,7 +76,7 @@ use crate::{
 };
 use croaring::Bitmap;
 use fs2::FileExt;
-use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
@@ -121,6 +121,8 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
 
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
+        // NOLOCK - No lock required because we manage the DB locking using a RwLock
+        .set_env_flags(open::NOLOCK)
         .set_env_config(config)
         .set_max_number_of_databases(20)
         .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)
