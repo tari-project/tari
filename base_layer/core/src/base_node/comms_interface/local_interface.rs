@@ -28,11 +28,11 @@ use crate::{
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, BlockHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{Block, HistoricalBlock, NewBlockTemplate},
     proof_of_work::PowAlgorithm,
     transactions::transaction::TransactionKernel,
 };
-use std::sync::Arc;
+use std::{ops::RangeInclusive, sync::Arc};
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -41,6 +41,7 @@ pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 use crate::{
     base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
+    blocks::ChainHeader,
     transactions::transaction::TransactionOutput,
 };
 use tari_common_types::types::{Commitment, HashOutput, Signature};
@@ -80,11 +81,14 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the block header of the current tip at the block height
-    pub async fn get_blocks(&mut self, block_heights: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
+    /// Request the block headers within the given range
+    pub async fn get_blocks(
+        &mut self,
+        range: RangeInclusive<u64>,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingBlocks(block_heights))
+            .call(NodeCommsRequest::FetchMatchingBlocks(range))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -92,14 +96,39 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the block header of the current tip at the block height
-    pub async fn get_headers(&mut self, block_heights: Vec<u64>) -> Result<Vec<BlockHeader>, CommsInterfaceError> {
+    /// Request the block header at the given height
+    pub async fn get_block(&mut self, height: u64) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchHeaders(block_heights))
+            .call(NodeCommsRequest::FetchMatchingBlocks(height..=height))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(mut blocks) => Ok(blocks.pop()),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block headers with the given range of heights. The returned headers are ordered from lowest to
+    /// highest block height
+    pub async fn get_headers(&mut self, range: RangeInclusive<u64>) -> Result<Vec<ChainHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchHeaders(range))
             .await??
         {
             NodeCommsResponse::BlockHeaders(headers) => Ok(headers),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block header with the height.
+    pub async fn get_header(&mut self, height: u64) -> Result<Option<ChainHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchHeaders(height..=height))
+            .await??
+        {
+            NodeCommsResponse::BlockHeaders(mut headers) => Ok(headers.pop()),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
@@ -203,7 +232,7 @@ impl LocalNodeCommsInterface {
     }
 
     /// Return header matching the given hash. If the header cannot be found `Ok(None)` is returned.
-    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<BlockHeader>, CommsInterfaceError> {
+    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<ChainHeader>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::GetHeaderByHash(hash))

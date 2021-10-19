@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader, HistoricalBlock, NewBlockTemplate},
+    blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::Difficulty,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
@@ -34,8 +34,8 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),
     TransactionKernels(Vec<TransactionKernel>),
-    BlockHeaders(Vec<BlockHeader>),
-    BlockHeader(Option<BlockHeader>),
+    BlockHeaders(Vec<ChainHeader>),
+    BlockHeader(Option<ChainHeader>),
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
     HistoricalBlock(Box<Option<HistoricalBlock>>),
