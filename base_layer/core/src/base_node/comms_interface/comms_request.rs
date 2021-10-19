@@ -22,7 +22,10 @@
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    fmt::{Display, Error, Formatter},
+    ops::RangeInclusive,
+};
 use tari_common_types::types::{Commitment, HashOutput, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
@@ -38,12 +41,12 @@ pub struct MmrStateRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
-    FetchHeaders { start: u64, end_inclusive: u64 },
+    FetchHeaders(RangeInclusive<u64>),
     FetchHeadersWithHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchMatchingUtxos(Vec<HashOutput>),
     FetchMatchingTxos(Vec<HashOutput>),
-    FetchMatchingBlocks { start: u64, end_inclusive: u64 },
+    FetchMatchingBlocks(RangeInclusive<u64>),
     FetchBlocksByHash(Vec<HashOutput>),
     FetchBlocksWithKernels(Vec<Signature>),
     FetchBlocksWithUtxos(Vec<Commitment>),
@@ -65,15 +68,15 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
-            FetchHeaders { start, end_inclusive } => {
-                write!(f, "FetchHeaders ({}-{})", start, end_inclusive)
+            FetchHeaders(range) => {
+                write!(f, "FetchHeaders ({:?})", range)
             },
             FetchHeadersWithHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
             FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
-            FetchMatchingBlocks { start, end_inclusive } => {
-                write!(f, "FetchMatchingBlocks ({}-{})", start, end_inclusive)
+            FetchMatchingBlocks(range) => {
+                write!(f, "FetchMatchingBlocks ({:?})", range)
             },
             FetchBlocksByHash(v) => write!(f, "FetchBlocksByHash (n={})", v.len()),
             FetchBlocksWithKernels(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),

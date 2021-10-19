@@ -143,12 +143,8 @@ async fn inbound_fetch_headers() {
     );
     let header = store.fetch_block(0).unwrap().header().clone();
 
-    if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchHeaders {
-            start: 0,
-            end_inclusive: 0,
-        })
-        .await
+    if let Ok(NodeCommsResponse::BlockHeaders(received_headers)) =
+        inbound_nch.handle_request(NodeCommsRequest::FetchHeaders(0..=0)).await
     {
         assert_eq!(received_headers.len(), 1);
         assert_eq!(*received_headers[0].header(), header);
@@ -290,10 +286,7 @@ async fn inbound_fetch_blocks() {
     let block = store.fetch_block(0).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
-            start: 0,
-            end_inclusive: 0,
-        })
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks(0..=0))
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -370,10 +363,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
-            start: 1,
-            end_inclusive: 1,
-        })
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks(1..=1))
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -383,10 +373,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     }
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchMatchingBlocks {
-            start: 2,
-            end_inclusive: 2,
-        })
+        .handle_request(NodeCommsRequest::FetchMatchingBlocks(2..=2))
         .await
     {
         assert_eq!(received_blocks.len(), 1);

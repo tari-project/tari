@@ -126,8 +126,8 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
             )),
-            NodeCommsRequest::FetchHeaders { start, end_inclusive } => {
-                let headers = self.blockchain_db.fetch_chain_headers(start..=end_inclusive).await?;
+            NodeCommsRequest::FetchHeaders(range) => {
+                let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))
             },
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
@@ -234,8 +234,8 @@ where T: BlockchainBackend + 'static
                     .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
-            NodeCommsRequest::FetchMatchingBlocks { start, end_inclusive } => {
-                let blocks = self.blockchain_db.fetch_blocks(start..=end_inclusive).await?;
+            NodeCommsRequest::FetchMatchingBlocks(range) => {
+                let blocks = self.blockchain_db.fetch_blocks(range).await?;
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
             NodeCommsRequest::FetchBlocksByHash(block_hashes) => {

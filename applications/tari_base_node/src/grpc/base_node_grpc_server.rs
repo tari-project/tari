@@ -149,7 +149,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
             for (start, end) in page_iter {
                 // headers are returned by height
-                let headers = match handler.get_headers(start, end).await {
+                let headers = match handler.get_headers(start..=end).await {
                     Ok(headers) => headers,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
@@ -337,7 +337,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
             for (start, end) in page_iter {
                 debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
-                let result_headers = match handler.get_headers(start, end).await {
+                let result_headers = match handler.get_headers(start..=end).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
                         return;
@@ -659,7 +659,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE);
             for (start, end) in page_iter {
-                let blocks = match handler.get_blocks(start, end).await {
+                let blocks = match handler.get_blocks(start..=end).await {
                     Err(err) => {
                         warn!(
                             target: LOG_TARGET,
@@ -873,7 +873,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (start, end) = get_heights(&request, handler.clone()).await?;
 
-        let headers = match handler.get_headers(start, end).await {
+        let headers = match handler.get_headers(start..=end).await {
             Ok(headers) => headers.into_iter().map(|h| h.into_header()).collect::<Vec<_>>(),
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
@@ -1162,7 +1162,7 @@ async fn get_block_group(
 
     let (start, end) = get_heights(&height_request, handler.clone()).await?;
 
-    let blocks = match handler.get_blocks(start, end).await {
+    let blocks = match handler.get_blocks(start..=end).await {
         Err(err) => {
             warn!(
                 target: LOG_TARGET,

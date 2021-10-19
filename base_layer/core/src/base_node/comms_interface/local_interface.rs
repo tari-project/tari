@@ -33,7 +33,7 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::transaction::TransactionKernel,
 };
-use std::sync::Arc;
+use std::{ops::RangeInclusive, sync::Arc};
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -82,15 +82,14 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the block header of the current tip at the block height
+    /// Request the block headers within the given range
     pub async fn get_blocks(
         &mut self,
-        start: u64,
-        end_inclusive: u64,
+        range: RangeInclusive<u64>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingBlocks { start, end_inclusive })
+            .call(NodeCommsRequest::FetchMatchingBlocks(range))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -98,19 +97,39 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the block headers with the given range of heights. The returned headers are ordered from lowest to
-    /// highest block height
-    pub async fn get_headers(
-        &mut self,
-        start: u64,
-        end_inclusive: u64,
-    ) -> Result<Vec<ChainHeader>, CommsInterfaceError> {
+    /// Request the block header at the given height
+    pub async fn get_block(&mut self, height: u64) -> Result<Option<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchHeaders { start, end_inclusive })
+            .call(NodeCommsRequest::FetchMatchingBlocks(height..=height))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(mut blocks) => Ok(blocks.pop()),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block headers with the given range of heights. The returned headers are ordered from lowest to
+    /// highest block height
+    pub async fn get_headers(&mut self, range: RangeInclusive<u64>) -> Result<Vec<ChainHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchHeaders(range))
             .await??
         {
             NodeCommsResponse::BlockHeaders(headers) => Ok(headers),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Request the block header with the height.
+    pub async fn get_header(&mut self, height: u64) -> Result<Option<ChainHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchHeaders(height..=height))
+            .await??
+        {
+            NodeCommsResponse::BlockHeaders(mut headers) => Ok(headers.pop()),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
