@@ -1,29 +1,26 @@
-// Copyright 2019. The Tari Project
+//  Copyright 2021, The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
 //
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
 //
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainStorageError},
-};
+use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Display, sync::Arc};
 use tari_common_types::types::HashOutput;
@@ -82,21 +79,23 @@ impl HistoricalBlock {
         !self.pruned_outputs.is_empty() || self.pruned_input_count > 0
     }
 
-    pub fn try_into_block(self) -> Result<Block, ChainStorageError> {
+    pub fn try_into_block(self) -> Result<Block, BlockError> {
         if self.contains_pruned_txos() {
-            Err(ChainStorageError::HistoricalBlockContainsPrunedTxos)
+            Err(BlockError::HistoricalBlockContainsPrunedTxos)
         } else {
             Ok(self.block)
         }
     }
 
-    pub fn try_into_chain_block(self) -> Result<ChainBlock, ChainStorageError> {
+    pub fn try_into_chain_block(self) -> Result<ChainBlock, BlockError> {
         if self.contains_pruned_txos() {
-            return Err(ChainStorageError::HistoricalBlockContainsPrunedTxos);
+            return Err(BlockError::HistoricalBlockContainsPrunedTxos);
         }
 
         let chain_block = ChainBlock::try_construct(Arc::new(self.block), self.accumulated_data).ok_or_else(|| {
-            ChainStorageError::InvalidOperation("Unable to construct ChainBlock because of a hash mismatch".to_string())
+            BlockError::ChainBlockInvariantError(
+                "Unable to construct ChainBlock because of a hash mismatch".to_string(),
+            )
         })?;
 
         Ok(chain_block)

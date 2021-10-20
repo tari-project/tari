@@ -62,7 +62,6 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
@@ -71,8 +70,8 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        helpers::schema_to_transaction,
         tari_amount::{uT, T},
+        test_helpers::schema_to_transaction,
         transaction::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
@@ -83,6 +82,7 @@ use crate::helpers::{
     block_builders::{chain_block, create_genesis_block_with_coinbase_value},
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
+use tari_core::blocks::ChainBlock;
 
 mod helpers;
 

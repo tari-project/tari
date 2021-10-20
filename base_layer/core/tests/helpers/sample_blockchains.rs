@@ -23,7 +23,8 @@
 
 use tari_common::configuration::Network;
 use tari_core::{
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainBlock, Validators},
+    blocks::ChainBlock,
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{

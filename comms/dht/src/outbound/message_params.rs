@@ -40,7 +40,7 @@ use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKe
 /// let dest_public_key = CommsPublicKey::default();
 /// let params = SendMessageParams::new()
 ///   .random(5)
-///   .with_encryption(OutboundEncryption::EncryptFor(Box::new(dest_public_key)))
+///   .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
 ///   .finish();
 /// ```
 #[derive(Debug, Clone)]

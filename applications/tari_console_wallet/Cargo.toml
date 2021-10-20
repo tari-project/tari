@@ -29,7 +29,7 @@ log = { version = "0.4.8", features = ["std"] }
 qrcode = { version = "0.12" }
 regex = "1.5.4"
 rpassword = "5.0"
-rustyline = "6.0"
+rustyline = "9.0"
 strum = "^0.19"
 strum_macros = "^0.19"
 tokio = { version = "1.11", features = ["signal"] }

@@ -30,9 +30,8 @@ pub use block_spec::{BlockSpec, BlockSpecs};
 pub mod blockchain;
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
-    consensus::ConsensusManager,
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    consensus::{ConsensusConstants, ConsensusManager},
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
@@ -43,8 +42,17 @@ use crate::{
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
+use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+
+pub fn create_consensus_rules() -> ConsensusManager {
+    ConsensusManager::builder(Network::LocalNet).build()
+}
+
+pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
+    create_consensus_rules().consensus_constants(height).clone()
+}
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument

@@ -437,7 +437,7 @@ pub async fn do_store_and_forward_message_propagation(
             .outbound_requester()
             .closest_broadcast(
                 node_identity.node_id().clone(),
-                OutboundEncryption::EncryptFor(Box::new(node_identity.public_key().clone())),
+                OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(123i32, secret_message.clone()),
             )
@@ -717,7 +717,7 @@ impl TestNode {
             loop {
                 match conn_man_event_sub.recv().await {
                     Ok(event) => {
-                        events_tx.send(logger(event)).await.unwrap();
+                        let _ = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(err) => log::error!("{}", err),

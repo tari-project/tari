@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,6 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod byte_counter;
-#[cfg(feature = "base_node")]
-pub mod rolling_vec;
+use std::io;
+
+#[derive(Debug, Clone, Default)]
+pub struct ByteCounter {
+    count: usize,
+}
+
+impl ByteCounter {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn get(&self) -> usize {
+        self.count
+    }
+}
+
+impl io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = buf.len();
+        self.count += len;
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}

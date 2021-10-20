@@ -48,8 +48,8 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
+    test_helpers::{create_unblinded_output, TestParams},
     transaction::OutputFeatures,
     CryptoFactories,
 };

@@ -1560,7 +1560,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
         return ptr::null_mut();
     }
 
-    let kernels = (*transaction).transaction.get_body().kernels();
+    let kernels = (*transaction).transaction.body().kernels();
 
     // currently we presume that each CompletedTransaction only has 1 kernel
     // if that changes this will need to be accounted for
@@ -3441,8 +3441,8 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
             MicroTari::from(amount),
             MicroTari::from(fee_per_gram),
-            num_kernels,
-            num_outputs,
+            num_kernels as usize,
+            num_outputs as usize,
         )) {
         Ok(fee) => fee.into(),
         Err(e) => {
