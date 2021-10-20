@@ -417,17 +417,17 @@ BeforeAll({ timeout: 2400000 }, async function () {
 });
 
 Before(async function (testCase) {
-  console.log(`Testing scenario "${testCase.pickle.name}"`);
+  console.log(`\nTesting scenario: "${testCase.pickle.name}"\n`);
 });
 
 After(async function (testCase) {
   console.log("Stopping nodes");
+  await stopAndHandleLogs(this.walletsFFI, testCase, this);
   await stopAndHandleLogs(this.seeds, testCase, this);
   await stopAndHandleLogs(this.nodes, testCase, this);
   await stopAndHandleLogs(this.proxies, testCase, this);
-  await stopAndHandleLogs(this.wallets, testCase, this);
-  await stopAndHandleLogs(this.walletsFFI, testCase, this);
   await stopAndHandleLogs(this.miners, testCase, this);
+  await stopAndHandleLogs(this.wallets, testCase, this);
 });
 
 async function stopAndHandleLogs(objects, testCase, context) {

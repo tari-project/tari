@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -33,19 +33,19 @@ use tari_wallet::output_manager_service::{
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.
 macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
-            Ok(lock) => lock,
-            Err(poisoned) => {
-                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
-                poisoned.into_inner()
-            },
-        }
-    };
-    ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
-}
+        ($e:expr, $m:ident) => {
+            match $e.$m() {
+                Ok(lock) => lock,
+                Err(poisoned) => {
+                    log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+                    poisoned.into_inner()
+                },
+            }
+        };
+        ($e:expr) => {
+            acquire_lock!($e, lock)
+        };
+    }
 
 #[derive(Clone, Debug)]
 pub struct ResponseState {
@@ -69,12 +69,6 @@ impl ResponseState {
     pub fn get_balance(&mut self) -> Balance {
         let lock = acquire_lock!(self.balance);
         (*lock).clone()
-    }
-}
-
-impl Default for ResponseState {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

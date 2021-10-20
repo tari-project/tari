@@ -193,9 +193,13 @@ use crate::{
     tasks::recovery_event_monitoring,
 };
 
-pub mod callback_handler;
+mod callback_handler;
+#[cfg(test)]
+mod callback_handler_tests;
 mod enums;
 mod error;
+#[cfg(test)]
+mod output_manager_service_mock;
 mod tasks;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -3229,6 +3233,128 @@ pub unsafe extern "C" fn wallet_remove_contact(
             ptr::swap(error_out, &mut error as *mut c_int);
             false
         },
+    }
+}
+
+/// Gets the available balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The available balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).available_balance)
+}
+
+/// Gets the time locked balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The time locked balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    let b = if let Some(bal) = (*balance).time_locked_balance {
+        bal
+    } else {
+        MicroTari::from(0)
+    };
+    c_ulonglong::from(b)
+}
+
+/// Gets the pending incoming balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending incoming, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_incoming_balance)
+}
+
+/// Gets the pending outgoing balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending outgoing balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_outgoing_balance)
+}
+
+/// Frees memory for a TariBalance
+///
+/// ## Arguments
+/// `balance` - The pointer to a TariBalance
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
+    if !balance.is_null() {
+        Box::from_raw(balance);
     }
 }
 

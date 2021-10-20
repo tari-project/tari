@@ -49,7 +49,6 @@
 //! and false that the process timed out and new one will be started
 
 use log::*;
-use std::sync::{Arc, Mutex};
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
@@ -69,23 +68,6 @@ use tari_wallet::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
-
-/// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
-/// before the panic is used.
-macro_rules! acquire_lock {
-    ($e:expr, $m:ident) => {
-        match $e.$m() {
-            Ok(lock) => lock,
-            Err(poisoned) => {
-                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
-                poisoned.into_inner()
-            },
-        }
-    };
-    ($e:expr) => {
-        acquire_lock!($e, lock)
-    };
-}
 
 #[derive(Clone, Copy)]
 enum CallbackValidationResults {
@@ -118,7 +100,7 @@ where TBackend: TransactionBackend + 'static
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
-    balance_cache: Arc<Mutex<Balance>>,
+    balance_cache: Balance,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -221,7 +203,7 @@ where TBackend: TransactionBackend + 'static
             dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
-            balance_cache: Arc::new(Mutex::new(Balance::zero())),
+            balance_cache: Balance::zero(),
         }
     }
 
@@ -400,9 +382,8 @@ where TBackend: TransactionBackend + 'static
     async fn trigger_balance_refresh(&mut self) {
         match self.output_manager_service.get_balance().await {
             Ok(balance) => {
-                let mut cached_balance = acquire_lock!(self.balance_cache);
-                if balance != (*cached_balance).clone() {
-                    *cached_balance = balance.clone();
+                if balance != self.balance_cache {
+                    self.balance_cache = balance.clone();
                     debug!(
                         target: LOG_TARGET,
                         "Calling Update Balance callback function: available {}, time locked {:?}, incoming {}, \

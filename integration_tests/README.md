@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Install `Node.js`
+- Install `Node.js` (_Currently, LTS version 12.22.X is recommended for wallet FFI compatibility_)
 
 - Open terminal in the `tari-project\integration_tests` folder and run
   ```
@@ -33,10 +33,10 @@
 
 - To run a specific test, add `-- --name <REGEXP>` to the command line:
 
-```shell
-  # eg: run a specific test
+  ```shell
+  # Runs a specific test
   npm test -- --name "Simple block sync"
-```
+  ```
 
 - To run tests with specific tags, e.g. `critical`, add `-- --tags @<EXPRESSION>` to the command line.
 
@@ -53,21 +53,28 @@
   npm test -- --tags "@critical and not @long-running and not @broken"
   ```
 
-  # Runs all @critical tests, but not @long-running
+- To run the wallet FFI tests, add `--profile ci` to the command line (_take note of the node version requirements_).
 
-  npm test -- --tags "@critical and not @long-running"
-
+  ```shell
+  # Runs a specific FFI test
+  npm test -- --profile ci --name "My wallet FFI test scenario name"
+  # Runs a complete set of FFI tests
+  npm test -- --profile ci --tags "@my-wallet-ffi-tag-name"
   ```
 
+- Runs all @critical tests, but not @long-running
+
+  ```
+  npm test -- --tags "@critical and not @long-running"
   ```
 
 - See `npm test -- --help` for more options.
 
 ## Notes
 
-- In Windows, running the Tari executables in debug mode fails with a stack overflow, thus Windows users must
-  run in release mode. See command line options in `baseNodeProcess.js`, `mergeMiningProxyProcess.js`
-  and `walletProcess.js`.
+In Windows, running the Tari executables in debug mode fails with a stack overflow, thus Windows users must
+run in release mode. See command line options in `baseNodeProcess.js`, `mergeMiningProxyProcess.js`
+and `walletProcess.js`.
 
 ## Code Contribution
 
