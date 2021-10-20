@@ -23,17 +23,13 @@
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
-    blocks::BlockHeader,
-    chain_storage::HistoricalBlock,
-    proof_of_work::Difficulty,
+    blocks::{BlockHeader, HistoricalBlock},
     proto,
     proto::{
         base_node as base_node_proto,
         base_node::{
             BlockHeaders as ProtoBlockHeaders,
             HistoricalBlocks as ProtoHistoricalBlocks,
-            MmrNodes as ProtoMmrNodes,
-            NewBlockResponse as ProtoNewBlockResponse,
             TransactionKernels as ProtoTransactionKernels,
             TransactionOutputs as ProtoTransactionOutputs,
         },
@@ -42,7 +38,7 @@ use crate::{
     tari_utilities::convert::try_convert_all,
 };
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     iter::{FromIterator, Iterator},
 };
 
@@ -52,81 +48,28 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     fn try_into(self) -> Result<ci::NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::*;
         let response = match self {
-            ChainMetadata(chain_metadata) => ci::NodeCommsResponse::ChainMetadata(chain_metadata.try_into()?),
-            TransactionKernels(kernels) => {
-                let kernels = try_convert_all(kernels.kernels)?;
-                ci::NodeCommsResponse::TransactionKernels(kernels)
-            },
-            BlockHeaders(headers) => {
-                let headers = try_convert_all(headers.headers)?;
-                ci::NodeCommsResponse::BlockHeaders(headers)
-            },
-            BlockHeader(header) => ci::NodeCommsResponse::BlockHeader(header.try_into()?),
-            HistoricalBlock(block) => ci::NodeCommsResponse::HistoricalBlock(Box::new(block.try_into()?)),
-            FetchHeadersAfterResponse(headers) => {
-                let headers = try_convert_all(headers.headers)?;
-                ci::NodeCommsResponse::FetchHeadersAfterResponse(headers)
-            },
-            TransactionOutputs(outputs) => {
-                let outputs = try_convert_all(outputs.outputs)?;
-                ci::NodeCommsResponse::TransactionOutputs(outputs)
-            },
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
                 ci::NodeCommsResponse::HistoricalBlocks(blocks)
             },
-            NewBlockTemplate(block_template) => ci::NodeCommsResponse::NewBlockTemplate(block_template.try_into()?),
-            NewBlock(block) => ci::NodeCommsResponse::NewBlock {
-                success: block.success,
-                error: Some(block.error),
-                block: match block.block {
-                    Some(b) => Some(b.try_into()?),
-                    None => None,
-                },
-            },
-            TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
-            MmrNodes(response) => ci::NodeCommsResponse::MmrNodes(response.added, response.deleted),
         };
 
         Ok(response)
     }
 }
 
-impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
-    fn from(response: ci::NodeCommsResponse) -> Self {
+impl TryFrom<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
+    type Error = String;
+
+    fn try_from(response: ci::NodeCommsResponse) -> Result<Self, Self::Error> {
         use ci::NodeCommsResponse::*;
         match response {
-            ChainMetadata(chain_metadata) => ProtoNodeCommsResponse::ChainMetadata(chain_metadata.into()),
-            TransactionKernels(kernels) => {
-                let kernels = kernels.into_iter().map(Into::into).collect();
-                ProtoNodeCommsResponse::TransactionKernels(kernels)
-            },
-            BlockHeaders(headers) => {
-                let block_headers = headers.into_iter().map(Into::into).collect();
-                ProtoNodeCommsResponse::BlockHeaders(block_headers)
-            },
-            BlockHeader(header) => ProtoNodeCommsResponse::BlockHeader(header.into()),
-            HistoricalBlock(block) => ProtoNodeCommsResponse::HistoricalBlock((*block).into()),
-            FetchHeadersAfterResponse(headers) => {
-                let block_headers = headers.into_iter().map(Into::into).collect();
-                ProtoNodeCommsResponse::FetchHeadersAfterResponse(block_headers)
-            },
-            TransactionOutputs(outputs) => {
-                let outputs = outputs.into_iter().map(Into::into).collect();
-                ProtoNodeCommsResponse::TransactionOutputs(outputs)
-            },
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks.into_iter().map(Into::into).collect();
-                ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks)
+                Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
             },
-            NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
-            NewBlock { success, error, block } => ProtoNodeCommsResponse::NewBlock(ProtoNewBlockResponse {
-                success,
-                error: error.unwrap_or_else(|| "".to_string()),
-                block: block.map(|b| b.into()),
-            }),
-            TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
-            MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
+            // This would only occur if a programming error sent out the unsupported response
+            resp => Err(format!("Response not supported {:?}", resp)),
         }
     }
 }

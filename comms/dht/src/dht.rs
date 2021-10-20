@@ -295,21 +295,21 @@ impl Dht {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
-            .layer(DedupLayer::new(
-                self.dht_requester(),
-                self.config.dedup_allowed_message_occurrences,
-            ))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
-            .layer(MessageLoggingLayer::new(format!(
-                "Inbound [{}]",
-                self.node_identity.node_id().short_str()
-            )))
             .layer(inbound::DecryptionLayer::new(
                 self.config.clone(),
                 self.node_identity.clone(),
                 self.connectivity.clone(),
             ))
+            .layer(DedupLayer::new(
+                self.dht_requester(),
+                self.config.dedup_allowed_message_occurrences,
+            ))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
+            .layer(MessageLoggingLayer::new(format!(
+                "Inbound [{}]",
+                self.node_identity.node_id().short_str()
+            )))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
@@ -541,7 +541,7 @@ mod test {
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
-            false,
+            true,
         );
 
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
@@ -593,12 +593,12 @@ mod test {
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
         let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
         let dht_envelope = make_dht_envelope(
-            &node_identity,
+            &node_identity2,
             encrypted_bytes,
             DhtMessageFlags::ENCRYPTED,
             true,
             MessageTag::new(),
-            false,
+            true,
         );
 
         let origin_mac = dht_envelope.header.as_ref().unwrap().origin_mac.clone();

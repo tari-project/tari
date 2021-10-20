@@ -164,14 +164,6 @@ impl BlockHeader {
         BlockBuilder::new(self.version).with_header(self)
     }
 
-    /// Returns a height range in descending order
-    pub fn get_height_range(start: u64, end_inclusive: u64) -> Vec<u64> {
-        let mut heights: Vec<u64> =
-            (std::cmp::min(start, end_inclusive)..=std::cmp::max(start, end_inclusive)).collect();
-        heights.reverse();
-        heights
-    }
-
     /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {

@@ -65,6 +65,8 @@ enum DecryptionError {
     EnvelopeBodyDecodeFailed,
     #[error("Failed to decrypt message body")]
     MessageBodyDecryptionFailed,
+    #[error("Encrypted message without a destination is invalid")]
+    EncryptedMessageNoDestination,
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -168,6 +170,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
             Err(err @ OriginMacNotProvided) |
             Err(err @ EphemeralKeyNotProvided) |
+            Err(err @ EncryptedMessageNoDestination) |
             Err(err @ OriginMacInvalidSignature) => {
                 // This message should not have been propagated, or has been manipulated in some way. Ban the source of
                 // this message.
@@ -207,6 +210,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.tag,
             message.dht_header.message_tag
         );
+
+        // Check if there is no destination specified and discard
+        if dht_header.destination.is_unknown() {
+            return Err(DecryptionError::EncryptedMessageNoDestination);
+        }
 
         let e_pk = dht_header
             .ephemeral_public_key
@@ -449,7 +457,7 @@ mod test {
             plain_text_msg.to_encoded_bytes(),
             DhtMessageFlags::ENCRYPTED,
             true,
-            false,
+            true,
         );
 
         block_on(service.call(inbound_msg)).unwrap();
@@ -479,7 +487,7 @@ mod test {
             some_secret,
             DhtMessageFlags::ENCRYPTED,
             true,
-            false,
+            true,
         );
 
         block_on(service.call(inbound_msg.clone())).unwrap();
@@ -512,6 +520,37 @@ mod test {
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
         unpack_enum!(DecryptionError::MessageRejectDecryptionFailed = err);
+        assert!(result.lock().unwrap().is_none());
+    }
+
+    #[runtime::test]
+    async fn decrypt_inbound_fail_no_destination() {
+        let _ = env_logger::try_init();
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let node_identity = make_node_identity();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+
+        let plain_text_msg = b"Secret message to nowhere".to_vec();
+        let inbound_msg = make_dht_inbound_message(
+            &node_identity,
+            plain_text_msg.to_encoded_bytes(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            false,
+        );
+
+        let err = service.call(inbound_msg).await.unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::EncryptedMessageNoDestination = err);
         assert!(result.lock().unwrap().is_none());
     }
 }

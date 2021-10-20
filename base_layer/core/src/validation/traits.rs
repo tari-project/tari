@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock},
+    chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},

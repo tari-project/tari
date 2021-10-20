@@ -53,12 +53,14 @@ pub use sha3_pow::sha3_difficulty;
 #[cfg(all(test, feature = "base_node"))]
 pub use sha3_pow::test as sha3_test;
 
-#[cfg(feature = "base_node")]
 mod target_difficulty;
-#[cfg(feature = "base_node")]
-pub use target_difficulty::{AchievedTargetDifficulty, TargetDifficultyWindow};
+pub use target_difficulty::AchievedTargetDifficulty;
 
 #[cfg(feature = "base_node")]
+mod target_difficulty_window;
+#[cfg(feature = "base_node")]
+pub use target_difficulty_window::TargetDifficultyWindow;
+
 pub mod lwma_diff;
 
 #[cfg(feature = "base_node")]

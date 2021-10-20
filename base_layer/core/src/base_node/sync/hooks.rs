@@ -22,7 +22,7 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::chain_storage::ChainBlock;
+use crate::blocks::ChainBlock;
 use std::sync::Arc;
 use tari_comms::peer_manager::NodeId;
 
