@@ -1,6 +1,7 @@
-@routing_mechanism
+@wallet-routing_mechanism @wallet
 Feature: Wallet Routing Mechanism
 
+@flaky
 Scenario Outline: Wallets transacting via specified routing mechanism only
     Given I have a seed node NODE
     And I have <NumBaseNodes> base nodes connected to all seed nodes
@@ -15,7 +16,7 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     When I wait 1 seconds
     When I wait for wallet WALLET_A to have at least 100000000 uT
     #When I print the world
-    And I multi-send 1000000 uT from wallet WALLET_A to all wallets at fee 100
+    And I multi-send 1000000 uT from wallet WALLET_A to all wallets at fee 20
     Then all wallets detect all transactions are at least Pending
     Then all wallets detect all transactions are at least Completed
     Then all wallets detect all transactions are at least Broadcast
@@ -31,7 +32,7 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     Then all wallets detect all transactions as Mined_Confirmed
         # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
-    @critical
+    @long-running
     Examples:
         | NumBaseNodes | NumWallets | Mechanism                |
         |  5           |  5         | DirectAndStoreAndForward |

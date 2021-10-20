@@ -133,6 +133,7 @@ pub struct TxQueryBatchResponse {
     pub location: TxLocation,
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
+    pub block_height: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -223,6 +224,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                     .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
             )?,
             block_hash: proto_response.block_hash,
+            block_height: proto_response.block_height,
             confirmations: proto_response.confirmations,
         })
     }

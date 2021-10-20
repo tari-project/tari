@@ -21,11 +21,11 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 let lastResult;
 
 const AUTOUPDATE_HASHES_TXT_URL =
-  "https://raw.githubusercontent.com/sdbondi/tari/autoupdate-test-branch/meta/hashes.txt";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt";
 const AUTOUPDATE_HASHES_TXT_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/good.sig";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig";
 const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
-  "https://github.com/sdbondi/tari/raw/autoupdate-test-branch/meta/bad.sig";
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.bad.sig";
 
 Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
@@ -39,21 +39,9 @@ Given("I have {int} seed nodes", { timeout: 20 * 1000 }, async function (n) {
   await Promise.all(promises);
 });
 
-Given(
-  /I do not expect all automated transactions to succeed/,
-  { timeout: 20 * 1000 },
-  async function () {
-    this.checkAutoTransactions = false;
-  }
-);
-
-Given(
-  /I expect all automated transactions to succeed/,
-  { timeout: 20 * 1000 },
-  async function () {
-    this.checkAutoTransactions = true;
-  }
-);
+Then(/all transactions must have succeeded/, function () {
+  expect(this.lastTransactionsSucceeded).to.be(true);
+});
 
 Given(
   /I have a base node (.*) connected to all seed nodes/,
@@ -91,6 +79,7 @@ Given(
     const node = await this.createNode(name, {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -110,6 +99,7 @@ Given(
     const node = await this.createNode(name, {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -129,6 +119,7 @@ Given(
     await this.createAndAddWallet(name, "", {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -146,6 +137,7 @@ Given(
     await this.createAndAddWallet(name, "", {
       common: {
         auto_update: {
+          check_interval: 10,
           enabled: true,
           dns_hosts: ["_test_autoupdate.tari.io"],
           hashes_url: AUTOUPDATE_HASHES_TXT_URL,
@@ -899,7 +891,11 @@ Then(
     await this.forEachClientAsync(async (client, name) => {
       await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
       const currTip = await client.getTipHeader();
-      console.log("the node is at tip ", currTip);
+      console.log(
+        `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
+          "hex"
+        )})`
+      );
       expect(currTip.height).to.equal(height);
       if (!tipHash) {
         tipHash = currTip.hash.toString("hex");
@@ -925,7 +921,6 @@ Then(
         let height = null;
         let result = true;
         await this.forEachClientAsync(async (client, name) => {
-          await waitFor(async () => client.getTipHeight(), 115 * 1000);
           const currTip = await client.getTipHeader();
           if (!tipHash) {
             tipHash = currTip.hash.toString("hex");
@@ -954,12 +949,56 @@ Then(
   "all nodes are at height {int}",
   { timeout: 1200 * 1000 },
   async function (height) {
-    await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
-      const currTip = await client.getTipHeight();
-      console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
-      expect(currTip).to.equal(height);
-    });
+    await waitFor(
+      async () => {
+        let result = true;
+        await this.forEachClientAsync(async (client, name) => {
+          await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
+          const currTip = await client.getTipHeight();
+          console.log(
+            `Node ${name} is at tip: ${currTip} (should be ${height})`
+          );
+          result = result && currTip == height;
+        });
+        return result;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+  }
+);
+
+Then(
+  /node (.*) has reached initial sync/,
+  { timeout: 21 * 60 * 1000 },
+  async function (node) {
+    const client = this.getClient(node);
+    await waitForPredicate(
+      async () => (await client.initial_sync_achieved()) === true,
+      20 * 60 * 1000,
+      1000
+    );
+    let result = await this.getClient(node).initial_sync_achieved();
+    console.log(`Node ${node} response is: ${result}`);
+    expect(result).to.equal(true);
+  }
+);
+
+Then(
+  /node (.*) is in state (.*)/,
+  { timeout: 21 * 60 * 1000 },
+  async function (node, state) {
+    const client = this.getClient(node);
+    await waitForPredicate(
+      async () => (await client.get_node_state()) == state,
+      20 * 60 * 1000,
+      1000
+    );
+    let result = await this.getClient(node).get_node_state();
+    console.log(`Node ${node} is in the current state: ${result}`);
+    expect(result).to.equal(state);
   }
 );
 
@@ -970,12 +1009,14 @@ Then(
     let client = await this.getNodeOrWalletClient(name);
     await sleep(5000);
     await waitFor(
-      async () => client.checkForUpdates().has_update,
+      async () => (await client.checkForUpdates()).has_update,
       false,
       60 * 1000
     );
-    expect(client.checkForUpdates().has_update, "There should be no update").to
-      .be.false;
+    expect(
+      (await client.checkForUpdates()).has_update,
+      "There should be no update"
+    ).to.be.false;
   }
 );
 
@@ -985,14 +1026,14 @@ Then(
   async function (name) {
     let client = await this.getNodeOrWalletClient(name);
     await waitFor(
-      async () => {
-        return client.checkForUpdates().has_update;
-      },
+      async () => (await client.checkForUpdates()).has_update,
       true,
-      1150 * 1000
+      60 * 1000
     );
-    expect(client.checkForUpdates().has_update, "There should be update").to.be
-      .true;
+    expect(
+      (await client.checkForUpdates()).has_update,
+      "There should be update"
+    ).to.be.true;
   }
 );
 
@@ -2642,7 +2683,7 @@ Then(
 );
 
 Then(
-  /while mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
+  /while mining via node (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
   { timeout: 1200 * 1000 },
   async function (nodeName, walletName) {
     const wallet = this.getWallet(walletName);
@@ -2701,12 +2742,13 @@ Then(
 );
 
 Then(
-  /while merge mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
+  /while mining via SHA3 miner (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
   { timeout: 3600 * 1000 },
-  async function (mmProxy, walletName) {
+  async function (miner, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
     const walletInfo = await walletClient.identify();
+    const miningNode = this.getMiningNode(miner);
 
     const txIds = this.transactionsMap.get(walletInfo.public_key);
     if (txIds === undefined) {
@@ -2737,7 +2779,8 @@ Then(
           if (await walletClient.isTransactionMinedConfirmed(txIds[i])) {
             return true;
           } else {
-            await this.mergeMineBlock(mmProxy);
+            await miningNode.init(1, null, 1, 100000, false, null);
+            await miningNode.startNew();
             return false;
           }
         },
@@ -2962,36 +3005,6 @@ Then(
       expect("\nNo transactions found!").to.equal("");
     }
     expect(numberCorrect && statusCorrect).to.equal(true);
-  }
-);
-
-Then(
-  /the number of coinbase transactions for wallet (.*) and wallet (.*) are (.*) less/,
-  { timeout: 20 * 1000 },
-  async function (walletNameA, walletNameB, count) {
-    const walletClientA = await this.getWallet(walletNameA).connectClient();
-    const transactionsA = await walletClientA.getAllCoinbaseTransactions();
-    const walletClientB = await this.getWallet(walletNameB).connectClient();
-    const transactionsB = await walletClientB.getAllCoinbaseTransactions();
-    if (this.resultStack.length >= 2) {
-      const walletStats = [this.resultStack.pop(), this.resultStack.pop()];
-      console.log(
-        "\nCoinbase comparison: Expect this (current + deficit)",
-        transactionsA.length,
-        transactionsB.length,
-        Number(count),
-        "to equal this (previous)",
-        walletStats[0][1],
-        walletStats[1][1]
-      );
-      expect(
-        transactionsA.length + transactionsB.length + Number(count)
-      ).to.equal(walletStats[0][1] + walletStats[1][1]);
-    } else {
-      expect(
-        "\nCoinbase comparison: Not enough results saved on the stack!"
-      ).to.equal("");
-    }
   }
 );
 

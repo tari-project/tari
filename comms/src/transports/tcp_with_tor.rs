@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::Transport;
-use crate::transports::{dns::TorDnsResolver, helpers::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
+use crate::transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
 use multiaddr::Multiaddr;
 use std::io;
 use tokio::net::TcpStream;

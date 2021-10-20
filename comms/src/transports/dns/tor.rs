@@ -33,7 +33,7 @@ use std::{io, net::SocketAddr};
 const LOG_TARGET: &str = "comms::dns::tor_resolver";
 
 /// Resolves DNS addresses using the tor proxy
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TorDnsResolver {
     socks_config: SocksConfig,
 }
@@ -86,6 +86,8 @@ impl DnsResolver for TorDnsResolver {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::transports::predicate::FalsePredicate;
+    use std::sync::Arc;
 
     // This only works when a tor proxy is running
     #[ignore]
@@ -94,7 +96,7 @@ mod test {
         let resolver = TorDnsResolver::new(SocksConfig {
             proxy_address: "/ip4/127.0.0.1/tcp/9050".parse().unwrap(),
             authentication: Default::default(),
-            proxy_bypass_addresses: vec![],
+            proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
         });
 
         let addr = resolver

@@ -25,11 +25,7 @@ use log::*;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 use crate::{
-    blocks::{
-        block_header::{BlockHeader, BlockHeaderValidationError},
-        Block,
-        BlockValidationError,
-    },
+    blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     crypto::commitment::HomomorphicCommitmentFactory,
@@ -75,6 +71,10 @@ pub fn check_timestamp_ftl(
 }
 
 /// Returns the median timestamp for the provided timestamps.
+///
+/// ## Panics
+/// When an empty slice is given as this is undefined for median average.
+/// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     assert!(
         !timestamps.is_empty(),
@@ -196,7 +196,7 @@ pub fn check_target_difficulty(
 
 pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     // The genesis block has a larger weight than other blocks may have so we have to exclude it here
-    let block_weight = block.body.calculate_weight();
+    let block_weight = block.body.calculate_weight(consensus_constants.transaction_weight());
     if block_weight <= consensus_constants.get_max_block_transaction_weight() || block.header.height == 0 {
         trace!(
             target: LOG_TARGET,
@@ -461,7 +461,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.kernel_mmr_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Kernel,
+            mmr_tree: MmrTree::Kernel.to_string(),
             expected: mmr_roots.kernel_mmr_size,
             actual: header.kernel_mmr_size,
         }));
@@ -493,7 +493,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mmr_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Utxo,
+            mmr_tree: MmrTree::Utxo.to_string(),
             expected: mmr_roots.output_mmr_size,
             actual: header.output_mmr_size,
         }));
@@ -643,11 +643,11 @@ mod test {
 
     mod check_lock_height {
         use super::*;
-        use crate::transactions::helpers;
+        use crate::transactions::test_helpers;
 
         #[test]
         fn it_checks_the_kernel_timelock() {
-            let mut kernel = helpers::create_test_kernel(0.into(), 0);
+            let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
             kernel.lock_height = 2;
             assert_eq!(
                 check_kernel_lock_height(1, &[kernel.clone()]),

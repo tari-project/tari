@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::ChainStorageError,
+    blocks::{error::BlockError, Block, BlockHeader},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     tari_utilities::Hashable,
     transactions::aggregated_body::AggregateBody,
@@ -52,11 +51,11 @@ const LOG_TARGET: &str = "c::bn::acc_data";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
-    pub(super) kernels: PrunedHashSet,
-    pub(super) outputs: PrunedHashSet,
-    pub(super) deleted: DeletedBitmap,
-    pub(super) range_proofs: PrunedHashSet,
-    pub(super) kernel_sum: Commitment,
+    pub(crate) kernels: PrunedHashSet,
+    pub(crate) outputs: PrunedHashSet,
+    pub(crate) deleted: DeletedBitmap,
+    pub(crate) range_proofs: PrunedHashSet,
+    pub(crate) kernel_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
@@ -131,7 +130,7 @@ impl DeletedBitmap {
         &self.deleted
     }
 
-    pub(super) fn bitmap_mut(&mut self) -> &mut Bitmap {
+    pub(crate) fn bitmap_mut(&mut self) -> &mut Bitmap {
         &mut self.deleted
     }
 }
@@ -227,6 +226,10 @@ impl CompleteDeletedBitmap {
     pub fn dissolve(self) -> (Bitmap, u64, HashOutput) {
         (self.deleted, self.height, self.hash)
     }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.deleted.serialize()
+    }
 }
 
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {
@@ -263,20 +266,19 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn build(self) -> Result<BlockHeaderAccumulatedData, ChainStorageError> {
+    pub fn build(self) -> Result<BlockHeaderAccumulatedData, BlockError> {
         let previous_accum = self.previous_accum;
-        let hash = self
-            .hash
-            .ok_or_else(|| ChainStorageError::InvalidOperation("hash not provided".to_string()))?;
+        let hash = self.hash.ok_or(BlockError::BuilderMissingField { field: "hash" })?;
 
-        if hash == self.previous_accum.hash {
-            return Err(ChainStorageError::InvalidOperation(
-                "Hash was set to the same hash that is contained in previous accumulated data".to_string(),
-            ));
+        if hash == previous_accum.hash {
+            return Err(BlockError::BuilderInvalidValue {
+                field: "hash",
+                details: "Hash was set to the same hash that is contained in previous accumulated data".to_string(),
+            });
         }
 
-        let achieved_target = self.current_achieved_target.ok_or_else(|| {
-            ChainStorageError::InvalidOperation("Current achieved difficulty not provided".to_string())
+        let achieved_target = self.current_achieved_target.ok_or(BlockError::BuilderMissingField {
+            field: "Current achieved difficulty",
         })?;
 
         let (monero_diff, blake_diff) = match achieved_target.pow_algo() {
@@ -293,7 +295,9 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         let total_kernel_offset = self
             .current_total_kernel_offset
             .map(|offset| &previous_accum.total_kernel_offset + offset)
-            .ok_or_else(|| ChainStorageError::InvalidOperation("total_kernel_offset not provided".to_string()))?;
+            .ok_or(BlockError::BuilderMissingField {
+                field: "total_kernel_offset",
+            })?;
 
         let result = BlockHeaderAccumulatedData {
             hash,

@@ -27,7 +27,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
@@ -38,7 +38,11 @@ use tokio::{
 };
 
 use tari_common::{configuration::Network, GlobalConfig};
-use tari_common_types::{emoji::EmojiId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::PublicKey,
+};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -46,18 +50,17 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari},
+    weight::TransactionWeight,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId, TxoValidationType},
-    transaction_service::{
-        handle::TransactionEventReceiver,
-        storage::models::{CompletedTransaction, TransactionStatus},
-    },
-    types::ValidationRetryStrategy,
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
 };
 
@@ -320,11 +323,11 @@ impl AppState {
         &self.cached_data.contacts[start..end]
     }
 
-    pub fn get_pending_txs(&self) -> &Vec<CompletedTransaction> {
+    pub fn get_pending_txs(&self) -> &Vec<CompletedTransactionInfo> {
         &self.cached_data.pending_txs
     }
 
-    pub fn get_pending_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransaction] {
+    pub fn get_pending_txs_slice(&self, start: usize, end: usize) -> &[CompletedTransactionInfo] {
         if self.cached_data.pending_txs.is_empty() || start > end || end > self.cached_data.pending_txs.len() {
             return &[];
         }
@@ -332,7 +335,7 @@ impl AppState {
         &self.cached_data.pending_txs[start..end]
     }
 
-    pub fn get_pending_tx(&self, index: usize) -> Option<&CompletedTransaction> {
+    pub fn get_pending_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
         if index < self.cached_data.pending_txs.len() {
             Some(&self.cached_data.pending_txs[index])
         } else {
@@ -340,7 +343,7 @@ impl AppState {
         }
     }
 
-    pub fn get_completed_txs(&self) -> Vec<&CompletedTransaction> {
+    pub fn get_completed_txs(&self) -> Vec<&CompletedTransactionInfo> {
         if self
             .completed_tx_filter
             .contains(TransactionFilter::ABANDONED_COINBASES)
@@ -348,7 +351,7 @@ impl AppState {
             self.cached_data
                 .completed_txs
                 .iter()
-                .filter(|tx| !(tx.cancelled && tx.status == TransactionStatus::Coinbase))
+                .filter(|tx| !((tx.cancelled || !tx.valid) && tx.status == TransactionStatus::Coinbase))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -359,7 +362,7 @@ impl AppState {
         (&self.cached_data.confirmations).get(tx_id)
     }
 
-    pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransaction> {
+    pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
         let filtered_completed_txs = self.get_completed_txs();
         if index < filtered_completed_txs.len() {
             Some(filtered_completed_txs[index])
@@ -460,6 +463,19 @@ impl AppState {
             self.update_cache().await;
         }
     }
+
+    pub fn get_default_fee_per_gram(&self) -> MicroTari {
+        use Network::*;
+        // TODO: TBD
+        match self.node_config.network {
+            MainNet => MicroTari(5),
+            LocalNet => MicroTari(5),
+            Ridcully => MicroTari(25),
+            Stibbons => MicroTari(25),
+            Weatherwax => MicroTari(25),
+            Igor => MicroTari(5),
+        }
+    }
 }
 pub struct AppStateInner {
     updated: bool,
@@ -495,6 +511,16 @@ impl AppStateInner {
         }
     }
 
+    pub fn get_transaction_weight(&self) -> TransactionWeight {
+        *self
+            .wallet
+            .network
+            .create_consensus_constants()
+            .last()
+            .unwrap()
+            .transaction_weight()
+    }
+
     pub async fn refresh_full_transaction_state(&mut self) -> Result<(), UiError> {
         let mut pending_transactions: Vec<CompletedTransaction> = Vec::new();
         pending_transactions.extend(
@@ -519,7 +545,10 @@ impl AppStateInner {
         pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
             b.timestamp.partial_cmp(&a.timestamp).unwrap()
         });
-        self.data.pending_txs = pending_transactions;
+        self.data.pending_txs = pending_transactions
+            .iter()
+            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
+            .collect();
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
         completed_transactions.extend(
@@ -548,7 +577,10 @@ impl AppStateInner {
                 .expect("Should be able to compare timestamps")
         });
 
-        self.data.completed_txs = completed_transactions;
+        self.data.completed_txs = completed_transactions
+            .iter()
+            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
+            .collect();
         self.updated = true;
         Ok(())
     }
@@ -590,7 +622,8 @@ impl AppStateInner {
                     });
             },
             Some(tx) => {
-                let tx = CompletedTransaction::from(tx);
+                let tx =
+                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight());
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && !tx.cancelled {
                         self.data.pending_txs[index] = tx;
@@ -806,32 +839,12 @@ impl AppStateInner {
         let mut output_manager_service = self.wallet.output_manager_service.clone();
 
         task::spawn(async move {
-            if let Err(e) = txn_service
-                .validate_transactions(ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
+            if let Err(e) = txn_service.validate_transactions().await {
                 error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
             }
 
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
+            if let Err(e) = output_manager_service.validate_txos().await {
                 error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
-            }
-
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
-                error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
-            }
-
-            if let Err(e) = output_manager_service
-                .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
-                .await
-            {
-                error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
             }
         });
     }
@@ -853,9 +866,71 @@ impl AppStateInner {
 }
 
 #[derive(Clone)]
+pub struct CompletedTransactionInfo {
+    pub tx_id: TxId,
+    pub source_public_key: CommsPublicKey,
+    pub destination_public_key: CommsPublicKey,
+    pub amount: MicroTari,
+    pub fee: MicroTari,
+    pub excess_signature: String,
+    pub maturity: u64,
+    pub status: TransactionStatus,
+    pub message: String,
+    pub timestamp: NaiveDateTime,
+    pub cancelled: bool,
+    pub direction: TransactionDirection,
+    pub valid: bool,
+    pub mined_height: Option<u64>,
+    pub is_coinbase: bool,
+    pub weight: u64,
+    pub inputs_count: usize,
+    pub outputs_count: usize,
+}
+
+impl CompletedTransactionInfo {
+    pub fn from_completed_transaction(tx: CompletedTransaction, transaction_weighting: &TransactionWeight) -> Self {
+        let excess_signature = tx
+            .transaction
+            .first_kernel_excess_sig()
+            .map(|s| s.get_signature().to_hex())
+            .unwrap_or_default();
+        let is_coinbase = tx.is_coinbase();
+        let weight = tx.transaction.calculate_weight(transaction_weighting);
+        let inputs_count = tx.transaction.body.inputs().len();
+        let outputs_count = tx.transaction.body.outputs().len();
+        Self {
+            tx_id: tx.tx_id,
+            source_public_key: tx.source_public_key.clone(),
+            destination_public_key: tx.destination_public_key.clone(),
+            amount: tx.amount,
+            fee: tx.fee,
+            excess_signature,
+            maturity: tx
+                .transaction
+                .body
+                .outputs()
+                .first()
+                .map(|o| o.features.maturity)
+                .unwrap_or(0),
+            status: tx.status,
+            message: tx.message,
+            timestamp: tx.timestamp,
+            cancelled: tx.cancelled,
+            direction: tx.direction,
+            valid: tx.valid,
+            mined_height: tx.mined_height,
+            is_coinbase,
+            weight,
+            inputs_count,
+            outputs_count,
+        }
+    }
+}
+
+#[derive(Clone)]
 struct AppStateData {
-    pending_txs: Vec<CompletedTransaction>,
-    completed_txs: Vec<CompletedTransaction>,
+    pending_txs: Vec<CompletedTransactionInfo>,
+    completed_txs: Vec<CompletedTransactionInfo>,
     confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,

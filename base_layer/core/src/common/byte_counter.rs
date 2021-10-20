@@ -20,39 +20,31 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-use tokio::sync::watch;
+use std::io;
 
-#[derive(Clone)]
-pub struct Watch<T>(Arc<watch::Sender<T>>, watch::Receiver<T>);
+#[derive(Debug, Clone, Default)]
+pub struct ByteCounter {
+    count: usize,
+}
 
-impl<T> Watch<T> {
-    pub fn new(initial: T) -> Self {
-        let (tx, rx) = watch::channel(initial);
-        Self(Arc::new(tx), rx)
+impl ByteCounter {
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    pub fn borrow(&self) -> watch::Ref<'_, T> {
-        self.receiver().borrow()
+    pub fn get(&self) -> usize {
+        self.count
+    }
+}
+
+impl io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let len = buf.len();
+        self.count += len;
+        Ok(len)
     }
 
-    pub fn broadcast(&self, item: T) {
-        // PANIC: broadcast becomes infallible because the receiver is owned in Watch and so has the same lifetime
-        if self.sender().send(item).is_err() {
-            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
-            panic!("watch internal receiver is dropped");
-        }
-    }
-
-    fn sender(&self) -> &watch::Sender<T> {
-        &self.0
-    }
-
-    pub fn receiver(&self) -> &watch::Receiver<T> {
-        &self.1
-    }
-
-    pub fn get_receiver(&self) -> watch::Receiver<T> {
-        self.receiver().clone()
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }

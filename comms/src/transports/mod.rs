@@ -28,7 +28,8 @@ use multiaddr::Multiaddr;
 use tokio_stream::Stream;
 
 mod dns;
-mod helpers;
+
+pub mod predicate;
 
 mod memory;
 pub use memory::MemoryTransport;

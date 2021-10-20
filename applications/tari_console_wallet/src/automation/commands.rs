@@ -23,6 +23,7 @@
 use super::error::CommandError;
 use log::*;
 use std::{
+    convert::TryFrom,
     fs::File,
     io::{LineWriter, Write},
     str::FromStr,
@@ -39,7 +40,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 use tari_common::GlobalConfig;
-use tari_common_types::{emoji::EmojiId, types::PublicKey};
+use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -54,7 +55,7 @@ use tari_core::{
     },
 };
 use tari_wallet::{
-    output_manager_service::{handle::OutputManagerHandle, TxId},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
 };
@@ -500,14 +501,21 @@ pub async fn monitor_transactions(
                         }
                     }
                 },
-                TransactionEvent::TransactionMinedUnconfirmed(id, confirmations) if tx_ids.contains(id) => {
+                TransactionEvent::TransactionMinedUnconfirmed {
+                    tx_id,
+                    num_confirmations,
+                    is_valid,
+                } if tx_ids.contains(tx_id) => {
                     debug!(
                         target: LOG_TARGET,
-                        "tx mined unconfirmed event for tx_id: {}, confirmations: {}", *id, confirmations
+                        "tx mined unconfirmed event for tx_id: {}, confirmations: {}, is_valid: {}",
+                        *tx_id,
+                        num_confirmations,
+                        is_valid
                     );
                     if wait_stage == TransactionStage::MinedUnconfirmed {
                         results.push(SentTransaction {
-                            id: *id,
+                            id: *tx_id,
                             stage: TransactionStage::MinedUnconfirmed,
                         });
                         if results.len() == tx_ids.len() {
@@ -515,11 +523,14 @@ pub async fn monitor_transactions(
                         }
                     }
                 },
-                TransactionEvent::TransactionMined(id) if tx_ids.contains(id) => {
-                    debug!(target: LOG_TARGET, "tx mined confirmed event for tx_id: {}", *id);
+                TransactionEvent::TransactionMined { tx_id, is_valid } if tx_ids.contains(tx_id) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "tx mined confirmed event for tx_id: {}, is_valid:{}", *tx_id, is_valid
+                    );
                     if wait_stage == TransactionStage::Mined {
                         results.push(SentTransaction {
-                            id: *id,
+                            id: *tx_id,
                             stage: TransactionStage::Mined,
                         });
                         if results.len() == tx_ids.len() {
@@ -651,7 +662,7 @@ pub async fn command_runner(
                 }
                 if count > 0 {
                     let average = f64::from(sum) / count as f64;
-                    let average = Tari::from(average / 1_000_000f64);
+                    let average = Tari::try_from(average / 1_000_000f64)?;
                     println!("Average value UTXO   : {}", average);
                 }
                 if let Some(max) = values.iter().max() {

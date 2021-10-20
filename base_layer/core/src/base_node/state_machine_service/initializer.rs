@@ -38,7 +38,6 @@ use crate::{
         },
         sync::SyncValidators,
         LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
@@ -95,7 +94,6 @@ where B: BlockchainBackend + 'static
         let config = self.config.clone();
 
         context.spawn_when_ready(move |handles| async move {
-            let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
@@ -113,7 +111,6 @@ where B: BlockchainBackend + 'static
             let node = BaseNodeStateMachine::new(
                 db,
                 node_local_interface,
-                outbound_interface,
                 connectivity,
                 peer_manager,
                 chain_metadata_service.get_event_stream(),

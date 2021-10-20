@@ -26,40 +26,37 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::{HashDigest, PrivateKey, PublicKey},
 };
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
-
-use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
+    test_helpers::{create_unblinded_output, TestParams},
     transaction::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
     CryptoFactories,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{TransactionBackend, TransactionDatabase},
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
-            WalletTransaction,
-        },
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
@@ -70,11 +67,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TestParams::new(),
         MicroTari::from(100_000),
     );
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(177 / 5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
@@ -270,6 +268,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             valid: true,
             confirmations: None,
             mined_height: None,
+            mined_in_block: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -314,13 +313,25 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(retrieved_completed_tx.last_send_timestamp.is_some());
     assert!(retrieved_completed_tx.confirmations.is_none());
 
+    assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
+
     runtime
-        .block_on(db.set_transaction_confirmations(retrieved_completed_tx.tx_id, 1))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true))
         .unwrap();
+
+    assert_eq!(
+        runtime
+            .block_on(db.fetch_last_mined_transaction())
+            .unwrap()
+            .unwrap()
+            .tx_id,
+        completed_txs[0].tx_id
+    );
+
     let retrieved_completed_tx = runtime
         .block_on(db.get_completed_transaction(completed_txs[0].tx_id))
         .unwrap();
-    assert_eq!(retrieved_completed_tx.confirmations, Some(1));
+    assert_eq!(retrieved_completed_tx.confirmations, Some(5));
 
     let any_completed_tx = runtime
         .block_on(db.get_any_transaction(completed_txs[0].tx_id))
@@ -332,8 +343,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found completed tx");
     }
 
-    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-    let num_completed_txs = completed_txs.len();
+    let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
+    let num_completed_txs = completed_txs_map.len();
     assert_eq!(
         runtime
             .block_on(db.get_cancelled_completed_transactions())
@@ -342,15 +353,15 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0
     );
 
-    let cancelled_tx_id = completed_txs[&1].tx_id;
+    let cancelled_tx_id = completed_txs_map[&1].tx_id;
     assert!(runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
         .block_on(db.cancel_completed_transaction(cancelled_tx_id))
         .unwrap();
-    let completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();
-    assert_eq!(completed_txs.len(), num_completed_txs - 1);
+    let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
+    assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
 
     runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
@@ -521,6 +532,17 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled outbound tx");
     }
+
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+
+    assert_eq!(unmined_txs.len(), 4);
+
+    runtime
+        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
+        .unwrap();
+
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    assert_eq!(unmined_txs.len(), 5);
 }
 
 #[test]

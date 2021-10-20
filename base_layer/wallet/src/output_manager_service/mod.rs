@@ -20,27 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future;
-use log::*;
-use tokio::sync::broadcast;
-
-pub(crate) use master_key_manager::MasterKeyManager;
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsSecretKey};
-use tari_core::{
-    consensus::{ConsensusConstantsBuilder, NetworkConsensus},
-    transactions::CryptoFactories,
-};
-use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
-};
-pub use tasks::TxoValidationType;
-
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
+    connectivity_service::WalletConnectivityHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -49,6 +31,19 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
+use futures::future;
+use log::*;
+pub(crate) use master_key_manager::MasterKeyManager;
+use tari_comms::types::CommsSecretKey;
+use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
+use tari_service_framework::{
+    async_trait,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+};
+use tokio::sync::broadcast;
 
 pub mod config;
 pub mod error;
@@ -56,14 +51,11 @@ pub mod handle;
 mod master_key_manager;
 mod recovery;
 pub mod resources;
-#[allow(unused_assignments)]
 pub mod service;
 pub mod storage;
 mod tasks;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
-
-pub type TxId = u64;
 
 pub struct OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
@@ -119,12 +111,12 @@ where T: OutputManagerBackend + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network.as_network()).build();
+        let constants = self.network.create_consensus_constants().pop().unwrap();
         let master_secret_key = self.master_secret_key.clone();
         context.spawn_when_ready(move |handles| async move {
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -136,7 +128,7 @@ where T: OutputManagerBackend + 'static
                 constants,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
-                connectivity_manager,
+                connectivity,
                 master_secret_key,
             )
             .await

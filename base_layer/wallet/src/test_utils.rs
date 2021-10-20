@@ -24,6 +24,8 @@ use crate::storage::sqlite_utilities::{run_migration_and_create_sqlite_connectio
 use core::iter;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::path::Path;
+use tari_common::configuration::Network;
+use tari_core::consensus::{ConsensusConstants, ConsensusManager};
 use tempfile::{tempdir, TempDir};
 
 pub fn random_string(len: usize) -> String {
@@ -49,4 +51,12 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
     let connection =
         run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path")).unwrap();
     (connection, temp_dir)
+}
+
+pub fn create_consensus_rules() -> ConsensusManager {
+    ConsensusManager::builder(Network::LocalNet).build()
+}
+
+pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
+    create_consensus_rules().consensus_constants(height).clone()
 }

@@ -33,7 +33,7 @@ use helpers::create_comms;
 use futures::{future, StreamExt};
 use std::{future::Future, time::Duration};
 use tari_comms::{
-    protocol::rpc::{RpcClientBuilder, RpcServer},
+    protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,
     CommsNode,
 };
@@ -100,7 +100,7 @@ async fn run_stress_test(test_params: Params) {
 
     let client_pool = conn1_2.create_rpc_client_pool::<GreetingClient>(
         num_concurrent_sessions,
-        RpcClientBuilder::new().with_deadline(deadline),
+        RpcClient::builder().with_deadline(deadline),
     );
 
     let mut tasks = Vec::with_capacity(num_tasks);

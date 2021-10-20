@@ -31,8 +31,7 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -223,7 +222,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     base_node_config.base_node_custom = base_node_custom.clone();
     if let Some(peer) = base_node_custom {
         base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer())? {
+    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
     }
 

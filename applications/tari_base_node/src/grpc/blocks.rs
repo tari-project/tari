@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::cmp;
-use tari_core::{base_node::LocalNodeCommsInterface, blocks::BlockHeader, chain_storage::HistoricalBlock};
+use tari_core::{base_node::LocalNodeCommsInterface, blocks::HistoricalBlock};
 use tonic::Status;
 
 // The maximum number of blocks that can be requested at a time. These will be streamed to the
@@ -43,9 +43,12 @@ pub async fn block_heights(
     start_height: u64,
     end_height: u64,
     from_tip: u64,
-) -> Result<Vec<u64>, Status> {
+) -> Result<(u64, u64), Status> {
     if end_height > 0 {
-        Ok(BlockHeader::get_height_range(start_height, end_height))
+        if start_height > end_height {
+            return Err(Status::invalid_argument("Start height was greater than end height"));
+        }
+        Ok((start_height, end_height))
     } else if from_tip > 0 {
         let metadata = handler
             .get_metadata()
@@ -55,7 +58,7 @@ pub async fn block_heights(
         // Avoid overflow
         let height_from_tip = cmp::min(tip, from_tip);
         let start = cmp::max(tip - height_from_tip, 0);
-        Ok(BlockHeader::get_height_range(start, tip))
+        Ok((start, tip))
     } else {
         Err(Status::invalid_argument("Invalid arguments provided"))
     }

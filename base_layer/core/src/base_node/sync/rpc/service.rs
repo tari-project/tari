@@ -356,7 +356,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
                 Ok(Response::new(FindChainSplitResponse {
-                    fork_hash_index: idx as u32,
+                    fork_hash_index: idx as u64,
                     headers: headers.into_iter().map(Into::into).collect(),
                     tip_height: metadata.height_of_longest_chain(),
                 }))

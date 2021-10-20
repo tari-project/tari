@@ -23,16 +23,18 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
+#[macro_use]
+mod block_spec;
+pub use block_spec::{BlockSpec, BlockSpecs};
+
 pub mod blockchain;
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
-    consensus::ConsensusManager,
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    consensus::{ConsensusConstants, ConsensusManager},
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        tari_amount::MicroTari,
         transaction::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
@@ -40,65 +42,16 @@ use crate::{
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
+use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
-#[derive(Debug, Clone)]
-pub struct BlockSpec {
-    version: u16,
-    difficulty: Difficulty,
-    block_time: u64,
-    reward_override: Option<MicroTari>,
-    transactions: Vec<Transaction>,
-    skip_coinbase: bool,
+pub fn create_consensus_rules() -> ConsensusManager {
+    ConsensusManager::builder(Network::LocalNet).build()
 }
 
-impl BlockSpec {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_difficulty(mut self, difficulty: Difficulty) -> Self {
-        self.difficulty = difficulty;
-        self
-    }
-
-    pub fn with_block_time(mut self, block_time: u64) -> Self {
-        self.block_time = block_time;
-        self
-    }
-
-    pub fn with_reward(mut self, reward: MicroTari) -> Self {
-        self.reward_override = Some(reward);
-        self
-    }
-
-    pub fn skip_coinbase(mut self) -> Self {
-        self.skip_coinbase = true;
-        self
-    }
-
-    pub fn with_transactions(mut self, transactions: Vec<Transaction>) -> Self {
-        self.transactions = transactions;
-        self
-    }
-
-    pub fn finish(self) -> Self {
-        self
-    }
-}
-
-impl Default for BlockSpec {
-    fn default() -> Self {
-        Self {
-            version: 0,
-            difficulty: 1.into(),
-            block_time: 120,
-            reward_override: None,
-            transactions: vec![],
-            skip_coinbase: false,
-        }
-    }
+pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
+    create_consensus_rules().consensus_constants(height).clone()
 }
 
 /// Create a partially constructed block using the provided set of transactions
@@ -111,7 +64,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 
 pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
     let mut header = BlockHeader::new(spec.version);
-    let block_height = prev_block.header.height + 1;
+    let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {

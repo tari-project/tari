@@ -20,23 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{
-        error::OutputManagerError,
-        service::Balance,
-        storage::{database::PendingTransactionOutputs, models::KnownOneSidedPaymentScript},
-        tasks::TxoValidationType,
-        TxId,
-    },
-    types::ValidationRetryStrategy,
+use crate::output_manager_service::{
+    error::OutputManagerError,
+    service::Balance,
+    storage::models::KnownOneSidedPaymentScript,
 };
 use aes_gcm::Aes256Gcm;
-use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
-use tari_common_types::types::PublicKey;
-use tari_comms::types::CommsPublicKey;
+use std::{fmt, sync::Arc};
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
+    transaction::{Transaction, TransactionOutput, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
@@ -55,27 +49,29 @@ pub enum OutputManagerRequest {
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
-    ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((TxId, MicroTari, MicroTari, Option<u64>, String, TariScript)),
     CreatePayToSelfTransaction((TxId, MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
-    TimeoutTransactions(Duration),
-    GetPendingTransactions,
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
     GetSeedWords,
-    SetBaseNodePublicKey(CommsPublicKey),
-    ValidateUtxos(TxoValidationType, ValidationRetryStrategy),
+    ValidateUtxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
-    FeeEstimate((MicroTari, MicroTari, u64, u64)),
+    FeeEstimate {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: usize,
+        num_outputs: usize,
+    },
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     ReinstateCancelledInboundTx(TxId),
+    SetCoinbaseAbandoned(TxId, bool),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -93,29 +89,35 @@ impl fmt::Display for OutputManagerRequest {
                 v.metadata_signature.v().to_hex()
             ),
             GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
-            ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
             ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
             PrepareToSendTransaction((_, _, _, _, msg, _)) => write!(f, "PrepareToSendTransaction ({})", msg),
             CreatePayToSelfTransaction((_, _, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
-            TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
-            GetPendingTransactions => write!(f, "GetPendingTransactions"),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             GetSeedWords => write!(f, "GetSeedWords"),
-            SetBaseNodePublicKey(k) => write!(f, "SetBaseNodePublicKey ({})", k),
-            ValidateUtxos(validation_type, retry) => write!(f, "{} ({:?})", validation_type, retry),
+            ValidateUtxos => write!(f, "ValidateUtxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
-            FeeEstimate(_) => write!(f, "FeeEstimate"),
+            FeeEstimate {
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            } => write!(
+                f,
+                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
+                amount, fee_per_gram, num_kernels, num_outputs
+            ),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
+            SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
         }
     }
 }
@@ -131,17 +133,14 @@ pub enum OutputManagerResponse {
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroTari, Transaction)),
-    TransactionConfirmed,
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
-    TransactionsTimedOut,
-    PendingTransactions(HashMap<u64, PendingTransactionOutputs>),
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
-    UtxoValidationStarted(u64),
+    TxoValidationStarted(u64),
     Transaction((u64, Transaction, MicroTari, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
@@ -151,6 +150,7 @@ pub enum OutputManagerResponse {
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
     ReinstatedCancelledInboundTx,
+    CoinbaseAbandonedSet,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -159,11 +159,11 @@ pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent
 /// Events that can be published on the Output Manager Service Event Stream
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    TxoValidationTimedOut(u64, TxoValidationType),
-    TxoValidationSuccess(u64, TxoValidationType),
-    TxoValidationFailure(u64, TxoValidationType),
-    TxoValidationAborted(u64, TxoValidationType),
-    TxoValidationDelayed(u64, TxoValidationType),
+    TxoValidationTimedOut(u64),
+    TxoValidationSuccess(u64),
+    TxoValidationFailure(u64),
+    TxoValidationAborted(u64),
+    TxoValidationDelayed(u64),
     Error(String),
 }
 
@@ -309,17 +309,17 @@ impl OutputManagerHandle {
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
-        num_kernels: u64,
-        num_outputs: u64,
+        num_kernels: usize,
+        num_outputs: usize,
     ) -> Result<MicroTari, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::FeeEstimate((
+            .call(OutputManagerRequest::FeeEstimate {
                 amount,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
-            )))
+            })
             .await??
         {
             OutputManagerResponse::FeeEstimate(fee) => Ok(fee),
@@ -338,26 +338,6 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn confirm_transaction(
-        &mut self,
-        tx_id: u64,
-        spent_outputs: Vec<TransactionInput>,
-        received_outputs: Vec<TransactionOutput>,
-    ) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ConfirmTransaction((
-                tx_id,
-                spent_outputs,
-                received_outputs,
-            )))
-            .await??
-        {
-            OutputManagerResponse::TransactionConfirmed => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn cancel_transaction(&mut self, tx_id: u64) -> Result<(), OutputManagerError> {
         match self
             .handle
@@ -365,26 +345,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::TransactionCancelled => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn timeout_transactions(&mut self, period: Duration) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::TimeoutTransactions(period))
-            .await??
-        {
-            OutputManagerResponse::TransactionsTimedOut => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_pending_transactions(
-        &mut self,
-    ) -> Result<HashMap<u64, PendingTransactionOutputs>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetPendingTransactions).await?? {
-            OutputManagerResponse::PendingTransactions(p) => Ok(p),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -425,28 +385,9 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::SetBaseNodePublicKey(public_key))
-            .await??
-        {
-            OutputManagerResponse::BaseNodePublicKeySet => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn validate_txos(
-        &mut self,
-        validation_type: TxoValidationType,
-        retries: ValidationRetryStrategy,
-    ) -> Result<u64, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ValidateUtxos(validation_type, retries))
-            .await??
-        {
-            OutputManagerResponse::UtxoValidationStarted(request_key) => Ok(request_key),
+    pub async fn validate_txos(&mut self) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ValidateUtxos).await?? {
+            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -552,13 +493,27 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn reinstate_cancelled_inbound_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub async fn reinstate_cancelled_inbound_transaction_outputs(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::ReinstateCancelledInboundTx(tx_id))
             .await??
         {
             OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_coinbase_abandoned(&mut self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned))
+            .await??
+        {
+            OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock},
+    chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
@@ -41,8 +41,8 @@ pub trait BlockSyncBodyValidation: Send + Sync {
 pub trait PostOrphanBodyValidation<B>: Send + Sync {
     fn validate_body_for_valid_orphan(
         &self,
-        block: &ChainBlock,
         backend: &B,
+        block: &ChainBlock,
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError>;
 }
@@ -67,9 +67,9 @@ pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
 pub trait FinalHorizonStateValidation<B>: Send + Sync {
     fn validate(
         &self,
+        backend: &B,
         height: u64,
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
-        backend: &B,
     ) -> Result<(), ValidationError>;
 }

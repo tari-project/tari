@@ -22,7 +22,8 @@
 
 use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
-use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use tari_common::exit_codes::ExitCodes;
+use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction::TransactionError,
@@ -61,6 +62,8 @@ pub enum OutputManagerError {
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
     IncompleteTransaction(&'static str),
+    #[error("Inconsistent data found: {0}")]
+    InconsistentDataError(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
     #[error("Funds are still pending. Unable to fulfil transaction right now.")]
@@ -109,6 +112,13 @@ pub enum OutputManagerError {
     MasterSecretKeyMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Connectivity error: {source}")]
+    ConnectivityError {
+        #[from]
+        source: ConnectivityError,
+    },
+    #[error("Invalid message received:{0}")]
+    InvalidMessageError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -159,6 +169,13 @@ pub enum OutputManagerStorageError {
     ScriptError(#[from] ScriptError),
 }
 
+impl From<OutputManagerError> for ExitCodes {
+    fn from(err: OutputManagerError) -> Self {
+        log::error!(target: crate::error::LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
+}
+
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also
 /// include the ID of the protocol
 #[derive(Debug)]
@@ -176,5 +193,18 @@ impl OutputManagerProtocolError {
 impl From<OutputManagerProtocolError> for OutputManagerError {
     fn from(tspe: OutputManagerProtocolError) -> Self {
         tspe.error
+    }
+}
+
+pub trait OutputManagerProtocolErrorExt<TRes> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError>;
+}
+
+impl<TRes, TErr: Into<OutputManagerError>> OutputManagerProtocolErrorExt<TRes> for Result<TRes, TErr> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError> {
+        match self {
+            Ok(r) => Ok(r),
+            Err(e) => Err(OutputManagerProtocolError::new(id, e.into())),
+        }
     }
 }

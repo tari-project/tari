@@ -50,10 +50,13 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    CryptoFactories,
+use tari_core::{
+    consensus::NetworkConsensus,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+        CryptoFactories,
+    },
 };
 use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{
@@ -68,7 +71,7 @@ use tari_shutdown::ShutdownSignal;
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
@@ -76,7 +79,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -87,19 +89,15 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
+use tari_common_types::transaction::TxId;
 
 const LOG_TARGET: &str = "wallet";
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W>
-where
-    T: WalletBackend + 'static,
-    U: TransactionBackend + 'static,
-    V: OutputManagerBackend + 'static,
-    W: ContactsBackend + 'static,
-{
+pub struct Wallet<T, U, V, W> {
+    pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
@@ -132,7 +130,7 @@ where
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
         recovery_master_key: Option<CommsSecretKey>,
-    ) -> Result<Wallet<T, U, V, W>, WalletError> {
+    ) -> Result<Self, WalletError> {
         let master_secret_key =
             read_or_create_master_secret_key(recovery_master_key, &mut wallet_database.clone()).await?;
         let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
@@ -148,7 +146,7 @@ where
 
         let bn_service_db = wallet_database.clone();
 
-        let factories = config.clone().factories;
+        let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
@@ -252,7 +250,8 @@ where
             .set_node_features(comms.node_identity().features())
             .await?;
 
-        Ok(Wallet {
+        Ok(Self {
+            network: config.network,
             comms,
             dht_service: dht,
             store_and_forward_requester,
@@ -301,29 +300,13 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-
-        self.transaction_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.output_manager_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.utxo_scanner_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.base_node_service.set_base_node_peer(peer).await?;
+        self.wallet_connectivity.set_base_node(peer);
 
         Ok(())
     }
 
-    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, WalletError> {
-        self.base_node_service
-            .get_base_node_peer()
-            .await
-            .map_err(WalletError::BaseNodeServiceError)
+    pub async fn get_base_node_peer(&mut self) -> Option<Peer> {
+        self.wallet_connectivity.get_current_base_node_peer()
     }
 
     pub async fn check_for_update(&self) -> Option<String> {

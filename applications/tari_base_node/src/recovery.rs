@@ -31,8 +31,7 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
+use tari_common::{configuration::Network, exit_codes::ExitCodes, DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{
         async_db::AsyncBlockchainDb,
@@ -62,12 +61,13 @@ pub fn initiate_recover_db(node_config: &GlobalConfig) -> Result<(), ExitCodes> 
         DatabaseType::LMDB(p) => {
             let _backend = create_recovery_lmdb_database(&p).map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
-                ExitCodes::UnknownError
+                ExitCodes::UnknownError(err.to_string())
             })?;
         },
         _ => {
-            error!(target: LOG_TARGET, "Recovery mode is only available for LMDB");
-            return Err(ExitCodes::UnknownError);
+            const MSG: &str = "Recovery mode is only available for LMDB";
+            error!(target: LOG_TARGET, "{}", MSG);
+            return Err(ExitCodes::UnknownError(MSG.to_string()));
         },
     };
     Ok(())

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::ui::{components::Component, state::AppState};
-use tari_wallet::connectivity_service::OnlineStatus;
+use tari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
 use tui::{
     backend::Backend,
     layout::Rect,

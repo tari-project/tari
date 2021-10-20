@@ -29,17 +29,6 @@
 #[cfg(test)]
 mod tests;
 
-mod accumulated_data;
-pub use accumulated_data::{
-    BlockAccumulatedData,
-    BlockHeaderAccumulatedData,
-    BlockHeaderAccumulatedDataBuilder,
-    ChainBlock,
-    ChainHeader,
-    CompleteDeletedBitmap,
-    DeletedBitmap,
-};
-
 pub mod async_db;
 
 mod block_add_result;
@@ -70,9 +59,6 @@ pub use mmr_tree::*;
 mod error;
 pub use error::{ChainStorageError, Optional, OrNotFound};
 
-mod historical_block;
-pub use historical_block::HistoricalBlock;
-
 mod horizon_data;
 pub use horizon_data::HorizonData;
 
@@ -80,21 +66,13 @@ mod pruned_output;
 pub use pruned_output::PrunedOutput;
 
 mod lmdb_db;
-pub use lmdb_db::{
-    create_lmdb_database,
-    create_recovery_lmdb_database,
-    LMDBDatabase,
-    LMDB_DB_BLOCK_HASHES,
-    LMDB_DB_HEADERS,
-    LMDB_DB_KERNELS,
-    LMDB_DB_METADATA,
-    LMDB_DB_MONERO_SEED_HEIGHT,
-    LMDB_DB_ORPHANS,
-    LMDB_DB_UTXOS,
-};
+pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};
 
 mod target_difficulties;
+mod utxo_mined_info;
+pub use utxo_mined_info::*;
+
 pub use target_difficulties::TargetDifficulties;

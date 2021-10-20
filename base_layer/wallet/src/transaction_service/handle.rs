@@ -20,22 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        error::TransactionServiceError,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-    },
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
 };
 use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, sync::Arc};
+use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
-
-use crate::types::ValidationRetryStrategy;
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
@@ -48,7 +44,6 @@ pub enum TransactionServiceRequest {
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
-    SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
@@ -63,8 +58,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
-    SetCompletedTransactionValidity(u64, bool),
-    ValidateTransactions(ValidationRetryStrategy),
+    ValidateTransactions,
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -77,7 +71,6 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
-            Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
             Self::SendOneSidedTransaction(k, v, _, msg) => {
                 f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
@@ -105,11 +98,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
-            TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
-            TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, s) => f.write_str(&format!(
-                "SetCompletedTransactionValidity(TxId: {}, Validity: {:?})",
-                tx_id, s
-            )),
+            TransactionServiceRequest::ValidateTransactions => f.write_str("ValidateTransactions"),
         }
     }
 }
@@ -153,15 +142,22 @@ pub enum TransactionEvent {
     TransactionCancelled(TxId),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
-    TransactionMined(TxId),
+    TransactionMined {
+        tx_id: TxId,
+        is_valid: bool,
+    },
     TransactionMinedRequestTimedOut(TxId),
-    TransactionMinedUnconfirmed(TxId, u64),
+    // TODO: Split into normal transaction mined and coinbase transaction mined
+    TransactionMinedUnconfirmed {
+        tx_id: TxId,
+        num_confirmations: u64,
+        is_valid: bool,
+    },
     TransactionValidationTimedOut(u64),
     TransactionValidationSuccess(u64),
     TransactionValidationFailure(u64),
     TransactionValidationAborted(u64),
     TransactionValidationDelayed(u64),
-    TransactionBaseNodeConnectionProblem(u64),
     Error(String),
 }
 
@@ -351,20 +347,6 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn set_base_node_public_key(
-        &mut self,
-        public_key: CommsPublicKey,
-    ) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetBaseNodePublicKey(public_key))
-            .await??
-        {
-            TransactionServiceResponse::BaseNodePublicKeySet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
@@ -507,27 +489,13 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn validate_transactions(
-        &mut self,
-        retry_strategy: ValidationRetryStrategy,
-    ) -> Result<u64, TransactionServiceError> {
+    pub async fn validate_transactions(&mut self) -> Result<u64, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))
+            .call(TransactionServiceRequest::ValidateTransactions)
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_transaction_validity(&mut self, tx_id: TxId, valid: bool) -> Result<(), TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::SetCompletedTransactionValidity(tx_id, valid))
-            .await??
-        {
-            TransactionServiceResponse::CompletedTransactionValidityChanged => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

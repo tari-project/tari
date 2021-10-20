@@ -46,8 +46,8 @@ use tari_core::{
         create_test_db,
     },
     transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
+        test_helpers::{schema_to_transaction, spend_utxos},
         CryptoFactories,
     },
     tx,
@@ -117,8 +117,8 @@ fn insert_and_fetch_orphan() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let txs = vec![
-        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
-        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
+        (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_orphan_block(10, txs, &consensus_manager);
     let orphan_hash = orphan.hash();
@@ -1758,4 +1758,98 @@ fn input_malleability() {
     mod_block.header.input_mr = modded_root.input_mr;
     let mod_block_hash = mod_block.hash();
     assert_ne!(*block_hash, mod_block_hash);
+}
+
+#[allow(clippy::identity_op)]
+#[test]
+fn fetch_deleted_position_block_hash() {
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    // Block 1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![11 * T, 12 * T, 13 * T, 14 * T]
+    )];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager,
+    )
+    .unwrap()
+    .assert_added();
+    // Block 2
+    let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(3),
+        &consensus_manager,
+    )
+    .unwrap()
+    .assert_added();
+    // Blocks 3 - 12 so we can test the search in the bottom and top half
+    for i in 0..10 {
+        generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            vec![],
+            Difficulty::from(4 + i),
+            &consensus_manager,
+        )
+        .unwrap()
+        .assert_added();
+    }
+    // Block 13
+    let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(30),
+        &consensus_manager,
+    )
+    .unwrap()
+    .assert_added();
+    // Block 14
+    let txs = vec![txn_schema!(from: vec![outputs[13][0].clone()], to: vec![1 * T])];
+    generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(50),
+        &consensus_manager,
+    )
+    .unwrap()
+    .assert_added();
+
+    let block1_hash = store.fetch_header(1).unwrap().unwrap().hash();
+    let block2_hash = store.fetch_header(2).unwrap().unwrap().hash();
+    let block13_hash = store.fetch_header(13).unwrap().unwrap().hash();
+    let block14_hash = store.fetch_header(14).unwrap().unwrap().hash();
+
+    let deleted_positions = store
+        .fetch_complete_deleted_bitmap_at(block14_hash.clone())
+        .unwrap()
+        .bitmap()
+        .to_vec();
+
+    let headers = store
+        .fetch_header_hash_by_deleted_mmr_positions(deleted_positions)
+        .unwrap();
+    let mut headers = headers.into_iter().map(Option::unwrap).collect::<Vec<_>>();
+    headers.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    assert_eq!(headers[3], (14, block14_hash));
+    assert_eq!(headers[2], (13, block13_hash));
+    assert_eq!(headers[1], (2, block2_hash));
+    assert_eq!(headers[0], (1, block1_hash));
 }

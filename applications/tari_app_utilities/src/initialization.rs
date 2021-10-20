@@ -1,9 +1,10 @@
-use crate::{consts, utilities::ExitCodes};
+use crate::consts;
 use config::Config;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
+    exit_codes::ExitCodes,
     ConfigBootstrap,
     DatabaseType,
     GlobalConfig,
@@ -31,10 +32,10 @@ pub fn init_configuration(
     // Populate the configuration struct
     let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone())
         .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
-    check_file_paths(&mut global_config, &bootstrap);
 
     if let Some(str) = bootstrap.network.clone() {
         log::info!(target: LOG_TARGET, "Network selection requested");
+
         let network = Network::from_str(&str);
         match network {
             Ok(network) => {
@@ -44,6 +45,13 @@ pub fn init_configuration(
                     network
                 );
                 global_config.network = network;
+                global_config.data_dir = PathBuf::from(str);
+                if let DatabaseType::LMDB(_) = global_config.db_type {
+                    global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
+                }
+                global_config.peer_db_path = global_config.data_dir.join("peer_db");
+                global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
+                global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
             Err(_) => {
                 log::warn!(
@@ -53,6 +61,7 @@ pub fn init_configuration(
             },
         }
     }
+    check_file_paths(&mut global_config, &bootstrap);
 
     Ok((bootstrap, global_config, cfg))
 }

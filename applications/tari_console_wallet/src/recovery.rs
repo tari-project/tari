@@ -24,8 +24,9 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
-use tari_app_utilities::utilities::ExitCodes;
+use tari_common::exit_codes::ExitCodes;
 use tari_common_types::types::PrivateKey;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::mnemonic::to_secretkey;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -89,13 +90,19 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let peer_manager = wallet.comms.peer_manager();
     let mut peer_public_keys = Vec::with_capacity(peers.len());
     for peer in peers {
+        debug!(
+            target: LOG_TARGET,
+            "Peer added: {} (NodeId: {})",
+            peer.public_key.to_hex(),
+            peer.node_id.to_hex()
+        );
         peer_public_keys.push(peer.public_key.clone());
         peer_manager.add_peer(peer).await?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
-        .with_retry_limit(10)
+        .with_retry_limit(3)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();
@@ -106,7 +113,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     loop {
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
-                print!("Connecting to base node {}... ", peer);
+                println!("Connecting to base node {}... ", peer);
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
                 println!("OK (latency = {:.2?})", latency);

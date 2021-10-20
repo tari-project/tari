@@ -53,13 +53,13 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 100
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         And wallet SENDER detects all transactions are at least Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I have wallet RECEIVER connected to base node BASE
         And I stop wallet RECEIVER
-        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 100
+        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then I wait for ffi wallet FFI_WALLET to have 1 pending outbound transaction
         Then I cancel all outbound transactions on ffi wallet FFI_WALLET and it will cancel 1 transaction
         And I stop ffi wallet FFI_WALLET
@@ -84,17 +84,18 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 100
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I have wallet RECEIVER connected to base node BASE
-        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 100
+        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         And mining node MINER mines 10 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
+        And I start TXO validation on ffi wallet FFI_WALLET
+        And I start TX validation on ffi wallet FFI_WALLET
+        Then I wait for ffi wallet FFI_WALLET to receive 1 mined
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
-        And I start STXO validation on ffi wallet FFI_WALLET
-        And I start UTXO validation on ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
@@ -106,7 +107,7 @@ Feature: Wallet FFI
         And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I stop ffi wallet FFI_WALLET
         And I wait 10 seconds
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 100
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         And I wait 5 seconds
         # Broken step with reason base node is not persisted
         # Log:

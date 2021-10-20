@@ -24,7 +24,7 @@ function mapEnvs(options) {
     res.TARI_WALLET__TRANSACTION_BROADCAST_MONITORING_TIMEOUT = 3;
   }
   if ("mineOnTipOnly" in options) {
-    res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly;
+    res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly.toString();
   }
   if (options.numMiningThreads) {
     res.TARI_MINING_NODE__NUM_MINING_THREADS = options.numMiningThreads;
@@ -43,6 +43,9 @@ function mapEnvs(options) {
       res.TARI_COMMON__AUTO_UPDATE__ENABLED = auto_update.enabled
         ? "true"
         : "false";
+    }
+    if (auto_update.check_interval) {
+      res.TARI_COMMON__AUTO_UPDATE__CHECK_INTERVAL = auto_update.check_interval;
     }
     if (auto_update.dns_hosts) {
       res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
