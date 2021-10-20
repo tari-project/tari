@@ -19,7 +19,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-17
+          toolchain: nightly-2021-08-18
           components: clippy, rustfmt
           override: true
       - name: cargo fmt
@@ -86,7 +86,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-17
+          toolchain: nightly-2021-08-18
           components: clippy, rustfmt
           override: true
 
@@ -135,7 +135,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-17
+          toolchain: nightly-2021-08-18
           components: clippy, rustfmt
           override: true
 

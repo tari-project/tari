@@ -28,7 +28,7 @@ jobs:
           path: ${{ github.workspace }}/libwallet/
       # Copy tarballs to S3
       - name: Sync to S3
-        continue-on-error: true  # Don't break if s3 upload fails
+        continue-on-error: true # Don't break if s3 upload fails
         uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --acl public-read --follow-symlinks
@@ -45,13 +45,13 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-17
+          toolchain: nightly-2021-08-18
           target: aarch64-apple-ios
           components: rustfmt
           override: true
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-17
+          toolchain: nightly-2021-08-18
           target: x86_64-apple-ios
           components: rustfmt
           override: true
