@@ -262,11 +262,11 @@ Given(
 Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
-  async function (name, node, horizon) {
-    const miner = this.createNode(name, { pruningHorizon: horizon });
-    miner.setPeerSeeds([this.nodes[node].peerAddress()]);
-    await miner.startNew();
-    await this.addNode(name, miner);
+  async function (name, connected_to, horizon) {
+    const node = this.createNode(name, { pruningHorizon: horizon });
+    node.setPeerSeeds([this.nodes[connected_to].peerAddress()]);
+    await node.startNew();
+    await this.addNode(name, node);
   }
 );
 

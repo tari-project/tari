@@ -23,5 +23,3 @@
 use crate::base_node::chain_metadata_service::PeerChainMetadata;
 
 pub type SyncPeer = PeerChainMetadata;
-/// Type alias for a collection of PeerChainMetadata
-pub type SyncPeers = Vec<SyncPeer>;

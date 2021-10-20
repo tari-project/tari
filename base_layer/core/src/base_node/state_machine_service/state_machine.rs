@@ -138,7 +138,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (Listening(s), InitialSync) => HeaderSync(s.into()),
             (HeaderSync(_), HeadersSynchronized(conn)) => {
                 if self.config.pruning_horizon > 0 {
                     HorizonStateSync(states::HorizonStateSync::with_peer(conn))
@@ -147,6 +146,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 }
             },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
+            (HeaderSync(s), Continue) => Listening(s.into()),
             (HeaderSync(s), NetworkSilence) => Listening(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
