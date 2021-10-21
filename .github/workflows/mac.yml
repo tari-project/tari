@@ -18,7 +18,7 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
           security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_APPLICATION_PASS build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
           pwd
           cp /bin/ls ./
           codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" ./ls -v
