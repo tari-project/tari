@@ -1566,8 +1566,7 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount) {
   await sleep(500);
   const client = this.getClient(nodeName);
   const peers = await client.getPeers();
-  // we add a non existing node when the node starts before adding any actual peers. So the count should always be 1 higher
-  expect(peers.length).to.equal(peerCount + 1);
+  expect(peers.length).to.equal(peerCount);
 });
 
 When("I print the world", function () {

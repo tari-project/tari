@@ -104,16 +104,11 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
-  if (forceSyncPeers.length != 0) {
-    envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers;
+  if (forceSyncPeers.length > 0) {
+    envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");
   }
-  if (peerSeeds.length != 0) {
-    envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds;
-  } else {
-    //  Nowheresville
-    envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = [
-      "5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1",
-    ];
+  if (peerSeeds.length > 0) {
+    envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = peerSeeds.join(",");
   }
 
   return envs;
@@ -140,32 +135,25 @@ function createEnv(
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
 
-  const configEnvs = {};
-  configEnvs[
-    `TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`
-  ] = `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`;
-  configEnvs[
-    `TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`
-  ] = `${walletGrpcAddress}:${walletGrpcPort}`;
-  configEnvs[
-    `TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`
-  ] = `${nodeFile}`;
-  configEnvs[`TARI_BASE_NODE__${network}__TCP_LISTENER_ADDRESS`] =
-    "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`);
-  configEnvs[`TARI_BASE_NODE__${network}__PUBLIC_ADDRESS`] =
-    "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`);
-  configEnvs[
-    `TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`
-  ] = `${proxyFullAddress}`;
-  configEnvs[
-    `TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`
-  ] = `${transcoderFullAddress}`;
-  configEnvs[`TARI_BASE_NODE__${network}__TRANSPORT`] = "tcp";
-  configEnvs[`TARI_WALLET__${network}__TRANSPORT`] = "tcp";
-  configEnvs[`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`] =
-    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
-  configEnvs[`TARI_WALLET__${network}__PUBLIC_ADDRESS`] =
-    "/ip4/127.0.0.1/tcp/" + `${walletPort}`;
+  const configEnvs = {
+    [`TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
+    [`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
+
+    [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
+
+    [`TARI_BASE_NODE__${network}__TRANSPORT`]: "tcp",
+    [`TARI_BASE_NODE__${network}__TCP_LISTENER_ADDRESS`]:
+      "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
+    [`TARI_BASE_NODE__${network}__PUBLIC_ADDRESS`]:
+      "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
+
+    [`TARI_WALLET__${network}__TRANSPORT`]: "tcp",
+    [`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
+    [`TARI_WALLET__${network}__PUBLIC_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
+
+    [`TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
+    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderFullAddress}`,
+  };
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
 }
