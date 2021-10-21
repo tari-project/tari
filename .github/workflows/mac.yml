@@ -12,12 +12,15 @@ jobs:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
           MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
+          MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT }}
+          MACOS_INSTALLER_PASS: ${{ secrets.MACOS_INSTALLER_PASS }}
         run: |
           echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
           security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
           security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain -P $MACOS_INSTALLER_PASS -T /usr/bin/pkgbuild
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
           pwd
           cp /bin/ls ./
@@ -27,3 +30,14 @@ jobs:
             codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" "$FILE" -v
             codesign --verify --deep --display --verbose=4 "$FILE"
           done
+          mkdir temp
+          cp ./ls temp
+          cp ./echo temp
+          pkgbuild --root temp \
+          --identifier "com.tarilabs.pkg" \
+          --version "1.2.3" --install-location "/usr/local/bin" --sign "Developer ID Installer: Tari Labs, LLC (8XGMD9X2H2)" temp.pkg
+      - name: Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: temp.pkg
+          path: "${{ github.workspace }}/temp.pkg"
