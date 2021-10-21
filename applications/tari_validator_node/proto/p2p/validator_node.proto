@@ -19,8 +19,36 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
 
-pub mod proto;
+package tari.p2p.validator_node;
 
-mod rpc;
-pub use rpc::create_validator_node_rpc_service;
+service ValidatorNode {
+  rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
+  rpc SubmitInstruction(SubmitInstructionRequest) returns (SubmitInstructionResponse);
+}
+
+message GetTokenDataRequest {
+  bytes asset_pub_key = 1;
+  bytes unique_id = 2;
+}
+
+message GetTokenDataResponse {}
+
+message SubmitInstructionRequest {
+  bytes asset_public_key = 1;
+  string method = 2;
+  repeated bytes args = 3;
+  bytes token_id = 4;
+  bytes signature = 5;
+  uint64 id = 6;
+}
+
+enum Status {
+  Accepted = 0;
+  Errored = 1;
+}
+
+message SubmitInstructionResponse {
+  Status status = 1;
+}

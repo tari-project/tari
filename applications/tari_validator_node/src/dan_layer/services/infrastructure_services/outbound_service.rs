@@ -26,7 +26,7 @@ use crate::{
         services::infrastructure_services::NodeAddressable,
     },
     digital_assets_error::DigitalAssetError,
-    p2p,
+    p2p::proto,
 };
 use async_trait::async_trait;
 
@@ -87,7 +87,7 @@ impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundServic
             return Ok(());
         }
 
-        let inner: p2p::dan_p2p::HotStuffMessage = (&message).into();
+        let inner = proto::dan::HotStuffMessage::from(&message);
         let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
 
         self.outbound_message_requester

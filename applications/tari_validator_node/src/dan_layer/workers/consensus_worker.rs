@@ -25,7 +25,6 @@ use crate::{
         models::{
             domain_events::ConsensusWorkerDomainEvent,
             AssetDefinition,
-            Committee,
             ConsensusWorkerState,
             Payload,
             QuorumCertificate,
@@ -360,6 +359,7 @@ mod test {
         },
     };
 
+    use crate::dan_layer::models::Committee;
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 

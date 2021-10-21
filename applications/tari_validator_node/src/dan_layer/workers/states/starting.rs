@@ -23,7 +23,6 @@
 use crate::{
     dan_layer::{models::AssetDefinition, services::BaseNodeClient, workers::states::ConsensusWorkerStateEvent},
     digital_assets_error::DigitalAssetError,
-    types::PublicKey,
 };
 use std::marker::PhantomData;
 

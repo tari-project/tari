@@ -31,7 +31,6 @@ use crate::{
             PayloadProcessor,
             PayloadProvider,
             SigningService,
-            TemplateService,
         },
     },
     digital_assets_error::DigitalAssetError,
@@ -43,19 +42,20 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub struct MockMempoolService {}
+#[derive(Debug, Clone)]
+pub struct MockMempoolService;
 
 impl MempoolService for MockMempoolService {
     fn submit_instruction(&mut self, _instruction: Instruction) -> Result<(), DigitalAssetError> {
-        todo!()
+        Ok(())
     }
 
     fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
-        todo!()
+        Ok(vec![])
     }
 
     fn remove_instructions(&mut self, _instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
-        todo!()
+        Ok(())
     }
 
     fn size(&self) -> usize {
@@ -63,8 +63,8 @@ impl MempoolService for MockMempoolService {
     }
 }
 
-pub fn _mock_mempool() -> MockMempoolService {
-    MockMempoolService {}
+pub fn create_mempool_mock() -> MockMempoolService {
+    MockMempoolService
 }
 
 pub struct MockBftReplicaService {
@@ -163,19 +163,19 @@ impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr>
     }
 }
 
-pub fn _mock_template_service() -> MockTemplateService {
-    MockTemplateService {}
-}
-
-pub struct MockTemplateService {}
-
-#[async_trait]
-impl TemplateService for MockTemplateService {
-    async fn execute_instruction(&mut self, _instruction: &Instruction) -> Result<(), DigitalAssetError> {
-        dbg!("Executing instruction as mock");
-        Ok(())
-    }
-}
+// pub fn _mock_template_service() -> MockTemplateService {
+//     MockTemplateService {}
+// }
+//
+// pub struct MockTemplateService {}
+//
+// #[async_trait]
+// impl TemplateService for MockTemplateService {
+//     async fn execute_instruction(&mut self, _instruction: &Instruction) -> Result<(), DigitalAssetError> {
+//         dbg!("Executing instruction as mock");
+//         Ok(())
+//     }
+// }
 
 pub fn mock_payload_processor() -> MockPayloadProcessor {
     MockPayloadProcessor {}

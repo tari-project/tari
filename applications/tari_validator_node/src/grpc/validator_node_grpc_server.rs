@@ -72,7 +72,6 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
             //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
 
-        // TODO: Find a way to get around this clone
         let mut mempool_service = self.mempool_service.clone();
         match mempool_service.submit_instruction(instruction) {
             Ok(_) => {

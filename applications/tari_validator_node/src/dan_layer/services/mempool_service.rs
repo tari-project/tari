@@ -23,7 +23,7 @@
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
 use std::sync::{Arc, Mutex};
 
-pub trait MempoolService {
+pub trait MempoolService: Sync + Send + 'static {
     fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
     fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
     fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
@@ -77,6 +77,13 @@ impl MempoolServiceHandle {
     }
 }
 
+// TODO: This handle is intended to be used within async contexts, a synchronous mutex blocks the tokio
+//       scheduler from scheduling tasks on the thread until the next `await`.
+//       See https://docs.rs/tokio/1.12.0/tokio/index.html#cpu-bound-tasks-and-blocking-code
+//       Existing solutions for this include async Mutex/RwLock or Actor/message-passing.
+//       The locking approach is usually appropriate for state (lock data, not code) - https://blog.rust-lang.org/2015/04/10/Fearless-Concurrency.html
+//       An Actor approach can be used to perform actions relating to a single responsibility (incl IO, owning and
+//       mutating local state (usually lock-free), and message-passing with other Actors)
 impl MempoolService for MempoolServiceHandle {
     fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
         self.mempool.lock().unwrap().submit_instruction(instruction)
