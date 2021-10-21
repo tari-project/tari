@@ -24,7 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04, macos-10.15, windows-2019]
+        os: [macos-11]
+        #os: [ubuntu-18.04, macos-10.15, windows-2019]
         # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
         target_cpu: ["x86-64"]
         # https://github.com/zkcrypto/curve25519-dalek-ng/pull/14
@@ -162,13 +163,47 @@ jobs:
           #BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
           BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
-          echo "Copying files for ${BINFILE} too $(pwd)"
+          echo "Copying files for ${BINFILE} to $(pwd)"
           #cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
           ls -la "$GITHUB_WORKSPACE/target/release/"
           cp -v "$GITHUB_WORKSPACE/target/release/tari_base_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
+
+      - name: Build the macos pkg
+        if: startsWith(runner.os,'macOS')
+        env:
+          MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
+          MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
+          MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
+          MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT }}
+          MACOS_INSTALLER_PASS: ${{ secrets.MACOS_INSTALLER_PASS }}
+        run: |
+          echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
+          echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
+          security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain -P $MACOS_INSTALLER_PASS -T /usr/bin/pkgbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
+          cd buildtools
+          ./create_osx_install_zip.sh unused nozip
+          FILES=("tari_base_node" "tari_console_wallet" "tari_mining_node" "tari_merge_mining_proxy")
+          for FILE in "${FILES[@]}"; do
+            codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" "/tmp/tari_testnet/runtime/$FILE" -v
+            codesign --verify --deep --display --verbose=4 "/tmp/tari_testnet/runtime/$FILE"
+          done
+          pkgbuild --root /tmp/tari_testnet \
+          --identifier "com.tarilabs.pkg" \
+          --version "$VERSION" --install-location "/usr/local/bin" --sign "Developer ID Installer: Tari Labs, LLC (8XGMD9X2H2)" "/tmp/tari-$VERSION.pkg"
+      - name: Artifact macos pkg
+        if: startsWith(runner.os,'macOS')
+        uses: actions/upload-artifact@v2
+        with:
+          name: "tari-${{ env.VERSION }}.pkg"
+          path: "/tmp/tari-${{ env.VERSION }}.pkg"
 
       - name: Build the windows installer
         shell: cmd
