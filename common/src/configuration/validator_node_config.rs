@@ -23,12 +23,28 @@
 use crate::ConfigurationError;
 use config::Config;
 use serde::Deserialize;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ValidatorNodeConfig {
     pub committee: Vec<String>,
     pub phase_timeout: u64,
     pub template_id: String,
+    #[serde(default = "default_asset_config_directory")]
+    pub asset_config_directory: PathBuf,
+    #[serde(default = "default_base_node_grpc_address")]
+    pub base_node_grpc_address: SocketAddr,
+}
+
+fn default_asset_config_directory() -> PathBuf {
+    PathBuf::from("assets")
+}
+
+fn default_base_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142)
 }
 
 impl ValidatorNodeConfig {

@@ -45,6 +45,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum WalletError {
+    #[error("Argument supplied `{argument}` has an invalid value: {value}. {message}")]
+    ArgumentError {
+        argument: String,
+        value: String,
+        message: String,
+    },
     #[error("Comms initialization error: `{0}`")]
     CommsInitializationError(#[from] CommsInitializationError),
     #[error("Output manager error: `{0}`")]

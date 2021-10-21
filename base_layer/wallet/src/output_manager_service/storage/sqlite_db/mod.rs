@@ -920,9 +920,19 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let asset_features = match o.features_asset_public_key {
-            Some(ref public_key) => Some(AssetOutputFeatures {
-                public_key: PublicKey::from_bytes(public_key)?,
-            }),
+            Some(ref public_key) => {
+                let template_ids_implemented: Vec<u32> = o
+                    .features_asset_template_ids_implemented
+                    .unwrap_or_default()
+                    .as_str()
+                    .split(',')
+                    .map(|s| s.parse().map_err(|_| OutputManagerStorageError::ConversionError))
+                    .collect::<Result<_, _>>()?;
+                Some(AssetOutputFeatures {
+                    public_key: PublicKey::from_bytes(public_key)?,
+                    template_ids_implemented,
+                })
+            },
             None => None,
         };
         let mint_non_fungible = match o.features_mint_asset_public_key {

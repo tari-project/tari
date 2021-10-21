@@ -336,15 +336,8 @@ where
                 .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                 .await
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
-            OutputManagerRequest::CreateOutputWithFeatures {
-                value,
-                features,
-                unique_id,
-                parent_public_key,
-            } => {
-                let unblinded_output = self
-                    .create_output_with_features(value, *features, unique_id, *parent_public_key)
-                    .await?;
+            OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
+                let unblinded_output = self.create_output_with_features(value, *features).await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
                     output: Box::new(unblinded_output),
                 })
@@ -449,8 +442,6 @@ where
         &self,
         value: MicroTari,
         features: OutputFeatures,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         let (spending_key, script_private_key) = self
             .resources
@@ -464,9 +455,7 @@ where
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
-            .with_script_private_key(script_private_key)
-            .with_unique_id(unique_id)
-            .with_parent_public_key(parent_public_key))
+            .with_script_private_key(script_private_key))
     }
 
     async fn get_balance(
@@ -776,8 +765,9 @@ where
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
+        let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
         let (inputs, _, total) = self
-            .select_utxos(0.into(), fee_per_gram, outputs.len(), None, None)
+            .select_utxos(total_value, fee_per_gram, outputs.len(), None, None)
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -798,6 +788,22 @@ where
                 uo.unblinded_output.clone(),
             );
         }
+        let fee_without_change = Fee::calculate(fee_per_gram, 1, inputs.len(), outputs.len());
+        if total > total_value + fee_without_change {
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
+            builder.with_change_secret(spending_key);
+            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+            );
+        }
+
         let mut db_outputs = vec![];
         for mut unblinded_output in outputs {
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
@@ -816,54 +822,62 @@ where
             db_outputs.push(DbUnblindedOutput::from_unblinded_output(ub, &self.resources.factories)?)
         }
 
-        let mut change_keys = None;
-
-        let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
-        let change_value = total.saturating_sub(fee);
-        if change_value > 0.into() {
-            let (spending_key, script_private_key) = self
-                .resources
-                .master_key_manager
-                .get_next_spend_and_script_key()
-                .await?;
-            change_keys = Some((spending_key.clone(), script_private_key.clone()));
-            builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
-            builder.with_change_script(
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-            );
-        }
+        // let mut change_keys = None;
+        //
+        // let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
+        // let change_value = total.saturating_sub(fee);
+        // if change_value > 0.into() {
+        //     let (spending_key, script_private_key) = self
+        //         .resources
+        //         .master_key_manager
+        //         .get_next_spend_and_script_key()
+        //         .await?;
+        //     change_keys = Some((spending_key.clone(), script_private_key.clone()));
+        //     builder.with_change_secret(spending_key);
+        //     builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        //     builder.with_change_script(
+        //         script!(Nop),
+        //         inputs!(PublicKey::from_secret_key(&script_private_key)),
+        //         script_private_key,
+        //     );
+        // }
 
         let mut stp = builder
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
-        if let Some((spending_key, script_private_key)) = change_keys {
-            let _change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
-                OutputManagerError::BuildError(
-                    "There should be a change script offset public key available".to_string(),
-                )
-            })?;
+        // if let Some((spending_key, script_private_key)) = change_keys {
+        //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
+        //     //     OutputManagerError::BuildError(
+        //     //         "There should be a change script offset public key available".to_string(),
+        //     //     )
+        //     // })?;
+        //
+        //     let sender_offset_private_key = PrivateKey::random(&mut OsRng);
+        //     let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        //
+        //     let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
+        //     let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
+        //
+        //     let mut output_builder = UnblindedOutputBuilder::new(stp.get_change_amount()?, spending_key)
+        //         .with_script(script!(Nop))
+        //         .with_input_data(inputs!(PublicKey::from_secret_key(&script_private_key)))
+        //         .with_script_private_key(script_private_key);
+        //
+        //     output_builder.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
+        //     output_builder.sign_as_sender(&sender_offset_private_key)?;
+        //
 
-            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        //     let change_output =
+        //         DbUnblindedOutput::from_unblinded_output(output_builder.try_build()?, &self.resources.factories)?;
+        //
+        //     db_outputs.push(change_output);
+        // }
 
-            let public_offset_commitment_private_key = PrivateKey::random(&mut OsRng);
-            let public_offset_commitment_pub_key = PublicKey::from_secret_key(&public_offset_commitment_private_key);
-
-            let mut output_builder = UnblindedOutputBuilder::new(stp.get_change_amount()?, spending_key)
-                .with_script(script!(Nop))
-                .with_input_data(inputs!(PublicKey::from_secret_key(&script_private_key)))
-                .with_script_private_key(script_private_key);
-
-            output_builder.sign_as_receiver(sender_offset_public_key, public_offset_commitment_pub_key)?;
-            output_builder.sign_as_sender(&sender_offset_private_key)?;
-
-            let change_output =
-                DbUnblindedOutput::from_unblinded_output(output_builder.try_build()?, &self.resources.factories)?;
-
-            db_outputs.push(change_output);
+        if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
+            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
+                unblinded_output,
+                &self.resources.factories,
+            )?);
         }
         let tx_id = stp.get_tx_id()?;
 

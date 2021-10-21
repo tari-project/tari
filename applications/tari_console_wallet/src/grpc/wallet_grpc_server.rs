@@ -1,6 +1,6 @@
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
@@ -9,6 +9,8 @@ use tari_app_grpc::{
         wallet_server,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateInitialAssetCheckpointRequest,
+        CreateInitialAssetCheckpointResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -40,8 +42,12 @@ use tari_common_types::types::{PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+    },
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
@@ -372,7 +378,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
         let (tx_id, transaction) = manager
-            .create_registration_transaction(message.name)
+            .create_registration_transaction(
+                message.name,
+                message.template_ids_implemented,
+                Some(message.description),
+                Some(message.image),
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         let asset_public_key = transaction
@@ -405,9 +416,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .list_owned_assets()
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        for x in owned.iter() {
-            println!("name : {}", x.name());
-        }
+
         let owned = owned
             .into_iter()
             .map(|asset| tari_rpc::Asset {
@@ -415,9 +424,45 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 registration_output_status: asset.registration_output_status().to_string(),
                 public_key: Vec::from(asset.public_key().as_bytes()),
                 owner_commitment: Vec::from(asset.owner_commitment().as_bytes()),
+                description: asset.description().to_string(),
+                image: asset.image().to_string(),
             })
             .collect();
         Ok(Response::new(tari_rpc::GetOwnedAssetsResponse { assets: owned }))
+    }
+
+    async fn create_initial_asset_checkpoint(
+        &self,
+        request: Request<CreateInitialAssetCheckpointRequest>,
+    ) -> Result<Response<CreateInitialAssetCheckpointResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_initial_asset_checkpoint(
+                &asset_public_key,
+                message.merkle_root.as_slice(),
+                committee_public_keys.as_slice(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "Asset checkpoint".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateInitialAssetCheckpointResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
@@ -432,8 +477,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let mut token_features = vec![];
+        for tari_rpc::MintTokenInfo { unique_id, features } in message.tokens {
+            let f: Option<OutputFeatures> = features
+                .map(|f| f.try_into())
+                .transpose()
+                .map_err(|err| Status::invalid_argument(err))?;
+            token_features.push((unique_id, f));
+        }
+
         let (tx_id, transaction) = asset_manager
-            .create_minting_transaction(&asset_public_key, asset.owner_commitment(), message.unique_ids)
+            .create_minting_transaction(&asset_public_key, asset.owner_commitment(), token_features)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

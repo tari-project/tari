@@ -34,7 +34,7 @@ use crate::{
 use log::*;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::transactions::transaction_protocol::TxId;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::script;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
@@ -78,22 +78,29 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         Ok(convert_to_asset(output)?)
     }
 
-    pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError> {
+    pub async fn create_registration_transaction(
+        &mut self,
+        name: String,
+        description: Option<String>,
+        image: Option<String>,
+        template_ids_implemented: Vec<u32>,
+    ) -> Result<(TxId, Transaction), WalletError> {
         let serializer = V1AssetMetadataSerializer {};
 
-        let metadata = AssetMetadata { name };
+        let metadata = AssetMetadata {
+            name,
+            description: description.unwrap_or_default(),
+            image: image.unwrap_or_default(),
+        };
         let mut metadata_bin = vec![1u8];
         metadata_bin.extend(serializer.serialize(&metadata).into_iter());
 
         let public_key = self.assets_key_manager.create_and_store_new()?;
-        let public_key_bytes = public_key.to_vec();
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
-                OutputFeatures::for_asset_registration(metadata_bin, public_key),
-                Some(public_key_bytes),
-                None,
+                OutputFeatures::for_asset_registration(metadata_bin, public_key, template_ids_implemented),
             )
             .await?;
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
@@ -108,18 +115,21 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         &mut self,
         asset_public_key: PublicKey,
         asset_owner_commitment: Commitment,
-        unique_ids: Vec<Vec<u8>>,
+        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let mut outputs = Vec::with_capacity(unique_ids.len());
+        let mut outputs = Vec::with_capacity(features.len());
         // TODO: generate proof of ownership
-        for id in unique_ids {
+        for (unique_id, token_features) in features {
             let output = self
                 .output_manager
                 .create_output_with_features(
                     0.into(),
-                    OutputFeatures::for_minting(vec![], asset_public_key.clone(), asset_owner_commitment.clone()),
-                    Some(id),
-                    Some(asset_public_key.clone()),
+                    OutputFeatures::for_minting(
+                        asset_public_key.clone(),
+                        asset_owner_commitment.clone(),
+                        unique_id,
+                        token_features,
+                    ),
                 )
                 .await?;
             outputs.push(output);
@@ -134,21 +144,37 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
 
     pub async fn create_initial_asset_checkpoint(
         &mut self,
-        asset: Asset,
+        asset_pub_key: PublicKey,
         merkle_root: Vec<u8>,
+        committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let output = self
+        let mut output = self
             .output_manager
-            .create_output_with_features(
-                0.into(),
-                OutputFeatures::for_checkpoint(merkle_root),
-                Some([0u8; 64].to_vec()),
-                Some(asset.public_key().clone()),
-            )
+            .create_output_with_features(0.into(), OutputFeatures::for_checkpoint(asset_pub_key, merkle_root))
             .await?;
+        // TODO: get consensus threshold from somewhere else
+        let n = committee_pub_keys.len();
+        if n > u8::MAX as usize {
+            return Err(WalletError::ArgumentError {
+                argument: "committee_pub_keys".to_string(),
+                message: "Cannot be more than 255".to_string(),
+                value: n.to_string(),
+            });
+        }
+        let max_failures = n / 3;
+        let m = max_failures * 2 + 1;
+        let mut msg = [0u8; 32];
+        msg.copy_from_slice("Need a better message12345678901".as_bytes());
+
+        let output = output.with_script(script!(CheckMultiSig(
+            m as u8,
+            n as u8,
+            committee_pub_keys,
+            Box::new(msg)
+        )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(0.into(), vec![output], 0.into())
+            .create_send_to_self_with_output(0.into(), vec![output], 100.into())
             .await?;
         Ok((tx_id, transaction))
     }
@@ -168,6 +194,8 @@ fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, Wallet
                 .map(|a| a.public_key.clone())
                 .unwrap(),
             unblinded_output.commitment,
+            "".to_string(),
+            "".to_string(),
         ));
     }
     let version = unblinded_output.unblinded_output.features.metadata[0];
@@ -175,6 +203,7 @@ fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, Wallet
     let deserializer = get_deserializer(version);
 
     let metadata = deserializer.deserialize(&unblinded_output.unblinded_output.features.metadata[1..]);
+    info!(target: LOG_TARGET, "Metadata: {:?}", metadata);
     Ok(Asset::new(
         metadata.name,
         unblinded_output.status.to_string(),
@@ -186,6 +215,8 @@ fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, Wallet
             .map(|a| a.public_key.clone())
             .unwrap(),
         unblinded_output.commitment,
+        metadata.description,
+        metadata.image,
     ))
 }
 
@@ -205,18 +236,36 @@ pub struct V1AssetMetadataSerializer {}
 // TODO: Replace with proto serializer
 impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
     fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
+        let m = String::from_utf8(Vec::from(metadata)).unwrap();
+        let mut m = m
+            .as_str()
+            .split("|")
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .into_iter();
+        let name = m.next();
+        let description = m.next();
+        let image = m.next();
+
         AssetMetadata {
-            name: String::from_utf8(Vec::from(metadata)).unwrap(),
+            name: name.unwrap_or("".to_string()),
+            description: description.unwrap_or("".to_string()),
+            image: image.unwrap_or("".to_string()),
         }
     }
 }
 
 impl AssetMetadataSerializer for V1AssetMetadataSerializer {
     fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
-        model.name.clone().into_bytes()
+        let str = format!("{}|{}|{}", model.name, model.description, model.image);
+
+        str.clone().into_bytes()
     }
 }
 
+#[derive(Debug)]
 pub struct AssetMetadata {
     name: String,
+    description: String,
+    image: String,
 }

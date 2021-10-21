@@ -30,7 +30,10 @@ use crate::{
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::TxId};
+use tari_core::transactions::{
+    transaction::{OutputFeatures, Transaction},
+    transaction_protocol::TxId,
+};
 
 #[derive(Clone)]
 pub struct AssetManagerHandle {
@@ -72,12 +75,14 @@ impl AssetManagerHandle {
         &mut self,
         public_key: &PublicKey,
         merkle_root: &[u8],
+        committee_public_keys: &[PublicKey],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
                 merkle_root: merkle_root.to_vec(),
+                committee_public_keys: committee_public_keys.to_vec(),
             })
             .await??
         {
@@ -89,10 +94,21 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_registration_transaction(&mut self, name: String) -> Result<(TxId, Transaction), WalletError> {
+    pub async fn create_registration_transaction(
+        &mut self,
+        name: String,
+        template_ids_implemented: Vec<u32>,
+        description: Option<String>,
+        image: Option<String>,
+    ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateRegistrationTransaction { name })
+            .call(AssetManagerRequest::CreateRegistrationTransaction {
+                name,
+                template_ids_implemented,
+                description,
+                image,
+            })
             .await??
         {
             AssetManagerResponse::CreateRegistrationTransaction { transaction, tx_id } => Ok((tx_id, *transaction)),
@@ -107,14 +123,14 @@ impl AssetManagerHandle {
         &mut self,
         asset_public_key: &PublicKey,
         asset_owner_commitment: &Commitment,
-        unique_ids: Vec<Vec<u8>>,
+        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateMintingTransaction {
                 asset_public_key: Box::new(asset_public_key.clone()),
                 asset_owner_commitment: Box::new(asset_owner_commitment.clone()),
-                unique_ids,
+                features,
             })
             .await??
         {

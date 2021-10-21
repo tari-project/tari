@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{InstructionSet, Payload},
-        services::{MempoolService, TemplateService},
+        services::{AssetProcessor, MempoolService},
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -34,32 +34,36 @@ pub trait PayloadProcessor<TPayload: Payload> {
     async fn process_payload(&mut self, payload: &TPayload) -> Result<(), DigitalAssetError>;
 }
 
-pub struct InstructionSetProcessor<TTemplateService: TemplateService, TMempoolService: MempoolService> {
-    template_service: TTemplateService,
+pub struct InstructionSetProcessor<TAssetProcessor, TMempoolService>
+where
+    TAssetProcessor: AssetProcessor,
+    TMempoolService: MempoolService,
+{
+    asset_processor: TAssetProcessor,
     mempool_service: TMempoolService,
 }
 
-impl<TTemplateService: TemplateService, TMempoolService: MempoolService>
-    InstructionSetProcessor<TTemplateService, TMempoolService>
+impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
+    InstructionSetProcessor<TAssetProcessor, TMempoolService>
 {
-    pub fn new(template_service: TTemplateService, mempool_service: TMempoolService) -> Self {
+    pub fn new(asset_processor: TAssetProcessor, mempool_service: TMempoolService) -> Self {
         Self {
-            template_service,
+            asset_processor,
             mempool_service,
         }
     }
 }
 
 #[async_trait]
-impl<TTemplateService: TemplateService + Send, TMempoolService: MempoolService + Send> PayloadProcessor<InstructionSet>
-    for InstructionSetProcessor<TTemplateService, TMempoolService>
+impl<TAssetProcessor: AssetProcessor + Send, TMempoolService: MempoolService + Send> PayloadProcessor<InstructionSet>
+    for InstructionSetProcessor<TAssetProcessor, TMempoolService>
 {
     async fn process_payload(&mut self, payload: &InstructionSet) -> Result<(), DigitalAssetError> {
         for instruction in payload.instructions() {
             dbg!("Executing instruction");
             dbg!(&instruction);
             // TODO: Should we swallow + log the error instead of propagating it?
-            self.template_service.execute_instruction(instruction).await?;
+            self.asset_processor.execute_instruction(instruction).await?;
         }
 
         self.mempool_service.remove_instructions(payload.instructions())?;

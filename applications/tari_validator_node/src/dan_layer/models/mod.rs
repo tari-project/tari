@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // mod block;
+mod asset_definition;
 mod committee;
 pub mod domain_events;
 mod hot_stuff_message;
@@ -29,6 +30,8 @@ mod instruction;
 mod instruction_set;
 mod quorum_certificate;
 // mod replica_info;
+mod base_layer_metadata;
+mod base_layer_output;
 mod view;
 mod view_id;
 
@@ -40,6 +43,9 @@ pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 // pub use replica_info::ReplicaInfo;
+pub use asset_definition::AssetDefinition;
+pub use base_layer_metadata::BaseLayerMetadata;
+pub use base_layer_output::BaseLayerOutput;
 use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 pub use view::View;
 pub use view_id::ViewId;

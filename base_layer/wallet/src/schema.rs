@@ -117,6 +117,7 @@ table! {
         features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
         features_parent_public_key -> Nullable<Binary>,
         features_unique_id -> Nullable<Binary>,
+        features_asset_template_ids_implemented -> Nullable<Text>,
     }
 }
 

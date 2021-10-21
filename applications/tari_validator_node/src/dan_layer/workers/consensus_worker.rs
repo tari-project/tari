@@ -24,6 +24,7 @@ use crate::{
     dan_layer::{
         models::{
             domain_events::ConsensusWorkerDomainEvent,
+            AssetDefinition,
             Committee,
             ConsensusWorkerState,
             Payload,
@@ -33,7 +34,9 @@ use crate::{
         },
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+            BaseNodeClient,
             BftReplicaService,
+            CommitteeService,
             EventsPublisher,
             PayloadProcessor,
             PayloadProvider,
@@ -60,6 +63,8 @@ pub struct ConsensusWorker<
     TEventsPublisher,
     TSigningService,
     TPayloadProcessor,
+    TCommitteeService,
+    TBaseNodeClient,
 > where
     TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
@@ -70,13 +75,15 @@ pub struct ConsensusWorker<
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
+    TCommitteeService: CommitteeService<TAddr>,
+    TBaseNodeClient: BaseNodeClient,
 {
     _bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
     state: ConsensusWorkerState,
     current_view_id: ViewId,
-    committee: Committee<TAddr>,
+    committee_service: TCommitteeService,
     timeout: Duration,
     node_id: TAddr,
     payload_provider: TPayloadProvider,
@@ -85,6 +92,8 @@ pub struct ConsensusWorker<
     locked_qc: Arc<QuorumCertificate<TPayload>>,
     signing_service: TSigningService,
     payload_processor: TPayloadProcessor,
+    asset_definition: AssetDefinition,
+    base_node_client: TBaseNodeClient,
 }
 
 impl<
@@ -97,6 +106,8 @@ impl<
         TEventsPublisher,
         TSigningService,
         TPayloadProcessor,
+        TCommitteeService,
+        TBaseNodeClient,
     >
     ConsensusWorker<
         TBftReplicaService,
@@ -108,6 +119,8 @@ impl<
         TEventsPublisher,
         TSigningService,
         TPayloadProcessor,
+        TCommitteeService,
+        TBaseNodeClient,
     >
 where
     TBftReplicaService: BftReplicaService,
@@ -119,18 +132,22 @@ where
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
+    TCommitteeService: CommitteeService<TAddr>,
+    TBaseNodeClient: BaseNodeClient,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
         outbound_service: TOutboundService,
-        committee: Committee<TAddr>,
+        committee_service: TCommitteeService,
         node_id: TAddr,
         payload_provider: TPayloadProvider,
         events_publisher: TEventsPublisher,
         signing_service: TSigningService,
         payload_processor: TPayloadProcessor,
+        // TODO: maybe make this more generic through a service
+        asset_definition: AssetDefinition,
+        base_node_client: TBaseNodeClient,
         timeout: Duration,
     ) -> Self {
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
@@ -142,7 +159,7 @@ where
             current_view_id: ViewId(0),
             timeout,
             outbound_service,
-            committee,
+            committee_service,
             node_id,
             locked_qc: prepare_qc.clone(),
             prepare_qc,
@@ -150,14 +167,20 @@ where
             events_publisher,
             signing_service,
             payload_processor,
+            asset_definition,
+            base_node_client,
         }
     }
 
-    fn get_current_view(&self) -> View {
-        View {
+    fn get_current_view(&self) -> Result<View, DigitalAssetError> {
+        Ok(View {
             view_id: self.current_view_id,
-            is_leader: self.committee.leader_for_view(self.current_view_id) == &self.node_id,
-        }
+            is_leader: self
+                .committee_service
+                .current_committee()?
+                .leader_for_view(self.current_view_id) ==
+                &self.node_id,
+        })
     }
 
     pub async fn run(
@@ -199,13 +222,17 @@ where
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         use ConsensusWorkerState::*;
         match &mut self.state {
-            Starting => states::Starting {}.next_event().await,
+            Starting => {
+                states::Starting::new()
+                    .next_event(&mut self.base_node_client, &self.asset_definition)
+                    .await
+            },
             Prepare => {
                 let mut p = states::Prepare::new(self.node_id.clone(), self.locked_qc.clone());
                 p.next_event(
-                    &self.get_current_view(),
+                    &self.get_current_view()?,
                     self.timeout,
-                    &self.committee,
+                    self.committee_service.current_committee()?,
                     &mut self.inbound_connections,
                     &mut self.outbound_service,
                     &self.payload_provider,
@@ -214,11 +241,14 @@ where
                 .await
             },
             PreCommit => {
-                let mut state = states::PreCommitState::new(self.node_id.clone(), self.committee.clone());
+                let mut state = states::PreCommitState::new(
+                    self.node_id.clone(),
+                    self.committee_service.current_committee()?.clone(),
+                );
                 let (res, prepare_qc) = state
                     .next_event(
                         self.timeout,
-                        &self.get_current_view(),
+                        &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
@@ -231,11 +261,14 @@ where
             },
 
             Commit => {
-                let mut state = states::CommitState::new(self.node_id.clone(), self.committee.clone());
+                let mut state = states::CommitState::new(
+                    self.node_id.clone(),
+                    self.committee_service.current_committee()?.clone(),
+                );
                 let (res, locked_qc) = state
                     .next_event(
                         self.timeout,
-                        &self.get_current_view(),
+                        &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
@@ -247,11 +280,14 @@ where
                 Ok(res)
             },
             Decide => {
-                let mut state = states::DecideState::new(self.node_id.clone(), self.committee.clone());
+                let mut state = states::DecideState::new(
+                    self.node_id.clone(),
+                    self.committee_service.current_committee()?.clone(),
+                );
                 state
                     .next_event(
                         self.timeout,
-                        &self.get_current_view(),
+                        &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
@@ -260,14 +296,18 @@ where
                     .await
             },
             NextView => {
-                println!("Status: {} in mempool ", self.payload_provider.get_payload_queue(),);
+                info!(
+                    target: LOG_TARGET,
+                    "Status: {} in mempool ",
+                    self.payload_provider.get_payload_queue(),
+                );
                 let mut state = states::NextViewState::new();
                 state
                     .next_event(
-                        &self.get_current_view(),
+                        &self.get_current_view()?,
                         self.prepare_qc.as_ref().clone(),
                         &mut self.outbound_service,
-                        &self.committee,
+                        self.committee_service.current_committee()?,
                         self.node_id.clone(),
                         shutdown,
                     )

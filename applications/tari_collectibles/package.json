@@ -1,0 +1,15 @@
+{
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "name": "tari_collectibles",
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {},
+  "dependencies": {
+    "@tauri-apps/api": "^1.0.0-beta.8"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

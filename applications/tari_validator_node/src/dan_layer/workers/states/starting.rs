@@ -20,12 +20,52 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{dan_layer::workers::states::ConsensusWorkerStateEvent, digital_assets_error::DigitalAssetError};
+use crate::{
+    dan_layer::{models::AssetDefinition, services::BaseNodeClient, workers::states::ConsensusWorkerStateEvent},
+    digital_assets_error::DigitalAssetError,
+    types::PublicKey,
+};
+use std::marker::PhantomData;
 
-pub struct Starting {}
+pub struct Starting<TBaseNodeClient: BaseNodeClient> {
+    base_node_client: PhantomData<TBaseNodeClient>,
+}
 
-impl Starting {
-    pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+impl<TBaseNodeClient> Starting<TBaseNodeClient>
+where TBaseNodeClient: BaseNodeClient
+{
+    pub fn new() -> Self {
+        Self {
+            base_node_client: Default::default(),
+        }
+    }
+
+    pub async fn next_event(
+        &self,
+        base_node_client: &mut TBaseNodeClient,
+        asset_definition: &AssetDefinition,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let tip = base_node_client.get_tip_info().await?;
+        // committee service.get latest committee
+        // get latest checkpoint on the base layer
+        dbg!("hello");
+        let last_checkpoint = base_node_client
+            .get_current_checkpoint(
+                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                asset_definition.public_key.clone(),
+                asset_definition.checkpoint_unique_id.clone(),
+            )
+            .await?;
+
+        let last_checkpoint = match last_checkpoint {
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
+            Some(chk) => chk,
+        };
+
+        // Get committee
+        let committee = last_checkpoint.get_side_chain_committee();
+        todo!();
+
         Ok(ConsensusWorkerStateEvent::Initialized)
     }
 }

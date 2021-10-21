@@ -1,0 +1,32 @@
+[package]
+name = "app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+license = ""
+repository = ""
+default-run = "app"
+edition = "2018"
+build = "src/build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.0.0-beta.4" }
+
+[dependencies]
+tari_app_grpc = { path = "../../tari_app_grpc", features = ["wallet"] }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_mmr = { path = "../../../base_layer/mmr"}
+tari_utilities = "*"
+
+blake2 = "^0.9.0"
+rand = "0.8"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tonic = "0.5.2"
+tauri = { version = "1.0.0-beta.8", features = ["api-all"] }
+
+[features]
+default = [ "custom-protocol" ]
+custom-protocol = [ "tauri/custom-protocol" ]
