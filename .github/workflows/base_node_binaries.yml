@@ -88,7 +88,7 @@ jobs:
       #        sudo apt-get -y upgrade
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
-        run: brew install cmake zip
+        run: brew install cmake zip coreutils
 
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')
