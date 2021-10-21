@@ -98,6 +98,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         };
         dbg!(&request);
         let mut result = inner.get_tokens(request).await.unwrap().into_inner();
+        dbg!(&result);
         let mut outputs = vec![];
         while let Some(r) = result.message().await.unwrap() {
             outputs.push(r);

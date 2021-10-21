@@ -44,7 +44,7 @@ use crate::{
     base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
     transactions::transaction::TransactionOutput,
 };
-use tari_common_types::types::{Commitment, HashOutput, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.
@@ -107,7 +107,7 @@ impl LocalNodeCommsInterface {
 
     pub async fn get_tokens(
         &mut self,
-        asset_public_key: Vec<u8>,
+        asset_public_key: PublicKey,
         unique_ids: Vec<Vec<u8>>,
     ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
         match self

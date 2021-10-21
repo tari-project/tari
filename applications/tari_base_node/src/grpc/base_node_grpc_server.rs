@@ -37,7 +37,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -422,6 +422,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .collect::<Vec<_>>()
                 .join(",")
         );
+
+        let pub_key = PublicKey::from_bytes(&request.asset_public_key)
+            .map_err(|err| Status::invalid_argument(format!("Asset public Key is not a valid public key:{}", err)))?;
+
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(50);
         task::spawn(async move {
@@ -430,7 +434,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 target: LOG_TARGET,
                 "Starting thread to process GetTokens: asset_pub_key: {}", asset_pub_key_hex,
             );
-            let tokens = match handler.get_tokens(request.asset_public_key, request.unique_ids).await {
+            let tokens = match handler.get_tokens(pub_key, request.unique_ids).await {
                 Ok(tokens) => tokens,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);

@@ -37,7 +37,7 @@ use lmdb_zero::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
-use tari_crypto::tari_utilities::hex::to_hex;
+use tari_crypto::tari_utilities::hex::{to_hex, Hex};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
@@ -337,6 +337,38 @@ where
             Ok(r) => r,
             Err(_) => break,
         }
+    }
+    Ok(result)
+}
+
+pub fn lmdb_fetch_keys_starting_with_bytes<V>(
+    key: &[u8],
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+) -> Result<Vec<V>, ChainStorageError>
+where
+    V: DeserializeOwned,
+{
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    let mut row = match cursor.seek_range_k(&access, key) {
+        Ok(r) => r,
+        Err(_) => return Ok(vec![]),
+    };
+    debug!(target: LOG_TARGET, "Row found: {}", row.0.to_vec().to_hex());
+    let mut result = vec![];
+    while &row.0[0..key.len()] == key {
+        let val = deserialize::<V>(row.1)?;
+        result.push(val);
+        row = match cursor.next(&access) {
+            Ok(r) => r,
+            Err(_) => break,
+        };
+        debug!(target: LOG_TARGET, "Row found: {}", row.0.to_vec().to_hex());
     }
     Ok(result)
 }

@@ -23,7 +23,7 @@
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use tari_common_types::types::{Commitment, HashOutput, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.
@@ -53,7 +53,7 @@ pub enum NodeCommsRequest {
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
     FetchTokens {
-        asset_public_key: Vec<u8>,
+        asset_public_key: PublicKey,
         unique_ids: Vec<Vec<u8>>,
     },
 }

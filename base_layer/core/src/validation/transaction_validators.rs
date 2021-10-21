@@ -88,38 +88,6 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
-        let outputs = tx.get_body().outputs();
-
-        // outputs in transaction should have unique asset ids
-        let mut unique_ids: Vec<Vec<u8>> = outputs
-            .iter()
-            .filter_map(|output| output.features.unique_asset_id())
-            .collect();
-
-        unique_ids.sort();
-        let num_ids = unique_ids.len();
-
-        unique_ids.dedup();
-        let num_unique = unique_ids.len();
-
-        if num_unique < num_ids {
-            return Err(ValidationError::ConsensusError(
-                "Transaction contains outputs with duplicate unique_asset_ids".into(),
-            ));
-        }
-
-        // output unique asset id should not already be in the chain
-        for unique_id in unique_ids {
-            if let Some(hash) = self.db.fetch_unspent_output_by_unique_id(&unique_id)? {
-                let msg = format!(
-                    "Output with unique_asset_id: {} already exists in stored output with hash: {}",
-                    unique_id.to_hex(),
-                    hash.to_hex()
-                );
-                return Err(ValidationError::ConsensusError(msg));
-            }
-        }
-
         Ok(())
     }
 }

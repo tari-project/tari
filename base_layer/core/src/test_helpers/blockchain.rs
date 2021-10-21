@@ -74,9 +74,10 @@ use crate::{
     },
 };
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use tari_common_types::types::{Commitment, HashOutput, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
 
 use super::mine_to_difficulty;
+use std::ops::Range;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
@@ -293,14 +294,26 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    fn fetch_unspent_output_hash_by_unique_id(
+    fn fetch_unspent_output_by_unique_id(
         &self,
+        parent_public_key: Option<&PublicKey>,
         unique_id: &HashOutput,
-    ) -> Result<Option<HashOutput>, ChainStorageError> {
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .fetch_unspent_output_hash_by_unique_id(unique_id)
+            .fetch_unspent_output_by_unique_id(parent_public_key, unique_id)
+    }
+
+    fn fetch_all_unspent_by_parent_public_key(
+        &self,
+        parent_public_key: &PublicKey,
+        range: Range<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_all_unspent_by_parent_public_key(parent_public_key, range)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
