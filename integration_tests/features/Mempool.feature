@@ -114,7 +114,7 @@ Feature: Mempool
     Then NODE_B has TXB in MEMPOOL state
     When I mine 1 blocks on NODE_A
     When I mine 1 blocks on NODE_B
-    And I connect node NODE_A to node NODE_B and wait 1 seconds
+    And I connect node NODE_A to node NODE_B
     Then all nodes are at height 12
     Then NODE_A has TXA in NOT_STORED state
     Then NODE_A has TXB in MINED state

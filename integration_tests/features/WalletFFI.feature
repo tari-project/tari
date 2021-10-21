@@ -53,7 +53,7 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I have a ffi wallet FFI_WALLET connected to base node BASE
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         And wallet SENDER detects all transactions are at least Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
@@ -107,7 +107,7 @@ Feature: Wallet FFI
         And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I stop ffi wallet FFI_WALLET
         And I wait 10 seconds
-        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         And I wait 5 seconds
         # Broken step with reason base node is not persisted
         # Log:
