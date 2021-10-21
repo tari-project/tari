@@ -862,6 +862,129 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
     assert_eq!(completed_txs.get(&2).unwrap().confirmations.unwrap(), 4);
 }
 
+/// Test that revalidation clears the correct db fields and calls for validation of is said transactions
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn tx_revalidation() {
+    let (
+        resources,
+        _outbound_mock_state,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _shutdown,
+        _temp_dir,
+        _transaction_event_receiver,
+        wallet_connectivity,
+    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+    add_transaction_to_database(
+        1,
+        1 * T,
+        true,
+        Some(TransactionStatus::Completed),
+        None,
+        resources.db.clone(),
+    )
+    .await;
+    add_transaction_to_database(
+        2,
+        2 * T,
+        true,
+        Some(TransactionStatus::Completed),
+        None,
+        resources.db.clone(),
+    )
+    .await;
+
+    let tx2 = resources.db.get_completed_transaction(2).await.unwrap();
+
+    // set tx2 as fully mined
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(
+            tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+        )),
+        location: TxLocationProto::from(TxLocation::Mined) as i32,
+        block_hash: Some([5u8; 16].to_vec()),
+        confirmations: 4,
+        block_height: 5,
+    }];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
+        is_synced: true,
+        tip_hash: Some([5u8; 16].to_vec()),
+        height_of_longest_chain: 5,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
+
+    let protocol = TransactionValidationProtocol::new(
+        4,
+        resources.db.clone(),
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
+    );
+
+    let join_handle = task::spawn(protocol.execute());
+    let result = join_handle.await.unwrap();
+    assert!(result.is_ok());
+
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+
+    assert_eq!(completed_txs.get(&2).unwrap().status, TransactionStatus::MinedConfirmed);
+    assert_eq!(completed_txs.get(&2).unwrap().confirmations.unwrap(), 4);
+
+    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
+        signature: Some(SignatureProto::from(
+            tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
+        )),
+        location: TxLocationProto::from(TxLocation::Mined) as i32,
+        block_hash: Some([5u8; 16].to_vec()),
+        confirmations: 8,
+        block_height: 10,
+    }];
+
+    let batch_query_response = TxQueryBatchResponsesProto {
+        responses: transaction_query_batch_responses.clone(),
+        is_synced: true,
+        tip_hash: Some([5u8; 16].to_vec()),
+        height_of_longest_chain: 10,
+    };
+
+    rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
+    // revalidate sets all to unvalidated, so lets check that thay are
+    resources.db.mark_all_transactions_as_unvalidated().await.unwrap();
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+    assert_eq!(completed_txs.get(&2).unwrap().status, TransactionStatus::MinedConfirmed);
+    assert_eq!(completed_txs.get(&2).unwrap().mined_height, None);
+    assert_eq!(completed_txs.get(&2).unwrap().mined_in_block, None);
+
+    let protocol = TransactionValidationProtocol::new(
+        5,
+        resources.db.clone(),
+        wallet_connectivity.clone(),
+        resources.config.clone(),
+        resources.event_publisher.clone(),
+        resources.output_manager_service.clone(),
+    );
+
+    let join_handle = task::spawn(protocol.execute());
+    let result = join_handle.await.unwrap();
+    assert!(result.is_ok());
+
+    let completed_txs = resources.db.get_completed_transactions().await.unwrap();
+    // data should now be updated and changed
+    assert_eq!(completed_txs.get(&2).unwrap().status, TransactionStatus::MinedConfirmed);
+    assert_eq!(completed_txs.get(&2).unwrap().confirmations.unwrap(), 8);
+}
+
 /// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to
 /// completed
 #[tokio::test]

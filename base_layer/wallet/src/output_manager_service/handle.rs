@@ -57,6 +57,7 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     GetSeedWords,
     ValidateUtxos,
+    RevalidateTxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
@@ -98,6 +99,7 @@ impl fmt::Display for OutputManagerRequest {
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             GetSeedWords => write!(f, "GetSeedWords"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
+            RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
@@ -237,6 +239,13 @@ impl OutputManagerHandle {
     pub async fn get_balance(&mut self) -> Result<Balance, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetBalance).await?? {
             OutputManagerResponse::Balance(b) => Ok(b),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn revalidate_all_outputs(&mut self) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::RevalidateTxos).await?? {
+            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

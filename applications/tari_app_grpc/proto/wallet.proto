@@ -54,6 +54,8 @@ service Wallet {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+    // Will triggger a complete revalidation of all wallet outputs.
+    rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
 }
 
 message GetVersionRequest { }
@@ -197,3 +199,7 @@ message CancelTransactionResponse {
     bool is_success = 1;
     string failure_message = 2;
 }
+
+message RevalidateRequest{}
+
+message RevalidateResponse{}

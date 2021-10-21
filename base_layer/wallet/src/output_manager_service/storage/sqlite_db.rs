@@ -491,6 +491,31 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
+        // Only update non-deleted utxos
+        let result = diesel::update(outputs::table.filter(outputs::marked_deleted_at_height.is_null()))
+            .set((
+                outputs::mined_height.eq::<Option<i64>>(None),
+                outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::mined_mmr_position.eq::<Option<i64>>(None),
+            ))
+            .execute(&(*conn))?;
+
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - set_outputs_to_be_revalidated: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+
+        Ok(())
+    }
+
     fn mark_output_as_spent(
         &self,
         hash: Vec<u8>,
