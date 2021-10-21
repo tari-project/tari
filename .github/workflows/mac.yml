@@ -1,0 +1,25 @@
+name: Mac signing
+
+on: [push]
+
+jobs:
+  sign:
+    name: Signing
+    runs-on: macos-latest
+    steps:
+      - name: keychain
+        env:
+          MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
+          MACOS_APPLICATION_CERT: ${{ secrets.MACOS_APPLICATION_CERT }}
+          MACOS_APPLICATION_PASS: ${{ secrets.MACOS_APPLICATION_PASS }}
+        run: |
+          echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
+          security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
+          security import application.p12 -k build.keychain -P $MACOS_APPLICATION_PASS -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_APPLICATION_PASS build.keychain
+          pwd
+          cp /bin/ls ./
+          codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" ./ls -v
+          codesign --verify --deep --display --verbose=4 ./ls
