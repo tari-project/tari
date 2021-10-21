@@ -16,6 +16,7 @@ jobs:
           MACOS_INSTALLER_PASS: ${{ secrets.MACOS_INSTALLER_PASS }}
         run: |
           echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
+          echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
           security create-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p $MACOS_KEYCHAIN_PASS build.keychain
