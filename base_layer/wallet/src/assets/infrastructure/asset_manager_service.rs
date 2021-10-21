@@ -88,8 +88,16 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,
             }),
-            AssetManagerRequest::CreateRegistrationTransaction { name } => {
-                let (tx_id, transaction) = self.manager.create_registration_transaction(name).await?;
+            AssetManagerRequest::CreateRegistrationTransaction {
+                name,
+                template_ids_implemented,
+                description,
+                image,
+            } => {
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_registration_transaction(name, description, image, template_ids_implemented)
+                    .await?;
                 Ok(AssetManagerResponse::CreateRegistrationTransaction {
                     transaction: Box::new(transaction),
                     tx_id,
@@ -102,11 +110,11 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::CreateMintingTransaction {
                 asset_public_key,
                 asset_owner_commitment,
-                unique_ids,
+                features,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_minting_transaction(*asset_public_key, *asset_owner_commitment, unique_ids)
+                    .create_minting_transaction(*asset_public_key, *asset_owner_commitment, features)
                     .await?;
                 Ok(AssetManagerResponse::CreateMintingTransaction {
                     transaction: Box::new(transaction),
@@ -116,9 +124,12 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             AssetManagerRequest::CreateInitialCheckpoint {
                 asset_public_key,
                 merkle_root,
+                committee_public_keys,
             } => {
-                let asset = self.manager.get_owned_asset_by_pub_key(*asset_public_key).await?;
-                let (tx_id, transaction) = self.manager.create_initial_asset_checkpoint(asset, merkle_root).await?;
+                let (tx_id, transaction) = self
+                    .manager
+                    .create_initial_asset_checkpoint(*asset_public_key, merkle_root, committee_public_keys)
+                    .await?;
                 Ok(AssetManagerResponse::CreateInitialCheckpoint {
                     transaction: Box::new(transaction),
                     tx_id,

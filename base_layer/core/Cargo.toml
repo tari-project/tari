@@ -24,7 +24,7 @@ tari_comms = { version = "^0.11", path = "../../comms" }
 tari_comms_dht = { version = "^0.11", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.11", path = "../../comms/rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_mmr = { version = "^0.11", path = "../../base_layer/mmr", optional = true }
+tari_mmr = { version = "^0.11", path = "../../base_layer/mmr", optional = true, features=["native_bitmap"] }
 tari_p2p = { version = "^0.11", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.11", path = "../service_framework" }
 tari_shutdown = { version = "^0.11", path = "../../infrastructure/shutdown" }

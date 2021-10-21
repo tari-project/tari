@@ -94,6 +94,7 @@ impl KernelFeatures {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct AssetOutputFeatures {
     pub public_key: PublicKey,
+    pub template_ids_implemented: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
@@ -155,37 +156,54 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_asset_registration(metadata: Vec<u8>, public_key: PublicKey) -> OutputFeatures {
+    pub fn for_asset_registration(
+        metadata: Vec<u8>,
+        public_key: PublicKey,
+        template_ids_implemented: Vec<u32>,
+    ) -> OutputFeatures {
+        let unique_id = Some(public_key.as_bytes().to_vec());
         Self {
             flags: OutputFlags::ASSET_REGISTRATION,
             maturity: 0,
             metadata,
-            asset: Some(AssetOutputFeatures { public_key }),
+            asset: Some(AssetOutputFeatures {
+                public_key,
+                template_ids_implemented,
+            }),
+            unique_id,
             ..Default::default()
         }
     }
 
     pub fn for_minting(
-        metadata: Vec<u8>,
         asset_public_key: PublicKey,
         asset_owner_commitment: Commitment,
+        unique_id: Vec<u8>,
+        other_features: Option<OutputFeatures>,
     ) -> OutputFeatures {
         Self {
-            flags: OutputFlags::MINT_NON_FUNGIBLE,
-            metadata,
+            flags: OutputFlags::MINT_NON_FUNGIBLE |
+                other_features
+                    .as_ref()
+                    .map(|of| of.flags)
+                    .unwrap_or(OutputFlags::empty()),
             mint_non_fungible: Some(MintNonFungibleFeatures {
-                asset_public_key,
+                asset_public_key: asset_public_key.clone(),
                 asset_owner_commitment,
             }),
-            ..Default::default()
+            parent_public_key: Some(asset_public_key),
+            unique_id: Some(unique_id),
+            ..other_features.unwrap_or_default()
         }
     }
 
-    pub fn for_checkpoint(merkle_root: Vec<u8>) -> OutputFeatures {
+    pub fn for_checkpoint(parent_public_key: PublicKey, merkle_root: Vec<u8>) -> OutputFeatures {
+        const checkpoint_unique_id: [u8; 32] = [3u8; 32];
         Self {
             flags: OutputFlags::SIDECHAIN_CHECKPOINT,
-            asset: None,
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root }),
+            parent_public_key: Some(parent_public_key),
+            unique_id: Some(checkpoint_unique_id.to_vec()),
             ..Default::default()
         }
     }
@@ -248,9 +266,9 @@ bitflags! {
         const COINBASE_OUTPUT = 0b0000_0001;
         const NON_FUNGIBLE = 0b0000_1000;
         // TODO: separate these flags
-        const ASSET_REGISTRATION = 0b0000_1010; // Registration and also non-fungible
-        const MINT_NON_FUNGIBLE = 0b0000_1100; // Mint and non-fungible
-        const SIDECHAIN_CHECKPOINT = 0b0000_1101;
+        const ASSET_REGISTRATION = 0b0000_0010 | Self::NON_FUNGIBLE.bits; // Registration and also non-fungible
+        const MINT_NON_FUNGIBLE = 0b0000_0100 | Self::NON_FUNGIBLE.bits; // Mint and non-fungible
+        const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
     }
 }
 
@@ -293,7 +311,7 @@ pub enum TransactionError {
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
 #[derive(Debug, Clone)]
 pub struct UnblindedOutputBuilder {
-    value: MicroTari,
+    pub value: MicroTari,
     spending_key: BlindingFactor,
     features: OutputFeatures,
     script: Option<TariScript>,
@@ -409,16 +427,6 @@ impl UnblindedOutputBuilder {
 
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
         self.script_private_key = Some(script_private_key);
-        self
-    }
-
-    pub fn with_unique_id(mut self, unique_id: Option<Vec<u8>>) -> Self {
-        self.features.unique_id = unique_id;
-        self
-    }
-
-    pub fn with_parent_public_key(mut self, parent_public_key: Option<PublicKey>) -> Self {
-        self.features.parent_public_key = parent_public_key;
         self
     }
 }

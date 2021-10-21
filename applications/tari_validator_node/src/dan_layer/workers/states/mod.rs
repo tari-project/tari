@@ -48,6 +48,7 @@ pub use starting::Starting;
 #[derive(Debug, PartialEq)]
 pub enum ConsensusWorkerStateEvent {
     Initialized,
+    BaseLayerCheckpointNotFound,
     Errored { reason: String },
     Prepared,
     PreCommitted,

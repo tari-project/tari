@@ -22,11 +22,13 @@
 
 use crate::{
     dan_layer::{
-        models::{Committee, TemplateId},
+        models::{AssetDefinition, Committee, TemplateId},
         services::{
             infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
+            ConcreteAssetProcessor,
             ConcreteBftReplicaService,
-            ConcreteTemplateService,
+            ConcreteCommitteeService,
+            GrpcBaseNodeClient,
             InstructionSetProcessor,
             LoggingEventsPublisher,
             MemoryInstructionLog,
@@ -39,14 +41,22 @@ use crate::{
     },
     ExitCodes,
 };
+use futures::try_join;
 use log::*;
-use std::{fs, sync::Arc, time::Duration};
+use std::{
+    fs,
+    fs::{DirEntry, File},
+    io::BufReader,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 use tari_app_utilities::{
     identity_management,
     identity_management::{load_from_json, setup_node_identity},
     utilities::convert_socks_authentication,
 };
-use tari_common::{CommsTransport, GlobalConfig, TorControlAuthentication};
+use tari_common::{configuration::ValidatorNodeConfig, CommsTransport, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
     peer_manager::PeerFeatures,
     socks,
@@ -95,16 +105,112 @@ impl DanNode {
             PeerFeatures::NONE,
         )?;
 
+        info!(
+            target: LOG_TARGET,
+            "Node starting with pub key: {}, node_id: {}",
+            node_identity.public_key(),
+            node_identity.node_id()
+        );
         let (handles, subscription_factory) = self
             .build_service_and_comms_stack(shutdown.clone(), node_identity.clone())
             .await?;
 
-        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.as_ref().clone(), vec![]);
+        let dan_config = self
+            .config
+            .validator_node
+            .as_ref()
+            .ok_or_else(|| ExitCodes::ConfigError("Missing dan section".to_string()))?;
+
+        let asset_definitions = self.read_asset_definitions(&dan_config.asset_config_directory)?;
+        if asset_definitions.is_empty() {
+            warn!(target: LOG_TARGET, "No assets to process. Exiting");
+        }
+        for asset in asset_definitions {
+            // TODO: spawn into multiple processes. This requires some routing as well.
+            self.start_asset_worker(
+                asset,
+                node_identity.as_ref().clone(),
+                mempool_service.clone(),
+                handles.clone(),
+                subscription_factory.clone(),
+                shutdown.clone(),
+                &dan_config,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    fn read_asset_definitions(&self, path: &PathBuf) -> Result<Vec<AssetDefinition>, ExitCodes> {
+        if !path.exists() {
+            fs::create_dir_all(path).expect("Could not create dir");
+        }
+        let paths = fs::read_dir(path).expect("Could not read asset definitions");
+
+        let mut result = vec![];
+        for path in paths {
+            let path = path.expect("Not a valid file").path();
+            if !path.is_dir() {
+                let file = File::open(path).expect("could not open file");
+                let reader = BufReader::new(file);
+
+                let def: AssetDefinition = serde_json::from_reader(reader).expect("lol not a valid json");
+                result.push(def);
+            }
+        }
+        Ok(result)
+    }
+
+    async fn start_asset_worker<TMempoolService: MempoolService + Clone + Send>(
+        &self,
+        asset_definition: AssetDefinition,
+        node_identity: NodeIdentity,
+        mempool_service: TMempoolService,
+        handles: ServiceHandles,
+        subscription_factory: SubscriptionFactory,
+        shutdown: ShutdownSignal,
+        config: &ValidatorNodeConfig,
+    ) -> Result<(), ExitCodes> {
+        let timeout = Duration::from_secs(asset_definition.phase_timeout);
+        // TODO: read from base layer get asset definition
+        let committee = asset_definition
+            .initial_committee
+            .iter()
+            .map(|s| {
+                CommsPublicKey::from_hex(s)
+                    .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // let committee: Vec<CommsPublicKey> = dan_config
+        //     .committee
+        //     .iter()
+        //     .map(|s| {
+        //         CommsPublicKey::from_hex(s)
+        //             .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
+        //     })
+        //     .collect::<Result<Vec<_>, _>>()?;
+        //
+        let committee = Committee::new(committee);
+        let committee_service = ConcreteCommitteeService::new(committee);
+
+        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.clone(), vec![]);
 
         let mempool_payload_provider = MempoolPayloadProvider::new(mempool_service.clone());
 
+        let events_publisher = LoggingEventsPublisher::new();
+        let signing_service = NodeIdentitySigningService::new(node_identity.clone());
+
+        let backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
+            .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
+        let data_store = AssetDataStore::new(backend);
+        let instruction_log = MemoryInstructionLog::default();
+        let asset_processor = ConcreteAssetProcessor::new(data_store, instruction_log, asset_definition.clone());
+
+        let payload_processor = InstructionSetProcessor::new(asset_processor, mempool_service);
         let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
+
         let loopback = inbound.clone_sender();
         let shutdown_2 = shutdown.clone();
         task::spawn(async move {
@@ -114,50 +220,28 @@ impl DanNode {
         });
         let dht = handles.expect_handle::<Dht>();
         let outbound = TariCommsOutboundService::new(dht.outbound_requester(), loopback);
+        let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
 
-        let dan_config = self
-            .config
-            .validator_node
-            .as_ref()
-            .ok_or_else(|| ExitCodes::ConfigError("Missing dan section".to_string()))?;
-
-        let committee: Vec<CommsPublicKey> = dan_config
-            .committee
-            .iter()
-            .map(|s| {
-                CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let committee = Committee::new(committee);
-        let events_publisher = LoggingEventsPublisher::new();
-        let signing_service = NodeIdentitySigningService::new(node_identity.as_ref().clone());
-
-        let backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
-            .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
-        let data_store = AssetDataStore::new(backend);
-
-        let instruction_log = MemoryInstructionLog::default();
-        let template_service =
-            ConcreteTemplateService::new(data_store, instruction_log, TemplateId::parse(&dan_config.template_id));
-        let payload_processor = InstructionSetProcessor::new(template_service, mempool_service);
         let mut consensus_worker = ConsensusWorker::new(
             bft_replica_service,
             receiver,
             outbound,
-            committee,
+            committee_service,
             node_identity.public_key().clone(),
             mempool_payload_provider,
             events_publisher,
             signing_service,
             payload_processor,
-            Duration::from_secs(dan_config.phase_timeout),
+            asset_definition,
+            base_node_client,
+            timeout,
         );
         consensus_worker
             .run(shutdown.clone(), None)
             .await
-            .map_err(|err| ExitCodes::ConfigError(err.to_string()))
+            .map_err(|err| ExitCodes::ConfigError(err.to_string()));
+
+        Ok(())
     }
 
     async fn build_service_and_comms_stack(

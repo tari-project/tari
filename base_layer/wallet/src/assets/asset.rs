@@ -24,10 +24,14 @@ use tari_common_types::types::{Commitment, PublicKey};
 
 #[derive(Clone)]
 pub struct Asset {
+    // Optional metadata
     name: String,
     registration_output_status: String,
     public_key: PublicKey,
     owner_commitment: Commitment,
+    // Optional metadata
+    description: String,
+    image: String,
 }
 
 impl Asset {
@@ -36,17 +40,30 @@ impl Asset {
         registration_output_status: String,
         public_key: PublicKey,
         owner_commitment: Commitment,
+        // TODO: make these options
+        description: String,
+        image: String,
     ) -> Self {
         Self {
             name,
             registration_output_status,
             public_key,
             owner_commitment,
+            description,
+            image,
         }
     }
 
     pub fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    pub fn description(&self) -> &str {
+        self.description.as_str()
+    }
+
+    pub fn image(&self) -> &str {
+        self.image.as_str()
     }
 
     pub fn registration_output_status(&self) -> &str {

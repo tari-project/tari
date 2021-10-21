@@ -25,7 +25,10 @@ use crate::assets::Asset;
 pub use asset_manager_service::AssetManagerService;
 
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::TxId};
+use tari_core::transactions::{
+    transaction::{OutputFeatures, Transaction},
+    transaction_protocol::TxId,
+};
 
 pub mod initializer;
 
@@ -36,15 +39,19 @@ pub enum AssetManagerRequest {
     },
     CreateRegistrationTransaction {
         name: String,
+        template_ids_implemented: Vec<u32>,
+        description: Option<String>,
+        image: Option<String>,
     },
     CreateMintingTransaction {
         asset_public_key: Box<PublicKey>,
         asset_owner_commitment: Box<Commitment>,
-        unique_ids: Vec<Vec<u8>>,
+        features: Vec<(Vec<u8>, Option<OutputFeatures>)>,
     },
     CreateInitialCheckpoint {
         asset_public_key: Box<PublicKey>,
         merkle_root: Vec<u8>,
+        committee_public_keys: Vec<PublicKey>,
     },
 }
 

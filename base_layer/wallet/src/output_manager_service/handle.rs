@@ -88,8 +88,6 @@ pub enum OutputManagerRequest {
     CreateOutputWithFeatures {
         value: MicroTari,
         features: Box<OutputFeatures>,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Box<Option<PublicKey>>,
     },
 
     ReinstateCancelledInboundTx(TxId),
@@ -129,19 +127,9 @@ impl fmt::Display for OutputManagerRequest {
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
-            CreateOutputWithFeatures {
-                value,
-                features,
-                unique_id,
-                parent_public_key,
-            } => write!(
-                f,
-                "CreateOutputWithFeatures({}, {}, {:?}, {:?})",
-                value,
-                features.to_string(),
-                unique_id,
-                parent_public_key
-            ),
+            CreateOutputWithFeatures { value, features } => {
+                write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string(),)
+            },
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
             SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
@@ -278,16 +266,12 @@ impl OutputManagerHandle {
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-        unique_id: Option<Vec<u8>>,
-        parent_public_key: Option<PublicKey>,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateOutputWithFeatures {
                 value,
                 features: Box::new(features),
-                unique_id,
-                parent_public_key: Box::new(parent_public_key),
             })
             .await??
         {

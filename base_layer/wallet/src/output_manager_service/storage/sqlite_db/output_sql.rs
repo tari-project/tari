@@ -47,6 +47,7 @@ pub struct OutputSql {
     pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
+    pub features_asset_template_ids_implemented: Option<String>,
 }
 
 impl OutputSql {

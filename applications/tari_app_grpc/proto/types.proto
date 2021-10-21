@@ -216,6 +216,7 @@ message OutputFeatures {
 
 message AssetOutputFeatures {
     bytes public_key = 1;
+    repeated uint32 template_ids_implemented = 2;
 }
 
 message MintNonFungibleFeatures {

@@ -21,10 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::models::Event;
+use log::*;
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
 };
+
+const LOG_TARGET: &str = "tari::dan::services::events_publisher";
 
 pub trait EventsPublisher<TEvent: Event> {
     fn publish(&mut self, event: TEvent);
@@ -42,6 +45,6 @@ impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
 }
 impl<TEvent: Event + Debug + Display> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
     fn publish(&mut self, event: TEvent) {
-        println!("[Event] Event received:{}", event);
+        info!(target: LOG_TARGET, "[Event] Event received:{}", event);
     }
 }

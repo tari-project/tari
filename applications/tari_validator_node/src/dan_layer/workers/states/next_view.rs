@@ -28,7 +28,10 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
+use log::*;
 use tari_shutdown::ShutdownSignal;
+
+const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
 
 pub struct NextViewState {}
 
@@ -54,8 +57,8 @@ impl NextViewState {
         let next_view = current_view.view_id.next();
         let leader = committee.leader_for_view(next_view);
         broadcast.send(node_id, leader.clone(), message).await?;
-        println!("End of view: {}", current_view.view_id.0);
-        println!("--------------------------------");
+        debug!("End of view: {}", current_view.view_id.0);
+        debug!("--------------------------------");
         Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
     }
 }

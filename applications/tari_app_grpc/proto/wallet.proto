@@ -56,6 +56,9 @@ service Wallet {
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
 
     rpc RegisterAsset(RegisterAssetRequest) returns (RegisterAssetResponse);
+
+    rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
+
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
     // Mint base layer tokens for an asset
@@ -199,10 +202,23 @@ message ImportUtxosResponse {
 
 message RegisterAssetRequest {
     string name = 1;
+    repeated uint32 template_ids_implemented = 2;
+    string description  =3;
+    string image = 4;
 }
 
 message RegisterAssetResponse {
     bytes public_key = 1;
+}
+
+message CreateInitialAssetCheckpointRequest {
+    bytes asset_public_key = 1;
+    bytes merkle_root = 2;
+    repeated bytes committee = 3;
+}
+
+message CreateInitialAssetCheckpointResponse {
+
 }
 
 message GetOwnedAssetsResponse {
@@ -214,11 +230,18 @@ message Asset {
     string registration_output_status = 2;
     bytes public_key = 3;
     bytes owner_commitment = 4;
+    string description  =5;
+    string image = 6;
 }
 
 message MintTokensRequest {
     bytes asset_public_key = 1;
-    repeated bytes unique_ids = 2;
+    repeated MintTokenInfo tokens = 2;
+}
+
+message MintTokenInfo {
+    bytes unique_id = 1;
+    OutputFeatures features = 2;
 }
 
 message MintTokensResponse {

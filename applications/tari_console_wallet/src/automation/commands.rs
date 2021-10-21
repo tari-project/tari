@@ -703,7 +703,9 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
-                let (tx_id, transaction) = manager.create_registration_transaction(name).await?;
+                let (tx_id, transaction) = manager
+                    .create_registration_transaction(name, vec![], None, None)
+                    .await?;
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
@@ -734,7 +736,11 @@ pub async fn command_runner(
 
                 let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
                 let (tx_id, transaction) = asset_manager
-                    .create_minting_transaction(&public_key, asset.owner_commitment(), unique_ids)
+                    .create_minting_transaction(
+                        &public_key,
+                        asset.owner_commitment(),
+                        unique_ids.into_iter().map(|id| (id, None)).collect(),
+                    )
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
@@ -762,9 +768,17 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
+                let committee: Vec<PublicKey> = parsed.args[2..]
+                    .iter()
+                    .map(|pk| match pk {
+                        ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                        _ => Err(CommandError::Argument),
+                    })
+                    .collect::<Result<_, _>>()?;
+
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager
-                    .create_initial_asset_checkpoint(&public_key, &merkle_root)
+                    .create_initial_asset_checkpoint(&public_key, &merkle_root, &committee)
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(

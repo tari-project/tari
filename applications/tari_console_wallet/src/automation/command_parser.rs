@@ -132,7 +132,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         RegisterAsset => parser_builder(args).text().build()?,
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
-        CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
+        CreateInitialCheckpoint => parser_builder(args).pub_key().text().pub_key_array().build()?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -184,6 +184,15 @@ impl<'a> ArgParser<'a> {
         );
         self.result.push(result);
         self
+    }
+
+    fn pub_key_array(self) -> Self {
+        let mut me = self;
+        while me.args.peek().is_some() {
+            me = me.pub_key();
+        }
+
+        me
     }
 
     fn build(self) -> Result<Vec<ParsedArgument>, ParseError> {

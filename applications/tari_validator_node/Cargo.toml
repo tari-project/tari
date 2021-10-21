@@ -9,6 +9,7 @@ edition = "2018"
 
 [dependencies]
 tari_app_utilities = { path = "../tari_app_utilities" }
+tari_app_grpc = {path = "../tari_app_grpc" }
 tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms" }
 tari_comms_dht = { path = "../../comms/dht" }

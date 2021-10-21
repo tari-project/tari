@@ -74,7 +74,10 @@ impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
     fn try_from(features: grpc::AssetOutputFeatures) -> Result<Self, Self::Error> {
         let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
-        Ok(Self { public_key })
+        Ok(Self {
+            public_key,
+            template_ids_implemented: features.template_ids_implemented,
+        })
     }
 }
 
@@ -82,6 +85,7 @@ impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
     fn from(features: AssetOutputFeatures) -> Self {
         Self {
             public_key: features.public_key.as_bytes().to_vec(),
+            template_ids_implemented: features.template_ids_implemented,
         }
     }
 }

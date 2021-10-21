@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{Instruction, InstructionCaller, InstructionId, TemplateId},
+        models::{AssetDefinition, Instruction, InstructionCaller, InstructionId, TemplateId},
         storage::AssetStore,
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
@@ -34,20 +34,20 @@ use std::collections::VecDeque;
 
 // TODO: Better name needed
 #[async_trait]
-pub trait TemplateService {
+pub trait AssetProcessor {
     async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError>;
 }
 
-pub struct ConcreteTemplateService<TAssetStore, TInstructionLog> {
-    template_id: TemplateId,
+pub struct ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
+    asset_definition: AssetDefinition,
     template_factory: TemplateFactory,
     instruction_log: TInstructionLog,
     data_store: TAssetStore,
 }
 
 #[async_trait]
-impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> TemplateService
-    for ConcreteTemplateService<TAssetStore, TInstructionLog>
+impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> AssetProcessor
+    for ConcreteAssetProcessor<TAssetStore, TInstructionLog>
 {
     async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
         // TODO: This is thread blocking
@@ -63,12 +63,12 @@ impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> Tem
     }
 }
 
-impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteTemplateService<TAssetStore, TInstructionLog> {
-    pub fn new(data_store: TAssetStore, instruction_log: TInstructionLog, template_id: TemplateId) -> Self {
+impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
+    pub fn new(data_store: TAssetStore, instruction_log: TInstructionLog, asset_definition: AssetDefinition) -> Self {
         Self {
             template_factory: TemplateFactory {},
             instruction_log,
-            template_id,
+            asset_definition,
             data_store,
         }
     }
@@ -80,12 +80,13 @@ impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteTemplateS
         caller: InstructionCaller,
         id: InstructionId,
     ) -> Result<(), DigitalAssetError> {
-        let instruction = self
-            .template_factory
-            .create_command(self.template_id, method, args, caller)?;
-        let result = instruction.try_execute(&mut self.data_store)?;
-        self.instruction_log.store(id, result);
-        Ok(())
+        unimplemented!()
+        // let instruction = self
+        //     .template_factory
+        //     .create_command(self.template_id, method, args, caller)?;
+        // let result = instruction.try_execute(&mut self.data_store)?;
+        // self.instruction_log.store(id, result);
+        // Ok(())
     }
 }
 

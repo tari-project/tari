@@ -61,6 +61,7 @@ pub struct NewOutputSql {
     pub metadata_signature_v_key: Vec<u8>,
     pub received_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
+    pub features_asset_template_ids_implemented: Option<String>,
 }
 
 impl NewOutputSql {
@@ -83,7 +84,12 @@ impl NewOutputSql {
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata),
-            features_asset_public_key: output.unblinded_output.features.asset.map(|a| a.public_key.to_vec()),
+            features_asset_public_key: output
+                .unblinded_output
+                .features
+                .asset
+                .as_ref()
+                .map(|a| a.public_key.to_vec()),
             features_mint_asset_public_key: output
                 .unblinded_output
                 .features
@@ -102,6 +108,13 @@ impl NewOutputSql {
             metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
             metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
             coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
+            features_asset_template_ids_implemented: output.unblinded_output.features.asset.as_ref().map(|a| {
+                a.template_ids_implemented
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",")
+            }),
         }
     }
 
