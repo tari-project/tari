@@ -8,7 +8,6 @@ use crate::{
     utils::formatting::display_compressed_string,
 };
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_wallet::types::DEFAULT_FEE_PER_GRAM;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -40,19 +39,19 @@ pub struct SendTab {
 }
 
 impl SendTab {
-    pub fn new() -> Self {
+    pub fn new(app_state: &AppState) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
             edit_contact_mode: ContactInputMode::None,
             show_contacts: false,
             show_edit_contact: false,
-            to_field: "".to_string(),
-            amount_field: "".to_string(),
-            fee_field: u64::from(DEFAULT_FEE_PER_GRAM).to_string(),
-            message_field: "".to_string(),
-            alias_field: "".to_string(),
-            public_key_field: "".to_string(),
+            to_field: String::new(),
+            amount_field: String::new(),
+            fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
+            message_field: String::new(),
+            alias_field: String::new(),
+            public_key_field: String::new(),
             error_message: None,
             success_message: None,
             contacts_list_state: WindowedListState::new(),
@@ -101,7 +100,7 @@ impl SendTab {
             Spans::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send normal a transaction, "),
+                Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a one-sided transaction."),
             ]),
@@ -368,7 +367,7 @@ impl SendTab {
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
-                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
+                                self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);

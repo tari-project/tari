@@ -22,15 +22,8 @@
 
 use crate::{
     base_node::sync::BlockHeaderSyncError,
-    blocks::BlockHeader,
-    chain_storage::{
-        async_db::AsyncBlockchainDb,
-        BlockHeaderAccumulatedData,
-        BlockchainBackend,
-        ChainHeader,
-        ChainStorageError,
-        TargetDifficulties,
-    },
+    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
@@ -237,8 +230,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 mod test {
     use super::*;
     use crate::{
-        blocks::BlockHeader,
-        chain_storage::{async_db::AsyncBlockchainDb, BlockHeaderAccumulatedData},
+        blocks::{BlockHeader, BlockHeaderAccumulatedData},
+        chain_storage::async_db::AsyncBlockchainDb,
         consensus::ConsensusManager,
         crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},

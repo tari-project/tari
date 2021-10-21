@@ -196,7 +196,7 @@ async fn send_transaction_reply_store_and_forward(
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),
-            OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
+            OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
             OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, msg),
         )

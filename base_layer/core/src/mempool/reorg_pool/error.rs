@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use thiserror::Error;
-
 #[derive(Debug, Error)]
 pub enum ReorgPoolError {
     #[error("A problem has been encountered with the storage backend: `{0}`")]

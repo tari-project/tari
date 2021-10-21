@@ -55,10 +55,10 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
 impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValidator<B> {
     fn validate(
         &self,
+        backend: &B,
         height: u64,
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
-        backend: &B,
     ) -> Result<(), ValidationError> {
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;

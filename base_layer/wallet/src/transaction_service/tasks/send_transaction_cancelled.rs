@@ -48,7 +48,7 @@ pub async fn send_transaction_cancelled_message(
     let _ = outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_public_key),
-            OutboundEncryption::EncryptFor(Box::new(destination_public_key)),
+            OutboundEncryption::encrypt_for(destination_public_key),
             vec![],
             OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
         )

@@ -43,9 +43,9 @@ Feature: Mempool
     When I mine a block on SENDER with coinbase CB2
     When I mine a block on SENDER with coinbase CB3
     When I mine 4 blocks on SENDER
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 100
-    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 90
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 20
+    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 18
     When I submit transaction TX1 to SENDER
     When I submit transaction TX2 to SENDER
     When I submit transaction TX3 to SENDER
@@ -68,8 +68,8 @@ Feature: Mempool
     And I have a base node SENDER connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
     When I mine 4 blocks on SENDER
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX2 spending CB1 to UTX2 with fee 100
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX2 spending CB1 to UTX2 with fee 20
     When I submit transaction TX1 to SENDER
     When I submit transaction TX2 to SENDER
     Then SENDER has TX1 in MEMPOOL state
@@ -85,8 +85,8 @@ Feature: Mempool
     And I have a base node SENDER connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
     When I mine 4 blocks on SENDER
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX2 spending CB1 to UTX2 with fee 100
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX2 spending CB1 to UTX2 with fee 20
     When I submit transaction TX1 to SENDER
     When I submit transaction TX2 to SENDER
     Then SENDER has TX1 in MEMPOOL state
@@ -106,15 +106,15 @@ Feature: Mempool
     And I have a base node NODE_B connected to seed SEED_B
     When I mine a block on NODE_B with coinbase CB_B
     When I mine 10 blocks on NODE_B
-    When I create a custom fee transaction TXA spending CB_A to UTX1 with fee 80
-    When I create a custom fee transaction TXB spending CB_B to UTX1 with fee 80
+    When I create a custom fee transaction TXA spending CB_A to UTX1 with fee 16
+    When I create a custom fee transaction TXB spending CB_B to UTX1 with fee 16
     When I submit transaction TXA to NODE_A
     When I submit transaction TXB to NODE_B
     Then NODE_A has TXA in MEMPOOL state
     Then NODE_B has TXB in MEMPOOL state
     When I mine 1 blocks on NODE_A
     When I mine 1 blocks on NODE_B
-    And I connect node NODE_A to node NODE_B and wait 1 seconds
+    And I connect node NODE_A to node NODE_B
     Then all nodes are at height 12
     Then NODE_A has TXA in NOT_STORED state
     Then NODE_A has TXB in MINED state
@@ -126,12 +126,12 @@ Feature: Mempool
     When I mine a block on SENDER with coinbase CB1
     When I mine a block on SENDER with coinbase CB2
     When I mine 4 blocks on SENDER
-    When I create a custom fee transaction TX01 spending CB1 to UTX01 with fee 100
-    When I create a custom fee transaction TX02 spending UTX01 to UTX02 with fee 100
-    When I create a custom fee transaction TX03 spending UTX02 to UTX03 with fee 100
-    When I create a custom fee transaction TX11 spending CB2 to UTX11 with fee 100
-    When I create a custom fee transaction TX12 spending UTX11 to UTX12 with fee 100
-    When I create a custom fee transaction TX13 spending UTX12 to UTX13 with fee 100
+    When I create a custom fee transaction TX01 spending CB1 to UTX01 with fee 20
+    When I create a custom fee transaction TX02 spending UTX01 to UTX02 with fee 20
+    When I create a custom fee transaction TX03 spending UTX02 to UTX03 with fee 20
+    When I create a custom fee transaction TX11 spending CB2 to UTX11 with fee 20
+    When I create a custom fee transaction TX12 spending UTX11 to UTX12 with fee 20
+    When I create a custom fee transaction TX13 spending UTX12 to UTX13 with fee 20
     When I submit transaction TX01 to SENDER
     When I submit transaction TX02 to SENDER
     When I submit transaction TX03 to SENDER
@@ -157,11 +157,11 @@ Feature: Mempool
     And I have a base node BN1 connected to all seed nodes
     When I mine a block on BN1 with coinbase CB1
     When I mine 5 blocks on BN1
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX2 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX3 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX4 spending CB1 to UTX1 with fee 80
-    When I create a custom fee transaction TX5 spending CB1 to UTX1 with fee 80
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX2 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX3 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX4 spending CB1 to UTX1 with fee 16
+    When I create a custom fee transaction TX5 spending CB1 to UTX1 with fee 16
     When I submit transaction TX1 to BN1
     When I submit transaction TX2 to BN1
     When I submit transaction TX3 to BN1
@@ -174,7 +174,7 @@ Feature: Mempool
     And I have a base node BN1 connected to all seed nodes
     When I mine a block on BN1 with coinbase CB1
     When I mine 2 blocks on BN1
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 80
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 16
     When I submit transaction TX1 to BN1
     Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
     When I mine 1 blocks on BN1

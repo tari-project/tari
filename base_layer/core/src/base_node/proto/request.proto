@@ -10,36 +10,8 @@ package tari.base_node;
 message BaseNodeServiceRequest {
     uint64 request_key = 1;
     oneof request {
-        // Indicates a GetChainMetadata request. The value of the bool should be ignored.
-        bool get_chain_metadata = 2;
-        // Indicates a FetchHeaders request.
-        BlockHeights fetch_headers = 4;
-        // Indicates a FetchHeadersWithHashes request.
-        HashOutputs fetch_headers_with_hashes = 5;
-        // Indicates a FetchMatchingUtxos request.
-        HashOutputs fetch_matching_utxos = 6;
-        // Indicates a FetchMatchingBlocks request.
-        BlockHeights fetch_matching_blocks = 7;
-        // Indicates a FetchBlocksWithHashes request.
-        HashOutputs fetch_blocks_with_hashes = 8;
-        // Indicates a GetNewBlockTemplate request.
-        NewBlockTemplateRequest get_new_block_template = 9;
-        // Indicates a GetNewBlock request.
-        tari.core.NewBlockTemplate get_new_block = 10;
-        // Get headers in best chain following any headers in this list
-        FetchHeadersAfter fetch_headers_after = 12;
-        // Indicates a FetchMatchingTxos request.
-        HashOutputs fetch_matching_txos = 15;
-        // Indicates a Fetch block with kernels request
-        Signatures fetch_blocks_with_kernels = 16;
-        // Indicates a Fetch block with kernels request
-        Commitments fetch_blocks_with_utxos = 18;
-        // Indicates a Fetch kernel by excess signature request
-        tari.types.Signature fetch_kernel_by_excess_sig = 19;
-        // Indicates a GetHeaderByHash request.
-        bytes get_header_by_hash = 20;
-        // Indicates a GetBlockByHash request.
-        bytes get_block_by_hash = 21;
+        // Indicates a FetchBlocksByHash request.
+        HashOutputs fetch_blocks_by_hash = 8;
     }
 }
 

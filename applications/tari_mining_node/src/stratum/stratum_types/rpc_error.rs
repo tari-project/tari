@@ -22,7 +22,7 @@
 //
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcError {
     pub code: i32,
     pub message: String,

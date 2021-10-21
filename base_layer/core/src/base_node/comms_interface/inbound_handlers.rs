@@ -20,17 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    base_node::{
-        comms_interface::{
-            error::CommsInterfaceError,
-            local_interface::BlockEventSender,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
+        NodeCommsRequest,
+        NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock, PrunedOutput},
+    blocks::{Block, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -128,27 +126,15 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
             )),
-            NodeCommsRequest::FetchHeaders(block_nums) => {
-                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_nums.len());
-                for block_num in block_nums {
-                    match self.blockchain_db.fetch_header(block_num).await {
-                        Ok(Some(block_header)) => {
-                            block_headers.push(block_header);
-                        },
-                        Ok(None) => return Err(CommsInterfaceError::BlockHeaderNotFound(block_num)),
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Could not fetch headers: {}", err.to_string());
-                            return Err(err.into());
-                        },
-                    }
-                }
-                Ok(NodeCommsResponse::BlockHeaders(block_headers))
+            NodeCommsRequest::FetchHeaders(range) => {
+                let headers = self.blockchain_db.fetch_chain_headers(range).await?;
+                Ok(NodeCommsResponse::BlockHeaders(headers))
             },
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
-                let mut block_headers = Vec::<BlockHeader>::with_capacity(block_hashes.len());
+                let mut block_headers = Vec::with_capacity(block_hashes.len());
                 for block_hash in block_hashes {
                     let block_hex = block_hash.to_hex();
-                    match self.blockchain_db.fetch_header_by_block_hash(block_hash).await? {
+                    match self.blockchain_db.fetch_chain_header_by_block_hash(block_hash).await? {
                         Some(block_header) => {
                             block_headers.push(block_header);
                         },
@@ -248,23 +234,11 @@ where T: BlockchainBackend + 'static
                     .collect();
                 Ok(NodeCommsResponse::TransactionOutputs(res))
             },
-            NodeCommsRequest::FetchMatchingBlocks(block_nums) => {
-                let mut blocks = Vec::with_capacity(block_nums.len());
-                for block_num in block_nums {
-                    debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
-                    match self.blockchain_db.fetch_block(block_num).await {
-                        Ok(block) => blocks.push(block),
-                        // We need to suppress the error as another node might ask for a block we dont have, so we
-                        // return ok([])
-                        Err(e) => debug!(
-                            target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}", block_num, e
-                        ),
-                    }
-                }
+            NodeCommsRequest::FetchMatchingBlocks(range) => {
+                let blocks = self.blockchain_db.fetch_blocks(range).await?;
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithHashes(block_hashes) => {
+            NodeCommsRequest::FetchBlocksByHash(block_hashes) => {
                 let mut blocks = Vec::with_capacity(block_hashes.len());
                 for block_hash in block_hashes {
                     let block_hex = block_hash.to_hex();
@@ -340,7 +314,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
             NodeCommsRequest::GetHeaderByHash(hash) => {
-                let header = self.blockchain_db.fetch_header_by_block_hash(hash).await?;
+                let header = self.blockchain_db.fetch_chain_header_by_block_hash(hash).await?;
                 Ok(NodeCommsResponse::BlockHeader(header))
             },
             NodeCommsRequest::GetBlockByHash(hash) => {

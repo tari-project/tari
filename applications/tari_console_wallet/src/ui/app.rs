@@ -85,7 +85,7 @@ impl<B: Backend> App<B> {
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
-            .add("Send".into(), Box::new(SendTab::new()))
+            .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Log".into(), Box::new(LogTab::new()))

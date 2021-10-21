@@ -688,7 +688,7 @@ where
             .outbound_message_service
             .closest_broadcast(
                 NodeId::from_public_key(&self.dest_pubkey),
-                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )

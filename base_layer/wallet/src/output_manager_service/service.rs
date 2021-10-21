@@ -44,18 +44,14 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    cmp::Ordering,
-    fmt::{self, Display},
-    sync::Arc,
-};
+use std::{cmp::Ordering, fmt, fmt::Display, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_core::{
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -78,7 +74,6 @@ use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
-const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -235,7 +230,12 @@ where
                     .await
                     .map(OutputManagerResponse::PayToSelfTransaction)
             },
-            OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
+            OutputManagerRequest::FeeEstimate {
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            } => self
                 .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
                 .await
                 .map(OutputManagerResponse::FeeEstimate),
@@ -490,8 +490,8 @@ where
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
-        num_kernels: u64,
-        num_outputs: u64,
+        num_kernels: usize,
+        num_outputs: usize,
     ) -> Result<MicroTari, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -501,13 +501,22 @@ where
             num_kernels,
             num_outputs
         );
+        // We assume that default OutputFeatures and Nop TariScript is used
+        let metadata_byte_size = OutputFeatures::default().consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
 
-        let (utxos, _, _) = self
-            .select_utxos(amount, fee_per_gram, num_outputs as usize, None)
+        let utxo_selection = self
+            .select_utxos(
+                amount,
+                fee_per_gram,
+                num_outputs,
+                metadata_byte_size * num_outputs,
+                None,
+            )
             .await?;
-        debug!(target: LOG_TARGET, "{} utxos selected.", utxos.len());
+        debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
-        let fee = Fee::calculate_with_minimum(fee_per_gram, num_kernels as usize, utxos.len(), num_outputs as usize);
+        let fee = Fee::normalize(utxo_selection.as_final_fee());
 
         debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
         Ok(fee)
@@ -528,12 +537,18 @@ where
             target: LOG_TARGET,
             "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
         );
-        let (outputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
+        let output_features = OutputFeatures::default();
+        let metadata_byte_size = output_features.consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size();
+
+        let input_selection = self
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, None)
+            .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
 
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, self.resources.consensus_constants.clone());
         builder
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
@@ -544,14 +559,14 @@ where
                 0,
                 recipient_script,
                 PrivateKey::random(&mut OsRng),
-                Default::default(),
+                output_features,
                 PrivateKey::random(&mut OsRng),
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_tx_id(tx_id);
 
-        for uo in outputs.iter() {
+        for uo in input_selection.iter() {
             builder.with_input(
                 uo.unblinded_output
                     .as_transaction_input(&self.resources.factories.commitment)?,
@@ -560,14 +575,12 @@ where
         }
         debug!(
             target: LOG_TARGET,
-            "Calculating fee for tx with: Fee per gram: {}. Num outputs: {}",
+            "Calculating fee for tx with: Fee per gram: {}. Num selected inputs: {}",
             amount,
-            outputs.len()
+            input_selection.num_selected()
         );
-        let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
-        // If the input values > the amount to be sent + fee_without_change then we will need to include a change
-        // output
-        if total > amount + fee_without_change {
+
+        if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self
                 .resources
                 .master_key_manager
@@ -588,7 +601,7 @@ where
 
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
-        if total > amount + fee_without_change {
+        if input_selection.requires_change_output() {
             let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
@@ -604,14 +617,10 @@ where
         // store them until the transaction times out OR is confirmed
         self.resources
             .db
-            .encumber_outputs(tx_id, outputs, change_output)
+            .encumber_outputs(tx_id, input_selection.into_selected(), change_output)
             .await?;
 
         debug!(target: LOG_TARGET, "Prepared transaction (TxId: {}) to send", tx_id);
-        debug!(
-            target: LOG_TARGET_STRESS,
-            "Prepared transaction (TxId: {}) to send", tx_id
-        );
 
         Ok(stp)
     }
@@ -700,14 +709,21 @@ where
         lock_height: Option<u64>,
         message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
-        let (inputs, _, total) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
+        let script = script!(Nop);
+        let output_features = OutputFeatures::default();
+        let metadata_byte_size = output_features.consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
+
+        let input_selection = self
+            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, None)
+            .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
         let sender_offset_private_key = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0);
+        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
         builder
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
@@ -717,7 +733,7 @@ where
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_tx_id(tx_id);
 
-        for uo in &inputs {
+        for uo in input_selection.iter() {
             builder.with_input(
                 uo.unblinded_output
                     .as_transaction_input(&self.resources.factories.commitment)?,
@@ -725,8 +741,6 @@ where
             );
         }
 
-        let script = script!(Nop);
-        let output_features = OutputFeatures::default();
         let (spending_key, script_private_key) = self
             .resources
             .master_key_manager
@@ -758,9 +772,7 @@ where
 
         let mut outputs = vec![utxo];
 
-        let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
-        let change_value = total.saturating_sub(amount).saturating_sub(fee);
-        if change_value > 0.into() {
+        if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self
                 .resources
                 .master_key_manager
@@ -780,14 +792,13 @@ where
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
-        if change_value > 0.into() {
+        if input_selection.requires_change_output() {
             let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
             let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
-
             outputs.push(change_output);
         }
 
@@ -796,7 +807,10 @@ where
             "Encumber send to self transaction ({}) outputs.",
             tx_id
         );
-        self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
+        self.resources
+            .db
+            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)
+            .await?;
         self.confirm_encumberance(tx_id).await?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
@@ -837,21 +851,24 @@ where
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
-        output_count: usize,
+        num_outputs: usize,
+        output_metadata_byte_size: usize,
         strategy: Option<UTXOSelectionStrategy>,
-    ) -> Result<(Vec<DbUnblindedOutput>, bool, MicroTari), OutputManagerError> {
+    ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, fee_per_gram: {}, output_count: {}, strategy: {:?}",
+            "select_utxos amount: {}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, strategy: {:?}",
             amount,
             fee_per_gram,
-            output_count,
+            num_outputs,
+            output_metadata_byte_size,
             strategy
         );
         let mut utxos = Vec::new();
         let mut utxos_total_value = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
+        let fee_calc = self.get_fee_calc();
 
         let uo = self.resources.db.fetch_sorted_unspent_outputs().await?;
 
@@ -927,18 +944,28 @@ where
         };
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
-        let mut require_change_output = false;
-        for o in uo.iter() {
-            utxos.push(o.clone());
+        // Assumes that default Outputfeatures are used for change utxo
+        let default_metadata_size = OutputFeatures::default().consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
+        let mut requires_change_output = false;
+        for o in uo {
             utxos_total_value += o.unblinded_output.value;
+            utxos.push(o);
             // The assumption here is that the only output will be the payment output and change if required
-            fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
+            fee_without_change =
+                fee_calc.calculate(fee_per_gram, 1, utxos.len(), num_outputs, output_metadata_byte_size);
             if utxos_total_value == amount + fee_without_change {
                 break;
             }
-            fee_with_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count + 1);
+            fee_with_change = fee_calc.calculate(
+                fee_per_gram,
+                1,
+                utxos.len(),
+                num_outputs + 1,
+                output_metadata_byte_size + default_metadata_size,
+            );
             if utxos_total_value > amount + fee_with_change {
-                require_change_output = true;
+                requires_change_output = true;
                 break;
             }
         }
@@ -957,7 +984,13 @@ where
             }
         }
 
-        Ok((utxos, require_change_output, utxos_total_value))
+        Ok(UtxoSelection {
+            utxos,
+            requires_change_output,
+            total_value: utxos_total_value,
+            fee_without_change,
+            fee_with_change,
+        })
     }
 
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
@@ -989,27 +1022,28 @@ where
             target: LOG_TARGET,
             "Select UTXOs and estimate coin split transaction fee."
         );
-        let mut output_count = split_count;
+        let output_count = split_count;
+        let script = script!(Nop);
+        let output_features = OutputFeatures::default();
+        let metadata_byte_size = output_features.consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
+
         let total_split_amount = amount_per_split * split_count as u64;
-        let (inputs, require_change_output, utxos_total_value) = self
+        let input_selection = self
             .select_utxos(
                 total_split_amount,
                 fee_per_gram,
                 output_count,
+                output_count * metadata_byte_size,
                 Some(UTXOSelectionStrategy::Largest),
             )
             .await?;
-        let input_count = inputs.len();
-        if require_change_output {
-            output_count = split_count + 1
-        };
-        let fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
 
         trace!(target: LOG_TARGET, "Construct coin split transaction.");
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
 
-        let mut builder = SenderTransactionProtocol::builder(0);
+        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
         builder
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
@@ -1018,26 +1052,19 @@ where
             .with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
 
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
-        for uo in inputs.iter() {
+        for uo in input_selection.iter() {
             builder.with_input(
                 uo.unblinded_output
                     .as_transaction_input(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
+
+        let utxos_total_value = input_selection.total_value();
         trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
         let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
-        let change_output = utxos_total_value
-            .checked_sub(fee)
-            .ok_or(OutputManagerError::NotEnoughFunds)?
-            .checked_sub(total_split_amount)
-            .ok_or(OutputManagerError::NotEnoughFunds)?;
-        for i in 0..output_count {
-            let output_amount = if i < split_count {
-                amount_per_split
-            } else {
-                change_output
-            };
+        for _ in 0..output_count {
+            let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self
                 .resources
@@ -1046,8 +1073,6 @@ where
                 .await?;
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
 
-            let script = script!(Nop);
-            let output_features = OutputFeatures::default();
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
                 &output_amount,
@@ -1060,8 +1085,8 @@ where
                 UnblindedOutput::new(
                     output_amount,
                     spending_key.clone(),
-                    output_features,
-                    script,
+                    output_features.clone(),
+                    script.clone(),
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
                     sender_offset_public_key,
@@ -1069,12 +1094,27 @@ where
                 ),
                 &self.resources.factories,
             )?;
-            outputs.push(utxo.clone());
             builder
-                .with_output(utxo.unblinded_output, sender_offset_private_key)
+                .with_output(utxo.unblinded_output.clone(), sender_offset_private_key)
                 .map_err(|e| OutputManagerError::BuildError(e.message))?;
+            outputs.push(utxo);
         }
-        trace!(target: LOG_TARGET, "Build coin split transaction.");
+
+        if input_selection.requires_change_output() {
+            let (spending_key, script_private_key) = self
+                .resources
+                .master_key_manager
+                .get_next_spend_and_script_key()
+                .await?;
+            builder.with_change_secret(spending_key);
+            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_change_script(
+                script!(Nop),
+                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                script_private_key,
+            );
+        }
+
         let factories = CryptoFactories::default();
         let mut stp = builder
             .build::<HashDigest>(&self.resources.factories)
@@ -1087,10 +1127,27 @@ where
             "Encumber coin split transaction ({}) outputs.",
             tx_id
         );
-        self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
+
+        if input_selection.requires_change_output() {
+            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                OutputManagerError::BuildError(
+                    "There should be a change output metadata signature available".to_string(),
+                )
+            })?;
+            outputs.push(DbUnblindedOutput::from_unblinded_output(
+                unblinded_output,
+                &self.resources.factories,
+            )?);
+        }
+
+        self.resources
+            .db
+            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)
+            .await?;
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
+        let fee = stp.get_fee_amount()?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, fee, utxos_total_value))
     }
@@ -1180,6 +1237,10 @@ where
 
         Ok(rewound_outputs)
     }
+
+    fn get_fee_calc(&self) -> Fee {
+        Fee::new(*self.resources.consensus_constants.transaction_weight())
+    }
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
@@ -1243,4 +1304,43 @@ impl fmt::Display for Balance {
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
     HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+}
+
+#[derive(Debug, Clone)]
+struct UtxoSelection {
+    utxos: Vec<DbUnblindedOutput>,
+    requires_change_output: bool,
+    total_value: MicroTari,
+    fee_without_change: MicroTari,
+    fee_with_change: MicroTari,
+}
+
+impl UtxoSelection {
+    pub fn as_final_fee(&self) -> MicroTari {
+        if self.requires_change_output {
+            return self.fee_with_change;
+        }
+        self.fee_without_change
+    }
+
+    pub fn requires_change_output(&self) -> bool {
+        self.requires_change_output
+    }
+
+    /// Total value of the selected inputs
+    pub fn total_value(&self) -> MicroTari {
+        self.total_value
+    }
+
+    pub fn num_selected(&self) -> usize {
+        self.utxos.len()
+    }
+
+    pub fn into_selected(self) -> Vec<DbUnblindedOutput> {
+        self.utxos
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &DbUnblindedOutput> + '_ {
+        self.utxos.iter()
+    }
 }

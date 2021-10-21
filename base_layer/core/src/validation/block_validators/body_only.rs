@@ -22,8 +22,9 @@
 
 use super::LOG_TARGET;
 use crate::{
+    blocks::ChainBlock,
     chain_storage,
-    chain_storage::{BlockchainBackend, ChainBlock},
+    chain_storage::BlockchainBackend,
     crypto::tari_utilities::hex::Hex,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
@@ -46,20 +47,20 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// 1. Are the block header MMR roots valid?
     fn validate_body_for_valid_orphan(
         &self,
-        block: &ChainBlock,
         backend: &B,
+        block: &ChainBlock,
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError> {
-        if block.header().height != metadata.height_of_longest_chain() + 1 {
-            return Err(ValidationError::IncorrectNextTipHeight {
-                expected: metadata.height_of_longest_chain() + 1,
-                block_height: block.height(),
-            });
-        }
         if block.header().prev_hash != *metadata.best_block() {
             return Err(ValidationError::IncorrectPreviousHash {
                 expected: metadata.best_block().to_hex(),
                 block_hash: block.hash().to_hex(),
+            });
+        }
+        if block.height() != metadata.height_of_longest_chain() + 1 {
+            return Err(ValidationError::IncorrectNextTipHeight {
+                expected: metadata.height_of_longest_chain() + 1,
+                block_height: block.height(),
             });
         }
 

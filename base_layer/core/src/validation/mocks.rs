@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock},
+    chain_storage::BlockchainBackend,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction::Transaction,
     validation::{
@@ -82,7 +82,7 @@ impl BlockSyncBodyValidation for MockValidator {
 }
 
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
-    fn validate_body_for_valid_orphan(&self, _: &ChainBlock, _: &B, _: &ChainMetadata) -> Result<(), ValidationError> {
+    fn validate_body_for_valid_orphan(&self, _: &B, _: &ChainBlock, _: &ChainMetadata) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -143,10 +143,10 @@ impl MempoolTransactionValidation for MockValidator {
 impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
     fn validate(
         &self,
+        _backend: &B,
         _height: u64,
         _total_utxo_sum: &Commitment,
         _total_kernel_sum: &Commitment,
-        _backend: &B,
     ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

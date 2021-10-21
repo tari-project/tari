@@ -20,15 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-
-use log::*;
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-
 use crate::{
     blocks::Block,
     mempool::{
@@ -36,9 +27,16 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, weight::TransactionWeight},
+};
+use log::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
 };
 use tari_common_types::types::{HashOutput, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -107,40 +105,43 @@ impl UnconfirmedPool {
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    #[allow(clippy::map_entry)]
     pub fn insert(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
+        transaction_weight: &TransactionWeight,
     ) -> Result<(), UnconfirmedPoolError> {
         let tx_key = tx
             .first_kernel_excess_sig()
             .ok_or(UnconfirmedPoolError::TransactionNoKernels)?;
-        if !self.txs_by_signature.contains_key(tx_key) {
-            let prioritized_tx = PrioritizedTransaction::convert_from_transaction((*tx).clone(), dependent_outputs)?;
-            if self.txs_by_signature.len() >= self.config.storage_capacity {
-                if prioritized_tx.priority < *self.lowest_priority() {
-                    return Ok(());
-                }
-                self.remove_lowest_priority_tx();
-            }
-            self.txs_by_priority
-                .insert(prioritized_tx.priority.clone(), tx_key.clone());
-            self.txs_by_signature.insert(tx_key.clone(), prioritized_tx);
-            for output in tx.body.outputs().clone() {
-                self.txs_by_output
-                    .entry(output.hash())
-                    .or_default()
-                    .push(tx_key.clone());
-            }
-            debug!(
-                target: LOG_TARGET,
-                "Inserted transaction with signature {} into unconfirmed pool:",
-                tx_key.get_signature().to_hex()
-            );
 
-            trace!(target: LOG_TARGET, "{}", tx);
+        if self.txs_by_signature.contains_key(tx_key) {
+            return Ok(());
         }
+
+        let prioritized_tx = PrioritizedTransaction::try_construct(transaction_weight, tx.clone(), dependent_outputs)?;
+        if self.txs_by_signature.len() >= self.config.storage_capacity {
+            if prioritized_tx.priority < *self.lowest_priority() {
+                return Ok(());
+            }
+            self.remove_lowest_priority_tx();
+        }
+        self.txs_by_priority
+            .insert(prioritized_tx.priority.clone(), tx_key.clone());
+        self.txs_by_signature.insert(tx_key.clone(), prioritized_tx);
+        for output in tx.body.outputs().clone() {
+            self.txs_by_output
+                .entry(output.hash())
+                .or_default()
+                .push(tx_key.clone());
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Inserted transaction with signature {} into unconfirmed pool:",
+            tx_key.get_signature().to_hex()
+        );
+
+        trace!(target: LOG_TARGET, "insert: {}", tx);
         Ok(())
     }
 
@@ -156,9 +157,13 @@ impl UnconfirmedPool {
 
     /// Insert a set of new transactions into the UnconfirmedPool
     #[cfg(test)]
-    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
+    pub fn insert_many<I: IntoIterator<Item = Arc<Transaction>>>(
+        &mut self,
+        txs: I,
+        transaction_weight: &TransactionWeight,
+    ) -> Result<(), UnconfirmedPoolError> {
         for tx in txs.into_iter() {
-            self.insert(tx, None)?;
+            self.insert(tx, None, transaction_weight)?;
         }
         Ok(())
     }
@@ -454,10 +459,10 @@ impl UnconfirmedPool {
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self) -> u64 {
-        self.txs_by_signature
-            .iter()
-            .fold(0, |weight, (_, ptx)| weight + ptx.transaction.calculate_weight())
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+        self.txs_by_signature.iter().fold(0, |weight, (_, ptx)| {
+            weight + ptx.transaction.calculate_weight(transaction_weight)
+        })
     }
 
     #[cfg(test)]
@@ -474,40 +479,40 @@ impl UnconfirmedPool {
 
 #[cfg(test)]
 mod test {
-    use tari_common::configuration::Network;
-
+    use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
-        test_helpers::create_orphan_block,
+        test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
         transactions::{
             fee::Fee,
-            helpers::{TestParams, UtxoTestParams},
             tari_amount::MicroTari,
+            test_helpers::{TestParams, UtxoTestParams},
             transaction::KernelFeatures,
+            weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
         },
         tx,
     };
+    use tari_common::configuration::Network;
     use tari_common_types::types::HashDigest;
-
-    use super::*;
 
     #[test]
     fn test_find_duplicate_input() {
         let tx1 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
+        let tx_weight = TransactionWeight::latest();
         let mut tx_pool = HashMap::new();
         let mut tx1_pool = HashMap::new();
         let mut tx2_pool = HashMap::new();
         tx_pool.insert(tx1.first_kernel_excess_sig().unwrap().clone(), tx1.clone());
         tx1_pool.insert(
             tx1.first_kernel_excess_sig().unwrap().clone(),
-            PrioritizedTransaction::convert_from_transaction((*tx1).clone(), None).unwrap(),
+            PrioritizedTransaction::try_construct(&tx_weight, tx1.clone(), None).unwrap(),
         );
         tx2_pool.insert(
             tx2.first_kernel_excess_sig().unwrap().clone(),
-            PrioritizedTransaction::convert_from_transaction((*tx2).clone(), None).unwrap(),
+            PrioritizedTransaction::try_construct(&tx_weight, tx2.clone(), None).unwrap(),
         );
         assert!(
             UnconfirmedPool::find_duplicate_input(&tx_pool, &tx1_pool),
@@ -521,18 +526,23 @@ mod test {
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 4, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs: 5, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs: 3, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(55), inputs: 5, outputs: 1).0);
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs: 4, outputs: 1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 5, outputs: 1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs: 3, outputs: 1).0);
+        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(11), inputs: 5, outputs: 1).0);
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
         });
+
+        let tx_weight = TransactionWeight::latest();
         unconfirmed_pool
-            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()])
+            .insert_many(
+                [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
             .unwrap();
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig),);
@@ -541,7 +551,8 @@ mod test {
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig),);
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
         // Retrieve the set of highest priority unspent transactions
-        let desired_weight = tx1.calculate_weight() + tx3.calculate_weight() + tx5.calculate_weight();
+        let desired_weight =
+            tx1.calculate_weight(&tx_weight) + tx3.calculate_weight(&tx_weight) + tx5.calculate_weight(&tx_weight);
         let results = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
         assert_eq!(results.retrieved_transactions.len(), 3);
         assert!(results.retrieved_transactions.contains(&tx1));
@@ -561,7 +572,7 @@ mod test {
 
         let test_params = TestParams::new();
 
-        let mut stx_builder = SenderTransactionProtocol::builder(0);
+        let mut stx_builder = SenderTransactionProtocol::builder(0, create_consensus_constants(0));
         stx_builder
             .with_lock_height(0)
             .with_fee_per_gram(20.into())
@@ -573,7 +584,7 @@ mod test {
         let double_spend_utxo = tx2.body.inputs().first().unwrap().clone();
         let double_spend_input = inputs.first().unwrap().clone();
 
-        let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
+        let estimated_fee = Fee::new(TransactionWeight::latest()).calculate(20.into(), 1, 1, 1, 0);
 
         let utxo = test_params.create_unblinded_output(UtxoTestParams {
             value: INPUT_AMOUNT - estimated_fee,
@@ -599,12 +610,16 @@ mod test {
             weight_tx_skip_count: 3,
         });
 
+        let tx_weight = TransactionWeight::latest();
         unconfirmed_pool
-            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone()])
+            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight)
             .unwrap();
         assert_eq!(unconfirmed_pool.len(), 3);
 
-        let desired_weight = tx1.calculate_weight() + tx2.calculate_weight() + tx3.calculate_weight() + 1000;
+        let desired_weight = tx1.calculate_weight(&tx_weight) +
+            tx2.calculate_weight(&tx_weight) +
+            tx3.calculate_weight(&tx_weight) +
+            1000;
         let results = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
         assert!(results.retrieved_transactions.contains(&tx1));
         // Whether tx2 or tx3 is selected is non-deterministic
@@ -623,12 +638,16 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1).0);
 
+        let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
         unconfirmed_pool
-            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()])
+            .insert_many(
+                vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
             .unwrap();
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
@@ -656,33 +675,36 @@ mod test {
 
     #[test]
     fn test_discard_double_spend_txs() {
-        let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs:2, outputs:1).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:3, outputs:1).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs:2, outputs:1).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(30), inputs:2, outputs:1).0);
-        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(50), inputs:3, outputs:1).0;
-        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(75), inputs: 2, outputs: 1).0;
+        let consensus = create_consensus_rules();
+        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:2, outputs:1).0);
+        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1).0);
+        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1).0;
+        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1).0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
         tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
         let tx5 = Arc::new(tx5);
         let tx6 = Arc::new(tx6);
 
+        let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
         unconfirmed_pool
-            .insert_txs(vec![
-                tx1.clone(),
-                tx2.clone(),
-                tx3.clone(),
-                tx4.clone(),
-                tx5.clone(),
-                tx6.clone(),
-            ])
+            .insert_many(
+                vec![
+                    tx1.clone(),
+                    tx2.clone(),
+                    tx3.clone(),
+                    tx4.clone(),
+                    tx5.clone(),
+                    tx6.clone(),
+                ],
+                &tx_weight,
+            )
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
@@ -714,6 +736,8 @@ mod test {
         tx4.body.set_kernel(tx6.body.kernels()[0].clone());
 
         // Insert multiple transactions with the same outputs into the mempool
+
+        let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
@@ -725,7 +749,7 @@ mod test {
             Arc::new(tx3.clone()),
             Arc::new(tx4.clone()),
         ];
-        unconfirmed_pool.insert_txs(txns.clone()).unwrap();
+        unconfirmed_pool.insert_many(txns.clone(), &tx_weight).unwrap();
 
         for txn in txns {
             for output in txn.as_ref().body.outputs() {

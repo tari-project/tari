@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::Block,
+    consensus::ConsensusManager,
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
@@ -46,9 +47,13 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validator: Arc<dyn MempoolTransactionValidation>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: ConsensusManager,
+        validator: Arc<dyn MempoolTransactionValidation>,
+    ) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, validator))),
+            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, rules, validator))),
         }
     }
 
@@ -111,7 +116,7 @@ impl Mempool {
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&self) -> Result<StatsResponse, MempoolError> {
         self.pool_storage
-            .read()
+            .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
             .stats()
     }
@@ -119,7 +124,7 @@ impl Mempool {
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
     pub fn state(&self) -> Result<StateResponse, MempoolError> {
         self.pool_storage
-            .read()
+            .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
             .state()
     }

@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{error::ChainStorageError, ChainBlock, ChainHeader, MmrTree},
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    chain_storage::{error::ChainStorageError, MmrTree},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
@@ -214,9 +214,9 @@ impl DbTransaction {
     /// Sets accumulated data for the orphan block, "upgrading" the orphan block to a chained orphan.
     /// Any existing accumulated data is overwritten.
     /// The transaction will rollback and write will return an error if the orphan block does not exist.
-    pub fn set_accumulated_data_for_orphan(&mut self, chain_header: ChainHeader) -> &mut Self {
+    pub fn set_accumulated_data_for_orphan(&mut self, accumulated_data: BlockHeaderAccumulatedData) -> &mut Self {
         self.operations
-            .push(WriteOperation::SetAccumulatedDataForOrphan(chain_header));
+            .push(WriteOperation::SetAccumulatedDataForOrphan(accumulated_data));
         self
     }
 
@@ -318,7 +318,7 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         kernel_sum: Commitment,
     },
-    SetAccumulatedDataForOrphan(ChainHeader),
+    SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
     SetBestBlock {
         height: u64,
         hash: HashOutput,
@@ -415,8 +415,8 @@ impl fmt::Display for WriteOperation {
                 horizon
             ),
             UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
-            SetAccumulatedDataForOrphan(chain_header) => {
-                write!(f, "Set accumulated data for orphan {}", chain_header.hash().to_hex())
+            SetAccumulatedDataForOrphan(accumulated_data) => {
+                write!(f, "Set accumulated data for orphan {}", accumulated_data)
             },
             SetBestBlock {
                 height,

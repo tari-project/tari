@@ -101,8 +101,8 @@ Feature: Reorgs
     When I mine 14 blocks on NODE1
     When I mine a block on NODE1 with coinbase CB1
     When I mine 4 blocks on NODE1
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 100
-    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 100
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 20
+    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 20
     When I submit transaction TX1 to NODE1
     When I submit transaction TX11 to NODE1
     When I mine 1 blocks on NODE1
@@ -113,8 +113,8 @@ Feature: Reorgs
     And node NODE2 is at height 20
     When I mine a block on NODE2 with coinbase CB2
     When I mine 3 blocks on NODE2
-    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 100
-    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 100
+    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 20
+    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 20
     When I submit transaction TX2 to NODE2
     When I submit transaction TX21 to NODE2
     When I mine 1 blocks on NODE2
@@ -126,8 +126,8 @@ Feature: Reorgs
     And node NODE1 is at height 20
     When I mine a block on NODE1 with coinbase CB3
     When I mine 3 blocks on NODE1
-    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 100
-    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 100
+    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 20
+    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 20
     When I submit transaction TX3 to NODE1
     When I submit transaction TX31 to NODE1
     When I mine 1 blocks on NODE1
@@ -162,9 +162,9 @@ Feature: Reorgs
         #
         # Connect Chain 1a and 1b
         #
-    And I connect node NODE_A1 to node NODE_A3 and wait 1 seconds
-    And I connect node NODE_A2 to node NODE_A4 and wait 1 seconds
-    And I connect node SEED_A1 to node SEED_A2 and wait <SYNC_TIME> seconds
+    And I connect node NODE_A1 to node NODE_A3
+    And I connect node NODE_A2 to node NODE_A4
+    And I connect node SEED_A1 to node SEED_A2
     Then node SEED_A1 is in state LISTENING
     Then node SEED_A2 is in state LISTENING
     When I mine 10 blocks on SEED_A1
@@ -194,9 +194,9 @@ Feature: Reorgs
         #
         # Connect Chain 2a and 2b
         #
-    And I connect node NODE_B1 to node NODE_B3 and wait 1 seconds
-    And I connect node NODE_B2 to node NODE_B4 and wait 1 seconds
-    And I connect node SEED_B1 to node SEED_B2 and wait <SYNC_TIME> seconds
+    And I connect node NODE_B1 to node NODE_B3
+    And I connect node NODE_B2 to node NODE_B4
+    And I connect node SEED_B1 to node SEED_B2
     Then node SEED_B2 is in state LISTENING
     Then node SEED_B1 is in state LISTENING
     When I mine 10 blocks on SEED_B1
@@ -208,23 +208,21 @@ Feature: Reorgs
         #
         # Connect Chain 1 and 2
         #
-    And I connect node NODE_A1 to node NODE_B1 and wait 1 seconds
-    And I connect node NODE_A3 to node NODE_B3 and wait 1 seconds
-    And I connect node SEED_A1 to node SEED_B1 and wait <SYNC_TIME> seconds
-    Then node SEED_A1 is in state LISTENING
-    Then node SEED_B1 is in state LISTENING
+    And I connect node NODE_A1 to node NODE_B1
+    And I connect node NODE_A3 to node NODE_B3
+    And I connect node SEED_A1 to node SEED_B1
     When I mine 10 blocks on SEED_A1
     Then all nodes are on the same chain tip
 
     Examples:
-      | X1 | Y1 | X2 | Y2 | SYNC_TIME |
-      | 5  | 10 | 15 | 20 | 1        |
+      | X1 | Y1 | X2 | Y2 |
+      | 5  | 10 | 15 | 20 |
 
     @long-running
     Examples:
-        | X1     | Y1     | X2    | Y2   | SYNC_TIME |
-        | 100    | 125    | 150   | 175  | 1         |
-        | 1010   | 1110   | 1210  | 1310 | 1         |
+        | X1     | Y1     | X2    | Y2   |
+        | 100    | 125    | 150   | 175  |
+        | 1010   | 1110   | 1210  | 1310 |
 
   @reorg
   Scenario: Full block sync with small reorg

@@ -35,15 +35,8 @@ use rand::{rngs::OsRng, RngCore};
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::{Block, BlockHeaderValidationError, BlockValidationError},
-    chain_storage::{
-        BlockHeaderAccumulatedData,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainBlock,
-        ChainStorageError,
-        Validators,
-    },
+    blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     crypto::tari_utilities::hex::Hex,
     proof_of_work::{
@@ -56,8 +49,8 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
-        helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         tari_amount::{uT, T},
+        test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         transaction::OutputFeatures,
         CryptoFactories,
     },
@@ -439,7 +432,7 @@ OutputFeatures::default()),
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
@@ -464,7 +457,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
@@ -503,7 +496,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
@@ -533,7 +526,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
@@ -560,7 +553,7 @@ OutputFeatures::default()),
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
