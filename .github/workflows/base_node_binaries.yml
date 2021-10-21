@@ -197,12 +197,12 @@ jobs:
           done
           pkgbuild --root /tmp/tari_testnet \
           --identifier "com.tarilabs.pkg" \
-          --version "$VERSION" --install-location "/usr/local/bin" --sign "Developer ID Installer: Tari Labs, LLC (8XGMD9X2H2)" "${{ github.workspace }}${{ env.TBN_DIST }}/tari-{{ env.VERSION }}.pkg"
+          --version "$VERSION" --install-location "/Applications/tari" --sign "Developer ID Installer: Tari Labs, LLC (8XGMD9X2H2)" "${{ github.workspace }}${{ env.TBN_DIST }}/tari-{{ env.VERSION }}.pkg"
       - name: Artifact macos pkg
         if: startsWith(runner.os,'macOS')
         uses: actions/upload-artifact@v2
         with:
-          name: "tari-${{ env.VERSION }}.pkg"
+          name: tari-{{ env.VERSION }}.pkg
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari-{{ env.VERSION }}.pkg"
 
       - name: Build the windows installer
