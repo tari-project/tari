@@ -5,7 +5,7 @@ on: [push]
 jobs:
   sign:
     name: Signing
-    runs-on: macos-latest
+    runs-on: macos-11
     steps:
       - name: keychain
         env:
