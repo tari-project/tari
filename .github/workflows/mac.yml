@@ -21,5 +21,9 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
           pwd
           cp /bin/ls ./
-          codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" ./ls -v
-          codesign --verify --deep --display --verbose=4 ./ls
+          cp /bin/echo ./
+          FILES=("bin" "echo")
+          for FILE in "$FILES[@]"; do
+            codesign --force -s "Developer ID Application: Tari Labs, LLC (8XGMD9X2H2)" $FILE -v
+            codesign --verify --deep --display --verbose=4 $FILE
+          end
