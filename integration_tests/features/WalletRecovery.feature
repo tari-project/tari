@@ -14,8 +14,7 @@ Feature: Wallet Recovery
         When I recover wallet WALLET_A into wallet WALLET_B connected to all seed nodes
         Then wallet WALLET_A and wallet WALLET_B have the same balance
         And I have wallet WALLET_C connected to all seed nodes
-        And I send 100000 uT from wallet WALLET_B to wallet WALLET_C at fee 20
-        Then wallet WALLET_B detects all transactions are at least Broadcast
+        And I send 100000 uT from wallet WALLET_B to wallet WALLET_C at fee 100
         When I mine 5 blocks on NODE
         Then all nodes are at height 20
         Then I wait for wallet WALLET_C to have at least 100000 uT

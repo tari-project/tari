@@ -80,7 +80,7 @@ Feature: Block Sync
     Then node PNODE2 is at height 40
     When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
-    And I connect node NODE2 to node NODE1 and wait 1 seconds
+    And I connect node NODE2 to node NODE1
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
     When I mine 10 blocks on NODE1
@@ -100,8 +100,6 @@ Feature: Block Sync
     When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
-    # Allow reorg to filter through
-    Then node SYNCER is in state LISTENING
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:
