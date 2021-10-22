@@ -14,7 +14,7 @@ Feature: Block Sync
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 1         | 1          |
 
-     @long-running
+    @long-running
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 10        | 2          |
@@ -46,10 +46,11 @@ Feature: Block Sync
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
-    Then NODE1 should have 10 peers
+    # additional peer seeds are being included from config.toml [common]
+    Then NODE1 should have at least 10 peers
     Given I have a base node NODE2 connected to node NODE1
-    Then NODE1 should have 11 peers
-    Then NODE2 should have 11 peers
+    Then NODE1 should have at least 11 peers
+    Then NODE2 should have at least 11 peers
 
 
   @critical
@@ -141,7 +142,7 @@ Feature: Block Sync
     @critical
     Examples:
       | NODES | BLOCKS | PRUNE_HORIZON |
-      | 5     | 10     | 0             |
+      | 5     | 10     | 0             |
 
     @long-running
     Examples:
