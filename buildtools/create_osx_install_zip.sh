@@ -19,6 +19,7 @@ fi
 mkdir "${tarball_folder}"
 mkdir "${tarball_folder}/config"
 mkdir "${tarball_folder}/runtime"
+mkdir "${tarball_folder}/scripts"
 
 local_dir="$(
     cd "$(dirname "$0")" >/dev/null 2>&1 || exit 1
@@ -78,6 +79,9 @@ cat "${project_dir}"/common/config/presets/*.toml >"${tarball_folder}/config/con
 cp -f "${project_dir}/common/xmrig_config/config_example_stagenet.json" "${tarball_folder}/config/xmrig_config_example_stagenet.json"
 cp -f "${project_dir}/common/xmrig_config/config_example_mainnet.json" "${tarball_folder}/config/xxmrig_config_example_mainnet.json"
 cp -f "${project_dir}/common/xmrig_config/config_example_mainnet_self_select.json" "${tarball_folder}/config/xmrig_config_example_mainnet_self_select.json"
+
+# Scripts
+cp -f "${local_dir}/osx_postinstall.sh" "${tarball_folder}/scripts/postinstall"
 
 echo Files copied to "${tarball_folder}"
 echo Creating archive...
