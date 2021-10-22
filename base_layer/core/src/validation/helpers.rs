@@ -19,11 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use crate::transactions::aggregated_body::AggregateBody;
-use log::*;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
-
 use crate::{
     blocks::{
         block_header::{BlockHeader, BlockHeaderValidationError},
@@ -32,7 +27,6 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    crypto::commitment::HomomorphicCommitmentFactory,
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -44,15 +38,25 @@ use crate::{
         PowError,
     },
     transactions::{
+        aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelSum,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
     validation::ValidationError,
 };
+use log::*;
 use std::cmp::Ordering;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
+use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 
@@ -327,7 +331,41 @@ impl Ord for KernelDeprecatedOrdWrapper<'_> {
 pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
+    let output_unique_ids = body
+        .outputs()
+        .iter()
+        .filter_map(|output| {
+            output
+                .features
+                .unique_id
+                .as_ref()
+                .map(|ui| (output.features.parent_public_key.clone(), ui.clone()))
+        })
+        .collect::<Vec<_>>();
     for input in body.inputs() {
+        // If spending a unique_id, a new output must contain the unique id
+        if let Some(ref unique_id) = input.features.unique_id {
+            let exactly_one = output_unique_ids
+                .iter()
+                .filter(|(parent_public_key, output_unique_id)| {
+                    input.features.parent_public_key.as_ref() == parent_public_key.as_ref() &&
+                        unique_id == output_unique_id
+                })
+                .collect::<Vec<_>>();
+            // Unless a burn flag is present
+            if input.features.flags & OutputFlags::BURN_NON_FUNGIBLE == OutputFlags::BURN_NON_FUNGIBLE {
+                if exactly_one.len() > 0 {
+                    return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
+                }
+            } else {
+                if exactly_one.len() == 0 {
+                    return Err(ValidationError::UniqueIdInInputNotPresentInOutputs);
+                }
+                if exactly_one.len() > 1 {
+                    return Err(ValidationError::DuplicateUniqueIdInOutputs);
+                }
+            }
+        }
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
             Err(ValidationError::UnknownInput) => {
@@ -335,6 +373,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 if output_hashes.is_none() {
                     output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
                 }
+
                 let output_hashes = output_hashes.as_ref().unwrap();
                 let output_hash = input.output_hash();
                 if output_hashes.iter().any(|output| *output == output_hash) {
@@ -380,9 +419,11 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     if let Some(unique_id) = &input.features.unique_id {
-        if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_unique_id(unique_id)? {
+        if let Some(utxo_hash) =
+            db.fetch_unspent_output_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)?
+        {
             // Check that it is the same utxo in which the unique_id was created
-            if utxo_hash == output_hash {
+            if utxo_hash.output.hash() == output_hash {
                 return Ok(());
             }
 
@@ -446,12 +487,26 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     }
 
     if let Some(unique_id) = &output.features.unique_id {
-        if db.fetch_unspent_output_hash_by_unique_id(unique_id)?.is_some() {
-            warn!(
-                target: LOG_TARGET,
-                "Duplicate UTXO set unique_id found for output: {}", output
-            );
-            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+        // Needs to have a mint flag
+        if output.features.flags & OutputFlags::MINT_NON_FUNGIBLE == OutputFlags::MINT_NON_FUNGIBLE {
+            if db
+                .fetch_unspent_output_by_unique_id(output.features.parent_public_key.as_ref(), &unique_id)?
+                .is_some()
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
+                    unique_id.to_hex(),
+                    output
+                        .features
+                        .parent_public_key
+                        .as_ref()
+                        .map(|pk| pk.to_hex())
+                        .unwrap_or_else(|| "<None>".to_string()),
+                    output
+                );
+                return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+            }
         }
     }
 

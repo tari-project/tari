@@ -21,12 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{deserialize, error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{
-    blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
-    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
-    tari_utilities::hex::to_hex,
-};
+use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
 use monero::{
     consensus::{encode, Decodable, Encodable},
     cryptonote::hash::Hashable,
@@ -36,6 +31,7 @@ use std::{
     fmt::{Display, Formatter},
     io,
 };
+use tari_utilities::hex::{to_hex, Hex};
 
 /// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
 /// pow.

@@ -150,7 +150,10 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
     ) -> Result<(TxId, Transaction), WalletError> {
         let mut output = self
             .output_manager
-            .create_output_with_features(0.into(), OutputFeatures::for_checkpoint(asset_pub_key, merkle_root))
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_checkpoint(asset_pub_key, merkle_root, committee_pub_keys.clone()),
+            )
             .await?;
         // TODO: get consensus threshold from somewhere else
         let n = committee_pub_keys.len();

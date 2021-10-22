@@ -97,6 +97,7 @@ message MintNonFungibleFeatures {
 
 message SideChainCheckpointFeatures {
     bytes merkle_root = 1;
+    repeated bytes committee = 2;
 }
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should

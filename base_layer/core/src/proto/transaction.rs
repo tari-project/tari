@@ -24,7 +24,6 @@
 
 use crate::{
     proto,
-    tari_utilities::convert::try_convert_all,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -48,6 +47,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
+use tari_utilities::convert::try_convert_all;
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 
@@ -218,7 +218,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
         })
     }
 }
@@ -288,10 +288,17 @@ impl From<MintNonFungibleFeatures> for proto::types::MintNonFungibleFeatures {
     }
 }
 
-impl From<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
-    fn from(value: proto::types::SideChainCheckpointFeatures) -> Self {
+impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
         let merkle_root = value.merkle_root.as_bytes().to_vec();
-        Self { merkle_root }
+        let committee = value
+            .committee
+            .into_iter()
+            .map(|c| PublicKey::from_bytes(&c).map_err(|err| format!("{:?}", err)))
+            .collect::<Result<_, _>>()?;
+        Ok(Self { merkle_root, committee })
     }
 }
 
@@ -299,6 +306,7 @@ impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeat
     fn from(value: SideChainCheckpointFeatures) -> Self {
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
+            committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
         }
     }
 }

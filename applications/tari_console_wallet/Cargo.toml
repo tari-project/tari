@@ -16,6 +16,7 @@ tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_app_grpc = { path = "../tari_app_grpc", features = ["wallet"] }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
+tari_utilities = "0.3.0"
 
 bitflags = "1.2.1"
 chrono = { version = "0.4.6", features = ["serde"] }

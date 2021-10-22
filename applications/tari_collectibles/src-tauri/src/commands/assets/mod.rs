@@ -33,12 +33,13 @@ pub(crate) async fn assets_create(
   description: String,
   image: String,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<(), String> {
+) -> Result<String, String> {
   // println!("Hello create asset");
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
-  let _res = client.register_asset(name, description, image).await?;
-  Ok(())
+  let res = client.register_asset(name, description, image).await?;
+
+  Ok(res)
 }
 
 #[tauri::command]
@@ -67,6 +68,7 @@ pub(crate) async fn assets_list(
 pub(crate) async fn assets_issue_simple_tokens(
   asset_pub_key: String,
   num_tokens: u32,
+  committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), String> {
   println!("Hello issue simple tokens");
@@ -90,7 +92,6 @@ pub(crate) async fn assets_issue_simple_tokens(
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
 
-  let committee = vec![asset_pub_key.clone()];
   client
     .create_initial_asset_checkpoint(asset_pub_key, root, committee)
     .await;

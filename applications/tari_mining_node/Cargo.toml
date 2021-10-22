@@ -13,6 +13,8 @@ tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_utilities = "0.3.0"
+
 crossbeam = "0.8"
 futures = "0.3"
 log = { version = "0.4", features = ["std"] }

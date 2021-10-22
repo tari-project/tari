@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -46,18 +45,23 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    tari_utilities::epoch_time::EpochTime,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
+use std::{
+    mem,
+    ops::{Range, RangeBounds},
+    sync::Arc,
+    time::Instant,
+};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_utilities::epoch_time::EpochTime;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 
@@ -151,6 +155,12 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
+
+    make_async_fn!(fetch_utxo_by_unique_id(parent_public_key: Option<PublicKey>,unique_id: HashOutput) -> Option<UtxoMinedInfo>, "fetch_utxo_by_unique_id");
+
+    make_async_fn!(fetch_all_unspent_by_parent_public_key(
+        parent_public_key: PublicKey,
+        range: Range<usize>) -> Vec<UtxoMinedInfo>, "fetch_all_unspent_by_parent_public_key");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
