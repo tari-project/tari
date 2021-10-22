@@ -450,6 +450,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             );
 
             for token in tokens {
+                let features = match token.features.clone().try_into() {
+                    Ok(f) => f,
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
+                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        break;
+                    },
+                };
                 match tx
                     .send(Ok(tari_rpc::GetTokensResponse {
                         asset_public_key: token
@@ -461,6 +469,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         owner_commitment: token.commitment.to_vec(),
                         mined_in_block: vec![],
                         mined_height: 0,
+                        script: token.script.as_bytes(),
+                        features: Some(features),
                     }))
                     .await
                 {
