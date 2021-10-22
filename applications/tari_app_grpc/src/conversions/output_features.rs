@@ -48,7 +48,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             },
             asset: features.asset.map(|a| a.try_into()).transpose()?,
             mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
         })
     }
 }
@@ -120,14 +120,26 @@ impl From<SideChainCheckpointFeatures> for grpc::SideChainCheckpointFeatures {
     fn from(value: SideChainCheckpointFeatures) -> Self {
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
+            committee: value.committee.iter().map(|c| c.as_bytes().to_vec()).collect(),
         }
     }
 }
 
-impl From<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
-    fn from(value: grpc::SideChainCheckpointFeatures) -> Self {
-        Self {
+impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
+        let committee = value
+            .committee
+            .iter()
+            .map(|c| {
+                PublicKey::from_bytes(c).map_err(|er| format!("committee member was not a valid public key: {}", er))
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
-        }
+            committee,
+        })
     }
 }

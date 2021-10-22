@@ -32,6 +32,7 @@ use tari_core::transactions::{
 use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_utilities::hex::HexError;
 use thiserror::Error;
 use time::OutOfRangeError;
 
@@ -122,7 +123,7 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum OutputManagerStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
@@ -170,6 +171,8 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Binary not stored as valid hex:{0}")]
+    HexError(#[from] HexError),
 }
 
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also

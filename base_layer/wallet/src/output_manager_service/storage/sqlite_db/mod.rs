@@ -945,12 +945,19 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             }),
             None => None,
         };
-        let sidechain_checkpoint =
-            o.features_sidechain_checkpoint_merkle_root
-                .as_ref()
-                .map(|merkle_root| SideChainCheckpointFeatures {
-                    merkle_root: merkle_root.to_owned(),
-                });
+        let sidechain_checkpoint = if let Some(ref merkle_root) = o.features_sidechain_checkpoint_merkle_root {
+            let merkle_root = merkle_root.to_owned();
+
+            let committee = o
+                .features_sidechain_committee
+                .unwrap_or_default()
+                .split(',')
+                .map(|c| PublicKey::from_hex(c))
+                .collect::<Result<_, _>>()?;
+            Some(SideChainCheckpointFeatures { merkle_root, committee })
+        } else {
+            None
+        };
 
         let features = OutputFeatures {
             flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,

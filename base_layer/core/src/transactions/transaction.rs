@@ -107,6 +107,7 @@ pub struct MintNonFungibleFeatures {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct SideChainCheckpointFeatures {
     pub merkle_root: Vec<u8>,
+    pub committee: Vec<PublicKey>,
 }
 
 /// Options for UTXO's
@@ -197,11 +198,15 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_checkpoint(parent_public_key: PublicKey, merkle_root: Vec<u8>) -> OutputFeatures {
+    pub fn for_checkpoint(
+        parent_public_key: PublicKey,
+        merkle_root: Vec<u8>,
+        committee: Vec<PublicKey>,
+    ) -> OutputFeatures {
         const checkpoint_unique_id: [u8; 32] = [3u8; 32];
         Self {
             flags: OutputFlags::SIDECHAIN_CHECKPOINT,
-            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root }),
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
             unique_id: Some(checkpoint_unique_id.to_vec()),
             ..Default::default()
