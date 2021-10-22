@@ -49,7 +49,7 @@
 
 use super::{
     error::ConfigError,
-    utils::{install_default_config_file, load_configuration},
+    utils::{config_installer, load_configuration},
 };
 use crate::{
     dir_utils,
@@ -267,7 +267,7 @@ impl ConfigBootstrap {
                     "Installing new config file at {}",
                     self.config.to_str().unwrap_or("[??]")
                 );
-                install_configuration(&self.config, install_default_config_file);
+                install_configuration(application_type, &self.config, config_installer);
             }
         }
 
@@ -282,25 +282,7 @@ impl ConfigBootstrap {
                     "Installing new logfile configuration at {}",
                     self.log_config.to_str().unwrap_or("[??]")
                 );
-                match application_type {
-                    ApplicationType::BaseNode => {
-                        install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
-                    },
-                    ApplicationType::ConsoleWallet => {
-                        install_configuration(&self.log_config, logging::install_default_wallet_logfile_config)
-                    },
-                    ApplicationType::MergeMiningProxy => install_configuration(
-                        &self.log_config,
-                        logging::install_default_merge_mining_proxy_logfile_config,
-                    ),
-                    ApplicationType::StratumTranscoder => install_configuration(
-                        &self.log_config,
-                        logging::install_default_stratum_transcoder_logfile_config,
-                    ),
-                    ApplicationType::MiningNode => {
-                        install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
-                    },
-                }
+                install_configuration(application_type, &self.log_config, logging::log_config_installer)
             }
         };
         Ok(())
@@ -330,11 +312,11 @@ pub fn prompt(question: &str) -> bool {
     input == "y" || input.is_empty()
 }
 
-pub fn install_configuration<F>(path: &Path, installer: F)
-where F: Fn(&Path) -> Result<(), std::io::Error> {
-    if let Err(e) = installer(path) {
+pub fn install_configuration<F>(application_type: ApplicationType, path: &Path, installer: F)
+where F: Fn(ApplicationType, &Path) -> Result<(), std::io::Error> {
+    if let Err(e) = installer(application_type, path) {
         println!(
-            "We could not install a new configuration file in {}: {}",
+            "Failed to install a new configuration file in {}: {}",
             path.to_str().unwrap_or("?"),
             e.to_string()
         )
