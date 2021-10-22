@@ -24,7 +24,6 @@
 
 use crate::{
     proto,
-    tari_utilities::convert::try_convert_all,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -48,6 +47,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
+use tari_utilities::convert::try_convert_all;
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 

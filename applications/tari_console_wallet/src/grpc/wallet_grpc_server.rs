@@ -40,14 +40,12 @@ use tari_app_grpc::{
 };
 use tari_common_types::types::{PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
-use tari_core::{
-    tari_utilities::{hex::Hex, ByteArray},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},

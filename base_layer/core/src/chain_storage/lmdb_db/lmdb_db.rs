@@ -64,7 +64,6 @@ use crate::{
         MmrTree,
         PrunedOutput,
     },
-    crypto::tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -89,9 +88,13 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
 };
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, DatabaseRef, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_utilities::{
+    hash::Hashable,
+    hex::{to_hex, Hex},
+    ByteArray,
+};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";
 

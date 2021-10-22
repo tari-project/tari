@@ -49,7 +49,6 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    tari_utilities::epoch_time::EpochTime,
     transactions::transaction::TransactionKernel,
     validation::{
         helpers::calc_median_timestamp,
@@ -76,8 +75,8 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 
 const LOG_TARGET: &str = "c::cs::database";
 

@@ -30,17 +30,14 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::Hashable;
 use thiserror::Error;
-
-use tari_common_types::types::BlockHash;
 
 use crate::{
     blocks::BlockHeader,
     chain_storage::MmrTree,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
-    tari_utilities::hex::Hex,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -48,6 +45,8 @@ use crate::{
         CryptoFactories,
     },
 };
+use tari_common_types::types::BlockHash;
+use tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {

@@ -29,16 +29,14 @@ use std::{
 };
 use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::types::CommsPublicKey;
-use tari_core::{
-    tari_utilities::hex::Hex,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::Transaction,
-        transaction_protocol::TxId,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::Transaction,
+    transaction_protocol::TxId,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
 };
+use tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {

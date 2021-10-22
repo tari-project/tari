@@ -46,22 +46,19 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey};
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{
-            AssetOutputFeatures,
-            MintNonFungibleFeatures,
-            OutputFeatures,
-            OutputFlags,
-            SideChainCheckpointFeatures,
-            TransactionOutput,
-            UnblindedOutput,
-        },
-        transaction_protocol::TxId,
-        CryptoFactories,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        TransactionOutput,
+        UnblindedOutput,
     },
+    transaction_protocol::TxId,
+    CryptoFactories,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -71,6 +68,7 @@ use tari_crypto::{
         ByteArray,
     },
 };
+use tari_utilities::hash::Hashable;
 
 use self::{new_output_sql::NewOutputSql, output_sql::OutputSql};
 

@@ -24,11 +24,11 @@ use super::LOG_TARGET;
 use crate::{
     chain_storage,
     chain_storage::{BlockchainBackend, ChainBlock},
-    crypto::tari_utilities::hex::Hex,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_utilities::hex::Hex;
 
 /// This validator tests whether a candidate block is internally consistent.
 /// This does not check that the orphan block has the correct mined height of utxos

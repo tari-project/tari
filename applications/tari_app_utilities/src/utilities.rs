@@ -38,8 +38,8 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::hex::Hex;
 
 use crate::identity_management::load_from_json;
 use tari_common_types::emoji::EmojiId;

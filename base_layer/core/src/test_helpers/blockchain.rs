@@ -60,7 +60,6 @@ use crate::{
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
-    crypto::tari_utilities::Hashable,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{create_block, BlockSpec},
     transactions::{
@@ -75,6 +74,7 @@ use crate::{
 };
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
+use tari_utilities::Hashable;
 
 use super::mine_to_difficulty;
 use std::ops::Range;

@@ -22,10 +22,9 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::{
-    crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
-    transactions::transaction::Transaction,
-};
+use tari_core::transactions::transaction::Transaction;
+use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_utilities::ByteArray;
 
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {

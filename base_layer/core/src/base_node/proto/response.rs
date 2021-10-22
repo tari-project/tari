@@ -39,12 +39,12 @@ use crate::{
         },
         core as core_proto_types,
     },
-    tari_utilities::convert::try_convert_all,
 };
 use std::{
     convert::TryInto,
     iter::{FromIterator, Iterator},
 };
+use tari_utilities::convert::try_convert_all;
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;

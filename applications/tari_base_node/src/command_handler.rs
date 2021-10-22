@@ -56,13 +56,13 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_p2p::{
     auto_update::SoftwareUpdaterHandle,
     services::liveness::{LivenessEvent, LivenessHandle},
 };
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use tokio::{
     runtime,
     sync::{broadcast, watch},

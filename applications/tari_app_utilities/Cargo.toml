@@ -11,6 +11,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_wallet = { path = "../../base_layer/wallet", optional = true }
+tari_utilities = "0.3.0"
 
 config = { version = "0.9.3" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }

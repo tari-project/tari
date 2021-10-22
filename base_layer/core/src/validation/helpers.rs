@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{
         block_header::{BlockHeader, BlockHeaderValidationError},
@@ -28,7 +27,6 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
-    crypto::commitment::HomomorphicCommitmentFactory,
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -57,10 +55,8 @@ use crate::{
 use log::*;
 use std::cmp::Ordering;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
+use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::helpers";
 

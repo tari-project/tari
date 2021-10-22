@@ -24,12 +24,10 @@
 //! integration test folder.
 
 pub mod blockchain;
-
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, ChainHeader},
     consensus::ConsensusManager,
-    crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         tari_amount::MicroTari,
@@ -42,6 +40,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_utilities::Hashable;
 
 #[derive(Debug, Clone)]
 pub struct BlockSpec {

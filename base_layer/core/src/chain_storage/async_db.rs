@@ -45,7 +45,6 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    tari_utilities::epoch_time::EpochTime,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
@@ -62,6 +61,7 @@ use tari_common_types::{
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_utilities::epoch_time::EpochTime;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 

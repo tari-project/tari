@@ -48,13 +48,12 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
-    crypto::tari_utilities::{hex::Hex, ByteArray},
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
     transactions::transaction::Transaction,
 };
-use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 use tokio::task;
 use tonic::{Request, Response, Status};
 

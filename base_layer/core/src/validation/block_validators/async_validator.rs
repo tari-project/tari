@@ -24,7 +24,6 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
-    crypto::tari_utilities::Hashable,
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
@@ -44,6 +43,7 @@ use log::*;
 use std::{cmp, cmp::Ordering, thread, time::Instant};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_utilities::Hashable;
 use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.

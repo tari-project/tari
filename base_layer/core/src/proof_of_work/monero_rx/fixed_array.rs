@@ -20,13 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::crypto::tari_utilities::ByteArrayError;
 use monero::{
     consensus::{encode, Decodable, Encodable},
     VarInt,
 };
 use std::{convert::TryFrom, io, ops::Deref};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::{ByteArray, ByteArrayError};
 
 const MAX_ARR_SIZE: usize = 63;
 

@@ -20,6 +20,7 @@ tari_mmr = { path = "../../base_layer/mmr", features=["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_utilities = "0.3.0"
 
 anyhow = "1.0.32"
 bincode = "1.3.1"

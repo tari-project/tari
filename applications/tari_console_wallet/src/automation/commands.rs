@@ -46,14 +46,12 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    tari_utilities::hex::Hex,
-    transactions::{
-        tari_amount::{uT, MicroTari, Tari},
-        transaction::UnblindedOutput,
-        transaction_protocol::TxId,
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari, Tari},
+    transaction::UnblindedOutput,
+    transaction_protocol::TxId,
 };
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
