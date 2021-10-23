@@ -357,34 +357,33 @@ fn convert_node_config(
         })?;
 
     // Peer and DNS seeds
-    let key = config_string("base_node", net_str, "peer_seeds");
+    let key = "common.peer_seeds";
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
-    let peer_seeds = match cfg.get_array(&key) {
+    let peer_seeds = match cfg.get_array(key) {
         Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => match cfg.get_str(&key) {
-            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
-            Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
-        },
+        Err(..) => optional(cfg.get_str(key))?
+            .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
+            .unwrap_or_default(),
     };
 
-    let key = config_string("base_node", net_str, "dns_seeds_name_server");
+    let key = "common.dns_seeds_name_server";
     let dns_seeds_name_server = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         .and_then(|s| {
             s.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         })?;
     let key = config_string("base_node", net_str, "bypass_range_proof_verification");
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
-    let key = config_string("base_node", net_str, "dns_seeds_use_dnssec");
+    let key = "common.dns_seeds_use_dnssec";
     let dns_seeds_use_dnssec = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .get_bool(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
-    let key = config_string("base_node", net_str, "dns_seeds");
-    let dns_seeds = optional(cfg.get_array(&key))?
+    let key = "common.dns_seeds";
+    let dns_seeds = optional(cfg.get_array(key))?
         .unwrap_or_default()
         .into_iter()
         .map(|v| v.into_str().unwrap())
@@ -405,7 +404,7 @@ fn convert_node_config(
     let force_sync_peers = match cfg.get_array(&key) {
         Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
         Err(..) => match cfg.get_str(&key) {
-            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Ok(s) => s.split(',').map(|v| v.trim().to_string()).collect(),
             Err(..) => vec![],
         },
     };
@@ -938,6 +937,7 @@ fn network_transport_config(
     }
 }
 
+/// Returns prefix.network.key as a String
 fn config_string(prefix: &str, network: &str, key: &str) -> String {
     format!("{}.{}.{}", prefix, network, key)
 }

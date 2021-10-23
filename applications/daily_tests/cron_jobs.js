@@ -60,19 +60,7 @@ async function runWalletRecoveryTest(instances) {
     });
 
     notify(
-      "🙌 Wallet (Pubkey:",
-      identity.public_key,
-      ") recovered to a block height of",
-      numScanned,
-      "completed in",
-      timeDiffMinutes,
-      "minutes (",
-      scannedRate,
-      "blocks/min).",
-      recoveredAmount,
-      "µT recovered for ",
-      instances,
-      " instance(s)."
+      `🙌 Wallet (Pubkey: ${identity.public_key} ) recovered to a block height of ${numScanned}, completed in ${timeDiffMinutes} minutes (${scannedRate} blocks/min). ${recoveredAmount} µT recovered for ${instances} instance(s).`
     );
   } catch (err) {
     console.error(err);
@@ -109,6 +97,9 @@ async function runBaseNodeSyncTest(syncType) {
       log: LOG_FILE,
       syncType,
       baseDir,
+      forceSyncPeers: [
+        "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849::/ip4/3.8.193.254/tcp/18189",
+      ],
     });
 
     notify(

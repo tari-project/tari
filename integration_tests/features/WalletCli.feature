@@ -15,6 +15,7 @@ Feature: Wallet CLI
         And I clear custom base node of wallet WALLET via command line
 
     Scenario: As a user I want to change password via command line
+        Given I have a seed node SEED
         Given I have wallet WALLET connected to all seed nodes
         When I stop wallet WALLET
         And I change the password of wallet WALLET to changedpwd via command line
