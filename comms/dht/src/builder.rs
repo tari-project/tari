@@ -66,7 +66,7 @@ impl DhtBuilder {
     }
 
     pub fn set_auto_store_and_forward_requests(&mut self, enabled: bool) -> &mut Self {
-        self.config.saf_auto_request = enabled;
+        self.config.saf_config.auto_request = enabled;
         self
     }
 
@@ -112,6 +112,7 @@ impl DhtBuilder {
 
     pub fn with_num_neighbouring_nodes(&mut self, n: usize) -> &mut Self {
         self.config.num_neighbouring_nodes = n;
+        self.config.saf_config.num_neighbouring_nodes = n;
         self
     }
 

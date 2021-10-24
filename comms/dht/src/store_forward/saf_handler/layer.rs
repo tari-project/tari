@@ -23,9 +23,8 @@
 use super::middleware::MessageHandlerMiddleware;
 use crate::{
     actor::DhtRequester,
-    config::DhtConfig,
     outbound::OutboundMessageRequester,
-    store_forward::StoreAndForwardRequester,
+    store_forward::{SafConfig, StoreAndForwardRequester},
 };
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
@@ -33,7 +32,7 @@ use tokio::sync::mpsc;
 use tower::layer::Layer;
 
 pub struct MessageHandlerLayer {
-    config: DhtConfig,
+    config: SafConfig,
     saf_requester: StoreAndForwardRequester,
     dht_requester: DhtRequester,
     peer_manager: Arc<PeerManager>,
@@ -44,7 +43,7 @@ pub struct MessageHandlerLayer {
 
 impl MessageHandlerLayer {
     pub fn new(
-        config: DhtConfig,
+        config: SafConfig,
         saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,
         node_identity: Arc<NodeIdentity>,
