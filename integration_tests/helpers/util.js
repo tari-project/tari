@@ -123,16 +123,17 @@ async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
 }
 
 async function waitForPredicate(predicate, timeOut, sleepMs = 500) {
-  const now = new Date();
-  while (new Date() - now < timeOut) {
+  let elapsed = 0;
+  while (elapsed < timeOut) {
     const val = await predicate();
     if (val) {
       return val;
     }
     await sleep(sleepMs);
+    elapsed += sleepMs;
     process.stdout.write(".");
   }
-  throw new Error(`Predicate was not true after ${timeOut} ms`);
+  throw new Error(`Predicate was not truthy after ${timeOut} ms`);
 }
 
 function dec2hex(n) {

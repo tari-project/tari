@@ -833,7 +833,10 @@ Then(
   { timeout: 120 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
-    await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
+    await waitForPredicate(
+      async () => (await client.getTipHeight()) === height,
+      115 * 1000
+    );
     const currentHeight = await client.getTipHeight();
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
@@ -849,7 +852,11 @@ Then(
   { timeout: 120 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
-    await waitFor(async () => client.getPrunedHeight(), height, 115 * 1000);
+    await waitFor(
+      async () => await client.getPrunedHeight(),
+      height,
+      115 * 1000
+    );
     const currentHeight = await client.getPrunedHeight();
     console.log(
       `Node ${name} has a pruned height: ${currentHeight} (should be`,
@@ -893,7 +900,10 @@ Then(
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
+      await waitForPredicate(
+        async () => (await client.getTipHeight()) === height,
+        115 * 1000
+      );
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
@@ -957,7 +967,11 @@ Then(
       async () => {
         let result = true;
         await this.forEachClientAsync(async (client, name) => {
-          await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
+          await waitFor(
+            async () => await client.getTipHeight(),
+            height,
+            60 * 1000
+          );
           const currTip = await client.getTipHeight();
           console.log(
             `Node ${name} is at tip: ${currTip} (should be ${height})`
@@ -1058,7 +1072,7 @@ Then(
       let currentHeight;
       for (let i = 1; i <= 12; i++) {
         await waitFor(
-          async () => client.getTipHeight(),
+          async () => await client.getTipHeight(),
           expectedHeight,
           10 * 1000
         );
