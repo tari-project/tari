@@ -15,6 +15,7 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
+  waitForIterate,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -830,14 +831,15 @@ When(/I stop node (.*)/, async function (name) {
 
 Then(
   /node (.*) is at height (\d+)/,
-  { timeout: 120 * 1000 },
+  { timeout: 210 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
-    await waitForPredicate(
-      async () => (await client.getTipHeight()) === height,
-      115 * 1000
+    const currentHeight = await waitForIterate(
+      () => client.getTipHeight(),
+      height,
+      1000,
+      200
     );
-    const currentHeight = await client.getTipHeight();
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
       height,
@@ -900,10 +902,7 @@ Then(
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitForPredicate(
-        async () => (await client.getTipHeight()) === height,
-        115 * 1000
-      );
+      await waitForIterate(() => client.getTipHeight(), height, 200 * 1000);
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
@@ -994,7 +993,7 @@ Then(
   async function (node) {
     const client = this.getClient(node);
     await waitForPredicate(
-      async () => (await client.initial_sync_achieved()) === true,
+      async () => await client.initial_sync_achieved(),
       20 * 60 * 1000,
       1000
     );

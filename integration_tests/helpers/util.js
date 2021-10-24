@@ -110,9 +110,9 @@ async function waitFor(
 
 async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
   let count = 0;
-  let val = testFn();
-  while (!(val === toBe)) {
-    val = testFn();
+  let val = await Promise.resolve(testFn());
+  while (val !== toBe) {
+    val = await Promise.resolve(testFn());
     if (count >= maxIterations) {
       break;
     }
@@ -120,6 +120,7 @@ async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
     await sleep(sleepMs);
     process.stdout.write(".");
   }
+  return val;
 }
 
 async function waitForPredicate(predicate, timeOut, sleepMs = 500) {
