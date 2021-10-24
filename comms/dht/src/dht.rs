@@ -233,7 +233,7 @@ impl Dht {
         saf_response_signal_rx: mpsc::Receiver<()>,
     ) -> StoreAndForwardService {
         StoreAndForwardService::new(
-            self.config.clone(),
+            self.config.saf_config.clone(),
             conn,
             self.peer_manager.clone(),
             self.dht_requester(),
@@ -311,7 +311,7 @@ impl Dht {
                 self.node_identity.node_id().short_str()
             )))
             .layer(store_forward::StoreLayer::new(
-                self.config.clone(),
+                self.config.saf_config.clone(),
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
                 self.store_and_forward_requester(),
@@ -321,7 +321,7 @@ impl Dht {
                 self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
             .layer(store_forward::MessageHandlerLayer::new(
-                self.config.clone(),
+                self.config.saf_config.clone(),
                 self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
@@ -640,6 +640,12 @@ mod test {
             .await
             .unwrap();
 
+        // SAF messages need to be requested before any response is accepted
+        dht.store_and_forward_requester()
+            .request_saf_messages_from_peer(node_identity.node_id().clone())
+            .await
+            .unwrap();
+
         let spy = service_spy();
         let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
 
@@ -652,10 +658,7 @@ mod test {
             MessageTag::new(),
             false,
         );
-        dht_envelope.header.as_mut().map(|header| {
-            header.message_type = DhtMessageType::SafStoredMessages as i32;
-            header
-        });
+        dht_envelope.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 
         service.call(inbound_message).await.unwrap_err();

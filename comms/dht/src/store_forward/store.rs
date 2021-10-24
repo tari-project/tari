@@ -27,9 +27,9 @@ use crate::{
         database::NewStoredMessage,
         error::StoreAndForwardError,
         message::StoredMessagePriority,
+        SafConfig,
         SafResult,
     },
-    DhtConfig,
 };
 use futures::{future::BoxFuture, task::Context};
 use log::*;
@@ -46,14 +46,14 @@ const LOG_TARGET: &str = "comms::dht::storeforward::store";
 /// This layer is responsible for storing messages which have failed to decrypt
 pub struct StoreLayer {
     peer_manager: Arc<PeerManager>,
-    config: DhtConfig,
+    config: SafConfig,
     node_identity: Arc<NodeIdentity>,
     saf_requester: StoreAndForwardRequester,
 }
 
 impl StoreLayer {
     pub fn new(
-        config: DhtConfig,
+        config: SafConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
@@ -84,7 +84,7 @@ impl<S> Layer<S> for StoreLayer {
 #[derive(Clone)]
 pub struct StoreMiddleware<S> {
     next_service: S,
-    config: DhtConfig,
+    config: SafConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     saf_requester: StoreAndForwardRequester,
@@ -93,7 +93,7 @@ pub struct StoreMiddleware<S> {
 impl<S> StoreMiddleware<S> {
     pub fn new(
         next_service: S,
-        config: DhtConfig,
+        config: SafConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
@@ -155,7 +155,7 @@ where
 struct StoreTask<S> {
     next_service: S,
     peer_manager: Arc<PeerManager>,
-    config: DhtConfig,
+    config: SafConfig,
     node_identity: Arc<NodeIdentity>,
     saf_requester: StoreAndForwardRequester,
 }
@@ -165,7 +165,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
 {
     pub fn new(
         next_service: S,
-        config: DhtConfig,
+        config: SafConfig,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         saf_requester: StoreAndForwardRequester,
@@ -231,11 +231,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             );
         };
 
-        if message.body_len() > self.config.saf_max_message_size {
+        if message.body_len() > self.config.max_message_size {
             log_not_eligible(&format!(
                 "the message body exceeded the maximum storage size (body size={}, max={})",
                 message.body_len(),
-                self.config.saf_max_message_size
+                self.config.max_message_size
             ));
             return Ok(None);
         }

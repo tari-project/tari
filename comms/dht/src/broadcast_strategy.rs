@@ -61,6 +61,7 @@ pub enum BroadcastStrategy {
     /// Send directly to destination if connected but otherwise send to all n nearest Communication Nodes
     DirectOrClosestNodes(Box<BroadcastClosestRequest>),
     Broadcast(Vec<NodeId>),
+    SelectedPeers(Vec<NodeId>),
     /// Propagate to a set of closest neighbours and random peers
     Propagate(NodeDestination, Vec<NodeId>),
 }
@@ -77,6 +78,7 @@ impl fmt::Display for BroadcastStrategy {
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
+            SelectedPeers(peers) => write!(f, "SelectedPeers({} peer(s))", peers.len()),
         }
     }
 }
