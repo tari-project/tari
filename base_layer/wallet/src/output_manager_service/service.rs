@@ -274,6 +274,10 @@ where
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
+            OutputManagerRequest::RevalidateTxos => self
+                .revalidate_outputs()
+                .await
+                .map(OutputManagerResponse::TxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
                     .fetch_invalid_outputs()
@@ -383,6 +387,11 @@ where
             }
         });
         Ok(id)
+    }
+
+    async fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {
+        self.resources.db.set_outputs_to_be_revalidated().await?;
+        self.validate_outputs()
     }
 
     /// Add an unblinded output to the unspent outputs list
