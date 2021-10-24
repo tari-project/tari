@@ -47,10 +47,10 @@ use crate::{
     },
     grpc::validator_node_rpc::validator_node_server::ValidatorNodeServer,
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex};
 
 const LOG_TARGET: &str = "validator_node::app";
 

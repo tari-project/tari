@@ -21,13 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
-use std::sync::{Arc, Mutex};
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
+#[async_trait]
 pub trait MempoolService: Sync + Send + 'static {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
-    fn size(&self) -> usize;
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
+    async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
+    async fn size(&self) -> usize;
 }
 
 pub struct ConcreteMempoolService {
@@ -40,17 +43,18 @@ impl ConcreteMempoolService {
     }
 }
 
+#[async_trait]
 impl MempoolService for ConcreteMempoolService {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
         self.instructions.push(instruction);
         Ok(())
     }
 
-    fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+    async fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         Ok(self.instructions.clone())
     }
 
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
         let mut result = self.instructions.clone();
         for i in instructions {
             if let Some(position) = result.iter().position(|r| r == i) {
@@ -61,7 +65,7 @@ impl MempoolService for ConcreteMempoolService {
         Ok(())
     }
 
-    fn size(&self) -> usize {
+    async fn size(&self) -> usize {
         self.instructions.len()
     }
 }
@@ -77,27 +81,21 @@ impl MempoolServiceHandle {
     }
 }
 
-// TODO: This handle is intended to be used within async contexts, a synchronous mutex blocks the tokio
-//       scheduler from scheduling tasks on the thread until the next `await`.
-//       See https://docs.rs/tokio/1.12.0/tokio/index.html#cpu-bound-tasks-and-blocking-code
-//       Existing solutions for this include async Mutex/RwLock or Actor/message-passing.
-//       The locking approach is usually appropriate for state (lock data, not code) - https://blog.rust-lang.org/2015/04/10/Fearless-Concurrency.html
-//       An Actor approach can be used to perform actions relating to a single responsibility (incl IO, owning and
-//       mutating local state (usually lock-free), and message-passing with other Actors)
+#[async_trait]
 impl MempoolService for MempoolServiceHandle {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
-        self.mempool.lock().unwrap().submit_instruction(instruction)
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().await.submit_instruction(instruction).await
     }
 
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
-        self.mempool.lock().unwrap().read_block(limit)
+    async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+        self.mempool.lock().await.read_block(limit).await
     }
 
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
-        self.mempool.lock().unwrap().remove_instructions(instructions)
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().await.remove_instructions(instructions).await
     }
 
-    fn size(&self) -> usize {
-        self.mempool.lock().unwrap().size()
+    async fn size(&self) -> usize {
+        self.mempool.lock().await.size().await
     }
 }

@@ -73,7 +73,7 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
         );
 
         let mut mempool_service = self.mempool_service.clone();
-        match mempool_service.submit_instruction(instruction) {
+        match mempool_service.submit_instruction(instruction).await {
             Ok(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),

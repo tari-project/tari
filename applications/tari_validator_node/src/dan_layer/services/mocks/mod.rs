@@ -46,19 +46,19 @@ use std::{
 pub struct MockMempoolService;
 
 impl MempoolService for MockMempoolService {
-    fn submit_instruction(&mut self, _instruction: Instruction) -> Result<(), DigitalAssetError> {
+    async fn submit_instruction(&mut self, _instruction: Instruction) -> Result<(), DigitalAssetError> {
         Ok(())
     }
 
-    fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+    async fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         Ok(vec![])
     }
 
-    fn remove_instructions(&mut self, _instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+    async fn remove_instructions(&mut self, _instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
         Ok(())
     }
 
-    fn size(&self) -> usize {
+    async fn size(&self) -> usize {
         0
     }
 }

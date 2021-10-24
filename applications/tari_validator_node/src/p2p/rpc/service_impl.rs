@@ -70,7 +70,7 @@ impl<TMempoolService: MempoolService + Clone> ValidatorNodeRpcService for Valida
         );
 
         let mut mempool_service = self.mempool_service.clone();
-        match mempool_service.submit_instruction(instruction) {
+        match mempool_service.submit_instruction(instruction).await {
             Ok(_) => {
                 return Ok(Response::new(proto::SubmitInstructionResponse {
                     status: proto::Status::Accepted as i32,

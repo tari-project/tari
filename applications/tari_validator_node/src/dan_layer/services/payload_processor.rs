@@ -66,7 +66,7 @@ impl<TAssetProcessor: AssetProcessor + Send, TMempoolService: MempoolService + S
             self.asset_processor.execute_instruction(instruction).await?;
         }
 
-        self.mempool_service.remove_instructions(payload.instructions())?;
+        self.mempool_service.remove_instructions(payload.instructions()).await?;
 
         Ok(())
     }

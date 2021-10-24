@@ -298,7 +298,7 @@ where
                 info!(
                     target: LOG_TARGET,
                     "Status: {} in mempool ",
-                    self.payload_provider.get_payload_queue(),
+                    self.payload_provider.get_payload_queue().await,
                 );
                 let mut state = states::NextViewState::new();
                 state
