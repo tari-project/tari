@@ -31,6 +31,9 @@ pub use database::StoredMessage;
 mod error;
 pub use error::StoreAndForwardError;
 
+mod config;
+pub use config::SafConfig;
+
 mod forward;
 pub use forward::ForwardLayer;
 
@@ -38,6 +41,8 @@ mod message;
 
 mod saf_handler;
 pub use saf_handler::MessageHandlerLayer;
+
+mod local_state;
 
 mod store;
 pub use store::StoreLayer;

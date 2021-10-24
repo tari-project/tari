@@ -41,3 +41,6 @@ node_modules
 /integration_tests/temp
 /applications/utils/temp/
 /integration_tests/cucumber_output
+
+# ignore output files from windows ISS
+buildtools/Output/

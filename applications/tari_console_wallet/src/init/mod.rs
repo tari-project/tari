@@ -34,7 +34,7 @@ use tari_comms::{
     types::CommsSecretKey,
     NodeIdentity,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
@@ -337,7 +337,10 @@ pub async fn init_wallet(
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
-            saf_msg_validity: config.saf_expiry_duration,
+            saf_config: SafConfig {
+                msg_validity: config.saf_expiry_duration,
+                ..Default::default()
+            },
             dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },

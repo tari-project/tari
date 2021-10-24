@@ -85,7 +85,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(config.saf_msg_validity)
+            message_validity_window: chrono::Duration::from_std(config.saf_config.msg_validity)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }
