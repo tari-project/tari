@@ -902,7 +902,7 @@ Then(
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitForIterate(() => client.getTipHeight(), height, 200 * 1000);
+      await waitForIterate(() => client.getTipHeight(), height, 1000, 200);
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
