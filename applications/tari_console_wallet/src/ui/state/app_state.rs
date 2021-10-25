@@ -20,12 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    notifier::Notifier,
+    ui::{
+        state::{
+            debouncer::BalanceEnquiryDebouncer,
+            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            wallet_event_monitor::WalletEventMonitor,
+        },
+        UiContact,
+        UiError,
+    },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    wallet_modes::PeerConfig,
+};
 use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -50,39 +64,21 @@ use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    assets::Asset,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    output_manager_service::{
+        handle::{OutputManagerEventReceiver, OutputManagerHandle},
+        service::Balance,
+    },
+    tokens::Token,
     transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
 };
 use tokio::{
     sync::{watch, RwLock},
     task,
-};
-
-use crate::{
-    notifier::Notifier,
-    ui::{
-        state::{
-            debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_one_sided_transaction_task, send_transaction_task},
-            wallet_event_monitor::WalletEventMonitor,
-        },
-        UiContact,
-        UiError,
-    },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
-};
-use std::collections::VecDeque;
-use tari_core::transactions::transaction_protocol::TxId;
-use tari_wallet::{
-    assets::Asset,
-    output_manager_service::handle::OutputManagerHandle,
-    tokens::Token,
-    transaction_service::storage::models::TransactionDirection,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
@@ -514,12 +510,8 @@ impl AppState {
         use Network::*;
         // TODO: TBD
         match self.node_config.network {
-            MainNet => MicroTari(5),
-            LocalNet => MicroTari(5),
-            Ridcully => MicroTari(25),
-            Stibbons => MicroTari(25),
-            Weatherwax => MicroTari(25),
-            Igor => MicroTari(5),
+            MainNet | LocalNet | Igor | Dibbler => MicroTari(5),
+            Ridcully | Stibbons | Weatherwax => MicroTari(25),
         }
     }
 }
@@ -959,7 +951,7 @@ pub struct CompletedTransactionInfo {
 }
 
 fn first_unique_id(tx: &CompletedTransaction) -> String {
-    let body = tx.transaction.get_body();
+    let body = tx.transaction.body();
     for input in body.inputs() {
         if let Some(ref unique_id) = input.features.unique_id {
             return unique_id.to_hex();
@@ -985,7 +977,7 @@ impl CompletedTransactionInfo {
         let weight = tx.transaction.calculate_weight(transaction_weighting);
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
-        let unique_id = first_unique_id(&completed_transaction);
+        let unique_id = first_unique_id(&tx);
 
         Self {
             tx_id: tx.tx_id,

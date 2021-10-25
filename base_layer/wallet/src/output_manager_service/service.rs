@@ -568,14 +568,16 @@ where
         let metadata_byte_size = OutputFeatures::default().consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
 
-        let utxo_selection = self.select_utxos(
-            amount,
-            fee_per_gram,
-            num_outputs,
-            metadata_byte_size * num_outputs,
-            None,
-            None,
-        );
+        let utxo_selection = self
+            .select_utxos(
+                amount,
+                fee_per_gram,
+                num_outputs,
+                metadata_byte_size * num_outputs,
+                None,
+                None,
+            )
+            .await?;
 
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
@@ -787,14 +789,21 @@ where
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
-        let (inputs, _, total) = self
-            .select_utxos(total_value, fee_per_gram, outputs.len(), None, None)
+        let nop_script = script![Nop];
+        let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
+            total +
+                output.features.consensus_encode_exact_size() +
+                ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or_else(|| &nop_script))
+                    .consensus_encode_exact_size()
+        });
+        let input_selection = self
+            .select_utxos(total_value, fee_per_gram, outputs.len(), metadata_byte_size, None, None)
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0);
+        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
@@ -802,15 +811,15 @@ where
             .with_private_nonce(nonce.clone())
             .with_prevent_fee_gt_amount(false);
 
-        for uo in &inputs {
+        for uo in input_selection.iter() {
             builder.with_input(
                 uo.unblinded_output
                     .as_transaction_input(&self.resources.factories.commitment)?,
                 uo.unblinded_output.clone(),
             );
         }
-        let fee_without_change = Fee::calculate(fee_per_gram, 1, inputs.len(), outputs.len());
-        if total > total_value + fee_without_change {
+
+        if input_selection.requires_change_output() {
             let (spending_key, script_private_key) = self
                 .resources
                 .master_key_manager
@@ -902,7 +911,10 @@ where
         }
         let tx_id = stp.get_tx_id()?;
 
-        self.resources.db.encumber_outputs(tx_id, inputs, db_outputs).await?;
+        self.resources
+            .db
+            .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)
+            .await?;
         stp.finalize(KernelFeatures::empty(), &self.resources.factories)?;
 
         Ok((tx_id, stp.take_transaction()?))
@@ -1386,7 +1398,6 @@ where
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
-        let fee = stp.get_fee_amount()?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, utxos_total_value))
     }

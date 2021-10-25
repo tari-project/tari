@@ -21,6 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::error::CommandError;
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+};
+use chrono::{DateTime, Utc};
+use futures::FutureExt;
 use log::*;
 use std::{
     convert::TryFrom,
@@ -29,16 +35,7 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
-
-use chrono::{DateTime, Utc};
-use futures::FutureExt;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
-
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
 use tari_common::GlobalConfig;
 use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
@@ -50,8 +47,8 @@ use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction::UnblindedOutput,
-    transaction_protocol::TxId,
 };
+use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,

@@ -9,7 +9,7 @@ use crate::{
 };
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
-use tari_wallet::{tokens::Token, types::DEFAULT_FEE_PER_GRAM};
+use tari_wallet::tokens::Token;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
