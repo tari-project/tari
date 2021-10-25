@@ -35,7 +35,7 @@ use json::json;
 use jsonrpc::error::StandardError;
 use serde_json as json;
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -295,7 +295,8 @@ impl InnerService {
                     match block {
                         Ok(block) => {
                             let mut client = self.base_node_client.clone();
-                            let grpc_block: tari_app_grpc::tari_rpc::Block = block.into();
+                            let grpc_block: tari_app_grpc::tari_rpc::Block =
+                                block.try_into().map_err(StratumTranscoderProxyError::ConversionError)?;
                             match client.submit_block(grpc_block).await {
                                 Ok(_) => {
                                     json_response = proxy::json_response(

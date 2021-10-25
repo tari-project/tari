@@ -79,6 +79,8 @@ pub enum MmProxyError {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error("Block was lost due to a failed precondition, and should be retried")]
     FailedPreconditionBlockLostRetry,
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

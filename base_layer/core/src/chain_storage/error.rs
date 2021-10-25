@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
+use crate::{
+    blocks::BlockError,
+    chain_storage::MmrTree,
+    proof_of_work::PowError,
+    transactions::transaction::TransactionError,
+    validation::ValidationError,
+};
 use lmdb_zero::error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
@@ -116,6 +122,10 @@ pub enum ChainStorageError {
     DatabaseResyncRequired(&'static str),
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
 }
 
 impl ChainStorageError {

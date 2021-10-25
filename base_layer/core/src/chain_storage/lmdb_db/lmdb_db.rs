@@ -71,7 +71,7 @@ use crate::{
     crypto::tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     },
 };
 use croaring::Bitmap;
@@ -603,7 +603,7 @@ impl LMDBDatabase {
         lmdb_delete(
             txn,
             &self.utxo_commitment_index,
-            input.commitment().as_bytes(),
+            input.commitment()?.as_bytes(),
             "utxo_commitment_index",
         )?;
         lmdb_insert(
@@ -614,14 +614,14 @@ impl LMDBDatabase {
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        let hash = input.hash();
+        let hash = input.canonical_hash()?;
         let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
         lmdb_insert(
             txn,
             &*self.inputs_db,
             key.as_str(),
             &TransactionInputRowData {
-                input,
+                input: input.to_compact(),
                 header_hash,
                 mmr_position,
                 hash,
@@ -895,12 +895,39 @@ impl LMDBDatabase {
             if output_rows.iter().any(|r| r.hash == output_hash) {
                 continue;
             }
-            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", row.input);
+            let mut input = row.input.clone();
+
+            let utxo_mined_info =
+                self.fetch_output_in_txn(txn, &output_hash)?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "UTXO",
+                        field: "hash",
+                        value: output_hash.to_hex(),
+                    })?;
+
+            match utxo_mined_info.output {
+                PrunedOutput::Pruned { .. } => {
+                    debug!(target: LOG_TARGET, "Output Transaction Input is spending is pruned");
+                    return Err(ChainStorageError::TransactionError(
+                        TransactionError::MissingTransactionInputData,
+                    ));
+                },
+                PrunedOutput::NotPruned { output } => {
+                    input.add_output_data(
+                        output.features,
+                        output.commitment,
+                        output.script,
+                        output.sender_offset_public_key,
+                    );
+                },
+            }
+
+            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
                 txn,
                 &*self.utxo_commitment_index,
-                row.input.commitment.as_bytes(),
-                &row.input.output_hash(),
+                input.commitment()?.as_bytes(),
+                &input.output_hash(),
                 "utxo_commitment_index",
             )?;
             lmdb_delete(
@@ -1084,7 +1111,7 @@ impl LMDBDatabase {
         }
 
         for input in inputs {
-            total_utxo_sum = &total_utxo_sum - &input.commitment;
+            total_utxo_sum = &total_utxo_sum - input.commitment()?;
             let index = self
                 .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
                 .ok_or(ChainStorageError::UnspendableInput)?;
@@ -1094,7 +1121,7 @@ impl LMDBDatabase {
                     index
                 )));
             }
-            debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
+            debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment()?.to_hex());
             self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
         }
 
@@ -1307,6 +1334,63 @@ impl LMDBDatabase {
 
     fn fetch_last_header_in_txn(&self, txn: &ConstTransaction<'_>) -> Result<Option<BlockHeader>, ChainStorageError> {
         lmdb_last(txn, &self.headers_db)
+    }
+
+    fn fetch_output_in_txn(
+        &self,
+        txn: &ConstTransaction<'_>,
+        output_hash: &HashOutput,
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+        if let Some((index, key)) =
+            lmdb_get::<_, (u32, String)>(txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch output: {} Found ({}, {})",
+                output_hash.to_hex(),
+                index,
+                key
+            );
+            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, key.as_str())? {
+                Some(TransactionOutputRowData {
+                    output: Some(o),
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                    ..
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::NotPruned { output: o },
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                })),
+                Some(TransactionOutputRowData {
+                    output: None,
+                    mmr_position,
+                    mined_height,
+                    hash,
+                    witness_hash,
+                    header_hash,
+                    ..
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::Pruned {
+                        output_hash: hash,
+                        witness_hash,
+                    },
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                })),
+                _ => Ok(None),
+            }
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch output: {} NOT found in index",
+                output_hash.to_hex()
+            );
+            Ok(None)
+        }
     }
 }
 
@@ -1824,56 +1908,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
-        if let Some((index, key)) =
-            lmdb_get::<_, (u32, String)>(&txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
-        {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} Found ({}, {})",
-                output_hash.to_hex(),
-                index,
-                key
-            );
-            match lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
-                Some(TransactionOutputRowData {
-                    output: Some(o),
-                    mmr_position,
-                    mined_height,
-                    header_hash,
-                    ..
-                }) => Ok(Some(UtxoMinedInfo {
-                    output: PrunedOutput::NotPruned { output: o },
-                    mmr_position,
-                    mined_height,
-                    header_hash,
-                })),
-                Some(TransactionOutputRowData {
-                    output: None,
-                    mmr_position,
-                    mined_height,
-                    hash,
-                    witness_hash,
-                    header_hash,
-                    ..
-                }) => Ok(Some(UtxoMinedInfo {
-                    output: PrunedOutput::Pruned {
-                        output_hash: hash,
-                        witness_hash,
-                    },
-                    mmr_position,
-                    mined_height,
-                    header_hash,
-                })),
-                _ => Ok(None),
-            }
-        } else {
-            debug!(
-                target: LOG_TARGET,
-                "Fetch output: {} NOT found in index",
-                output_hash.to_hex()
-            );
-            Ok(None)
-        }
+        self.fetch_output_in_txn(&*txn, output_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(

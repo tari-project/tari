@@ -65,6 +65,8 @@ pub enum StratumTranscoderProxyError {
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
     #[error("Unexpected Tari base node response: {0}")]
     UnexpectedTariBaseNodeResponse(String),
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
 }
 
 impl From<tonic::Status> for StratumTranscoderProxyError {

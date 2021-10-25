@@ -41,7 +41,11 @@ use crate::{
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
-use std::{convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
@@ -341,7 +345,7 @@ async fn handle_incoming_request(
 
     let message = mempool_proto::MempoolServiceResponse {
         request_key: inner_msg.request_key,
-        response: Some(response.into()),
+        response: Some(response.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     outbound_message_service
@@ -394,7 +398,7 @@ async fn handle_outbound_request(
     let request_key = generate_request_key(&mut OsRng);
     let service_request = mempool_proto::MempoolServiceRequest {
         request_key,
-        request: Some(request.into()),
+        request: Some(request.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     let send_result = outbound_message_service
@@ -491,7 +495,10 @@ async fn handle_outbound_tx(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
+            ),
         )
         .await;
 

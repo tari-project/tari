@@ -65,7 +65,13 @@ impl TryFrom<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
         use ci::NodeCommsResponse::*;
         match response {
             HistoricalBlocks(historical_blocks) => {
-                let historical_blocks = historical_blocks.into_iter().map(Into::into).collect();
+                let historical_blocks = historical_blocks
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<core_proto_types::HistoricalBlock>, _>>()?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
                 Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
             },
             // This would only occur if a programming error sent out the unsupported response
@@ -96,11 +102,13 @@ impl TryInto<Option<BlockHeader>> for base_node_proto::BlockHeaderResponse {
     }
 }
 
-impl From<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
-    fn from(v: Option<HistoricalBlock>) -> Self {
-        Self {
-            block: v.map(Into::into),
-        }
+impl TryFrom<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
+    type Error = String;
+
+    fn try_from(v: Option<HistoricalBlock>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            block: v.map(TryInto::try_into).transpose()?,
+        })
     }
 }
 

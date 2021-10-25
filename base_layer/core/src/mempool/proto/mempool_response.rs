@@ -62,16 +62,18 @@ impl TryFrom<ProtoMempoolServiceResponse> for MempoolServiceResponse {
     }
 }
 
-impl From<MempoolResponse> for ProtoMempoolResponse {
-    fn from(response: MempoolResponse) -> Self {
+impl TryFrom<MempoolResponse> for ProtoMempoolResponse {
+    type Error = String;
+
+    fn try_from(response: MempoolResponse) -> Result<Self, Self::Error> {
         use MempoolResponse::*;
-        match response {
+        Ok(match response {
             Stats(stats_response) => ProtoMempoolResponse::Stats(stats_response.into()),
-            State(state_response) => ProtoMempoolResponse::State(state_response.into()),
+            State(state_response) => ProtoMempoolResponse::State(state_response.try_into()?),
             TxStorage(tx_storage_response) => {
                 let tx_storage_response: ProtoTxStorageResponse = tx_storage_response.into();
                 ProtoMempoolResponse::TxStorage(tx_storage_response.into())
             },
-        }
+        })
     }
 }

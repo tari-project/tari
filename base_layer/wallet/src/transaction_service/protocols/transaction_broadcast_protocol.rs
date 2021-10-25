@@ -32,7 +32,7 @@ use crate::{
 use futures::FutureExt;
 use log::*;
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -179,7 +179,12 @@ where
         tx: Transaction,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError> {
-        let response = match client.submit_transaction(tx.into()).await {
+        let response = match client
+            .submit_transaction(tx.try_into().map_err(|e| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::ConversionError(e))
+            })?)
+            .await
+        {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
                 Ok(r) => r,
                 Err(_) => {

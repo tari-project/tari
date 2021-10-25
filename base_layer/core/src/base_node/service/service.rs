@@ -501,7 +501,7 @@ async fn handle_outbound_request(
     let request_key = generate_request_key(&mut OsRng);
     let service_request = proto::BaseNodeServiceRequest {
         request_key,
-        request: Some(request.try_into().map_err(CommsInterfaceError::ApiError)?),
+        request: Some(request.try_into().map_err(CommsInterfaceError::InternalError)?),
     };
 
     let mut send_msg_params = SendMessageParams::new();

@@ -112,7 +112,7 @@ pub enum TransactionServiceError {
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
-    ConversionError(#[from] TransactionConversionError),
+    ConversionError(String),
     #[error("duration::OutOfRangeError: {0}")]
     DurationOutOfRange(#[from] OutOfRangeError),
     #[error("Node ID error: `{0}`")]

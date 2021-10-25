@@ -128,7 +128,7 @@ where TBackend: OutputManagerBackend + 'static
                 "Output {} with value {} with {} recovered",
                 output
                     .as_transaction_input(&self.factories.commitment)?
-                    .commitment
+                    .commitment()?
                     .to_hex(),
                 output.value,
                 output.features,

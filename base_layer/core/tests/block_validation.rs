@@ -192,6 +192,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 
 #[tokio::test]
 async fn inputs_are_not_malleable() {
+    let _ = env_logger::try_init();
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 

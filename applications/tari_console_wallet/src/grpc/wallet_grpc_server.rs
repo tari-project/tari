@@ -1,6 +1,6 @@
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc,
@@ -150,7 +150,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         match response {
             Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
-                transaction: Some(resp.into()),
+                transaction: Some(resp.try_into().map_err(Status::internal)?),
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }

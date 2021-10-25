@@ -527,9 +527,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
-            .map(|txn| {
-                proto::TransactionItem {
-                    transaction: Some(Clone::clone(&*txn).into()),
+            .filter_map(|txn| {
+                match shared_proto::types::Transaction::try_from((*txn).clone()) {
+                    Ok(txn) =>   Some(proto::TransactionItem {
+                        transaction: Some(txn),
+                    }),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Could not convert transaction: {}", e);
+                        None
+                    }
                 }
             })
             // Write an empty `TransactionItem` to indicate we're done

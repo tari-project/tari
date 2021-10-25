@@ -568,7 +568,8 @@ where TBackend: WalletBackend + 'static
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 

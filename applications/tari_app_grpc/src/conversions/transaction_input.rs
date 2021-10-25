@@ -26,61 +26,105 @@ use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::transactions::transaction::TransactionInput;
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, Hashable},
+    tari_utilities::ByteArray,
 };
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
     type Error = String;
 
     fn try_from(input: grpc::TransactionInput) -> Result<Self, Self::Error> {
-        let features = input
-            .features
-            .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
-
-        let commitment = Commitment::from_bytes(&input.commitment)
-            .map_err(|err| format!("Could not convert input commitment:{}", err))?;
-
         let script_signature = input
             .script_signature
             .ok_or_else(|| "script_signature not provided".to_string())?
             .try_into()
             .map_err(|_| "script_signature could not be converted".to_string())?;
 
-        let sender_offset_public_key =
-            PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
-        let script = TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?;
-        let input_data = ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?;
+        // Check if the received Transaction input is in compact form or not
+        if !input.commitment.is_empty() {
+            let commitment = Commitment::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
+            let features = input
+                .features
+                .map(TryInto::try_into)
+                .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-        Ok(Self {
-            features,
-            commitment,
-            script,
-            input_data,
-            script_signature,
-            sender_offset_public_key,
-        })
+            let sender_offset_public_key =
+                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+            Ok(TransactionInput::new_with_output_data(
+                features,
+                commitment,
+                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                script_signature,
+                sender_offset_public_key,
+            ))
+        } else {
+            if input.output_hash.is_empty() {
+                return Err("Compact Transaction Input does not contain `output_hash`".to_string());
+            }
+            Ok(TransactionInput::new_with_output_hash(
+                input.output_hash,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                script_signature,
+            ))
+        }
     }
 }
 
-impl From<TransactionInput> for grpc::TransactionInput {
-    fn from(input: TransactionInput) -> Self {
-        let hash = input.hash();
-        Self {
-            features: Some(grpc::OutputFeatures {
-                flags: input.features.flags.bits() as u32,
-                maturity: input.features.maturity,
-            }),
-            commitment: Vec::from(input.commitment.as_bytes()),
-            hash,
-            script: input.script.as_bytes(),
-            input_data: input.input_data.as_bytes(),
-            script_signature: Some(grpc::ComSignature {
-                public_nonce_commitment: Vec::from(input.script_signature.public_nonce().as_bytes()),
-                signature_u: Vec::from(input.script_signature.u().as_bytes()),
-                signature_v: Vec::from(input.script_signature.v().as_bytes()),
-            }),
-            sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
+impl TryFrom<TransactionInput> for grpc::TransactionInput {
+    type Error = String;
+
+    fn try_from(input: TransactionInput) -> Result<Self, Self::Error> {
+        let script_signature = Some(grpc::ComSignature {
+            public_nonce_commitment: Vec::from(input.script_signature.public_nonce().as_bytes()),
+            signature_u: Vec::from(input.script_signature.u().as_bytes()),
+            signature_v: Vec::from(input.script_signature.v().as_bytes()),
+        });
+        if input.is_compact() {
+            let output_hash = input.output_hash();
+            Ok(Self {
+                features: None,
+                commitment: Vec::new(),
+                hash: Vec::new(),
+                script: Vec::new(),
+                input_data: Vec::new(),
+                script_signature,
+                sender_offset_public_key: Vec::new(),
+                output_hash,
+            })
+        } else {
+            let features = input
+                .features()
+                .map_err(|_| "Non-compact Transaction input should contain features".to_string())?;
+
+            Ok(Self {
+                features: Some(grpc::OutputFeatures {
+                    flags: features.flags.bits() as u32,
+                    maturity: features.maturity,
+                }),
+                commitment: input
+                    .commitment()
+                    .map_err(|_| "Non-compact Transaction input should contain commitment".to_string())?
+                    .clone()
+                    .as_bytes()
+                    .to_vec(),
+                hash: input
+                    .canonical_hash()
+                    .map_err(|_| "Non-compact Transaction input should be able to be hashed".to_string())?,
+
+                script: input
+                    .script()
+                    .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
+                    .as_bytes(),
+                input_data: input.input_data.as_bytes(),
+                script_signature,
+                sender_offset_public_key: input
+                    .sender_offset_public_key()
+                    .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
+                    .as_bytes()
+                    .to_vec(),
+                output_hash: Vec::new(),
+            })
         }
     }
 }

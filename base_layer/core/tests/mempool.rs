@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// use crate::helpers::database::create_store;
 use helpers::{
     block_builders::{
         chain_block,
@@ -33,7 +34,7 @@ use helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
 use randomx_rs::RandomXFlag;
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
@@ -914,7 +915,10 @@ async fn receive_and_propagate_transaction() {
         .outbound_message_service
         .send_direct(
             bob_node.node_identity.public_key().clone(),
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(tx).unwrap(),
+            ),
         )
         .await
         .unwrap();
@@ -922,7 +926,10 @@ async fn receive_and_propagate_transaction() {
         .outbound_message_service
         .send_direct(
             carol_node.node_identity.public_key().clone(),
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(orphan)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(orphan).unwrap(),
+            ),
         )
         .await
         .unwrap();

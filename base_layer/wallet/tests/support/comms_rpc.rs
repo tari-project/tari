@@ -654,7 +654,7 @@ mod test {
         test_utils::node_identity::build_node_identity,
     };
 
-    use std::convert::TryFrom;
+    use std::convert::{TryFrom, TryInto};
     use tari_common_types::types::BlindingFactor;
     use tari_core::{
         base_node::{
@@ -709,7 +709,8 @@ mod test {
             BlindingFactor::default(),
         );
 
-        let resp = TxSubmissionResponse::try_from(client.submit_transaction(tx.into()).await.unwrap()).unwrap();
+        let resp =
+            TxSubmissionResponse::try_from(client.submit_transaction(tx.try_into().unwrap()).await.unwrap()).unwrap();
         assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::TimeLocked);
 
         let calls = service_state

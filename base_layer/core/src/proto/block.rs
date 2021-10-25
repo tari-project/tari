@@ -49,12 +49,14 @@ impl TryFrom<proto::Block> for Block {
     }
 }
 
-impl From<Block> for proto::Block {
-    fn from(block: Block) -> Self {
-        Self {
+impl TryFrom<Block> for proto::Block {
+    type Error = String;
+
+    fn try_from(block: Block) -> Result<Self, Self::Error> {
+        Ok(Self {
             header: Some(block.header.into()),
-            body: Some(block.body.into()),
-        }
+            body: Some(block.body.try_into()?),
+        })
     }
 }
 
@@ -90,19 +92,21 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
     }
 }
 
-impl From<HistoricalBlock> for proto::HistoricalBlock {
-    fn from(block: HistoricalBlock) -> Self {
+impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
+    type Error = String;
+
+    fn try_from(block: HistoricalBlock) -> Result<Self, Self::Error> {
         let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.clone()).collect();
         let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.clone()).collect();
         let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
-        Self {
+        Ok(Self {
             confirmations,
             accumulated_data: Some(accumulated_data.into()),
-            block: Some(block.into()),
+            block: Some(block.try_into()?),
             pruned_output_hashes,
             pruned_witness_hash,
             pruned_input_count,
-        }
+        })
     }
 }
 
@@ -167,15 +171,17 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
     }
 }
 
-impl From<NewBlockTemplate> for proto::NewBlockTemplate {
-    fn from(block_template: NewBlockTemplate) -> Self {
-        Self {
+impl TryFrom<NewBlockTemplate> for proto::NewBlockTemplate {
+    type Error = String;
+
+    fn try_from(block_template: NewBlockTemplate) -> Result<Self, Self::Error> {
+        Ok(Self {
             header: Some(block_template.header.into()),
-            body: Some(block_template.body.into()),
+            body: Some(block_template.body.try_into()?),
             target_difficulty: block_template.target_difficulty.as_u64(),
             reward: block_template.reward.0,
             total_fees: block_template.total_fees.0,
-        }
+        })
     }
 }
 

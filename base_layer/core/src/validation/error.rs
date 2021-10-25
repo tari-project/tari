@@ -87,6 +87,10 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
     AsyncTaskFailed(#[from] task::JoinError),
+    #[error("Could not find the Output being spent by Transaction Input")]
+    TransactionInputSpentOutputMissing,
+    #[error("Output being spent by Transaction Input has already been pruned")]
+    TransactionInputSpendsPrunedOutput,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

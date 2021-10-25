@@ -28,8 +28,10 @@ use tari_core::{
     crypto::tari_utilities::ByteArray,
     proof_of_work::ProofOfWork,
 };
-impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
-    fn from(block: NewBlockTemplate) -> Self {
+impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
+    type Error = String;
+
+    fn try_from(block: NewBlockTemplate) -> Result<Self, Self::Error> {
         let header = grpc::NewBlockHeaderTemplate {
             version: block.header.version as u32,
             height: block.header.height,
@@ -41,14 +43,14 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                 pow_data: block.header.pow.pow_data,
             }),
         };
-        Self {
+        Ok(Self {
             body: Some(grpc::AggregateBody {
                 inputs: block
                     .body
                     .inputs()
                     .iter()
-                    .map(|input| grpc::TransactionInput::from(input.clone()))
-                    .collect(),
+                    .map(|input| grpc::TransactionInput::try_from(input.clone()))
+                    .collect::<Result<Vec<grpc::TransactionInput>, _>>()?,
                 outputs: block
                     .body
                     .outputs()
@@ -63,7 +65,7 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .collect(),
             }),
             header: Some(header),
-        }
+        })
     }
 }
 impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {

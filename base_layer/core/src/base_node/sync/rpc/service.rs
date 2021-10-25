@@ -38,6 +38,7 @@ use crate::{
 use log::*;
 use std::{
     cmp,
+    convert::TryFrom,
     sync::{Arc, Weak},
 };
 use tari_comms::{
@@ -175,9 +176,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks
                                 .into_iter()
-                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
+                                .map(|hb| {
+                                    match hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)) {
+                                        Ok(b) => Ok(b.to_compact()),
+                                        Err(e) => Err(e),
+                                    }
+                                })
                                 .map(|block| match block {
-                                    Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
+                                    Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
+                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                        RpcStatus::general_default()
+                                    }),
                                     Err(err) => Err(err),
                                 });
 

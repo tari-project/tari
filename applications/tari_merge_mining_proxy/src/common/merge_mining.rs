@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MmProxyError;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
@@ -40,5 +40,5 @@ pub fn add_coinbase(
         .map_err(MmProxyError::MissingDataError)?;
     block_template.body.add_output(output);
     block_template.body.add_kernel(kernel);
-    Ok(block_template.into())
+    block_template.try_into().map_err(MmProxyError::ConversionError)
 }
