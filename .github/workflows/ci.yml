@@ -122,7 +122,6 @@ jobs:
         uses: actions/checkout@v2
 
       - name: ubuntu dependencies
-        if: startsWith(matrix.os,'ubuntu')
         run: |
           sudo apt-get update && \
           sudo apt-get -y install \
