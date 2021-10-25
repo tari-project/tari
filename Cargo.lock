@@ -143,23 +143,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61604a8f862e1d5c3229fdd78f8b02c68dcf73a4c4b05fd636d12240aaa242c1"
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "blake2",
- "rand 0.8.4",
- "serde 1.0.130",
- "serde_json",
- "tari_app_grpc",
- "tari_crypto",
- "tari_mmr",
- "tari_utilities",
- "tauri",
- "tauri-build",
- "tonic",
-]
-
-[[package]]
 name = "arc-swap"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5989,6 +5972,23 @@ dependencies = [
  "sha3",
  "subtle-ng",
  "thiserror",
+]
+
+[[package]]
+name = "tari_collectibles"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "rand 0.8.4",
+ "serde 1.0.130",
+ "serde_json",
+ "tari_app_grpc",
+ "tari_crypto",
+ "tari_mmr",
+ "tari_utilities",
+ "tauri",
+ "tauri-build",
+ "tonic",
 ]
 
 [[package]]
