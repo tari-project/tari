@@ -52,7 +52,6 @@ use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_core::transactions::transaction_protocol::TxId;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::handle::{OutputManagerEvent, OutputManagerEventReceiver},
