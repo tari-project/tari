@@ -53,6 +53,7 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
+    store_forward::SafConfig,
     Dht,
     DhtConfig,
 };
@@ -912,7 +913,10 @@ async fn setup_comms_dht(
 
     let dht = Dht::builder()
         .with_config(DhtConfig {
-            saf_auto_request,
+            saf_config: SafConfig {
+                auto_request: saf_auto_request,
+                ..Default::default()
+            },
             auto_join: false,
             discovery_request_timeout: Duration::from_secs(15),
             num_neighbouring_nodes,

@@ -25,9 +25,12 @@ use chrono::Utc;
 use digest::Digest;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 use tari_comms::types::Challenge;
 use tari_utilities::hex;
@@ -47,20 +50,17 @@ pub fn create_store_and_forward_mock() -> (StoreAndForwardRequester, StoreAndFor
     (StoreAndForwardRequester::new(tx), state)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct StoreAndForwardMockState {
     call_count: Arc<AtomicUsize>,
     stored_messages: Arc<RwLock<Vec<StoredMessage>>>,
     calls: Arc<RwLock<Vec<String>>>,
+    inflight_request: Arc<RwLock<Option<Duration>>>,
 }
 
 impl StoreAndForwardMockState {
     pub fn new() -> Self {
-        Self {
-            call_count: Arc::new(AtomicUsize::new(0)),
-            stored_messages: Arc::new(RwLock::new(Vec::new())),
-            calls: Arc::new(RwLock::new(Vec::new())),
-        }
+        Default::default()
     }
 
     pub fn inc_call_count(&self) {
@@ -88,6 +88,10 @@ impl StoreAndForwardMockState {
         let calls = self.calls.write().await.drain(..).collect();
         self.call_count.store(0, Ordering::SeqCst);
         calls
+    }
+
+    pub async fn set_request_inflight(&self, duration: Option<Duration>) {
+        *self.inflight_request.write().await = duration;
     }
 }
 
@@ -160,6 +164,9 @@ impl StoreAndForwardMock {
                     .write()
                     .await
                     .retain(|msg| msg.stored_at >= threshold.naive_utc());
+            },
+            MarkSafResponseReceived(_, reply) => {
+                let _ = reply.send(*self.state.inflight_request.read().await);
             },
         }
     }

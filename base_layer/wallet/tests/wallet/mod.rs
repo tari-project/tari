@@ -46,7 +46,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
 };
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     test_helpers::{create_unblinded_output, TestParams},
@@ -119,7 +119,10 @@ async fn create_wallet(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
-            saf_auto_request: true,
+            saf_config: SafConfig {
+                auto_request: true,
+                ..Default::default()
+            },
             ..Default::default()
         },
         allow_test_addresses: true,
