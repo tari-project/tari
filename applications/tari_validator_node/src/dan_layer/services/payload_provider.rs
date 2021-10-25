@@ -27,11 +27,13 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
+use async_trait::async_trait;
 
+#[async_trait]
 pub trait PayloadProvider<TPayload: Payload> {
-    fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
+    async fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
     fn create_genesis_payload(&self) -> TPayload;
-    fn get_payload_queue(&self) -> usize;
+    async fn get_payload_queue(&self) -> usize;
 }
 
 pub struct MempoolPayloadProvider<TMempoolService: MempoolService> {
@@ -44,9 +46,10 @@ impl<TMempoolService: MempoolService> MempoolPayloadProvider<TMempoolService> {
     }
 }
 
+#[async_trait]
 impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for MempoolPayloadProvider<TMempoolService> {
-    fn create_payload(&self) -> Result<InstructionSet, DigitalAssetError> {
-        let instructions = self.mempool.read_block(100)?;
+    async fn create_payload(&self) -> Result<InstructionSet, DigitalAssetError> {
+        let instructions = self.mempool.read_block(100).await?;
         Ok(InstructionSet::from_slice(&instructions))
     }
 
@@ -54,7 +57,7 @@ impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for Mempoo
         InstructionSet::empty()
     }
 
-    fn get_payload_queue(&self) -> usize {
-        self.mempool.size()
+    async fn get_payload_queue(&self) -> usize {
+        self.mempool.size().await
     }
 }

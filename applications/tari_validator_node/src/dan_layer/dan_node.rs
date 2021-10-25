@@ -34,11 +34,13 @@ use crate::{
             MemoryInstructionLog,
             MempoolPayloadProvider,
             MempoolService,
+            MempoolServiceHandle,
             NodeIdentitySigningService,
         },
         storage::{AssetDataStore, LmdbAssetStore},
         workers::ConsensusWorker,
     },
+    p2p::create_validator_node_rpc_service,
     ExitCodes,
 };
 use log::*;
@@ -51,6 +53,7 @@ use tari_app_utilities::{
 use tari_common::{configuration::ValidatorNodeConfig, CommsTransport, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
     peer_manager::PeerFeatures,
+    protocol::rpc::RpcServer,
     socks,
     tor,
     tor::TorIdentity,
@@ -83,11 +86,11 @@ impl DanNode {
         Self { config }
     }
 
-    pub async fn start<TMempoolService: MempoolService + Clone + Send>(
+    pub async fn start(
         &self,
         create_id: bool,
         shutdown: ShutdownSignal,
-        mempool_service: TMempoolService,
+        mempool_service: MempoolServiceHandle,
     ) -> Result<(), ExitCodes> {
         fs::create_dir_all(&self.config.peer_db_path).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
         let node_identity = setup_node_identity(
@@ -104,7 +107,7 @@ impl DanNode {
             node_identity.node_id()
         );
         let (handles, subscription_factory) = self
-            .build_service_and_comms_stack(shutdown.clone(), node_identity.clone())
+            .build_service_and_comms_stack(shutdown.clone(), node_identity.clone(), mempool_service.clone())
             .await?;
 
         let dan_config = self
@@ -153,7 +156,7 @@ impl DanNode {
         Ok(result)
     }
 
-    async fn start_asset_worker<TMempoolService: MempoolService + Clone + Send>(
+    async fn start_asset_worker<TMempoolService: MempoolService + Clone>(
         &self,
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
@@ -231,7 +234,7 @@ impl DanNode {
         consensus_worker
             .run(shutdown.clone(), None)
             .await
-            .map_err(|err| ExitCodes::ConfigError(err.to_string()));
+            .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
 
         Ok(())
     }
@@ -240,11 +243,13 @@ impl DanNode {
         &self,
         shutdown: ShutdownSignal,
         node_identity: Arc<NodeIdentity>,
+        mempool: MempoolServiceHandle,
     ) -> Result<(ServiceHandles, SubscriptionFactory), ExitCodes> {
         // this code is duplicated from the base node
         let comms_config = self.create_comms_config(node_identity.clone());
 
         let (publisher, peer_message_subscriptions) = pubsub_connector(100, self.config.buffer_rate_limit_base_node);
+
         let mut handles = StackBuilder::new(shutdown.clone())
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .build()
@@ -254,6 +259,9 @@ impl DanNode {
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
+
+        let comms = self.setup_p2p_rpc(comms, &handles, mempool);
+
         let comms = spawn_comms_using_transport(comms, self.create_transport_type())
             .await
             .map_err(|e| ExitCodes::ConfigError(format!("Could not spawn using transport:{}", e)))?;
@@ -269,6 +277,34 @@ impl DanNode {
 
         handles.register(comms);
         Ok((handles, peer_message_subscriptions))
+    }
+
+    fn setup_p2p_rpc(
+        &self,
+        comms: UnspawnedCommsNode,
+        handles: &ServiceHandles,
+        mempool: MempoolServiceHandle,
+    ) -> UnspawnedCommsNode {
+        let dht = handles.expect_handle::<Dht>();
+        let builder = RpcServer::builder();
+        let builder = match self.config.rpc_max_simultaneous_sessions {
+            Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Node is configured to allow unlimited RPC sessions."
+                );
+                builder.with_unlimited_simultaneous_sessions()
+            },
+        };
+        let rpc_server = builder.finish();
+
+        // Add your RPC services here ‍🏴‍☠️️☮️🌊
+        let rpc_server = rpc_server
+            .add_service(dht.rpc_service())
+            .add_service(create_validator_node_rpc_service(mempool));
+
+        comms.add_protocol_extension(rpc_server)
     }
 
     fn create_comms_config(&self, node_identity: Arc<NodeIdentity>) -> P2pConfig {

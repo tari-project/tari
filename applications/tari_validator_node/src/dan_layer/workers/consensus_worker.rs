@@ -298,7 +298,7 @@ where
                 info!(
                     target: LOG_TARGET,
                     "Status: {} in mempool ",
-                    self.payload_provider.get_payload_queue(),
+                    self.payload_provider.get_payload_queue().await,
                 );
                 let mut state = states::NextViewState::new();
                 state
@@ -359,6 +359,7 @@ mod test {
         },
     };
 
+    use crate::dan_layer::models::Committee;
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 

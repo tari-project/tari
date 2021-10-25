@@ -1,11 +1,11 @@
 [package]
-name = "app"
+name = "tari_collectibles"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
-default-run = "app"
+description = "Tari Collectibles"
+authors = ["The Tari Development Community"]
+license = "MIT"
+repository = "https://github.com/tari-project/tari"
+default-run = "tari_collectibles"
 edition = "2018"
 build = "src/build.rs"
 

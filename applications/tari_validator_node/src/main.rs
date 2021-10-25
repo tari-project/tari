@@ -87,7 +87,6 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone());
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);
-    // task::spawn(run_grpc(grpc_server, grpc_addr,  shutdown.to_signal()));
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
     run_dan_node(shutdown.to_signal(), config, mempool_service).await?;
@@ -102,10 +101,10 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
-async fn run_dan_node<TMempoolService: MempoolService + Clone + Send>(
+async fn run_dan_node(
     shutdown_signal: ShutdownSignal,
     config: GlobalConfig,
-    mempool_service: TMempoolService,
+    mempool_service: MempoolServiceHandle,
 ) -> Result<(), ExitCodes> {
     let node = DanNode::new(config);
     node.start(true, shutdown_signal, mempool_service).await

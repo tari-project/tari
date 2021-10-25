@@ -80,6 +80,10 @@ impl RpcRequestMock {
         }
     }
 
+    pub fn peer_manager(&self) -> &PeerManager {
+        self.comms_provider.peer_manager()
+    }
+
     pub fn request_with_context<T>(&self, node_id: NodeId, msg: T) -> Request<T> {
         let context = RequestContext::new(0, node_id, Box::new(self.comms_provider.clone()));
         Request::with_context(context, 0.into(), msg)

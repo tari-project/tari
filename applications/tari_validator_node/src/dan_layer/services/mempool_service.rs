@@ -21,13 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{dan_layer::models::Instruction, digital_assets_error::DigitalAssetError};
-use std::sync::{Arc, Mutex};
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub trait MempoolService {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
-    fn size(&self) -> usize;
+#[async_trait]
+pub trait MempoolService: Sync + Send + 'static {
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError>;
+    async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError>;
+    async fn size(&self) -> usize;
 }
 
 pub struct ConcreteMempoolService {
@@ -40,17 +43,18 @@ impl ConcreteMempoolService {
     }
 }
 
+#[async_trait]
 impl MempoolService for ConcreteMempoolService {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
         self.instructions.push(instruction);
         Ok(())
     }
 
-    fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+    async fn read_block(&self, _limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         Ok(self.instructions.clone())
     }
 
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
         let mut result = self.instructions.clone();
         for i in instructions {
             if let Some(position) = result.iter().position(|r| r == i) {
@@ -61,7 +65,7 @@ impl MempoolService for ConcreteMempoolService {
         Ok(())
     }
 
-    fn size(&self) -> usize {
+    async fn size(&self) -> usize {
         self.instructions.len()
     }
 }
@@ -77,20 +81,21 @@ impl MempoolServiceHandle {
     }
 }
 
+#[async_trait]
 impl MempoolService for MempoolServiceHandle {
-    fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
-        self.mempool.lock().unwrap().submit_instruction(instruction)
+    async fn submit_instruction(&mut self, instruction: Instruction) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().await.submit_instruction(instruction).await
     }
 
-    fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
-        self.mempool.lock().unwrap().read_block(limit)
+    async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
+        self.mempool.lock().await.read_block(limit).await
     }
 
-    fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
-        self.mempool.lock().unwrap().remove_instructions(instructions)
+    async fn remove_instructions(&mut self, instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
+        self.mempool.lock().await.remove_instructions(instructions).await
     }
 
-    fn size(&self) -> usize {
-        self.mempool.lock().unwrap().size()
+    async fn size(&self) -> usize {
+        self.mempool.lock().await.size().await
     }
 }

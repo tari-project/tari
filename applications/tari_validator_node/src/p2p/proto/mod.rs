@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod proto;
+mod conversions;
 
-mod rpc;
-pub use rpc::create_validator_node_rpc_service;
+pub mod dan {
+    include!(concat!(env!("OUT_DIR"), "/tari.p2p.dan.rs"));
+}
+
+pub mod validator_node {
+    include!(concat!(env!("OUT_DIR"), "/tari.p2p.validator_node.rs"));
+}
