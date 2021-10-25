@@ -31,7 +31,7 @@ mod types;
 use crate::{
     dan_layer::{
         dan_node::DanNode,
-        services::{ConcreteMempoolService, MempoolService, MempoolServiceHandle},
+        services::{MempoolService, MempoolServiceHandle},
     },
     grpc::{
         validator_node_grpc_server::ValidatorNodeGrpcServer,
@@ -43,7 +43,6 @@ use log::*;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     process,
-    sync::{Arc, Mutex},
 };
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
@@ -83,7 +82,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
-    let mempool_service = MempoolServiceHandle::new(Arc::new(Mutex::new(ConcreteMempoolService::new())));
+    let mempool_service = MempoolServiceHandle::new();
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone());
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);
