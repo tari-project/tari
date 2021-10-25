@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{InstructionSet, Payload},
+        models::{InstructionSet, Payload, TariDanPayload},
         services::{AssetProcessor, MempoolService},
     },
     digital_assets_error::DigitalAssetError,
@@ -34,7 +34,7 @@ pub trait PayloadProcessor<TPayload: Payload> {
     async fn process_payload(&mut self, payload: &TPayload) -> Result<(), DigitalAssetError>;
 }
 
-pub struct InstructionSetProcessor<TAssetProcessor, TMempoolService>
+pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 where
     TAssetProcessor: AssetProcessor,
     TMempoolService: MempoolService,
@@ -44,7 +44,7 @@ where
 }
 
 impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
-    InstructionSetProcessor<TAssetProcessor, TMempoolService>
+    TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
     pub fn new(asset_processor: TAssetProcessor, mempool_service: TMempoolService) -> Self {
         Self {
@@ -55,10 +55,10 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 }
 
 #[async_trait]
-impl<TAssetProcessor: AssetProcessor + Send, TMempoolService: MempoolService + Send> PayloadProcessor<InstructionSet>
-    for InstructionSetProcessor<TAssetProcessor, TMempoolService>
+impl<TAssetProcessor: AssetProcessor + Send, TMempoolService: MempoolService + Send> PayloadProcessor<TariDanPayload>
+    for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
-    async fn process_payload(&mut self, payload: &InstructionSet) -> Result<(), DigitalAssetError> {
+    async fn process_payload(&mut self, payload: &TariDanPayload) -> Result<(), DigitalAssetError> {
         for instruction in payload.instructions() {
             dbg!("Executing instruction");
             dbg!(&instruction);

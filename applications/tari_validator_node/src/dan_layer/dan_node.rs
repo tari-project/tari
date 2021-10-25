@@ -26,16 +26,15 @@ use crate::{
         services::{
             infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
             ConcreteAssetProcessor,
-            ConcreteBftReplicaService,
             ConcreteCommitteeManager,
             GrpcBaseNodeClient,
-            InstructionSetProcessor,
             LoggingEventsPublisher,
             MemoryInstructionLog,
-            MempoolPayloadProvider,
             MempoolService,
             MempoolServiceHandle,
             NodeIdentitySigningService,
+            TariDanPayloadProcessor,
+            TariDanPayloadProvider,
         },
         storage::{AssetDataStore, LmdbAssetStore},
         workers::ConsensusWorker,
@@ -189,9 +188,7 @@ impl DanNode {
         let committee = Committee::new(committee);
         let committee_service = ConcreteCommitteeManager::new(committee);
 
-        let bft_replica_service = ConcreteBftReplicaService::new(node_identity.clone(), vec![]);
-
-        let mempool_payload_provider = MempoolPayloadProvider::new(mempool_service.clone());
+        let payload_provider = TariDanPayloadProvider::new(mempool_service.clone());
 
         let events_publisher = LoggingEventsPublisher::new();
         let signing_service = NodeIdentitySigningService::new(node_identity.clone());
@@ -202,7 +199,7 @@ impl DanNode {
         let instruction_log = MemoryInstructionLog::default();
         let asset_processor = ConcreteAssetProcessor::new(data_store, instruction_log, asset_definition.clone());
 
-        let payload_processor = InstructionSetProcessor::new(asset_processor, mempool_service);
+        let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service);
         let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
 
@@ -218,12 +215,11 @@ impl DanNode {
         let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
 
         let mut consensus_worker = ConsensusWorker::new(
-            bft_replica_service,
             receiver,
             outbound,
             committee_service,
             node_identity.public_key().clone(),
-            mempool_payload_provider,
+            payload_provider,
             events_publisher,
             signing_service,
             payload_processor,

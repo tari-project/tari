@@ -30,6 +30,7 @@ use crate::{
 };
 use async_trait::async_trait;
 
+use crate::dan_layer::models::TariDanPayload;
 use std::marker::PhantomData;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
@@ -74,12 +75,12 @@ impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
 }
 
 #[async_trait]
-impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundService<InstructionSet> {
+impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundService<TariDanPayload> {
     async fn send(
         &mut self,
         from: CommsPublicKey,
         to: CommsPublicKey,
-        message: HotStuffMessage<InstructionSet>,
+        message: HotStuffMessage<TariDanPayload>,
     ) -> Result<(), DigitalAssetError> {
         // Tari comms does allow sending to itself
         if from == to {
@@ -87,7 +88,7 @@ impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundServic
             return Ok(());
         }
 
-        let inner = proto::dan::HotStuffMessage::from(&message);
+        let inner = proto::dan::HotStuffMessage::from(message);
         let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
 
         self.outbound_message_requester
@@ -101,7 +102,7 @@ impl OutboundService<CommsPublicKey, InstructionSet> for TariCommsOutboundServic
         &mut self,
         from: CommsPublicKey,
         committee: &[CommsPublicKey],
-        message: HotStuffMessage<InstructionSet>,
+        message: HotStuffMessage<TariDanPayload>,
     ) -> Result<(), DigitalAssetError> {
         for committee_member in committee {
             // TODO: send in parallel

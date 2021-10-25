@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{Instruction, Payload};
+use crate::dan_layer::models::{ConsensusHash, Instruction, Payload};
 use std::hash::Hash;
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;
@@ -36,7 +36,7 @@ impl InstructionSetHash {
 
 // TODO: Implement hash properly
 #[allow(clippy::derive_hash_xor_eq)]
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct InstructionSet {
     hash: InstructionSetHash,
     instructions: Vec<Instruction>,
@@ -72,17 +72,8 @@ impl InstructionSet {
     }
 }
 
-impl Payload for InstructionSet {}
-
-// TODO: Not really the correct trait, it should be AsHash
-impl AsRef<[u8]> for InstructionSet {
-    fn as_ref(&self) -> &[u8] {
+impl ConsensusHash for InstructionSet {
+    fn consensus_hash(&self) -> &[u8] {
         self.hash.as_bytes()
-    }
-}
-
-impl PartialEq for InstructionSet {
-    fn eq(&self, other: &Self) -> bool {
-        self.hash.eq(&other.hash)
     }
 }

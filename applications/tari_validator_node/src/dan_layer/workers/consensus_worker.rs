@@ -34,7 +34,6 @@ use crate::{
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BaseNodeClient,
-            BftReplicaService,
             CommitteeManager,
             EventsPublisher,
             PayloadProcessor,
@@ -56,7 +55,6 @@ use tokio::time::Duration;
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
 pub struct ConsensusWorker<
-    TBftReplicaService,
     TInboundConnectionService,
     TOutboundService,
     TAddr,
@@ -68,7 +66,6 @@ pub struct ConsensusWorker<
     TCommitteeManager,
     TBaseNodeClient,
 > where
-    TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable + Clone + Send,
@@ -80,7 +77,6 @@ pub struct ConsensusWorker<
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
 {
-    _bft_replica_service: TBftReplicaService,
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
     state: ConsensusWorkerState,
@@ -99,7 +95,6 @@ pub struct ConsensusWorker<
 }
 
 impl<
-        TBftReplicaService,
         TInboundConnectionService,
         TOutboundService,
         TAddr,
@@ -112,7 +107,6 @@ impl<
         TBaseNodeClient,
     >
     ConsensusWorker<
-        TBftReplicaService,
         TInboundConnectionService,
         TOutboundService,
         TAddr,
@@ -125,7 +119,6 @@ impl<
         TBaseNodeClient,
     >
 where
-    TBftReplicaService: BftReplicaService,
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + 'static + Send + Sync,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable + Clone + Send + Sync,
@@ -138,7 +131,6 @@ where
     TBaseNodeClient: BaseNodeClient,
 {
     pub fn new(
-        bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
         outbound_service: TOutboundService,
         committee_manager: TCommitteeManager,
@@ -155,7 +147,6 @@ where
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
 
         Self {
-            _bft_replica_service: bft_replica_service,
             inbound_connections,
             state: ConsensusWorkerState::Starting,
             current_view_id: ViewId(0),

@@ -29,11 +29,20 @@ message QuorumCertificate {
 
 message HotStuffTreeNode {
     bytes parent = 1;
-    InstructionSet payload = 2;
+    TariDanPayload payload = 2;
 }
 
 message Signature{
 
+}
+
+message TariDanPayload {
+    InstructionSet instruction_set = 1;
+    CheckpointData checkpoint = 2;
+}
+
+message CheckpointData {
+    // todo: fill this in
 }
 
 message InstructionSet{
