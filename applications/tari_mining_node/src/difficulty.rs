@@ -23,7 +23,8 @@
 use crate::errors::{err_empty, MinerError};
 use sha3::{Digest, Sha3_256};
 use tari_app_grpc::tari_rpc::BlockHeader;
-use tari_core::{large_ints::U256, tari_utilities::ByteArray};
+use tari_core::large_ints::U256;
+use tari_utilities::ByteArray;
 
 pub type Difficulty = u64;
 

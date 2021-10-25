@@ -26,7 +26,7 @@ use crate::{
     types::PublicKey,
 };
 use async_trait::async_trait;
-use std::net::SocketAddr;
+use std::{convert::TryInto, net::SocketAddr};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_crypto::tari_utilities::ByteArray;
 
@@ -98,11 +98,18 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         };
         dbg!(&request);
         let mut result = inner.get_tokens(request).await.unwrap().into_inner();
+        dbg!(&result);
         let mut outputs = vec![];
         while let Some(r) = result.message().await.unwrap() {
             outputs.push(r);
         }
-        dbg!(&outputs);
-        Ok(Some(BaseLayerOutput {}))
+        let output = outputs
+            .first()
+            .map(|o| match o.features.clone().unwrap().try_into() {
+                Ok(f) => Ok(BaseLayerOutput { features: f }),
+                Err(e) => Err(DigitalAssetError::ConversionError(e)),
+            })
+            .transpose()?;
+        Ok(output)
     }
 }

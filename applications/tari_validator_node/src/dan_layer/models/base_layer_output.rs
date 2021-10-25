@@ -22,11 +22,17 @@
 
 //! A trait to allow abstraction from a specific base layer output
 use crate::types::PublicKey;
+use tari_core::transactions::transaction::OutputFeatures;
 
-pub struct BaseLayerOutput {}
+pub struct BaseLayerOutput {
+    pub features: OutputFeatures,
+}
 
 impl BaseLayerOutput {
-    pub fn get_side_chain_committee(&self) -> Vec<PublicKey> {
-        todo!()
+    pub fn get_side_chain_committee(&self) -> Option<&[PublicKey]> {
+        self.features
+            .sidechain_checkpoint
+            .as_ref()
+            .map(|s| s.committee.as_slice())
     }
 }

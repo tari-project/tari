@@ -70,13 +70,19 @@ class CreateContent extends React.Component {
         let name = this.state.name;
         let description =this.state.description;
         let image = this.state.image;
-            let b = await binding.command_assets_create(name, description, image).catch((err)=> {
-                this.setState({
-                    error: "Could not create asset: " + err
-                });
-                console.log(err);
+        try {
+            let publicKey = await binding.command_assets_create(name, description, image);
+            let res = await binding.command_asset_issue_simple_tokens(publicKey, parseInt(this.state.numberInitialTokens), this.state.committee);
+console.log(res);
+            let history = this.props.history;
+           history.push("/library")
+
+        } catch (err) {
+            this.setState({
+                error: "Could not create asset: " + err
             });
-            console.log(b);
+            console.log(err);
+        }
         this.setState({isSaving: false});
     }
 

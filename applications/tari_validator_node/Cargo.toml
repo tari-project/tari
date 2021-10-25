@@ -13,12 +13,13 @@ tari_app_grpc = {path = "../tari_app_grpc" }
 tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_crypto = "0.11.1"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_mmr = { path = "../../base_layer/mmr" }
 tari_p2p = { path = "../../base_layer/p2p" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_storage = { path = "../../infrastructure/storage" }
+tari_core = {path = "../../base_layer/core"}
 
 anyhow = "1.0.32"
 async-trait = "0.1.50"

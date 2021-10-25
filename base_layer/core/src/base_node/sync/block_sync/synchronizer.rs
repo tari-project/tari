@@ -29,7 +29,6 @@ use crate::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     proto::base_node::SyncBlocksRequest,
-    tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
     validation::BlockSyncBodyValidation,
 };
@@ -46,6 +45,7 @@ use tari_comms::{
     peer_manager::NodeId,
     PeerConnection,
 };
+use tari_utilities::{hex::Hex, Hashable};
 use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";

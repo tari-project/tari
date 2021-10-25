@@ -36,10 +36,10 @@ use libc::{c_char, c_int, c_ulonglong};
 use std::ffi::CString;
 use tari_core::{
     blocks::Block,
-    crypto::tari_utilities::{message_format::MessageFormat, Hashable},
     proof_of_work::{sha3_difficulty, Difficulty},
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 
 /// Validates a hex string is convertible into a TariPublicKey

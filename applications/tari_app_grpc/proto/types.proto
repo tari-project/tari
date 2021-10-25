@@ -226,6 +226,7 @@ message MintNonFungibleFeatures {
 
 message SideChainCheckpointFeatures {
     bytes merkle_root = 1;
+    repeated bytes committee = 2;
 }
 
 

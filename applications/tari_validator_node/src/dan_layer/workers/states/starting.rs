@@ -48,7 +48,6 @@ where TBaseNodeClient: BaseNodeClient
         let tip = base_node_client.get_tip_info().await?;
         // committee service.get latest committee
         // get latest checkpoint on the base layer
-        dbg!("hello");
         let last_checkpoint = base_node_client
             .get_current_checkpoint(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,

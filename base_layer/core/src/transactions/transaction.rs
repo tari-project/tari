@@ -107,6 +107,7 @@ pub struct MintNonFungibleFeatures {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct SideChainCheckpointFeatures {
     pub merkle_root: Vec<u8>,
+    pub committee: Vec<PublicKey>,
 }
 
 /// Options for UTXO's
@@ -197,27 +198,18 @@ impl OutputFeatures {
         }
     }
 
-    pub fn for_checkpoint(parent_public_key: PublicKey, merkle_root: Vec<u8>) -> OutputFeatures {
+    pub fn for_checkpoint(
+        parent_public_key: PublicKey,
+        merkle_root: Vec<u8>,
+        committee: Vec<PublicKey>,
+    ) -> OutputFeatures {
         const checkpoint_unique_id: [u8; 32] = [3u8; 32];
         Self {
             flags: OutputFlags::SIDECHAIN_CHECKPOINT,
-            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root }),
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
             unique_id: Some(checkpoint_unique_id.to_vec()),
             ..Default::default()
-        }
-    }
-
-    pub fn unique_asset_id(&self) -> Option<Vec<u8>> {
-        let parent_public_key = self.parent_public_key.as_ref();
-        let unique_id = self.unique_id.as_ref();
-
-        match (parent_public_key, unique_id) {
-            (Some(pk), Some(id)) => {
-                let unique_asset_id = [pk.as_bytes(), id.as_slice()].concat();
-                Some(unique_asset_id)
-            },
-            _ => None,
         }
     }
 }
@@ -266,8 +258,9 @@ bitflags! {
         const COINBASE_OUTPUT = 0b0000_0001;
         const NON_FUNGIBLE = 0b0000_1000;
         // TODO: separate these flags
-        const ASSET_REGISTRATION = 0b0000_0010 | Self::NON_FUNGIBLE.bits; // Registration and also non-fungible
-        const MINT_NON_FUNGIBLE = 0b0000_0100 | Self::NON_FUNGIBLE.bits; // Mint and non-fungible
+        const ASSET_REGISTRATION = 0b0000_0010 | Self::NON_FUNGIBLE.bits;
+        const MINT_NON_FUNGIBLE = 0b0000_0100 | Self::NON_FUNGIBLE.bits;
+        const BURN_NON_FUNGIBLE = 0b1000_0000 | Self::NON_FUNGIBLE.bits;
         const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
     }
 }

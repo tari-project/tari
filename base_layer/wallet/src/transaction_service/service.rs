@@ -65,7 +65,6 @@ use tari_common_types::types::PrivateKey;
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    crypto::keys::SecretKey,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
@@ -81,7 +80,11 @@ use tari_core::{
         ReceiverTransactionProtocol,
     },
 };
-use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
+use tari_crypto::{
+    keys::{DiffieHellmanSharedSecret, SecretKey},
+    script,
+    tari_utilities::ByteArray,
+};
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;

@@ -36,6 +36,8 @@ pub enum DigitalAssetError {
     PersistenceError(#[from] PersistenceError),
     #[error("Metadata was malformed: {0}")]
     MalformedMetadata(String),
+    #[error("Could not convert between types:{0}")]
+    ConversionError(String),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

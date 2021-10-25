@@ -32,11 +32,11 @@ use crate::{
         randomx_factory::{RandomXFactory, RandomXVMInstance},
         Difficulty,
     },
-    tari_utilities::hex::HexError,
 };
 use log::*;
 use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
 use std::iter;
+use tari_utilities::hex::HexError;
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not

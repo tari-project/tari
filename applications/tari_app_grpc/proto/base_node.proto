@@ -98,6 +98,8 @@ message GetTokensResponse {
     bytes owner_commitment = 3;
     bytes mined_in_block = 4;
     uint64 mined_height = 5;
+    OutputFeatures features = 6;
+    bytes script = 7;
 }
 
 message SubmitBlockResponse {

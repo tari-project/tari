@@ -22,7 +22,7 @@
 
 use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
 use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
-use tari_core::crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {

@@ -30,10 +30,8 @@ async function command_assets_list() {
 }
 
 
-async function command_asset_issue_simple_tokens(assetPubKey, numTokens) {
-    console.log(assetPubKey);
-    console.log(numTokens);
-    return await invoke("assets_issue_simple_tokens", {assetPubKey, numTokens});
+async function command_asset_issue_simple_tokens(assetPubKey, numTokens, committee) {
+    return await invoke("assets_issue_simple_tokens", {assetPubKey, numTokens, committee});
 }
 
 export default {

@@ -7,7 +7,8 @@ use crate::{
     },
     utils::formatting::display_compressed_string,
 };
-use tari_core::{tari_utilities::hex::Hex, transactions::tari_amount::MicroTari};
+use tari_core::transactions::tari_amount::MicroTari;
+use tari_utilities::hex::Hex;
 use tari_wallet::{tokens::Token, types::DEFAULT_FEE_PER_GRAM};
 use tokio::{runtime::Handle, sync::watch};
 use tui::{

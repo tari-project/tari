@@ -48,6 +48,7 @@ pub struct OutputSql {
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
     pub features_asset_template_ids_implemented: Option<String>,
+    pub features_sidechain_committee: Option<String>,
 }
 
 impl OutputSql {
