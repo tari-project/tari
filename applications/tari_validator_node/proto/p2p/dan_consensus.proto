@@ -1,11 +1,6 @@
 syntax = "proto3";
 
-//import "google/protobuf/wrappers.proto";
-//import "google/protobuf/timestamp.proto";
-//import "transaction.proto";
-//import "types.proto";
-
-package tari.dan_p2p;
+package tari.p2p.dan;
 
 enum HotStuffMessageType {
     HOT_STUFF_MESSAGE_TYPE_UNKNOWN = 0;

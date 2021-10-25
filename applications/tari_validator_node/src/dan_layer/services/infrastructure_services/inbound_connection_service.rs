@@ -25,7 +25,7 @@ use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload};
 use crate::{
     dan_layer::services::infrastructure_services::NodeAddressable,
     digital_assets_error::DigitalAssetError,
-    p2p::dan_p2p,
+    p2p::proto,
 };
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
@@ -91,7 +91,7 @@ impl TariCommsInboundConnectionService {
     async fn forward_message(&mut self, message: Arc<PeerMessage>) -> Result<(), DigitalAssetError> {
         // let from = message.authenticated_origin.as_ref().unwrap().clone();
         let from = message.source_peer.public_key.clone();
-        let proto_message: dan_p2p::HotStuffMessage = message.decode_message().unwrap();
+        let proto_message: proto::dan::HotStuffMessage = message.decode_message().unwrap();
         let hot_stuff_message = proto_message
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;

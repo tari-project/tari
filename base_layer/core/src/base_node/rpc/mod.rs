@@ -38,17 +38,19 @@ use crate::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            QueryDeletedRequest,
+            QueryDeletedResponse,
             Signatures,
             TipInfoResponse,
             TxQueryBatchResponses,
             TxQueryResponse,
             TxSubmissionResponse,
+            UtxoQueryRequest,
+            UtxoQueryResponses,
         },
         types::{Signature, Transaction},
     },
 };
-
-use crate::proto::base_node::{QueryDeletedRequest, QueryDeletedResponse, UtxoQueryRequest, UtxoQueryResponses};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 

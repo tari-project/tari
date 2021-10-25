@@ -6583,6 +6583,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
+ "tari_comms_rpc_macros",
  "tari_core",
  "tari_crypto",
  "tari_mmr",
