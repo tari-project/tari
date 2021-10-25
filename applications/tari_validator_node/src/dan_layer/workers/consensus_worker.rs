@@ -35,13 +35,16 @@ use crate::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
             BaseNodeClient,
             BftReplicaService,
-            CommitteeService,
+            CommitteeManager,
             EventsPublisher,
             PayloadProcessor,
             PayloadProvider,
             SigningService,
         },
-        workers::{states, states::ConsensusWorkerStateEvent},
+        workers::{
+            states,
+            states::{ConsensusWorkerStateEvent, IdleState},
+        },
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -62,7 +65,7 @@ pub struct ConsensusWorker<
     TEventsPublisher,
     TSigningService,
     TPayloadProcessor,
-    TCommitteeService,
+    TCommitteeManager,
     TBaseNodeClient,
 > where
     TBftReplicaService: BftReplicaService,
@@ -74,7 +77,7 @@ pub struct ConsensusWorker<
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TCommitteeService: CommitteeService<TAddr>,
+    TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
 {
     _bft_replica_service: TBftReplicaService,
@@ -82,7 +85,7 @@ pub struct ConsensusWorker<
     outbound_service: TOutboundService,
     state: ConsensusWorkerState,
     current_view_id: ViewId,
-    committee_service: TCommitteeService,
+    committee_manager: TCommitteeManager,
     timeout: Duration,
     node_id: TAddr,
     payload_provider: TPayloadProvider,
@@ -105,7 +108,7 @@ impl<
         TEventsPublisher,
         TSigningService,
         TPayloadProcessor,
-        TCommitteeService,
+        TCommitteeManager,
         TBaseNodeClient,
     >
     ConsensusWorker<
@@ -118,7 +121,7 @@ impl<
         TEventsPublisher,
         TSigningService,
         TPayloadProcessor,
-        TCommitteeService,
+        TCommitteeManager,
         TBaseNodeClient,
     >
 where
@@ -131,14 +134,14 @@ where
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TCommitteeService: CommitteeService<TAddr>,
+    TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
 {
     pub fn new(
         bft_replica_service: TBftReplicaService,
         inbound_connections: TInboundConnectionService,
         outbound_service: TOutboundService,
-        committee_service: TCommitteeService,
+        committee_manager: TCommitteeManager,
         node_id: TAddr,
         payload_provider: TPayloadProvider,
         events_publisher: TEventsPublisher,
@@ -158,7 +161,7 @@ where
             current_view_id: ViewId(0),
             timeout,
             outbound_service,
-            committee_service,
+            committee_manager,
             node_id,
             locked_qc: prepare_qc.clone(),
             prepare_qc,
@@ -175,7 +178,7 @@ where
         Ok(View {
             view_id: self.current_view_id,
             is_leader: self
-                .committee_service
+                .committee_manager
                 .current_committee()?
                 .leader_for_view(self.current_view_id) ==
                 &self.node_id,
@@ -223,7 +226,12 @@ where
         match &mut self.state {
             Starting => {
                 states::Starting::new()
-                    .next_event(&mut self.base_node_client, &self.asset_definition)
+                    .next_event(
+                        &mut self.base_node_client,
+                        &self.asset_definition,
+                        &mut self.committee_manager,
+                        &self.node_id,
+                    )
                     .await
             },
             Prepare => {
@@ -231,7 +239,7 @@ where
                 p.next_event(
                     &self.get_current_view()?,
                     self.timeout,
-                    self.committee_service.current_committee()?,
+                    self.committee_manager.current_committee()?,
                     &mut self.inbound_connections,
                     &mut self.outbound_service,
                     &self.payload_provider,
@@ -242,7 +250,7 @@ where
             PreCommit => {
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
-                    self.committee_service.current_committee()?.clone(),
+                    self.committee_manager.current_committee()?.clone(),
                 );
                 let (res, prepare_qc) = state
                     .next_event(
@@ -262,7 +270,7 @@ where
             Commit => {
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
-                    self.committee_service.current_committee()?.clone(),
+                    self.committee_manager.current_committee()?.clone(),
                 );
                 let (res, locked_qc) = state
                     .next_event(
@@ -281,7 +289,7 @@ where
             Decide => {
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),
-                    self.committee_service.current_committee()?.clone(),
+                    self.committee_manager.current_committee()?.clone(),
                 );
                 state
                     .next_event(
@@ -306,11 +314,16 @@ where
                         &self.get_current_view()?,
                         self.prepare_qc.as_ref().clone(),
                         &mut self.outbound_service,
-                        self.committee_service.current_committee()?,
+                        self.committee_manager.current_committee()?,
                         self.node_id.clone(),
                         shutdown,
                     )
                     .await
+            },
+            Idle => {
+                info!(target: LOG_TARGET, "No work to do, idling");
+                let state = states::IdleState::new();
+                state.next_event().await
             },
         }
     }
@@ -324,6 +337,8 @@ where
         let from = self.state;
         self.state = match (&self.state, event) {
             (Starting, Initialized) => Prepare,
+            (_, NotPartOfCommittee) => Idle,
+            (Idle, TimedOut) => Starting,
             (_, TimedOut) => NextView,
             (NextView, NewView { .. }) => {
                 self.current_view_id = self.current_view_id.next();

@@ -58,7 +58,10 @@ impl WalletClient {
       description,
       image,
     };
-    let result = inner.register_asset(request).await.unwrap();
+    let result = inner
+      .register_asset(request)
+      .await
+      .map_err(|s| format!("Could not register asset: {}", s))?;
     dbg!(&result);
     Ok(result.into_inner().public_key.to_hex())
   }

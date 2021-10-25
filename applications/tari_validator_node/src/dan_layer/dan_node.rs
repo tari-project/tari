@@ -27,7 +27,7 @@ use crate::{
             infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
             ConcreteAssetProcessor,
             ConcreteBftReplicaService,
-            ConcreteCommitteeService,
+            ConcreteCommitteeManager,
             GrpcBaseNodeClient,
             InstructionSetProcessor,
             LoggingEventsPublisher,
@@ -187,7 +187,7 @@ impl DanNode {
         //     .collect::<Result<Vec<_>, _>>()?;
         //
         let committee = Committee::new(committee);
-        let committee_service = ConcreteCommitteeService::new(committee);
+        let committee_service = ConcreteCommitteeManager::new(committee);
 
         let bft_replica_service = ConcreteBftReplicaService::new(node_identity.clone(), vec![]);
 

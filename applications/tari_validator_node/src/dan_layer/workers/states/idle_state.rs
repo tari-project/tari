@@ -20,45 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{dan_layer::workers::states::ConsensusWorkerStateEvent, digital_assets_error::DigitalAssetError};
+use tokio::time::{sleep, Duration};
 
-import {
-    Button, Card, CardActions, CardContent, CardMedia, Container,
-    Grid,
-    Typography
-} from "@mui/material";
-import {withRouter} from "react-router-dom";
+pub struct IdleState {}
 
-const tokens = [{
-    name: "Hello world"
-}];
+impl IdleState {
+    pub fn new() -> Self {
+        Self {}
+    }
 
-function DashboardContent (){
-
-    return (
-<Container maxWidth="md" sx={{ mt: 4, mb: 4, py:8}}>
-    <Grid container spacing={4}>
-        { tokens.map((token) =>
-          (<Grid item key={token} xs={12} sm={6} md={4}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column'}}>
-                  <CardMedia component="img" sx={{ pb: "5%"  }} image="https://source.unsplash.com/random" alt="random"></CardMedia>
-                  <CardContent sx={{ flexGrox:1}}>
-                      <Typography gutterBottom variant="h5" component="h2">
-                          Heading
-                      </Typography>
-                      <Typography>
-                          This is a token
-                      </Typography>
-                  </CardContent>
-                  <CardActions>
-                      <Button size="small">View</Button>
-                      <Button size="small">Edit</Button>
-                  </CardActions>
-              </Card>
-          </Grid>))
-
-        }
-    </Grid>
-    </Container>)
+    pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        sleep(Duration::from_secs(10)).await;
+        Ok(ConsensusWorkerStateEvent::TimedOut)
+    }
 }
-
-export default  withRouter(DashboardContent)

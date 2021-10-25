@@ -160,6 +160,7 @@ pub enum ConsensusWorkerState {
     Commit,
     Decide,
     NextView,
+    Idle,
 }
 
 #[derive(Clone, Debug)]

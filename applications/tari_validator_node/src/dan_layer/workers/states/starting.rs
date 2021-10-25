@@ -21,10 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dan_layer::{models::AssetDefinition, services::BaseNodeClient, workers::states::ConsensusWorkerStateEvent},
+    dan_layer::{
+        models::AssetDefinition,
+        services::{infrastructure_services::NodeAddressable, BaseNodeClient, CommitteeManager},
+        workers::states::ConsensusWorkerStateEvent,
+    },
     digital_assets_error::DigitalAssetError,
 };
+use log::*;
 use std::marker::PhantomData;
+
+const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
 pub struct Starting<TBaseNodeClient: BaseNodeClient> {
     base_node_client: PhantomData<TBaseNodeClient>,
@@ -39,11 +46,17 @@ where TBaseNodeClient: BaseNodeClient
         }
     }
 
-    pub async fn next_event(
+    pub async fn next_event<TAddr: NodeAddressable, TCommitteeManager: CommitteeManager<TAddr>>(
         &self,
         base_node_client: &mut TBaseNodeClient,
         asset_definition: &AssetDefinition,
+        committee_manager: &mut TCommitteeManager,
+        node_id: &TAddr,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        info!(
+            target: LOG_TARGET,
+            "Checking base layer to see if we are part of the committee"
+        );
         let tip = base_node_client.get_tip_info().await?;
         // committee service.get latest committee
         // get latest checkpoint on the base layer
@@ -60,8 +73,11 @@ where TBaseNodeClient: BaseNodeClient
             Some(chk) => chk,
         };
 
-        // Get committee
-        let committee = last_checkpoint.get_side_chain_committee();
+        committee_manager.read_from_checkpoint(last_checkpoint)?;
+
+        if !committee_manager.current_committee()?.contains(node_id) {
+            return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
+        }
         todo!();
 
         Ok(ConsensusWorkerStateEvent::Initialized)

@@ -47,6 +47,10 @@ impl<TAddr: NodeAddressable> Committee<TAddr> {
     pub fn len(&self) -> usize {
         self.members.len()
     }
+
+    pub fn contains(&self, member: &TAddr) -> bool {
+        return self.members.contains(member);
+    }
 }
 
 impl<TAddr: NodeAddressable> IntoIterator for Committee<TAddr> {
