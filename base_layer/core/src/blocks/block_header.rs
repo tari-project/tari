@@ -334,6 +334,7 @@ pub(crate) mod hash_serializer {
 mod test {
     use crate::blocks::BlockHeader;
     use tari_crypto::tari_utilities::Hashable;
+
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();

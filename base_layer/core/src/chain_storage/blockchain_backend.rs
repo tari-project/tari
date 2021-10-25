@@ -119,12 +119,13 @@ pub trait BlockchainBackend: Send + Sync {
         commitment: &Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
-    /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists in the current UTXO
-    /// set, otherwise None is returned.
+    /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists, otherwise None is
+    /// returned.
     fn fetch_utxo_by_unique_id(
         &self,
         parent_public_key: Option<&PublicKey>,
         unique_id: &[u8],
+        deleted_at: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
 
     /// Returns all unspent outputs with a parent public key

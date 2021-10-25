@@ -32,13 +32,18 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        transaction::{Transaction, UnblindedOutput},
+        test_helpers::{schema_to_transaction, TransactionSchema},
+        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
+    txn_schema,
 };
+use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_common::configuration::Network;
+use tari_common_types::types::CommitmentFactory;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -60,7 +65,8 @@ fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
 ) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
-    let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
+    let height = db.get_height().unwrap();
+    let mut prev_block = Arc::new(db.fetch_block(height).unwrap().try_into_block().unwrap());
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size as u64 {
@@ -238,7 +244,6 @@ mod fetch_headers {
 
 mod find_headers_after_hash {
     use super::*;
-    use crate::chain_storage::ChainStorageError;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -351,16 +356,6 @@ mod fetch_block_hashes_from_header_tip {
 
 mod add_block {
     use super::*;
-    use crate::{
-        chain_storage::ChainStorageError,
-        transactions::{
-            tari_amount::T,
-            test_helpers::{schema_to_transaction, TransactionSchema},
-            transaction::OutputFeatures,
-        },
-        txn_schema,
-    };
-    use tari_utilities::hex::Hex;
 
     #[test]
     fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {
@@ -478,5 +473,141 @@ mod prepare_new_block {
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
+    }
+}
+
+mod fetch_utxo_by_unique_id {
+    use super::*;
+
+    #[test]
+    fn it_returns_none_if_empty() {
+        let db = setup();
+        let asset_pk = RistrettoPublicKey::default();
+        let result = db.fetch_utxo_by_unique_id(Some(asset_pk), vec![1, 2, 3], None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn it_finds_the_utxo_by_unique_id_at_deleted_height() {
+        let db = setup();
+        let unique_id = vec![1u8; 3];
+        let (_, asset_pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+
+        // Height 1
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![500 * T],
+            fee: 5.into(),
+            lock: 0,
+            features: features
+        )]);
+
+        let asset_utxo1 = tx_outputs.iter().find(|o| o.features == features).unwrap();
+
+        // Height 2 - mint
+        let (block, _) = create_next_block(blocks.last().unwrap(), txns);
+        assert!(db.add_block(block.clone()).unwrap().is_added());
+
+        // Height 4
+        let (blocks, _) = add_many_chained_blocks(2, &db);
+
+        let info = db
+            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(info.output.as_transaction_output().unwrap().features, features);
+        let expected_commitment =
+            CommitmentFactory::default().commit_value(&asset_utxo1.spending_key, asset_utxo1.value.as_u64());
+        assert_eq!(
+            info.output.as_transaction_output().unwrap().commitment,
+            expected_commitment
+        );
+
+        let features = OutputFeatures {
+            flags: OutputFlags::empty(),
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![asset_utxo1.clone()],
+            to: vec![50 * T],
+            fee: 5.into(),
+            lock: 0,
+            features: features
+        )]);
+
+        let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
+
+        // Height 5 - spend
+        let (block, _) = create_next_block(&blocks.last().unwrap(), txns);
+        assert!(db.add_block(block).unwrap().is_added());
+
+        // Height 10
+        let (blocks, _) = add_many_chained_blocks(5, &db);
+
+        // Current UTXO
+        let info = db
+            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .unwrap()
+            .unwrap();
+        let expected_commitment =
+            CommitmentFactory::default().commit_value(&asset_utxo2.spending_key, asset_utxo2.value.as_u64());
+        assert_eq!(
+            info.output.as_transaction_output().unwrap().commitment,
+            expected_commitment
+        );
+
+        let assert_utxo_not_found = |deleted_height: Option<u64>| {
+            let info = db
+                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .unwrap();
+            assert!(info.is_none());
+        };
+
+        let assert_utxo_found = |utxo: &UnblindedOutput, deleted_height: Option<u64>| {
+            let info = db
+                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .unwrap()
+                .ok_or_else(|| format!("was none at deleted height {:?}", deleted_height))
+                .unwrap();
+
+            let expected_commitment =
+                CommitmentFactory::default().commit_value(&utxo.spending_key, utxo.value.as_u64());
+            assert_eq!(
+                info.output.as_transaction_output().unwrap().commitment,
+                expected_commitment
+            );
+        };
+
+        (0..=4).for_each(|i| {
+            assert_utxo_not_found(Some(i));
+        });
+        (5..=10).for_each(|i| {
+            assert_utxo_found(&asset_utxo1, Some(i));
+        });
+
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![asset_utxo2.clone()], to: vec![1 * T])]);
+
+        // Height 11 - burn
+        let (block, _) = create_next_block(&blocks.last().unwrap(), txns);
+        assert!(db.add_block(block).unwrap().is_added());
+
+        assert_utxo_found(&asset_utxo2, None);
+        (0..=4).for_each(|i| {
+            assert_utxo_not_found(Some(i));
+        });
+        (5..=10).for_each(|i| {
+            assert_utxo_found(&asset_utxo1, Some(i));
+        });
+        assert_utxo_found(&asset_utxo2, Some(11));
     }
 }

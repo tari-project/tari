@@ -414,7 +414,7 @@ where T: BlockchainBackend + 'static
                     for id in unique_ids {
                         let output = self
                             .blockchain_db
-                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id)
+                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
                             .await?;
                         if let Some(out) = output {
                             match out.output {

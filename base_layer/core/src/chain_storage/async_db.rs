@@ -160,7 +160,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
-    make_async_fn!(fetch_utxo_by_unique_id(parent_public_key: Option<PublicKey>,unique_id: HashOutput) -> Option<UtxoMinedInfo>, "fetch_utxo_by_unique_id");
+    make_async_fn!(fetch_utxo_by_unique_id(parent_public_key: Option<PublicKey>,unique_id: HashOutput, deleted_at: Option<u64>) -> Option<UtxoMinedInfo>, "fetch_utxo_by_unique_id");
 
     make_async_fn!(fetch_all_unspent_by_parent_public_key(
         parent_public_key: PublicKey,

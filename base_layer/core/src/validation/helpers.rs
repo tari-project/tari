@@ -419,7 +419,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     if let Some(unique_id) = &input.features.unique_id {
-        if let Some(utxo_hash) = db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)? {
+        if let Some(utxo_hash) =
+            db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id, None)?
+        {
             // Check that it is the same utxo in which the unique_id was created
             if utxo_hash.output.hash() == output_hash {
                 return Ok(());
@@ -461,7 +463,7 @@ pub fn check_not_duplicate_txos<B: BlockchainBackend>(db: &B, body: &AggregateBo
     Ok(())
 }
 
-/// This function checks that the outputs do not already exist in the UTxO set.
+/// This function checks that the outputs do not already exist in the TxO set.
 pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
@@ -487,7 +489,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     if let Some(unique_id) = &output.features.unique_id {
         // Needs to have a mint flag
         if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) &&
-            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id)?
+            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id, None)?
                 .is_some()
         {
             warn!(
