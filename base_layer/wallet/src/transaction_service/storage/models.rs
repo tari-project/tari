@@ -182,7 +182,7 @@ impl CompletedTransaction {
     }
 
     pub fn get_unique_id(&self) -> Option<String> {
-        let body = self.transaction.get_body();
+        let body = self.transaction.body();
         for tx_input in body.inputs() {
             if let Some(ref unique_id) = tx_input.features.unique_id {
                 return Some(unique_id.to_hex());

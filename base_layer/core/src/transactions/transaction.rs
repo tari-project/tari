@@ -399,8 +399,8 @@ pub enum TransactionError {
 pub struct UnblindedOutputBuilder {
     pub value: MicroTari,
     spending_key: BlindingFactor,
-    features: OutputFeatures,
-    script: Option<TariScript>,
+    pub features: OutputFeatures,
+    pub script: Option<TariScript>,
     input_data: Option<ExecutionStack>,
     script_private_key: Option<PrivateKey>,
     sender_offset_public_key: Option<PublicKey>,
