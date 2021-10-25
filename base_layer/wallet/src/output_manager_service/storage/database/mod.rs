@@ -35,10 +35,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_core::transactions::{
-    transaction::{OutputFlags, TransactionOutput},
-    transaction_protocol::TxId,
-};
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 use super::OutputStatus;
 

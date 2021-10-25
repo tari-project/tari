@@ -1354,7 +1354,7 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         if let Some((index, key)) =
-            lmdb_get::<_, (u32, String)>(&txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+            lmdb_get::<_, (u32, String)>(txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
         {
             debug!(
                 target: LOG_TARGET,
@@ -1363,7 +1363,7 @@ impl LMDBDatabase {
                 index,
                 key
             );
-            match lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
+            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, key.as_str())? {
                 Some(TransactionOutputRowData {
                     output: Some(o),
                     mmr_position,
@@ -1931,10 +1931,10 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())
     }
 
-    fn fetch_unspent_output_by_unique_id(
+    fn fetch_utxo_by_unique_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &HashOutput,
+        unique_id: &[u8],
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let key = UniqueIdIndexKey::new(parent_public_key, unique_id);
@@ -1961,9 +1961,8 @@ impl BlockchainBackend for LMDBDatabase {
         let values: Vec<HashOutput> = lmdb_fetch_keys_starting_with_bytes(key, &txn, &self.unique_id_index)?;
         let mut result = vec![];
         for hash in values.into_iter().skip(range.start).take(range.len()) {
-            match self.fetch_output_in_txn(&txn, &hash)? {
-                Some(s) => result.push(s),
-                None => (),
+            if let Some(s) = self.fetch_output_in_txn(&txn, &hash)? {
+                result.push(s);
             }
         }
         Ok(result)

@@ -354,11 +354,11 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 .collect::<Vec<_>>();
             // Unless a burn flag is present
             if input.features.flags & OutputFlags::BURN_NON_FUNGIBLE == OutputFlags::BURN_NON_FUNGIBLE {
-                if exactly_one.len() > 0 {
+                if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }
             } else {
-                if exactly_one.len() == 0 {
+                if exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdInInputNotPresentInOutputs);
                 }
                 if exactly_one.len() > 1 {
@@ -419,9 +419,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     if let Some(unique_id) = &input.features.unique_id {
-        if let Some(utxo_hash) =
-            db.fetch_unspent_output_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)?
-        {
+        if let Some(utxo_hash) = db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)? {
             // Check that it is the same utxo in which the unique_id was created
             if utxo_hash.output.hash() == output_hash {
                 return Ok(());
@@ -488,25 +486,23 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 
     if let Some(unique_id) = &output.features.unique_id {
         // Needs to have a mint flag
-        if output.features.flags & OutputFlags::MINT_NON_FUNGIBLE == OutputFlags::MINT_NON_FUNGIBLE {
-            if db
-                .fetch_unspent_output_by_unique_id(output.features.parent_public_key.as_ref(), &unique_id)?
+        if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) &&
+            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id)?
                 .is_some()
-            {
-                warn!(
-                    target: LOG_TARGET,
-                    "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
-                    unique_id.to_hex(),
-                    output
-                        .features
-                        .parent_public_key
-                        .as_ref()
-                        .map(|pk| pk.to_hex())
-                        .unwrap_or_else(|| "<None>".to_string()),
-                    output
-                );
-                return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
-            }
+        {
+            warn!(
+                target: LOG_TARGET,
+                "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
+                unique_id.to_hex(),
+                output
+                    .features
+                    .parent_public_key
+                    .as_ref()
+                    .map(|pk| pk.to_hex())
+                    .unwrap_or_else(|| "<None>".to_string()),
+                output
+            );
+            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
         }
     }
 

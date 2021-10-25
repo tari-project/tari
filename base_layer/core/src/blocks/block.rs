@@ -41,7 +41,6 @@ use std::{
     fmt::{Display, Formatter},
 };
 use tari_common_types::types::BlockHash;
-use tari_crypto::tari_utilities::Hashable;
 use tari_utilities::{hex::Hex, Hashable};
 use thiserror::Error;
 

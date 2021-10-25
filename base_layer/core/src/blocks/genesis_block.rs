@@ -45,7 +45,7 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
     match network {
         MainNet => get_mainnet_genesis_block(),
         Ridcully => get_ridcully_genesis_block(),
-        Stibbons => get_stibbons_genesis_block(),
+        Stibbons => unimplemented!(),
         Weatherwax => get_weatherwax_genesis_block(),
         LocalNet => get_weatherwax_genesis_block(),
         Igor => get_igor_genesis_block(),

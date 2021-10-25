@@ -20,8 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
-
+use crate::{
+    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
+    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
+    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
+    error::WalletError,
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::OutputManagerHandle,
+        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
+        OutputManagerServiceInitializer,
+    },
+    storage::database::{WalletBackend, WalletDatabase},
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        storage::database::TransactionBackend,
+        TransactionServiceInitializer,
+    },
+    types::KeyDigest,
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
+};
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -29,18 +50,12 @@ use aes_gcm::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
+use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_crypto::{
-    common::Blake256,
-    keys::SecretKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
 };
-
-use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -58,6 +73,15 @@ use tari_core::{
         CryptoFactories,
     },
 };
+use tari_crypto::{
+    common::Blake256,
+    keys::SecretKey,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
 use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
@@ -67,36 +91,6 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-
-use crate::{
-    assets::AssetManagerHandle,
-    base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
-    contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
-    error::WalletError,
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::OutputManagerHandle,
-        storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
-        OutputManagerServiceInitializer,
-    },
-    storage::database::{WalletBackend, WalletDatabase},
-    transaction_service::{
-        handle::TransactionServiceHandle,
-        storage::database::TransactionBackend,
-        TransactionServiceInitializer,
-    },
-    types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
-};
-use tari_common_types::transaction::TxId;
-
-use crate::{
-    assets::infrastructure::initializer::AssetManagerServiceInitializer,
-    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
-};
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet";
 

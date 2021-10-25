@@ -22,13 +22,11 @@
 
 use crate::transaction_service::{
     error::TransactionStorageError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
 };
 use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
-
-use crate::transaction_service::storage::models::WalletTransaction;
 use std::{
     collections::HashMap,
     fmt,
@@ -40,7 +38,7 @@ use tari_common_types::{
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, transaction_protocol::TxId};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 

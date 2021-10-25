@@ -208,7 +208,7 @@ impl OutputFeatures {
                 other_features
                     .as_ref()
                     .map(|of| of.flags)
-                    .unwrap_or(OutputFlags::empty()),
+                    .unwrap_or_else(OutputFlags::empty),
             mint_non_fungible: Some(MintNonFungibleFeatures {
                 asset_public_key: asset_public_key.clone(),
                 asset_owner_commitment,
@@ -224,14 +224,18 @@ impl OutputFeatures {
         merkle_root: Vec<u8>,
         committee: Vec<PublicKey>,
     ) -> OutputFeatures {
-        const checkpoint_unique_id: [u8; 32] = [3u8; 32];
+        const CHECKPOINT_UNIQUE_ID: [u8; 32] = [3u8; 32];
         Self {
             flags: OutputFlags::SIDECHAIN_CHECKPOINT,
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
-            unique_id: Some(checkpoint_unique_id.to_vec()),
+            unique_id: Some(CHECKPOINT_UNIQUE_ID.to_vec()),
             ..Default::default()
         }
+    }
+
+    pub fn unique_asset_id(&self) -> Option<&[u8]> {
+        self.unique_id.as_deref()
     }
 }
 
@@ -268,7 +272,11 @@ impl ConsensusDecoding for OutputFeatures {
         // Decode safety: read_varint will stop reading the varint after 10 bytes
         let maturity = reader.read_varint()?;
         let flags = OutputFlags::consensus_decode(reader)?;
-        Ok(Self { flags, maturity })
+        Ok(Self {
+            flags,
+            maturity,
+            ..Default::default()
+        })
     }
 }
 

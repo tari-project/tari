@@ -58,7 +58,6 @@ use tari_common::{
     exit_codes::{ExitCodes, ExitCodes::ConfigError},
     ConfigBootstrap,
     DefaultConfigLoader,
-    GlobalConfig,
 };
 use tari_core::blocks::BlockHeader;
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};

@@ -31,7 +31,6 @@ use crate::{
             PayloadProcessor,
             PayloadProvider,
             SigningService,
-            TemplateService,
         },
     },
     digital_assets_error::DigitalAssetError,

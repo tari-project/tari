@@ -23,17 +23,21 @@
 use crate::{
     assets::Asset,
     error::WalletError,
-    output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase},
-};
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
-
-use crate::{
-    output_manager_service::{handle::OutputManagerHandle, storage::models::DbUnblindedOutput},
+    output_manager_service::{
+        handle::OutputManagerHandle,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
+    },
     types::PersistentKeyManager,
 };
 use log::*;
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::transaction_protocol::TxId;
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PublicKey},
+};
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
 use tari_crypto::script;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
@@ -148,7 +152,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         merkle_root: Vec<u8>,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
-        let mut output = self
+        let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),

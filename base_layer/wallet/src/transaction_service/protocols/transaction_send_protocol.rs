@@ -42,7 +42,7 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -55,7 +55,6 @@ use tari_core::transactions::{
         proto::protocol as proto,
         recipient::RecipientSignedMessage,
         sender::SingleRoundSenderData,
-        TxId,
     },
     SenderTransactionProtocol,
 };

@@ -268,17 +268,14 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        crypto::tari_utilities::hex::Hex,
-        proof_of_work::randomx_factory::RandomXFactory,
-        tari_utilities::hex::from_hex,
-    };
+    use crate::proof_of_work::randomx_factory::RandomXFactory;
     use monero::{
         blockdata::block::BlockHeader,
         consensus::encode::{serialize, VarInt},
     };
     use std::{iter, str::FromStr};
     use tari_test_utils::unpack_enum;
+    use tari_utilities::hex::{from_hex, Hex};
 
     mod tree_hash {
         use super::*;

@@ -27,13 +27,12 @@ use crate::{
     },
     error::WalletError,
 };
-use tari_service_framework::{reply_channel::SenderService, Service};
-
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::{
-    transaction::{OutputFeatures, Transaction},
-    transaction_protocol::TxId,
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PublicKey},
 };
+use tari_core::transactions::transaction::{OutputFeatures, Transaction};
+use tari_service_framework::{reply_channel::SenderService, Service};
 
 #[derive(Clone)]
 pub struct AssetManagerHandle {

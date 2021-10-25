@@ -1086,7 +1086,11 @@ async fn consensus_validation_unique_id() {
 
     let mempool_validator = TxConsensusValidator::new(store.clone());
 
-    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Arc::new(mempool_validator),
+    );
 
     // Create a block with 5 outputs
     let txs = vec![txn_schema!(

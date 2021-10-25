@@ -49,7 +49,6 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
-    crypto::tari_utilities::{hex::Hex, ByteArray},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,

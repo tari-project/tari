@@ -25,7 +25,6 @@ use crate::{
     chain_storage::{BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
     proof_of_work::Difficulty,
-    tari_utilities::Hashable,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
@@ -39,6 +38,7 @@ use crate::{
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_test_utils::unpack_enum;
+use tari_utilities::Hashable;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -353,7 +353,6 @@ mod add_block {
     use super::*;
     use crate::{
         chain_storage::ChainStorageError,
-        crypto::tari_utilities::hex::Hex,
         transactions::{
             tari_amount::T,
             test_helpers::{schema_to_transaction, TransactionSchema},
@@ -361,6 +360,7 @@ mod add_block {
         },
         txn_schema,
     };
+    use tari_utilities::hex::Hex;
 
     #[test]
     fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {

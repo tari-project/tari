@@ -30,7 +30,6 @@ use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::Transaction,
-    transaction_protocol::TxId,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

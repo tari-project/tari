@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, fmt};
-
-use serde::{Deserialize, Serialize};
-
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     transaction::{OutputFeatures, TransactionOutput},
@@ -32,10 +28,14 @@ use crate::transactions::{
         single_receiver::SingleReceiverTransactionProtocol,
         RewindData,
         TransactionProtocolError,
-        TxId,
     },
 };
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt};
+use tari_common_types::{
+    transaction::TxId,
+    types::{MessageHash, PrivateKey, PublicKey, Signature},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -206,29 +206,26 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
+    use crate::transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::*,
+        test_helpers::TestParams,
+        transaction::OutputFeatures,
+        transaction_protocol::{
+            build_challenge,
+            sender::{SingleRoundSenderData, TransactionSenderMessage},
+            RewindData,
+            TransactionMetadata,
+        },
+        ReceiverTransactionProtocol,
+    };
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
+        script::TariScript,
     };
-
-    use crate::{
-        crypto::script::TariScript,
-        transactions::{
-            crypto_factories::CryptoFactories,
-            tari_amount::*,
-            test_helpers::TestParams,
-            transaction::OutputFeatures,
-            transaction_protocol::{
-                build_challenge,
-                sender::{SingleRoundSenderData, TransactionSenderMessage},
-                RewindData,
-                TransactionMetadata,
-            },
-            ReceiverTransactionProtocol,
-        },
-    };
-    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 
     #[test]
     fn single_round_recipient() {

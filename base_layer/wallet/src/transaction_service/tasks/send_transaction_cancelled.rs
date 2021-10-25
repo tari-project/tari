@@ -26,7 +26,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_core::transactions::transaction_protocol::{proto::protocol as proto, TxId};
+use tari_core::transactions::transaction_protocol::proto::protocol as proto;
 use tari_p2p::tari_message::TariMessageType;
 
 pub async fn send_transaction_cancelled_message(

@@ -12,7 +12,8 @@ use crate::{
 };
 use aes_gcm::Aes256Gcm;
 use diesel::{prelude::*, sql_query, SqliteConnection};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFlags, transaction_protocol::TxId};
+use tari_common_types::transaction::TxId;
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFlags};
 
 #[derive(Clone, Debug, Queryable, QueryableByName, Identifiable, PartialEq)]
 #[table_name = "outputs"]

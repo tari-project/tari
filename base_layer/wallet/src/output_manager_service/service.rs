@@ -63,7 +63,7 @@ use tari_core::{
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, TxId},
+        transaction_protocol::sender::TransactionSenderMessage,
         CoinbaseBuilder,
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -563,19 +563,20 @@ where
             num_kernels,
             num_outputs
         );
-        // TODO: Include asset metdata here if required
+        // TODO: Include asset metadata here if required
         // We assume that default OutputFeatures and Nop TariScript is used
         let metadata_byte_size = OutputFeatures::default().consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
 
-        let utxo_selection = self
-            .select_utxos(
-                amount,
-                fee_per_gram,
-                num_outputs,
-                metadata_byte_size * num_outputs,
-                None,
-            )
+        let utxo_selection = self.select_utxos(
+            amount,
+            fee_per_gram,
+            num_outputs,
+            metadata_byte_size * num_outputs,
+            None,
+            None,
+        );
+
         debug!(target: LOG_TARGET, "{} utxos selected.", utxo_selection.utxos.len());
 
         let fee = Fee::normalize(utxo_selection.as_final_fee());
@@ -613,7 +614,8 @@ where
 
         // TODO: improve this logic
         let output_features = match unique_id {
-            Some(ref _unique_id) => match input_selection.utxos
+            Some(ref _unique_id) => match input_selection
+                .utxos
                 .iter()
                 .find(|output| output.unblinded_output.features.unique_id.is_some())
             {
@@ -919,7 +921,7 @@ where
         let output_features = OutputFeatures {
             unique_id: unique_id.clone(),
             ..Default::default()
-        } ;
+        };
         let metadata_byte_size = output_features.consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
 
@@ -1088,7 +1090,8 @@ where
         };
         debug!(
             target: LOG_TARGET,
-            "select_utxos amount: {}, token : {:?}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, strategy: {:?}",
+            "select_utxos amount: {}, token : {:?}, fee_per_gram: {}, num_outputs: {}, output_metadata_byte_size: {}, \
+             strategy: {:?}",
             amount,
             token,
             fee_per_gram,

@@ -56,7 +56,7 @@ use tari_common_types::{
     types::{BlockHash, PublicKey},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_protocol::TxId};
+use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,

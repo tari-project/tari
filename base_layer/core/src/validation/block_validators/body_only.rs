@@ -24,7 +24,7 @@ use super::LOG_TARGET;
 use crate::{
     blocks::ChainBlock,
     chain_storage,
-    chain_storage::{BlockchainBackend, ChainBlock},
+    chain_storage::BlockchainBackend,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
 use log::*;

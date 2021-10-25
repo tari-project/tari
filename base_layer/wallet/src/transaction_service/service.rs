@@ -77,7 +77,6 @@ use tari_core::{
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
             RewindData,
-            TxId,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,

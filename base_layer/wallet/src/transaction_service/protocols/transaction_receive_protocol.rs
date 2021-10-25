@@ -41,7 +41,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::connectivity_service::WalletConnectivityInterface;
 use tari_core::transactions::{
     transaction::Transaction,
-    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage, TxId},
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;

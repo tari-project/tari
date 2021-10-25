@@ -232,12 +232,12 @@ mod test {
         blocks::{BlockHeader, BlockHeaderAccumulatedData},
         chain_storage::async_db::AsyncBlockchainDb,
         consensus::ConsensusManager,
-        crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
+    use tari_utilities::{hex::Hex, Hashable};
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
         let rules = ConsensusManager::builder(Network::LocalNet).build();

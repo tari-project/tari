@@ -48,9 +48,6 @@ impl TryFrom<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
         match request {
             FetchBlocksByHash(block_hashes) => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(block_hashes.into())),
             e => Err(format!("{} request is not supported", e)),
-            FetchTokens { .. } => {
-                unimplemented!("This should not go over the wire")
-            },
         }
     }
 }

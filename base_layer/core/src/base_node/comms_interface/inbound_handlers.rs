@@ -28,7 +28,7 @@ use crate::{
         OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -40,10 +40,9 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";

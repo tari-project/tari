@@ -25,7 +25,6 @@ use crate::{
         models::{
             domain_events::ConsensusWorkerDomainEvent,
             AssetDefinition,
-            Committee,
             ConsensusWorkerState,
             Payload,
             QuorumCertificate,

@@ -317,7 +317,7 @@ where B: BlockchainBackend
         unique_id: HashOutput,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_unspent_output_by_unique_id(parent_public_key.as_ref(), &unique_id)
+        db.fetch_utxo_by_unique_id(parent_public_key.as_ref(), &unique_id)
     }
 
     pub fn fetch_all_unspent_by_parent_public_key(

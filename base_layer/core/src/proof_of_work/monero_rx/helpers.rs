@@ -175,13 +175,7 @@ pub fn create_block_hashing_blob(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
-        tari_utilities::{
-            hex::{from_hex, Hex},
-            ByteArray,
-        },
-    };
+    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
     use monero::{
         blockdata::transaction::{ExtraField, TxOutTarget},
         consensus::deserialize,
@@ -195,6 +189,10 @@ mod test {
         TxOut,
     };
     use tari_test_utils::unpack_enum;
+    use tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    };
 
     // This tests checks the hash of monero-rs
     #[test]

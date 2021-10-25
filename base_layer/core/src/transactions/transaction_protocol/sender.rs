@@ -44,14 +44,16 @@ use crate::{
             sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
             TransactionMetadata,
             TransactionProtocolError as TPE,
-            TxId,
         },
     },
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature},
+};
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},

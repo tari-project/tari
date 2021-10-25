@@ -62,7 +62,6 @@ use tari_core::transactions::{
         TransactionOutput,
         UnblindedOutput,
     },
-    transaction_protocol::TxId,
     CryptoFactories,
 };
 use tari_crypto::{

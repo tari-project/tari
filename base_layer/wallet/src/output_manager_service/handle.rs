@@ -31,7 +31,7 @@ use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
-    transaction_protocol::{sender::TransactionSenderMessage, TxId},
+    transaction_protocol::sender::TransactionSenderMessage,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

@@ -395,7 +395,10 @@ impl ConsensusConstants {
             blockchain_version: 1,
             future_time_limit: 540,
             difficulty_block_window: 90,
-            max_block_transaction_weight: 19500,
+            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+            // weightings
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
@@ -403,6 +406,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 
@@ -427,9 +431,6 @@ impl ConsensusConstants {
             blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
-            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
-            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
-            // weightings
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,

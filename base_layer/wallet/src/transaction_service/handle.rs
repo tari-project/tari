@@ -31,7 +31,7 @@ use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, transaction_protocol::TxId};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;

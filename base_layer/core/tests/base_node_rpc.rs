@@ -42,11 +42,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
-
-use tempfile::{tempdir, TempDir};
-
+use crate::helpers::{
+    block_builders::{chain_block, create_genesis_block_with_coinbase_value},
+    nodes::{BaseNodeBuilder, NodeInterfaces},
+};
 use randomx_rs::RandomXFlag;
+use std::convert::TryFrom;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
@@ -62,8 +63,8 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
+    blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
-    crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -77,12 +78,8 @@ use tari_core::{
     },
     txn_schema,
 };
-
-use crate::helpers::{
-    block_builders::{chain_block, create_genesis_block_with_coinbase_value},
-    nodes::{BaseNodeBuilder, NodeInterfaces},
-};
-use tari_core::blocks::ChainBlock;
+use tari_utilities::Hashable;
+use tempfile::{tempdir, TempDir};
 
 mod helpers;
 

@@ -22,11 +22,8 @@
 
 use crate::{settings::Settings, wallet_client::WalletClient};
 use std::sync::Arc;
-use tari_app_grpc::tari_rpc::RegisterAssetRequest;
-use tauri::async_runtime::RwLock;
-
-use tari_app_grpc::tari_rpc as grpc;
 use tari_utilities::hex::Hex;
+use tauri::async_runtime::RwLock;
 
 pub struct AppState {
   config: Settings,

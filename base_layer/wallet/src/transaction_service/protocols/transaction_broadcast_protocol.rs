@@ -45,7 +45,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::{transaction::Transaction, transaction_protocol::TxId},
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};
