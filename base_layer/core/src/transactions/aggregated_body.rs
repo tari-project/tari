@@ -19,7 +19,24 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::{crypto_factories::CryptoFactories, fee::Fee, tari_amount::*, transaction::*};
+use crate::{
+    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelFeatures,
+            KernelSum,
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
+    },
+};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -451,9 +468,25 @@ impl AggregateBody {
         Ok(())
     }
 
-    /// Returns the byte size or weight of a body
-    pub fn calculate_weight(&self) -> u64 {
-        Fee::calculate_weight(self.kernels().len(), self.inputs().len(), self.outputs().len())
+    /// Returns the weight in grams of a body
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+        let metadata_byte_size = self.sum_metadata_size();
+        transaction_weight.calculate(
+            self.kernels().len(),
+            self.inputs().len(),
+            self.outputs().len(),
+            metadata_byte_size,
+        )
+    }
+
+    pub fn sum_metadata_size(&self) -> usize {
+        self.outputs
+            .iter()
+            .map(|o| {
+                o.features.consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
+            })
+            .sum()
     }
 
     pub fn is_sorted(&self) -> bool {

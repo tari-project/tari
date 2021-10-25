@@ -56,7 +56,7 @@ class WalletProcess {
   }
 
   setPeerSeeds(addresses) {
-    this.peerSeeds = addresses.join(",");
+    this.peerSeeds = addresses;
   }
 
   run(cmd, args, saveFile, input_buffer, output) {

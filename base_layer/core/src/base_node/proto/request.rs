@@ -21,21 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface as ci, comms_interface::GetNewBlockTemplateRequest},
-    proof_of_work::PowAlgorithm,
-    proto::{
-        base_node as proto,
-        base_node::{
-            base_node_service_request::Request as ProtoNodeCommsRequest,
-            BlockHeights,
-            FetchHeadersAfter as ProtoFetchHeadersAfter,
-            HashOutputs,
-        },
-    },
+    base_node::comms_interface as ci,
+    proto::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs},
 };
 use std::convert::{From, TryFrom, TryInto};
-use tari_common_types::types::{Commitment, HashOutput, Signature};
-use tari_crypto::tari_utilities::ByteArrayError;
+use tari_common_types::types::HashOutput;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
@@ -44,81 +34,20 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
     fn try_into(self) -> Result<ci::NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::*;
         let request = match self {
-            // Field was not specified
-            GetChainMetadata(_) => ci::NodeCommsRequest::GetChainMetadata,
-            FetchHeaders(block_heights) => ci::NodeCommsRequest::FetchHeaders(block_heights.heights),
-            FetchHeadersWithHashes(block_hashes) => ci::NodeCommsRequest::FetchHeadersWithHashes(block_hashes.outputs),
-            FetchHeadersAfter(request) => {
-                ci::NodeCommsRequest::FetchHeadersAfter(request.hashes, request.stopping_hash)
-            },
-            FetchMatchingUtxos(hash_outputs) => ci::NodeCommsRequest::FetchMatchingUtxos(hash_outputs.outputs),
-            FetchMatchingTxos(hash_outputs) => ci::NodeCommsRequest::FetchMatchingTxos(hash_outputs.outputs),
-            FetchMatchingBlocks(block_heights) => ci::NodeCommsRequest::FetchMatchingBlocks(block_heights.heights),
-            FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
-            FetchBlocksWithKernels(signatures) => {
-                let mut sigs = Vec::new();
-                for sig in signatures.sigs {
-                    sigs.push(Signature::try_from(sig).map_err(|err: ByteArrayError| err.to_string())?)
-                }
-                ci::NodeCommsRequest::FetchBlocksWithKernels(sigs)
-            },
-            FetchBlocksWithUtxos(commitments) => {
-                let mut commits = Vec::new();
-                for stxo in commitments.commitments {
-                    commits.push(Commitment::try_from(stxo).map_err(|err: ByteArrayError| err.to_string())?)
-                }
-                ci::NodeCommsRequest::FetchBlocksWithUtxos(commits)
-            },
-            GetHeaderByHash(hash) => ci::NodeCommsRequest::GetHeaderByHash(hash),
-            GetBlockByHash(hash) => ci::NodeCommsRequest::GetBlockByHash(hash),
-            GetNewBlockTemplate(message) => {
-                let request = GetNewBlockTemplateRequest {
-                    algo: PowAlgorithm::try_from(message.algo)?,
-                    max_weight: message.max_weight,
-                };
-                ci::NodeCommsRequest::GetNewBlockTemplate(request)
-            },
-            GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
-            FetchKernelByExcessSig(sig) => ci::NodeCommsRequest::FetchKernelByExcessSig(
-                Signature::try_from(sig).map_err(|err: ByteArrayError| err.to_string())?,
-            ),
+            FetchBlocksByHash(block_hashes) => ci::NodeCommsRequest::FetchBlocksByHash(block_hashes.outputs),
         };
         Ok(request)
     }
 }
 
-impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
-    fn from(request: ci::NodeCommsRequest) -> Self {
+impl TryFrom<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
+    type Error = String;
+
+    fn try_from(request: ci::NodeCommsRequest) -> Result<Self, Self::Error> {
         use ci::NodeCommsRequest::*;
         match request {
-            GetChainMetadata => ProtoNodeCommsRequest::GetChainMetadata(true),
-            FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
-            FetchHeadersWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchHeadersWithHashes(block_hashes.into()),
-            FetchHeadersAfter(hashes, stopping_hash) => {
-                ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter { hashes, stopping_hash })
-            },
-            FetchMatchingUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchMatchingUtxos(hash_outputs.into()),
-            FetchMatchingTxos(hash_outputs) => ProtoNodeCommsRequest::FetchMatchingTxos(hash_outputs.into()),
-            FetchMatchingBlocks(block_heights) => ProtoNodeCommsRequest::FetchMatchingBlocks(block_heights.into()),
-            FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
-            FetchBlocksWithKernels(signatures) => {
-                let sigs = signatures.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithKernels(proto::Signatures { sigs })
-            },
-            FetchBlocksWithUtxos(commitments) => {
-                let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithUtxos(proto::Commitments { commitments: commits })
-            },
-            GetHeaderByHash(hash) => ProtoNodeCommsRequest::GetHeaderByHash(hash),
-            GetBlockByHash(hash) => ProtoNodeCommsRequest::GetBlockByHash(hash),
-            GetNewBlockTemplate(request) => {
-                ProtoNodeCommsRequest::GetNewBlockTemplate(proto::NewBlockTemplateRequest {
-                    algo: request.algo as u64,
-                    max_weight: request.max_weight,
-                })
-            },
-            GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
-            FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
+            FetchBlocksByHash(block_hashes) => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(block_hashes.into())),
+            e => Err(format!("{} request is not supported", e)),
             FetchTokens { .. } => {
                 unimplemented!("This should not go over the wire")
             },

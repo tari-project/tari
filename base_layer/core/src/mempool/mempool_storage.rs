@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::Block,
+    consensus::ConsensusManager,
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
@@ -31,7 +32,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, weight::TransactionWeight},
     validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
@@ -48,15 +49,21 @@ pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
     validator: Arc<dyn MempoolTransactionValidation>,
+    rules: ConsensusManager,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validators: Arc<dyn MempoolTransactionValidation>) -> Self {
+    pub fn new(
+        config: MempoolConfig,
+        rules: ConsensusManager,
+        validator: Arc<dyn MempoolTransactionValidation>,
+    ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
-            validator: validators,
+            validator,
+            rules,
         }
     }
 
@@ -74,12 +81,14 @@ impl MempoolStorage {
         );
         match self.validator.validate(&tx) {
             Ok(()) => {
-                self.unconfirmed_pool.insert(tx, None)?;
+                let weight = *self.get_transaction_weight(0);
+                self.unconfirmed_pool.insert(tx, None, &weight)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.verify_outputs_exist(&dependent_outputs) {
-                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs))?;
+                    let weight = *self.get_transaction_weight(0);
+                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
                     warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
@@ -103,6 +112,10 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::NotStored)
             },
         }
+    }
+
+    fn get_transaction_weight(&self, height: u64) -> &TransactionWeight {
+        self.rules.consensus_constants(height).transaction_weight()
     }
 
     // Insert a set of new transactions into the UTxPool.
@@ -159,10 +172,10 @@ impl MempoolStorage {
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         self.insert_txs(removed_txs)?;
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
-        self.insert_txs(
-            self.reorg_pool
-                .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?,
-        )?;
+        let removed_txs = self
+            .reorg_pool
+            .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?;
+        self.insert_txs(removed_txs)?;
         // Update the Mempool based on the received set of new blocks.
         for block in new_blocks {
             self.process_published_block(block)?;
@@ -224,17 +237,18 @@ impl MempoolStorage {
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub fn stats(&self) -> Result<StatsResponse, MempoolError> {
+    pub fn stats(&mut self) -> Result<StatsResponse, MempoolError> {
+        let weight = *self.get_transaction_weight(0);
         Ok(StatsResponse {
             total_txs: self.len()?,
             unconfirmed_txs: self.unconfirmed_pool.len(),
             reorg_txs: self.reorg_pool.len()?,
-            total_weight: self.unconfirmed_pool.calculate_weight(),
+            total_weight: self.unconfirmed_pool.calculate_weight(&weight),
         })
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
-    pub fn state(&self) -> Result<StateResponse, MempoolError> {
+    pub fn state(&mut self) -> Result<StateResponse, MempoolError> {
         let unconfirmed_pool = self
             .unconfirmed_pool
             .snapshot()

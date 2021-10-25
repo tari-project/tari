@@ -41,6 +41,7 @@ function Client(address) {
     "getNetworkStatus",
     "cancelTransaction",
     "checkForUpdates",
+    "revalidateAllTransactions",
     "registerAsset",
     "getOwnedAssets",
     "mintTokens",

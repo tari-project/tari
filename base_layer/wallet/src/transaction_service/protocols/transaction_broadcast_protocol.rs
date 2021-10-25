@@ -26,10 +26,7 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
         service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, TransactionStatus},
-        },
+        storage::{database::TransactionBackend, models::CompletedTransaction},
     },
 };
 use futures::FutureExt;
@@ -39,7 +36,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common_types::types::Signature;
+use tari_common_types::{
+    transaction::{TransactionStatus, TxId},
+    types::Signature,
+};
 use tari_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},

@@ -29,17 +29,6 @@
 #[cfg(test)]
 mod tests;
 
-mod accumulated_data;
-pub use accumulated_data::{
-    BlockAccumulatedData,
-    BlockHeaderAccumulatedData,
-    BlockHeaderAccumulatedDataBuilder,
-    ChainBlock,
-    ChainHeader,
-    CompleteDeletedBitmap,
-    DeletedBitmap,
-};
-
 pub mod async_db;
 
 mod block_add_result;
@@ -69,9 +58,6 @@ pub use mmr_tree::*;
 
 mod error;
 pub use error::{ChainStorageError, Optional, OrNotFound};
-
-mod historical_block;
-pub use historical_block::HistoricalBlock;
 
 mod horizon_data;
 pub use horizon_data::HorizonData;

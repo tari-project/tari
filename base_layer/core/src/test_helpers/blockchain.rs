@@ -35,23 +35,27 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{
-    blocks::{genesis_block::get_weatherwax_genesis_block, Block, BlockHeader},
+    blocks::{
+        genesis_block::get_weatherwax_genesis_block,
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        DeletedBitmap,
+    },
     chain_storage::{
         create_lmdb_database,
-        BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        ChainBlock,
-        ChainHeader,
         ChainStorageError,
         DbBasicStats,
         DbKey,
         DbTotalSizeStats,
         DbTransaction,
         DbValue,
-        DeletedBitmap,
         HorizonData,
         LMDBDatabase,
         MmrTree,
@@ -61,7 +65,7 @@ use crate::{
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{create_block, BlockSpec},
+    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
@@ -136,8 +140,7 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     create_store_with_consensus_and_validators(rules, validators)
 }
 pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::Weatherwax;
-    let rules = ConsensusManager::builder(network).build();
+    let rules = create_consensus_rules();
     create_store_with_consensus(rules)
 }
 
@@ -410,32 +413,25 @@ impl BlockchainBackend for TempDatabase {
     }
 }
 
-pub fn create_chained_blocks(
-    blocks: &[(&str, u64, u64)],
+pub fn create_chained_blocks<T: Into<BlockSpecs>>(
+    blocks: T,
     genesis_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let mut block_hashes = HashMap::new();
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = ConsensusManager::builder(Network::LocalNet).build();
-
+    let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
-    for (name, difficulty, time) in blocks {
-        let split = name.split("->").collect::<Vec<_>>();
-        let to = split[0].to_string();
-        let from = split[1].to_string();
-
+    for block_spec in blocks {
         let prev_block = block_hashes
-            .get(&from)
-            .unwrap_or_else(|| panic!("Could not find block {}", from));
-        let block_spec = BlockSpec::new()
-            .with_difficulty((*difficulty).into())
-            .with_block_time(*time)
-            .finish();
+            .get(block_spec.prev_block)
+            .unwrap_or_else(|| panic!("Could not find block {}", block_spec.prev_block));
+        let name = block_spec.name;
+        let difficulty = block_spec.difficulty;
         let (block, _) = create_block(&rules, prev_block.block(), block_spec);
-        let block = mine_block(block, prev_block.accumulated_data(), (*difficulty).into());
-
-        block_names.push(to.clone());
-        block_hashes.insert(to, block);
+        let block = mine_block(block, prev_block.accumulated_data(), difficulty);
+        block_names.push(name.to_string());
+        block_hashes.insert(name.to_string(), block);
     }
     (block_names, block_hashes)
 }
@@ -454,9 +450,9 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
     Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap())
 }
 
-pub fn create_main_chain(
+pub fn create_main_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
-    blocks: &[(&str, u64, u64)],
+    blocks: T,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let genesis_block = db.fetch_block(0).unwrap().try_into_chain_block().map(Arc::new).unwrap();
     let (names, chain) = create_chained_blocks(blocks, genesis_block);
@@ -468,9 +464,9 @@ pub fn create_main_chain(
     (names, chain)
 }
 
-pub fn create_orphan_chain(
+pub fn create_orphan_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
-    blocks: &[(&str, u64, u64)],
+    blocks: T,
     root_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let (names, chain) = create_chained_blocks(blocks, root_block);

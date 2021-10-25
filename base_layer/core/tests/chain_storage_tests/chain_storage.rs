@@ -46,8 +46,8 @@ use tari_core::{
         create_test_db,
     },
     transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
+        test_helpers::{schema_to_transaction, spend_utxos},
         transaction::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
@@ -119,8 +119,8 @@ fn insert_and_fetch_orphan() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let txs = vec![
-        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
-        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
+        (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_orphan_block(10, txs, &consensus_manager);
     let orphan_hash = orphan.hash();

@@ -87,7 +87,7 @@ async function waitFor(
         if (i > 1) {
           console.log("waiting for process...", timeOut, i, value);
         }
-        break;
+        return true;
       }
       if (i % skipLog === 0 && i > 1) {
         console.log("waiting for process...", timeOut, i, value);
@@ -105,6 +105,7 @@ async function waitFor(
       await sleep(timeOut);
     }
   }
+  return false;
 }
 
 async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {

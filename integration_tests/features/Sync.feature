@@ -14,7 +14,7 @@ Feature: Block Sync
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 1         | 1          |
 
-     @long-running
+    @long-running
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 10        | 2          |
@@ -46,10 +46,11 @@ Feature: Block Sync
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
-    Then NODE1 should have 10 peers
+    # additional peer seeds are being included from config.toml [common]
+    Then NODE1 should have at least 10 peers
     Given I have a base node NODE2 connected to node NODE1
-    Then NODE1 should have 11 peers
-    Then NODE2 should have 11 peers
+    Then NODE1 should have at least 11 peers
+    Then NODE2 should have at least 11 peers
 
 
   @critical
@@ -75,17 +76,16 @@ Feature: Block Sync
     When I stop node NODE1
     Given I have a base node NODE2 connected to node PNODE1
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
-    Given I do not expect all automated transactions to succeed
     When I mine 5 blocks on NODE2
     Then node NODE2 is at height 5
     Then node PNODE2 is at height 40
     When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
-    And I connect node NODE2 to node NODE1 and wait 1 seconds
+    And I connect node NODE2 to node NODE1
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
-    Given I expect all automated transactions to succeed
     When I mine 10 blocks on NODE1
+    Then all transactions must have succeeded
     Then all nodes are at height 50
 
   Scenario Outline: Syncing node while also mining before tip sync
@@ -101,21 +101,19 @@ Feature: Block Sync
     When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
     And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
-    # Allow reorg to filter through
-    When I wait <SYNC_TIME> seconds
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:
-      | X1  | Y1 | SYNC_TIME |
-      | 101 | 10 | 1       |
+      | X1  | Y1 |
+      | 101 | 10 |
 
     @long-running
     Examples:
-      | X1   | Y1 | SYNC_TIME |
-      | 501  | 50 | 20        |
-      | 999  | 50 | 60        |
-      | 1000 | 50 | 60        |
-      | 1001 | 50 | 60        |
+      | X1   | Y1 |
+      | 501  | 50 |
+      | 999  | 50 |
+      | 1000 | 50 |
+      | 1001 | 50 |
 
 
   Scenario: Pruned mode network only
@@ -144,7 +142,7 @@ Feature: Block Sync
     @critical
     Examples:
       | NODES | BLOCKS | PRUNE_HORIZON |
-      | 5     | 10     | 0             |
+      | 5     | 10     | 0             |
 
     @long-running
     Examples:

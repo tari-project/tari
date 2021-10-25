@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{mempool::priority::PriorityError, transactions::transaction::Transaction};
+use crate::{
+    mempool::priority::PriorityError,
+    transactions::{transaction::Transaction, weight::TransactionWeight},
+};
 use std::sync::Arc;
 use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::message_format::MessageFormat;
@@ -32,13 +35,13 @@ use tari_crypto::tari_utilities::message_format::MessageFormat;
 pub struct FeePriority(Vec<u8>);
 
 impl FeePriority {
-    pub fn try_from(transaction: &Transaction) -> Result<Self, PriorityError> {
+    pub fn try_construct(transaction: &Transaction, weight: u64) -> Result<Self, PriorityError> {
         // The weights have been normalised, so the fee priority is now equal to the fee per gram ± a few pct points
-        let fee_per_byte = (transaction.calculate_ave_fee_per_gram() * 1000.0) as usize; // Include 3 decimal places before flooring
+        let fee_per_byte = ((transaction.body.get_total_fee().as_u64() as f64 / weight as f64) * 1000.0) as usize; // Include 3 decimal places before flooring
         let mut fee_priority = fee_per_byte.to_binary()?;
         fee_priority.reverse(); // Requires Big-endian for BtreeMap sorting
 
-        let mut maturity_priority = (std::u64::MAX - transaction.min_input_maturity()).to_binary()?;
+        let mut maturity_priority = (u64::MAX - transaction.min_input_maturity()).to_binary()?;
         maturity_priority.reverse(); // Requires Big-endian for BtreeMap sorting
 
         let mut priority = fee_priority;
@@ -64,18 +67,20 @@ pub struct PrioritizedTransaction {
 }
 
 impl PrioritizedTransaction {
-    pub fn convert_from_transaction(
-        transaction: Transaction,
+    pub fn try_construct(
+        weighting: &TransactionWeight,
+        transaction: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
     ) -> Result<PrioritizedTransaction, PriorityError> {
         let depended_output_hashes = match dependent_outputs {
             Some(v) => v,
             None => Vec::new(),
         };
+        let weight = transaction.calculate_weight(weighting);
         Ok(Self {
-            priority: FeePriority::try_from(&transaction)?,
-            weight: transaction.calculate_weight(),
-            transaction: Arc::new(transaction),
+            priority: FeePriority::try_construct(&transaction, weight)?,
+            weight,
+            transaction,
             depended_output_hashes,
         })
     }

@@ -26,40 +26,37 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::{HashDigest, PrivateKey, PublicKey},
 };
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
-
-use tari_common_types::types::{HashDigest, PrivateKey, PublicKey};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
+    test_helpers::{create_unblinded_output, TestParams},
     transaction::{OutputFeatures, Transaction},
     transaction_protocol::{sender::TransactionSenderMessage, TxId},
     CryptoFactories,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+    script::{ExecutionStack, TariScript},
+};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{TransactionBackend, TransactionDatabase},
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionDirection,
-            TransactionStatus,
-            WalletTransaction,
-        },
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
+use tempfile::tempdir;
+use tokio::runtime::Runtime;
+
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let runtime = Runtime::new().unwrap();
     let mut db = TransactionDatabase::new(backend);
@@ -70,11 +67,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TestParams::new(),
         MicroTari::from(100_000),
     );
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(177 / 5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)

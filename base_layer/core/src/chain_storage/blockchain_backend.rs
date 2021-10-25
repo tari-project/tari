@@ -1,13 +1,15 @@
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{
-        accumulated_data::DeletedBitmap,
-        pruned_output::PrunedOutput,
-        utxo_mined_info::UtxoMinedInfo,
+    blocks::{
+        Block,
         BlockAccumulatedData,
+        BlockHeader,
         BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
+        DeletedBitmap,
+    },
+    chain_storage::{
+        pruned_output::PrunedOutput,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -16,6 +18,7 @@ use crate::{
         DbValue,
         HorizonData,
         MmrTree,
+        UtxoMinedInfo,
     },
     transactions::transaction::{TransactionInput, TransactionKernel},
 };

@@ -20,19 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 use crate::{
-    blocks::genesis_block::*,
-    chain_storage::{ChainBlock, ChainStorageError},
+    blocks::ChainBlock,
+    consensus::chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
+    proof_of_work::PowAlgorithm,
+    proof_of_work::TargetDifficultyWindow,
+};
+
+use crate::{
     consensus::{
-        chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
         NetworkConsensus,
     },
-    proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::DifficultyAdjustmentError,
     transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
 };
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 use tari_common::configuration::Network;
 use thiserror::Error;
 
@@ -41,8 +46,6 @@ use thiserror::Error;
 pub enum ConsensusManagerError {
     #[error("Difficulty adjustment encountered an error: `{0}`")]
     DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),
-    #[error("Problem with the DB backend storage: `{0}`")]
-    ChainStorageError(#[from] ChainStorageError),
     #[error("There is no blockchain to query")]
     EmptyBlockchain,
     #[error("RwLock access broken: `{0}`")]
@@ -63,19 +66,17 @@ impl ConsensusManager {
     }
 
     /// Returns the genesis block for the selected network.
+    #[cfg(feature = "base_node")]
     pub fn get_genesis_block(&self) -> ChainBlock {
-        match self.inner.network.as_network() {
-            Network::MainNet => get_mainnet_genesis_block(),
-            Network::Ridcully => get_ridcully_genesis_block(),
-            Network::Stibbons => unimplemented!(),
-            Network::Weatherwax => get_weatherwax_genesis_block(),
+        use crate::blocks::genesis_block::get_genesis_block;
+        let network = self.inner.network.as_network();
+        match network {
             Network::LocalNet => self
                 .inner
                 .gen_block
                 .clone()
-                .unwrap_or_else(get_weatherwax_genesis_block),
-            Network::Igor => get_igor_genesis_block(),
-            Network::Dibbler => get_dibbler_genesis_block(),
+                .unwrap_or_else(|| get_genesis_block(network)),
+            _ => get_genesis_block(network),
         }
     }
 
@@ -110,7 +111,9 @@ impl ConsensusManager {
 
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
+    #[cfg(feature = "base_node")]
     pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
+        use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
         let block_window = constants.get_difficulty_block_window();
 
@@ -127,6 +130,7 @@ impl ConsensusManager {
         kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 
+    #[cfg(feature = "base_node")]
     pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
         self.inner.chain_strength_comparer.as_ref()
     }
@@ -147,7 +151,9 @@ struct ConsensusManagerInner {
     /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
+    #[cfg(feature = "base_node")]
     pub gen_block: Option<ChainBlock>,
+    #[cfg(feature = "base_node")]
     /// The comparer used to determine which chain is stronger for reorgs.
     pub chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>,
 }
@@ -156,7 +162,9 @@ struct ConsensusManagerInner {
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
     network: NetworkConsensus,
+    #[cfg(feature = "base_node")]
     gen_block: Option<ChainBlock>,
+    #[cfg(feature = "base_node")]
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
@@ -166,7 +174,9 @@ impl ConsensusManagerBuilder {
         ConsensusManagerBuilder {
             consensus_constants: vec![],
             network: network.into(),
+            #[cfg(feature = "base_node")]
             gen_block: None,
+            #[cfg(feature = "base_node")]
             chain_strength_comparer: None,
         }
     }
@@ -178,11 +188,13 @@ impl ConsensusManagerBuilder {
     }
 
     /// Adds in a custom block to be used. This will be overwritten if the network is anything else than localnet
+    #[cfg(feature = "base_node")]
     pub fn with_block(mut self, block: ChainBlock) -> Self {
         self.gen_block = Some(block);
         self
     }
 
+    #[cfg(feature = "base_node")]
     pub fn on_ties(mut self, chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>) -> Self {
         self.chain_strength_comparer = Some(chain_strength_comparer);
         self
@@ -204,7 +216,9 @@ impl ConsensusManagerBuilder {
             consensus_constants: self.consensus_constants,
             network: self.network,
             emission,
+            #[cfg(feature = "base_node")]
             gen_block: self.gen_block,
+            #[cfg(feature = "base_node")]
             chain_strength_comparer: self.chain_strength_comparer.unwrap_or_else(|| {
                 strongest_chain()
                     .by_accumulated_difficulty()

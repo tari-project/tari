@@ -10,30 +10,8 @@ package tari.base_node;
 message BaseNodeServiceResponse {
     uint64 request_key = 1;
     oneof response {
-        // Indicates a ChainMetadata response.
-        ChainMetadata chain_metadata = 2;
-        // Indicates a TransactionKernels response.
-        TransactionKernels transaction_kernels = 3;
-        // Indicates a BlockHeaders response.
-        BlockHeaders block_headers = 4;
-        // Indicates a TransactionOutputs response.
-        TransactionOutputs transaction_outputs = 5;
         // Indicates a HistoricalBlocks response.
         HistoricalBlocks historical_blocks = 6;
-        // Indicates a NewBlockTemplate response.
-        tari.core.NewBlockTemplate new_block_template = 7;
-        // Indicates a NewBlock response.
-        NewBlockResponse new_block = 8;
-        // Indicates a TargetDifficulty response.
-        uint64 target_difficulty = 9;
-        // Block headers in range response
-        BlockHeaders fetch_headers_after_response = 10;
-        // Indicates a MmrNodes response
-        MmrNodes MmrNodes = 12;
-        // A single header response
-        BlockHeaderResponse block_header = 14;
-        // A single historical block response
-        HistoricalBlockResponse historical_block = 15;
     }
     bool is_synced = 13;
 }

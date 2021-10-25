@@ -22,7 +22,7 @@
 
 use crate::utils::crossterm_events::CrosstermEvents;
 use log::error;
-use tari_app_utilities::utilities::ExitCodes;
+use tari_common::exit_codes::ExitCodes;
 
 mod app;
 mod components;

@@ -50,10 +50,13 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    CryptoFactories,
+use tari_core::{
+    consensus::NetworkConsensus,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+        CryptoFactories,
+    },
 };
 use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{
@@ -87,6 +90,7 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
+use tari_common_types::transaction::TxId;
 
 use crate::{
     assets::infrastructure::initializer::AssetManagerServiceInitializer,
@@ -100,6 +104,7 @@ const LOG_TARGET: &str = "wallet";
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
 pub struct Wallet<T, U, V, W> {
+    pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
@@ -150,7 +155,7 @@ where
 
         let bn_service_db = wallet_database.clone();
 
-        let factories = config.clone().factories;
+        let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
@@ -259,6 +264,7 @@ where
             .await?;
 
         Ok(Self {
+            network: config.network,
             comms,
             dht_service: dht,
             store_and_forward_requester,

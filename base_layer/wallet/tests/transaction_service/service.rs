@@ -42,6 +42,7 @@ use std::{
 };
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    transaction::{TransactionDirection, TransactionStatus},
     types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
@@ -78,8 +79,8 @@ use tari_core::{
     },
     transactions::{
         fee::Fee,
-        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::*,
+        test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
@@ -134,7 +135,7 @@ use tari_wallet::{
         sqlite_db::WalletSqliteDatabase,
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
-    test_utils::make_wallet_database_connection,
+    test_utils::{create_consensus_constants, make_wallet_database_connection},
     transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
@@ -142,13 +143,7 @@ use tari_wallet::{
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
             sqlite_db::TransactionServiceSqliteDatabase,
         },
         TransactionServiceInitializer,
@@ -2104,7 +2099,8 @@ fn test_transaction_cancellation() {
         MicroTari::from(100_000),
     );
 
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -2175,7 +2171,8 @@ fn test_transaction_cancellation() {
         TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -2801,12 +2798,14 @@ fn test_restarting_transaction_protocols() {
     let alice = TestParams::new(&mut OsRng);
     let bob = TestParams::new(&mut OsRng);
     let (utxo, input) = make_input(&mut OsRng, MicroTari(2000), &factories.commitment);
-    let mut builder = SenderTransactionProtocol::builder(1);
-    let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
+    let constants = create_consensus_constants(0);
+    let fee_calc = Fee::new(*constants.transaction_weight());
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
+    let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);
     let script_private_key = PrivateKey::random(&mut OsRng);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari(20))
+        .with_fee_per_gram(MicroTari(4))
         .with_offset(bob.offset.clone())
         .with_private_nonce(bob.nonce)
         .with_input(utxo, input)
@@ -3971,11 +3970,12 @@ fn test_resend_on_startup() {
         TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(177 / 5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
@@ -4438,7 +4438,7 @@ fn test_transaction_timeout_cancellation() {
             bob_node_identity.public_key().clone(),
             amount_sent,
             None,
-            100 * uT,
+            20 * uT,
             "Testing Message".to_string(),
         ))
         .unwrap();
@@ -4479,11 +4479,12 @@ fn test_transaction_timeout_cancellation() {
         TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let constants = create_consensus_constants(0);
+    let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(177 / 5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
@@ -4778,7 +4779,7 @@ fn transaction_service_tx_broadcast() {
             bob_node_identity.public_key().clone(),
             amount_sent2,
             None,
-            100 * uT,
+            20 * uT,
             "Testing Message2".to_string(),
         ))
         .unwrap();
@@ -5011,7 +5012,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
-        fee: MicroTari::from(100),
+        fee: MicroTari::from(20),
         transaction: tx,
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -5156,7 +5157,7 @@ fn dont_broadcast_invalid_transactions() {
         source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
-        fee: MicroTari::from(100),
+        fee: MicroTari::from(20),
         transaction: tx,
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),

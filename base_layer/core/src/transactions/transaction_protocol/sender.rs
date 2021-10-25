@@ -20,29 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    tari_amount::*,
-    transaction::{
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        Transaction,
-        TransactionBuilder,
-        TransactionInput,
-        TransactionOutput,
-        UnblindedOutput,
-        MAX_TRANSACTION_INPUTS,
-        MAX_TRANSACTION_OUTPUTS,
-        MINIMUM_TRANSACTION_FEE,
-    },
-    transaction_protocol::{
-        build_challenge,
-        recipient::{RecipientInfo, RecipientSignedMessage},
-        sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
-        TransactionMetadata,
-        TransactionProtocolError as TPE,
-        TxId,
+use crate::{
+    consensus::ConsensusConstants,
+    transactions::{
+        crypto_factories::CryptoFactories,
+        fee::Fee,
+        tari_amount::*,
+        transaction::{
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionBuilder,
+            TransactionInput,
+            TransactionOutput,
+            UnblindedOutput,
+            MAX_TRANSACTION_INPUTS,
+            MAX_TRANSACTION_OUTPUTS,
+        },
+        transaction_protocol::{
+            build_challenge,
+            recipient::{RecipientInfo, RecipientSignedMessage},
+            sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
+            TransactionMetadata,
+            TransactionProtocolError as TPE,
+            TxId,
+        },
     },
 };
 use digest::Digest;
@@ -146,14 +149,14 @@ impl TransactionSenderMessage {
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SenderTransactionProtocol {
-    pub(super) state: SenderState,
+    state: SenderState,
 }
 
 impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionProtocolBuilder` builder function
-    pub fn builder(num_recipients: usize) -> SenderTransactionProtocolBuilder {
-        SenderTransactionProtocolBuilder::new(num_recipients)
+    pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionProtocolBuilder {
+        SenderTransactionProtocolBuilder::new(num_recipients, consensus_constants)
     }
 
     /// Convenience method to check whether we're receiving recipient data
@@ -493,7 +496,7 @@ impl SenderTransactionProtocol {
         if let SenderState::Finalizing(info) = &self.state {
             let fee = info.metadata.fee;
             // The fee must be greater than MIN_FEE to prevent spam attacks
-            if fee < MINIMUM_TRANSACTION_FEE {
+            if fee < Fee::MINIMUM_TRANSACTION_FEE {
                 return Err(TPE::ValidationError("Fee is less than the minimum".into()));
             }
             // Prevent overflow attacks by imposing sane limits on some key parameters
@@ -609,6 +612,17 @@ impl SenderTransactionProtocol {
             state: SenderState::Failed(TPE::IncompleteStateError("This is a placeholder protocol".to_string())),
         }
     }
+
+    #[cfg(test)]
+    pub(super) fn into_state(self) -> SenderState {
+        self.state
+    }
+}
+
+impl From<SenderState> for SenderTransactionProtocol {
+    fn from(state: SenderState) -> Self {
+        Self { state }
+    }
 }
 
 impl fmt::Display for SenderTransactionProtocol {
@@ -719,17 +733,19 @@ mod test {
         tari_utilities::{hex::Hex, ByteArray},
     };
 
-    use crate::transactions::{
-        crypto_factories::CryptoFactories,
-        fee::Fee,
-        helpers::{create_test_input, create_unblinded_output, TestParams},
-        tari_amount::*,
-        transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
-        transaction_protocol::{
-            sender::SenderTransactionProtocol,
-            single_receiver::SingleReceiverTransactionProtocol,
-            RewindData,
-            TransactionProtocolError,
+    use crate::{
+        test_helpers::create_consensus_constants,
+        transactions::{
+            crypto_factories::CryptoFactories,
+            tari_amount::*,
+            test_helpers::{create_test_input, create_unblinded_output, TestParams},
+            transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
+            transaction_protocol::{
+                sender::SenderTransactionProtocol,
+                single_receiver::SingleReceiverTransactionProtocol,
+                RewindData,
+                TransactionProtocolError,
+            },
         },
     };
     use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
@@ -804,13 +820,13 @@ mod test {
         let p1 = TestParams::new();
         let p2 = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(1200), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(0);
+        let mut builder = SenderTransactionProtocol::builder(0, create_consensus_constants(0));
         let script = TariScript::default();
         let output_features = OutputFeatures::default();
 
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroTari(10))
+            .with_fee_per_gram(MicroTari(2))
             .with_offset(p1.offset.clone() + p2.offset.clone())
             .with_private_nonce(p1.nonce.clone())
             .with_change_secret(p1.change_spend_key.clone())
@@ -845,12 +861,13 @@ mod test {
         let b = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(1200), 0, &factories.commitment);
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1);
-        let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let fee_per_gram = MicroTari(4);
+        let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
         let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroTari(20))
+            .with_fee_per_gram(fee_per_gram)
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
@@ -903,9 +920,9 @@ mod test {
         // Bob's parameters
         let b = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(25000), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
+        let fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
         let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
@@ -983,7 +1000,7 @@ mod test {
         // Bob's parameters
         let b = TestParams::new();
         let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
         let features = OutputFeatures::default();
 
@@ -1020,19 +1037,15 @@ mod test {
         }
     }
 
-    fn get_fee_larger_than_amount_values() -> (MicroTari, MicroTari, MicroTari) {
-        (MicroTari(2500), MicroTari(51), MicroTari(500))
-    }
-
     #[test]
     fn disallow_fee_larger_than_amount() {
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice = TestParams::new();
-        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo_amount, fee_per_gram, amount) = (MicroTari(2500), MicroTari(10), MicroTari(500));
         let (utxo, input) = create_test_input(utxo_amount, 0, &factories.commitment);
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
@@ -1061,10 +1074,10 @@ mod test {
         let factories = CryptoFactories::default();
         // Alice's parameters
         let alice = TestParams::new();
-        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo_amount, fee_per_gram, amount) = (MicroTari(2500), MicroTari(10), MicroTari(500));
         let (utxo, input) = create_test_input(utxo_amount, 0, &factories.commitment);
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
@@ -1115,7 +1128,7 @@ mod test {
         let script = script!(Nop);
         let features = OutputFeatures::default();
 
-        let mut builder = SenderTransactionProtocol::builder(1);
+        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))

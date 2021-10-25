@@ -35,7 +35,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::broadcast, task, time};
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::{transaction::TxId, types::HashOutput};
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},

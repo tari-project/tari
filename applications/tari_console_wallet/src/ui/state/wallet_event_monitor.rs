@@ -26,6 +26,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_core::transactions::transaction_protocol::TxId;
 use tari_wallet::{

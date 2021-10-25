@@ -26,6 +26,7 @@ use std::{
     path::PathBuf,
     process::{Command, Output},
 };
+use tari_common_types::transaction::TxId;
 use tari_core::transactions::transaction_protocol::TxId;
 use tari_utilities::hex::Hex;
 use tari_wallet::{

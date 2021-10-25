@@ -26,6 +26,7 @@ use crate::transaction_service::{
 };
 use log::*;
 use std::time::Duration;
+use tari_common_types::transaction::TxId;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -217,7 +218,7 @@ async fn send_transaction_finalized_message_store_and_forward(
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),
-            OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
+            OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
             OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
         )

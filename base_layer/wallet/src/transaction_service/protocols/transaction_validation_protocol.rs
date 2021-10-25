@@ -29,7 +29,7 @@ use crate::{
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionStatus},
+            models::CompletedTransaction,
         },
     },
     OperationId,
@@ -40,7 +40,7 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
-use tari_common_types::types::BlockHash;
+use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{
@@ -267,14 +267,6 @@ where
                     .collect(),
             })
             .await?;
-
-        // if !batch_response.is_synced {
-        //     info!(
-        //         target: LOG_TARGET,
-        //         "Base Node reports not being synced, aborting transaction validation"
-        //     );
-        //     return Err(TransactionServiceError::BaseNodeNotSynced);
-        // }
 
         for response_proto in batch_response.responses {
             let response = TxQueryBatchResponse::try_from(response_proto)

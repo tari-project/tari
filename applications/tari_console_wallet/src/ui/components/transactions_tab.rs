@@ -7,7 +7,7 @@ use crate::ui::{
     MAX_WIDTH,
 };
 use chrono::{DateTime, Local};
-use tari_wallet::transaction_service::storage::models::{TransactionDirection, TransactionStatus};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,

@@ -118,6 +118,8 @@ impl Completer for Parser {
 
 /// This allows us to make hints based on historic inputs
 impl Hinter for Parser {
+    type Hint = String;
+
     fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
         self.hinter.hint(line, pos, ctx)
     }

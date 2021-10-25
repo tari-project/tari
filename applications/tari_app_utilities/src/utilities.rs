@@ -20,180 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::identity_management::load_from_json;
 use futures::future::Either;
 use log::*;
 use std::sync::Arc;
-use thiserror::Error;
-use tokio::{runtime, runtime::Runtime};
-
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
+use tari_common_types::emoji::EmojiId;
 use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::{NodeId, PeerManagerError},
-    protocol::rpc::RpcError,
+    peer_manager::NodeId,
     socks,
     tor,
     tor::TorIdentity,
-    transports::SocksConfig,
+    transports::{predicate::FalsePredicate, SocksConfig},
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
+use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_utilities::hex::Hex;
-
-use crate::identity_management::load_from_json;
-use tari_common_types::emoji::EmojiId;
-use tari_comms::transports::predicate::FalsePredicate;
+use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
-
-/// Enum to show failure information
-#[derive(Debug, Clone, Error)]
-pub enum ExitCodes {
-    #[error("There is an error in the wallet configuration: {0}")]
-    ConfigError(String),
-    #[error("The application exited because an unknown error occurred: {0}. Check the logs for more details.")]
-    UnknownError(String),
-    #[error("The application exited because an interface error occurred. Check the logs for details.")]
-    InterfaceError,
-    #[error("The application exited. {0}")]
-    WalletError(String),
-    #[error("The wallet was not able to start the GRPC server. {0}")]
-    GrpcError(String),
-    #[error("The application did not accept the command input: {0}")]
-    InputError(String),
-    #[error("Invalid command: {0}")]
-    CommandError(String),
-    #[error("IO error: {0}")]
-    IOError(String),
-    #[error("Recovery failed: {0}")]
-    RecoveryError(String),
-    #[error("The wallet exited because of an internal network error: {0}")]
-    NetworkError(String),
-    #[error("The wallet exited because it received a message it could not interpret: {0}")]
-    ConversionError(String),
-    #[error("Your password was incorrect.")]
-    IncorrectPassword,
-    #[error("Your application is encrypted but no password was provided.")]
-    NoPassword,
-    #[error("The application encountered a database error: {0}")]
-    DatabaseError(String),
-    #[error("Tor connection is offline")]
-    TorOffline,
-    #[error("Database is in inconsistent state: {0}")]
-    DbInconsistentState(String),
-}
-
-impl ExitCodes {
-    pub fn as_i32(&self) -> i32 {
-        match self {
-            Self::ConfigError(_) => 101,
-            Self::UnknownError(_) => 102,
-            Self::InterfaceError => 103,
-            Self::WalletError(_) => 104,
-            Self::GrpcError(_) => 105,
-            Self::InputError(_) => 106,
-            Self::CommandError(_) => 107,
-            Self::IOError(_) => 108,
-            Self::RecoveryError(_) => 109,
-            Self::NetworkError(_) => 110,
-            Self::ConversionError(_) => 111,
-            Self::IncorrectPassword | Self::NoPassword => 112,
-            Self::TorOffline => 113,
-            Self::DatabaseError(_) => 114,
-            Self::DbInconsistentState(_) => 115,
-        }
-    }
-
-    pub fn eprint_details(&self) {
-        use ExitCodes::*;
-        match self {
-            TorOffline => {
-                eprintln!("Unable to connect to the Tor control port.");
-                eprintln!(
-                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
-                     turned on.",
-                );
-                eprintln!("If you are unsure of what to do, use the following command to start the Tor proxy:");
-                eprintln!(
-                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
-                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
-                );
-            },
-
-            e => {
-                eprintln!("{}", e);
-            },
-        }
-    }
-}
-
-impl From<tari_common::ConfigError> for ExitCodes {
-    fn from(err: tari_common::ConfigError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError(err.to_string())
-    }
-}
-
-impl From<ConnectivityError> for ExitCodes {
-    fn from(err: ConnectivityError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::NetworkError(err.to_string())
-    }
-}
-
-impl From<RpcError> for ExitCodes {
-    fn from(err: RpcError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::NetworkError(err.to_string())
-    }
-}
-
-#[cfg(feature = "wallet")]
-mod wallet {
-    use super::*;
-    use tari_wallet::{
-        error::{WalletError, WalletStorageError},
-        output_manager_service::error::OutputManagerError,
-    };
-
-    impl From<WalletError> for ExitCodes {
-        fn from(err: WalletError) -> Self {
-            error!(target: LOG_TARGET, "{}", err);
-            Self::WalletError(err.to_string())
-        }
-    }
-
-    impl From<OutputManagerError> for ExitCodes {
-        fn from(err: OutputManagerError) -> Self {
-            error!(target: LOG_TARGET, "{}", err);
-            Self::WalletError(err.to_string())
-        }
-    }
-
-    impl From<WalletStorageError> for ExitCodes {
-        fn from(err: WalletStorageError) -> Self {
-            use WalletStorageError::*;
-            match err {
-                NoPasswordError => ExitCodes::NoPassword,
-                IncorrectPassword => ExitCodes::IncorrectPassword,
-                e => ExitCodes::WalletError(e.to_string()),
-            }
-        }
-    }
-}
-
-impl From<PeerManagerError> for ExitCodes {
-    fn from(err: PeerManagerError) -> Self {
-        ExitCodes::NetworkError(err.to_string())
-    }
-}
-
-impl ExitCodes {
-    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
-        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
-    }
-}
 
 /// Creates a transport type from the given configuration
 ///
