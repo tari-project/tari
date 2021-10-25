@@ -22,7 +22,11 @@
 
 use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
 use prost::DecodeError;
-use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
+use std::time::Duration;
+use tari_comms::{
+    message::MessageError,
+    peer_manager::{NodeId, PeerManagerError},
+};
 use tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
 use thiserror::Error;
 
@@ -62,7 +66,6 @@ pub enum StoreAndForwardError {
     MessageOriginRequired,
     #[error("The message was malformed")]
     MalformedMessage,
-
     #[error("StorageError: {0}")]
     StorageError(#[from] StorageError),
     #[error("The store and forward service requester channel closed")]
@@ -81,4 +84,10 @@ pub enum StoreAndForwardError {
     InvalidDhtMessageType,
     #[error("Failed to send request for store and forward messages: {0}")]
     RequestMessagesFailed(DhtOutboundError),
+    #[error("Received SAF messages that were not requested")]
+    ReceivedUnrequestedSafMessages,
+    #[error("SAF messages received from peer {peer} after deadline. Received after {0:.2?}")]
+    SafMessagesRecievedAfterDeadline { peer: NodeId, message_age: Duration },
+    #[error("Invalid SAF request: `stored_at` cannot be in the future")]
+    StoredAtWasInFuture,
 }

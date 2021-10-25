@@ -1455,6 +1455,161 @@ async fn test_txo_validation() {
 }
 
 #[tokio::test]
+async fn test_txo_revalidation() {
+    let factories = CryptoFactories::default();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (
+        mut oms,
+        wallet_connectivity,
+        _shutdown,
+        _ts,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _base_node_service_event_publisher,
+    ) = setup_output_manager_service(backend, true).await;
+
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let output1_value = 1_000_000;
+    let output1 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output1_value),
+    );
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
+    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+
+    let output2_value = 2_000_000;
+    let output2 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output2_value),
+    );
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
+
+    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+
+    let mut block1_header = BlockHeader::new(1);
+    block1_header.height = 1;
+    let mut block4_header = BlockHeader::new(1);
+    block4_header.height = 4;
+
+    let mut block_headers = HashMap::new();
+    block_headers.insert(1, block1_header.clone());
+    block_headers.insert(4, block4_header.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    // These responses will mark outputs 1 and 2 and mined confirmed
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+    ];
+
+    let utxo_query_responses = UtxoQueryResponses {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![],
+        not_deleted_positions: vec![1, 2],
+        heights_deleted_at: vec![],
+        blocks_deleted_in: vec![],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.validate_txos().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 2);
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1],
+        not_deleted_positions: vec![2],
+        heights_deleted_at: vec![4],
+        blocks_deleted_in: vec![block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 1);
+
+    // This response sets output1 and 2 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1, 2],
+        not_deleted_positions: vec![],
+        heights_deleted_at: vec![4, 4],
+        blocks_deleted_in: vec![block4_header.hash(), block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 0);
+}
+
+#[tokio::test]
 async fn test_oms_key_manager_discrepancy() {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();

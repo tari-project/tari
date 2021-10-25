@@ -149,6 +149,12 @@ impl SendMessageParams {
         self
     }
 
+    /// Set broadcast_strategy to SelectedPeers. Messages are queued for all selected peers.
+    pub fn selected_peers(&mut self, peers: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::SelectedPeers(peers);
+        self
+    }
+
     /// Set broadcast_strategy to Neighbours. `excluded_peers` are excluded. Only Peers that have
     /// `PeerFeatures::MESSAGE_PROPAGATION` are included.
     pub fn broadcast(&mut self, excluded_peers: Vec<NodeId>) -> &mut Self {
