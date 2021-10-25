@@ -6,17 +6,16 @@ Feature: Stress Test
         And I have stress-test wallet WALLET_A connected to the seed node NODE1 with broadcast monitoring timeout <MonitoringTimeout>
         And I have mining node MINER connected to base node NODE1 and wallet WALLET_A
         # We mine some blocks before starting the other nodes to avoid a spinning sync state when all the nodes are at height 0
-        When mining node MINER mines 6 blocks
         And I have a seed node NODE2
         And I have <NumNodes> base nodes connected to all seed nodes
         And I have stress-test wallet WALLET_B connected to the seed node NODE2 with broadcast monitoring timeout <MonitoringTimeout>
+        When mining node MINER mines 6 blocks
         # There need to be at least as many mature coinbase UTXOs in the wallet coin splits required for the number of transactions
         When mining node MINER mines <NumCoinsplitsNeeded> blocks
         Then all nodes are on the same chain tip
         When I wait for wallet WALLET_A to have at least 5100000000 uT
 
-        Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 4 uT
-        When I wait 30 seconds
+        Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
         When mining node MINER mines 3 blocks
         When mining node MINER mines <NumCoinsplitsNeeded> blocks
         Then all nodes are on the same chain tip
@@ -32,7 +31,7 @@ Feature: Stress Test
         # Then wallet WALLET_B detects all transactions as Mined_Confirmed
         Then while mining via node NODE1 all transactions in wallet WALLET_B are found to be Mined_Confirmed
 
-        @flaky @current
+        @flaky
         Examples:
             | NumTransactions | NumCoinsplitsNeeded | NumNodes | MonitoringTimeout |
             | 10              | 1                   | 3        | 10                |

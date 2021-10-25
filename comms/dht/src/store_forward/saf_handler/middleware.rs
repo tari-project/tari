@@ -23,10 +23,9 @@
 use super::task::MessageHandlerTask;
 use crate::{
     actor::DhtRequester,
-    config::DhtConfig,
     inbound::DecryptedDhtMessage,
     outbound::OutboundMessageRequester,
-    store_forward::StoreAndForwardRequester,
+    store_forward::{SafConfig, StoreAndForwardRequester},
 };
 use futures::{future::BoxFuture, task::Context};
 use std::{sync::Arc, task::Poll};
@@ -39,7 +38,7 @@ use tower::Service;
 
 #[derive(Clone)]
 pub struct MessageHandlerMiddleware<S> {
-    config: DhtConfig,
+    config: SafConfig,
     next_service: S,
     saf_requester: StoreAndForwardRequester,
     dht_requester: DhtRequester,
@@ -52,7 +51,7 @@ pub struct MessageHandlerMiddleware<S> {
 impl<S> MessageHandlerMiddleware<S> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: SafConfig,
         next_service: S,
         saf_requester: StoreAndForwardRequester,
         dht_requester: DhtRequester,

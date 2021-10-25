@@ -66,7 +66,7 @@ done
 
 mkdir -p "$destDir/pkgRoot/usr/local/share/doc/$instName"
 COPY_DOC_FILES=(
-  "tari_config_example.toml"
+  "*.toml"
   "log4rs_sample_base_node.yml"
   "README.md"
 )

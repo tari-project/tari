@@ -27,12 +27,13 @@ use super::{
     StoreAndForwardError,
 };
 use crate::{
+    broadcast_strategy::BroadcastStrategy,
     envelope::DhtMessageType,
     event::{DhtEvent, DhtEventSender},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::store_forward::{stored_messages_response::SafResponseType, StoredMessagesRequest},
     storage::{DbConnection, DhtMetadataKey},
-    DhtConfig,
+    store_forward::{local_state::SafLocalState, SafConfig},
     DhtRequester,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -96,8 +97,9 @@ pub enum StoreAndForwardRequest {
     InsertMessage(NewStoredMessage, oneshot::Sender<SafResult<bool>>),
     RemoveMessages(Vec<i32>),
     RemoveMessagesOlderThan(DateTime<Utc>),
-    SendStoreForwardRequestToPeer(Box<NodeId>),
+    SendStoreForwardRequestToPeer(NodeId),
     SendStoreForwardRequestNeighbours,
+    MarkSafResponseReceived(NodeId, oneshot::Sender<Option<Duration>>),
 }
 
 #[derive(Clone)]
@@ -146,7 +148,7 @@ impl StoreAndForwardRequester {
 
     pub async fn request_saf_messages_from_peer(&mut self, node_id: NodeId) -> SafResult<()> {
         self.sender
-            .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(Box::new(node_id)))
+            .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(node_id))
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
@@ -159,10 +161,19 @@ impl StoreAndForwardRequester {
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
         Ok(())
     }
+
+    pub async fn mark_saf_response_received(&mut self, peer: NodeId) -> SafResult<Option<Duration>> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(StoreAndForwardRequest::MarkSafResponseReceived(peer, reply_tx))
+            .await
+            .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
+        reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)
+    }
 }
 
 pub struct StoreAndForwardService {
-    config: DhtConfig,
+    config: SafConfig,
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
@@ -174,12 +185,13 @@ pub struct StoreAndForwardService {
     num_online_peers: Option<usize>,
     saf_response_signal_rx: mpsc::Receiver<()>,
     event_publisher: DhtEventSender,
+    local_state: SafLocalState,
 }
 
 impl StoreAndForwardService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: SafConfig,
         conn: DbConnection,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
@@ -203,12 +215,13 @@ impl StoreAndForwardService {
             num_online_peers: None,
             saf_response_signal_rx,
             event_publisher,
+            local_state: Default::default(),
         }
     }
 
     pub fn spawn(self) {
         info!(target: LOG_TARGET, "Store and forward service started");
-        task::spawn(Self::run(self));
+        task::spawn(self.run());
     }
 
     async fn run(mut self) {
@@ -311,6 +324,9 @@ impl StoreAndForwardService {
                     Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
                 }
             },
+            MarkSafResponseReceived(peer, reply) => {
+                let _ = reply.send(self.local_state.mark_infight_response_received(peer));
+            },
         }
     }
 
@@ -320,7 +336,7 @@ impl StoreAndForwardService {
         #[allow(clippy::single_match)]
         match event {
             PeerConnected(conn) => {
-                if !self.config.saf_auto_request {
+                if !self.config.auto_request {
                     debug!(
                         target: LOG_TARGET,
                         "Auto store and forward request disabled. Ignoring PeerConnected event"
@@ -358,7 +374,7 @@ impl StoreAndForwardService {
             target: LOG_TARGET,
             "Sending store and forward request to peer '{}' (Since = {:?})", node_id, request.since
         );
-
+        self.local_state.register_inflight_request(node_id.clone());
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
@@ -379,10 +395,17 @@ impl StoreAndForwardService {
             target: LOG_TARGET,
             "Sending store and forward request to neighbours (Since = {:?})", request.since
         );
+        let selected_peers = self
+            .dht_requester
+            .select_peers(BroadcastStrategy::Broadcast(vec![]))
+            .await?;
+
+        self.local_state.register_inflight_requests(&selected_peers);
+
         self.outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .broadcast(vec![])
+                    .selected_peers(selected_peers)
                     .with_dht_message_type(DhtMessageType::SafRequestMessages)
                     .finish(),
                 request,
@@ -432,7 +455,7 @@ impl StoreAndForwardService {
 
     async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::*;
-        let limit = i64::try_from(self.config.saf_max_returned_messages)
+        let limit = i64::try_from(self.config.max_returned_messages)
             .ok()
             .or(Some(std::i64::MAX))
             .unwrap();
@@ -453,12 +476,15 @@ impl StoreAndForwardService {
         Ok(messages)
     }
 
-    async fn cleanup(&self) -> SafResult<()> {
+    async fn cleanup(&mut self) -> SafResult<()> {
+        self.local_state
+            .garbage_collect(self.config.max_inflight_request_age * 2);
+
         let num_removed = self
             .database
             .delete_messages_with_priority_older_than(
                 StoredMessagePriority::Low,
-                since(self.config.saf_low_priority_msg_storage_ttl),
+                since(self.config.low_priority_msg_storage_ttl),
             )
             .await?;
         debug!(target: LOG_TARGET, "Cleaned {} old low priority messages", num_removed);
@@ -467,14 +493,14 @@ impl StoreAndForwardService {
             .database
             .delete_messages_with_priority_older_than(
                 StoredMessagePriority::High,
-                since(self.config.saf_high_priority_msg_storage_ttl),
+                since(self.config.high_priority_msg_storage_ttl),
             )
             .await?;
         debug!(target: LOG_TARGET, "Cleaned {} old high priority messages", num_removed);
 
         let num_removed = self
             .database
-            .truncate_messages(self.config.saf_msg_storage_capacity)
+            .truncate_messages(self.config.msg_storage_capacity)
             .await?;
         if num_removed > 0 {
             debug!(

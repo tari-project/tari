@@ -91,11 +91,11 @@ class BaseNodeProcess {
   }
 
   setPeerSeeds(addresses) {
-    this.peerSeeds = addresses.join(",");
+    this.peerSeeds = addresses;
   }
 
   setForceSyncPeers(addresses) {
-    this.forceSyncPeers = addresses.join(",");
+    this.forceSyncPeers = addresses;
   }
 
   getGrpcAddress() {
