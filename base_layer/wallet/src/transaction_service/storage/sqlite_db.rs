@@ -1034,6 +1034,28 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
+    fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
+        let result = diesel::update(completed_transactions::table.filter(completed_transactions::cancelled.eq(0)))
+            .set((
+                completed_transactions::mined_height.eq::<Option<i64>>(None),
+                completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&(*conn))?;
+
+        trace!(target: LOG_TARGET, "rows updated: {:?}", result);
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+        Ok(())
+    }
+
     fn set_transaction_as_unmined(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.acquire_lock();

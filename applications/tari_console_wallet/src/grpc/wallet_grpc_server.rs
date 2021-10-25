@@ -23,6 +23,8 @@ use tari_app_grpc::{
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        RevalidateRequest,
+        RevalidateResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -116,6 +118,23 @@ impl wallet_server::Wallet for WalletGrpcServer {
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
         }))
+    }
+
+    async fn revalidate_all_transactions(
+        &self,
+        _request: Request<RevalidateRequest>,
+    ) -> Result<Response<RevalidateResponse>, Status> {
+        let mut output_service = self.get_output_manager_service();
+        output_service
+            .revalidate_all_outputs()
+            .await
+            .map_err(|e| Status::unknown(e.to_string()))?;
+        let mut tx_service = self.get_transaction_service();
+        tx_service
+            .revalidate_all_transactions()
+            .await
+            .map_err(|e| Status::unknown(e.to_string()))?;
+        Ok(Response::new(RevalidateResponse {}))
     }
 
     async fn get_coinbase(
