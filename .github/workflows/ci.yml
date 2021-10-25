@@ -20,6 +20,7 @@ jobs:
         run: |
           sudo apt-get update && \
           sudo apt-get -y install \
+            libatk1.0-dev \
             libpango1.0-dev
       - name: toolchain
         uses: actions-rs/toolchain@v1
@@ -142,6 +143,7 @@ jobs:
             libprotobuf-dev \
             protobuf-compiler \
             build-essential \
+            libatk1.0-dev \
             libcairo2-dev \
             libpango1.0-dev \
             libjpeg-dev \
