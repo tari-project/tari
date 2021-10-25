@@ -158,7 +158,6 @@ jobs:
       - name: temp
         run: |
           echo $PKG_CONFIG_PATH
-          find / -name pango.pc
           echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
       - name: cargo test
