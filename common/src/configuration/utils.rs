@@ -33,9 +33,21 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
     Ok(cfg)
 }
 
-/// Installs a new configuration file template, copied from `tari_config_example.toml` to the given path.
-pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../../config/presets/tari_config_example.toml");
+/// Installs a new configuration file template, copied from the application type's preset and written to the given path.
+/// Also includes the common configuration defined in `config/presets/common.toml`.
+pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+    let common = include_str!("../../config/presets/common.toml");
+
+    use ApplicationType::*;
+    let app = match app_type {
+        BaseNode => include_str!("../../config/presets/base_node.toml"),
+        ConsoleWallet => include_str!("../../config/presets/console_wallet.toml"),
+        MiningNode => include_str!("../../config/presets/mining_node.toml"),
+        MergeMiningProxy => include_str!("../../config/presets/merge_mining_proxy.toml"),
+        StratumTranscoder => include_str!("../../config/presets/stratum_transcoder.toml"),
+    };
+    let source = [common, app].join("\n");
+
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
     };
@@ -75,14 +87,18 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     // TODO: Change to a more permanent link
     cfg.set_default(
         "common.auto_update.hashes_url",
-        "https://raw.githubusercontent.com/tari-project/tari/tari-script/meta/hashes.txt",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
     )
     .unwrap();
     cfg.set_default(
         "common.auto_update.hashes_sig_url",
-        "https://github.com/sdbondi/tari/raw/tari-script/meta/hashes.txt.sig",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
     )
     .unwrap();
+    cfg.set_default("common.peer_seeds", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.dns_seeds", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.dns_seeds_name_server", "1.1.1.1:53").unwrap();
+    cfg.set_default("common.dns_seeds_use_dnssec", true).unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
@@ -130,13 +146,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.mainnet.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("base_node.mainnet.dns_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("base_node.mainnet.dns_seeds_name_server", "1.1.1.1:53")
-        .unwrap();
-    cfg.set_default("base_node.mainnet.dns_seeds_use_dnssec", true).unwrap();
     cfg.set_default(
         "base_node.mainnet.data_dir",
         default_subdir("mainnet/", Some(&bootstrap.base_path)),

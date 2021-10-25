@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod layer;
+pub use layer::MessageHandlerLayer;
+
 mod middleware;
 mod task;
-
-pub use layer::MessageHandlerLayer;
