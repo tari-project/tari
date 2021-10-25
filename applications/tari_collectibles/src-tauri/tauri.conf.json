@@ -6,7 +6,7 @@
   "build": {
     "distDir": "../web-app/build",
     "devPath": "http://localhost:3000",
-    "beforeDevCommand": "",
+    "beforeDevCommand": "cd web-app && npm start",
     "beforeBuildCommand": ""
   },
   "tauri": {

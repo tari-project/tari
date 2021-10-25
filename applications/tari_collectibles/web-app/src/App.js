@@ -31,12 +31,12 @@ import { createTheme } from "@mui/material/styles";
 import {
   AppBar,
   Box,
-  CssBaseline,
+  CssBaseline, Divider,
   Drawer,
   List,
   ListItem,
   ListItemIcon,
-  ListItemText,
+  ListItemText, ListSubheader,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -107,9 +107,11 @@ function App() {
                   to="/"
                   icon={<DashboardIcon />}
                 />
+                <Divider></Divider>
+                <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
-                  primary="Library"
-                  to="/library"
+                  primary="Manage"
+                  to="/manage"
                   icon={<AppsIcon />}
                 />
                 <ListItemLink
@@ -127,7 +129,7 @@ function App() {
                 <Route path="/create">
                   <Create />
                 </Route>
-                <Route path="/library">
+                <Route path="/manage">
                   <Manage />
                 </Route>
                 <Route path="/assets/manage/:assetPubKey">

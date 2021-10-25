@@ -32,7 +32,7 @@ import {
   Typography,
 } from "@mui/material";
 import binding from "./binding";
-import { Link } from "react-router-dom";
+import {Link, withRouter} from "react-router-dom";
 
 var cardStyle = {
   width: "20vw",
@@ -43,7 +43,7 @@ var cardStyle = {
   flexDirection: "column",
 };
 
-class LibraryContent extends React.Component {
+class Manage extends React.Component {
   constructor(props) {
     super(props);
 
@@ -108,6 +108,4 @@ class LibraryContent extends React.Component {
   }
 }
 
-export default function Manage() {
-  return <LibraryContent />;
-}
+export default withRouter(Manage);

@@ -21,30 +21,39 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dan_layer::{models::Committee, services::infrastructure_services::NodeAddressable},
+    dan_layer::{
+        models::{BaseLayerOutput, Committee},
+        services::infrastructure_services::NodeAddressable,
+    },
     digital_assets_error::DigitalAssetError,
+    types::PublicKey,
 };
 
-pub trait CommitteeService<TAddr: NodeAddressable> {
+pub trait CommitteeManager<TAddr: NodeAddressable> {
     fn current_committee(&self) -> Result<&Committee<TAddr>, DigitalAssetError>;
+
+    fn read_from_checkpoint(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError>;
 }
 
-pub struct ConcreteCommitteeService<TAddr: NodeAddressable> {
-    committee: Committee<TAddr>,
+pub struct ConcreteCommitteeManager {
+    committee: Committee<PublicKey>,
 }
 
-impl<TAddr> ConcreteCommitteeService<TAddr>
-where TAddr: NodeAddressable
-{
-    pub fn new(committee: Committee<TAddr>) -> Self {
+impl ConcreteCommitteeManager {
+    pub fn new(committee: Committee<PublicKey>) -> Self {
         Self { committee }
     }
 }
 
-impl<TAddr> CommitteeService<TAddr> for ConcreteCommitteeService<TAddr>
-where TAddr: NodeAddressable
-{
-    fn current_committee(&self) -> Result<&Committee<TAddr>, DigitalAssetError> {
+impl CommitteeManager<PublicKey> for ConcreteCommitteeManager {
+    fn current_committee(&self) -> Result<&Committee<PublicKey>, DigitalAssetError> {
         Ok(&self.committee)
+    }
+
+    fn read_from_checkpoint(&mut self, output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
+        // TODO: better error
+        let committee = output.get_side_chain_committee().unwrap();
+        self.committee = Committee::new(committee.to_vec());
+        Ok(())
     }
 }

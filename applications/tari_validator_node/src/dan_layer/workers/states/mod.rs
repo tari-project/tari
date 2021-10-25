@@ -33,6 +33,7 @@ use crate::dan_layer::models::ViewId;
 
 mod commit_state;
 mod decide_state;
+mod idle_state;
 mod next_view;
 mod pre_commit_state;
 mod prepare;
@@ -40,6 +41,7 @@ mod starting;
 
 pub use commit_state::CommitState;
 pub use decide_state::DecideState;
+pub use idle_state::IdleState;
 pub use next_view::NextViewState;
 pub use pre_commit_state::PreCommitState;
 pub use prepare::Prepare;
@@ -49,6 +51,7 @@ pub use starting::Starting;
 pub enum ConsensusWorkerStateEvent {
     Initialized,
     BaseLayerCheckpointNotFound,
+    NotPartOfCommittee,
     Errored { reason: String },
     Prepared,
     PreCommitted,

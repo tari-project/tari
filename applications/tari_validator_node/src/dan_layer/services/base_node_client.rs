@@ -84,7 +84,6 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        dbg!(&asset_public_key);
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => {
@@ -96,9 +95,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
             unique_ids: vec![checkpoint_unique_id],
         };
-        dbg!(&request);
         let mut result = inner.get_tokens(request).await.unwrap().into_inner();
-        dbg!(&result);
         let mut outputs = vec![];
         while let Some(r) = result.message().await.unwrap() {
             outputs.push(r);

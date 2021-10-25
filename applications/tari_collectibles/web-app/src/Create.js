@@ -38,14 +38,15 @@ import {
   Typography,
 } from "@mui/material";
 import binding from "./binding";
+import {withRouter} from "react-router-dom";
 
-class CreateContent extends React.Component {
+class Create extends React.Component {
   constructor(props) {
     super(props);
 
     this.state = {
       name: "Asset1",
-      description: "An asset of note",
+      description: "",
       image: "https://source.unsplash.com/random",
       error: "",
       isSaving: false,
@@ -83,12 +84,16 @@ class CreateContent extends React.Component {
         description,
         image
       );
-      let res = await binding.command_asset_issue_simple_tokens(
-        publicKey,
-        parseInt(this.state.numberInitialTokens),
-        this.state.committee
-      );
-      console.log(res);
+
+      if (this.state.contract721 || this.state.contract100) {
+        let res = await binding.command_asset_issue_simple_tokens(
+            publicKey,
+            parseInt(this.state.numberInitialTokens),
+            this.state.committee
+        );
+
+        console.log(res);
+      }
       let history = this.props.history;
 
       history.push(`/assets/manage/${publicKey}`);
@@ -272,6 +277,5 @@ class CreateContent extends React.Component {
   }
 }
 
-export default function Create() {
-  return <CreateContent />;
-}
+export default withRouter(Create)
+
