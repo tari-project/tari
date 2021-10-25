@@ -56,6 +56,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
 
     fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
+    fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
     /// Check if a record with the provided key exists in the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -422,6 +424,11 @@ where T: TransactionBackend + 'static
 
     pub async fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.db.fetch_unconfirmed_transactions()
+    }
+
+    /// This method returns all completed transactions that must be re-broadcast
+    pub async fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        self.db.get_transactions_to_be_broadcast()
     }
 
     pub async fn get_completed_transaction_cancelled_or_not(
