@@ -467,6 +467,7 @@ impl DhtActor {
                     .map(|p| p.node_id)
                     .collect())
             },
+            SelectedPeers(peers) => Ok(peers),
             Broadcast(exclude) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(

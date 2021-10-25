@@ -646,6 +646,10 @@ where
                 .start_transaction_validation_protocol(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateTransactions => self
+                .start_transaction_revalidation(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -1542,6 +1546,14 @@ where
             })?;
 
         Ok(())
+    }
+
+    async fn start_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<u64, TransactionServiceError> {
+        self.resources.db.mark_all_transactions_as_unvalidated().await?;
+        self.start_transaction_validation_protocol(join_handles).await
     }
 
     async fn start_transaction_validation_protocol(
