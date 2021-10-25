@@ -64,7 +64,13 @@ jobs:
             libc++-dev \
             libc++abi-dev \
             libprotobuf-dev \
-            protobuf-compiler
+            protobuf-compiler \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
 
       - name: macOS dependencies
         if: startsWith(matrix.os,'macos')
@@ -130,7 +136,13 @@ jobs:
             libc++-dev \
             libc++abi-dev \
             libprotobuf-dev \
-            protobuf-compiler
+            protobuf-compiler \
+            build-essential \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libjpeg-dev \
+            libgif-dev \
+            librsvg2-dev
 
       - name: toolchain
         uses: actions-rs/toolchain@v1
