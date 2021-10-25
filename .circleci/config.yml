@@ -134,7 +134,7 @@ commands:
       - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky and not @broken"
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci" --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky and not @broken"
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
@@ -142,7 +142,7 @@ commands:
       # Below step requires NodeJS v12 to run correctly, see explanation in WalletFFI.feature
       - run:
           name: Run FFI wallet library cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci"  --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
           when: always
       - run:
           name: Generate report (ffi)

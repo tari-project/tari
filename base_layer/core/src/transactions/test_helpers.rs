@@ -20,10 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use num::pow;
+use crate::{
+    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        fee::Fee,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelBuilder,
+            KernelFeatures,
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            UnblindedOutput,
+        },
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        weight::TransactionWeight,
+        SenderTransactionProtocol,
+    },
+};
 use rand::rngs::OsRng;
+use std::sync::Arc;
+use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
@@ -33,25 +54,6 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
-
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    fee::Fee,
-    tari_amount::MicroTari,
-    transaction::{
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        Transaction,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-        UnblindedOutput,
-    },
-    transaction_protocol::{build_challenge, TransactionMetadata},
-    SenderTransactionProtocol,
-};
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
 
 pub fn create_test_input(
     amount: MicroTari,
@@ -67,7 +69,7 @@ pub fn create_test_input(
     })
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct TestParams {
     pub spend_key: PrivateKey,
     pub change_spend_key: PrivateKey,
@@ -82,6 +84,7 @@ pub struct TestParams {
     pub sender_private_commitment_nonce: PrivateKey,
     pub sender_public_commitment_nonce: PublicKey,
     pub commitment_factory: CommitmentFactory,
+    pub transaction_weight: TransactionWeight,
 }
 
 #[derive(Clone)]
@@ -109,7 +112,7 @@ impl TestParams {
         let sender_offset_private_key = PrivateKey::random(&mut OsRng);
         let sender_sig_pvt_nonce = PrivateKey::random(&mut OsRng);
         let script_private_key = PrivateKey::random(&mut OsRng);
-        TestParams {
+        Self {
             spend_key: PrivateKey::random(&mut OsRng),
             change_spend_key: PrivateKey::random(&mut OsRng),
             offset: PrivateKey::random(&mut OsRng),
@@ -123,7 +126,12 @@ impl TestParams {
             sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
             sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
+            transaction_weight: TransactionWeight::v2(),
         }
+    }
+
+    pub fn fee(&self) -> Fee {
+        Fee::new(self.transaction_weight)
     }
 
     pub fn create_unblinded_output(&self, params: UtxoTestParams) -> UnblindedOutput {
@@ -167,6 +175,11 @@ impl TestParams {
     }
 }
 
+impl Default for TestParams {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 /// A convenience struct for a set of public-private keys and a public-private nonce
 pub struct TestKeySet {
     pub k: PrivateKey,
@@ -232,7 +245,7 @@ pub fn create_unblinded_output(
 #[macro_export]
 macro_rules! tx {
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
-    use $crate::transactions::helpers::create_tx;
+    use $crate::transactions::test_helpers::create_tx;
     create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
   }};
 
@@ -263,7 +276,7 @@ macro_rules! tx {
 #[macro_export]
 macro_rules! txn_schema {
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
-        $crate::transactions::helpers::TransactionSchema {
+        $crate::transactions::test_helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
             to_outputs: vec![],
@@ -296,7 +309,7 @@ macro_rules! txn_schema {
     };
 
     (from: $input:expr, to: $outputs:expr) => {
-        txn_schema!(from: $input, to:$outputs, fee: 25.into())
+        txn_schema!(from: $input, to:$outputs, fee: 5.into())
     };
 
     // Spend inputs to ± half the first input value, with default fee and lock height
@@ -317,6 +330,11 @@ pub struct TransactionSchema {
     pub features: OutputFeatures,
     pub script: TariScript,
     pub input_data: Option<ExecutionStack>,
+}
+
+fn default_metadata_byte_size() -> usize {
+    OutputFeatures::default().consensus_encode_exact_size() +
+        ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size()
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
@@ -341,7 +359,14 @@ pub fn create_unblinded_txos(
     output_count: usize,
     fee_per_gram: MicroTari,
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
-    let estimated_fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
+    let output_metadata_size = default_metadata_byte_size() * output_count;
+    let estimated_fee = Fee::new(TransactionWeight::latest()).calculate(
+        fee_per_gram,
+        1,
+        input_count,
+        output_count,
+        output_metadata_size,
+    );
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
 
@@ -396,7 +421,11 @@ pub fn create_transaction_with(
 ) -> Transaction {
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
-    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let mut stx_builder = SenderTransactionProtocol::builder(0, constants);
     stx_builder
         .with_lock_height(lock_height)
         .with_fee_per_gram(fee_per_gram)
@@ -427,7 +456,11 @@ pub fn create_transaction_with(
 pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
     let factories = CryptoFactories::default();
     let test_params_change_and_txn = TestParams::new();
-    let mut stx_builder = SenderTransactionProtocol::builder(0);
+    let constants = ConsensusManager::builder(Network::LocalNet)
+        .build()
+        .consensus_constants(0)
+        .clone();
+    let mut stx_builder = SenderTransactionProtocol::builder(0, constants);
     stx_builder
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
@@ -559,57 +592,4 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
         utxos.append(&mut output);
     });
     (tx, utxos)
-}
-
-/// Return a currency styled `String`
-/// # Examples
-///
-/// ```
-/// use tari_core::transactions::helpers::display_currency;
-/// assert_eq!(String::from("12,345.12"), display_currency(12345.12, 2, ","));
-/// assert_eq!(String::from("12,345"), display_currency(12345.12, 0, ","));
-/// ```
-pub fn display_currency(value: f64, precision: usize, separator: &str) -> String {
-    let whole = value as usize;
-    let decimal = ((value - whole as f64) * pow(10_f64, precision)).round() as usize;
-    let formatted_whole_value = whole
-        .to_string()
-        .chars()
-        .rev()
-        .enumerate()
-        .fold(String::new(), |acc, (i, c)| {
-            if i != 0 && i % 3 == 0 {
-                format!("{}{}{}", acc, separator, c)
-            } else {
-                format!("{}{}", acc, c)
-            }
-        })
-        .chars()
-        .rev()
-        .collect::<String>();
-
-    if precision > 0 {
-        format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
-    } else {
-        formatted_whole_value
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::excessive_precision)]
-mod test {
-    #[test]
-    fn display_currency() {
-        assert_eq!(String::from("0.00"), super::display_currency(0.0f64, 2, ","));
-        assert_eq!(String::from("0.000000000000"), super::display_currency(0.0f64, 12, ","));
-        assert_eq!(
-            String::from("123,456.123456789"),
-            super::display_currency(123_456.123_456_789_012_f64, 9, ",")
-        );
-        assert_eq!(
-            String::from("123,456"),
-            super::display_currency(123_456.123_456_789_012_f64, 0, ",")
-        );
-        assert_eq!(String::from("1,234"), super::display_currency(1234.1f64, 0, ","));
-    }
 }

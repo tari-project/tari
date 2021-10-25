@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{
-        block_header::{BlockHeader, BlockHeaderValidationError},
-        Block,
-        BlockValidationError,
-    },
+    blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     proof_of_work::{
@@ -79,6 +75,10 @@ pub fn check_timestamp_ftl(
 }
 
 /// Returns the median timestamp for the provided timestamps.
+///
+/// ## Panics
+/// When an empty slice is given as this is undefined for median average.
+/// https://math.stackexchange.com/a/3451015
 pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
     assert!(
         !timestamps.is_empty(),
@@ -200,7 +200,7 @@ pub fn check_target_difficulty(
 
 pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     // The genesis block has a larger weight than other blocks may have so we have to exclude it here
-    let block_weight = block.body.calculate_weight();
+    let block_weight = block.body.calculate_weight(consensus_constants.transaction_weight());
     if block_weight <= consensus_constants.get_max_block_transaction_weight() || block.header.height == 0 {
         trace!(
             target: LOG_TARGET,
@@ -354,11 +354,11 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 .collect::<Vec<_>>();
             // Unless a burn flag is present
             if input.features.flags & OutputFlags::BURN_NON_FUNGIBLE == OutputFlags::BURN_NON_FUNGIBLE {
-                if exactly_one.len() > 0 {
+                if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }
             } else {
-                if exactly_one.len() == 0 {
+                if exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdInInputNotPresentInOutputs);
                 }
                 if exactly_one.len() > 1 {
@@ -419,9 +419,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     if let Some(unique_id) = &input.features.unique_id {
-        if let Some(utxo_hash) =
-            db.fetch_unspent_output_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)?
-        {
+        if let Some(utxo_hash) = db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id)? {
             // Check that it is the same utxo in which the unique_id was created
             if utxo_hash.output.hash() == output_hash {
                 return Ok(());
@@ -488,25 +486,23 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 
     if let Some(unique_id) = &output.features.unique_id {
         // Needs to have a mint flag
-        if output.features.flags & OutputFlags::MINT_NON_FUNGIBLE == OutputFlags::MINT_NON_FUNGIBLE {
-            if db
-                .fetch_unspent_output_by_unique_id(output.features.parent_public_key.as_ref(), &unique_id)?
+        if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) &&
+            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id)?
                 .is_some()
-            {
-                warn!(
-                    target: LOG_TARGET,
-                    "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
-                    unique_id.to_hex(),
-                    output
-                        .features
-                        .parent_public_key
-                        .as_ref()
-                        .map(|pk| pk.to_hex())
-                        .unwrap_or_else(|| "<None>".to_string()),
-                    output
-                );
-                return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
-            }
+        {
+            warn!(
+                target: LOG_TARGET,
+                "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
+                unique_id.to_hex(),
+                output
+                    .features
+                    .parent_public_key
+                    .as_ref()
+                    .map(|pk| pk.to_hex())
+                    .unwrap_or_else(|| "<None>".to_string()),
+                output
+            );
+            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
         }
     }
 
@@ -543,7 +539,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.kernel_mmr_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Kernel,
+            mmr_tree: MmrTree::Kernel.to_string(),
             expected: mmr_roots.kernel_mmr_size,
             actual: header.kernel_mmr_size,
         }));
@@ -575,7 +571,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mmr_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Utxo,
+            mmr_tree: MmrTree::Utxo.to_string(),
             expected: mmr_roots.output_mmr_size,
             actual: header.output_mmr_size,
         }));
@@ -725,11 +721,11 @@ mod test {
 
     mod check_lock_height {
         use super::*;
-        use crate::transactions::helpers;
+        use crate::transactions::test_helpers;
 
         #[test]
         fn it_checks_the_kernel_timelock() {
-            let mut kernel = helpers::create_test_kernel(0.into(), 0);
+            let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
             kernel.lock_height = 2;
             assert_eq!(
                 check_kernel_lock_height(1, &[kernel.clone()]),

@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{app_state::ConcurrentAppState, models::AssetInfo};
-use rand::{rngs::OsRng, Rng};
-use serde::Serialize;
+use rand::rngs::OsRng;
 use tari_crypto::{hash::blake2::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, Hashable};

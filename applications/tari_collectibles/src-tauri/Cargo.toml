@@ -15,7 +15,7 @@ build = "src/build.rs"
 tauri-build = { version = "1.0.0-beta.4" }
 
 [dependencies]
-tari_app_grpc = { path = "../../tari_app_grpc", features = ["wallet"] }
+tari_app_grpc = { path = "../../tari_app_grpc" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_mmr = { path = "../../../base_layer/mmr"}
 tari_utilities = "*"

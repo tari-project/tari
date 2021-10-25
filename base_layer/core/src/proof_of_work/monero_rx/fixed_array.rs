@@ -132,8 +132,8 @@ impl Encodable for FixedByteArray {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto::tari_utilities::hex::Hex;
     use monero::consensus;
+    use tari_utilities::hex::Hex;
 
     #[test]
     fn assert_size() {

@@ -63,7 +63,7 @@ use tari_comms::{
     NodeIdentity,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
@@ -321,7 +321,10 @@ impl DanNode {
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
-                saf_msg_validity: self.config.saf_expiry_duration,
+                saf_config: SafConfig {
+                    msg_validity: self.config.saf_expiry_duration,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             allow_test_addresses: self.config.allow_test_addresses,

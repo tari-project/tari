@@ -169,6 +169,7 @@ const MAINTAINERS: &[&str] = &[
     include_str!("../../../../meta/gpg_keys/philipr-za.asc"),
     include_str!("../../../../meta/gpg_keys/sdbondi.asc"),
     include_str!("../../../../meta/gpg_keys/swvheerden.asc"),
+    include_str!("../../../../meta/gpg_keys/delta1.asc"),
 ];
 
 fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {

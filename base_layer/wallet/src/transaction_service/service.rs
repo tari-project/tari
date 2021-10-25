@@ -37,7 +37,7 @@ use crate::{
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+            models::CompletedTransaction,
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -61,7 +61,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common_types::types::PrivateKey;
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::PrivateKey,
+};
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
@@ -74,7 +77,6 @@ use tari_core::{
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
             RewindData,
-            TxId,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -660,6 +662,10 @@ where
             },
             TransactionServiceRequest::ValidateTransactions => self
                 .start_transaction_validation_protocol(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateTransactions => self
+                .start_transaction_revalidation(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
         };
@@ -1282,13 +1288,7 @@ where
                 }
                 // Check if the last reply is beyond the resend cooldown
                 if let Some(timestamp) = inbound_tx.last_send_timestamp {
-                    let elapsed_time = Utc::now()
-                        .naive_utc()
-                        .signed_duration_since(timestamp)
-                        .to_std()
-                        .map_err(|_| {
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string())
-                        })?;
+                    let elapsed_time = Utc::now().naive_utc().signed_duration_since(timestamp).to_std()?;
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,
@@ -1569,6 +1569,14 @@ where
             })?;
 
         Ok(())
+    }
+
+    async fn start_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<u64, TransactionServiceError> {
+        self.resources.db.mark_all_transactions_as_unvalidated().await?;
+        self.start_transaction_validation_protocol(join_handles).await
     }
 
     async fn start_transaction_validation_protocol(

@@ -7,11 +7,11 @@ use crate::output_manager_service::{
     },
 };
 use aes_gcm::Aes256Gcm;
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::{
-    transaction::{OutputFlags, TransactionOutput},
-    transaction_protocol::TxId,
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PublicKey},
 };
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
@@ -47,6 +47,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<(), OutputManagerStorageError>;
 
     fn set_output_to_unmined(&self, hash: Vec<u8>) -> Result<(), OutputManagerStorageError>;
+    fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
 
     fn mark_output_as_spent(
         &self,

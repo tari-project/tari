@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::chain_storage::{ChainStorageError, HistoricalBlock};
+use tari_core::{blocks::HistoricalBlock, chain_storage::ChainStorageError};
 
 impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
     type Error = ChainStorageError;

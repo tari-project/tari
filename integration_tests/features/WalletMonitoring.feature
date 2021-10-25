@@ -1,6 +1,8 @@
 @wallet-monitoring  @wallet
 Feature: Wallet Monitoring
 
+
+@flaky
   Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
@@ -49,7 +51,6 @@ Feature: Wallet Monitoring
   # 18+ mins on circle ci
   @long-running
   Scenario: Wallets monitoring normal transactions after a reorg
-    Given I do not expect all automated transactions to succeed
         #
         # Chain 1:
         #   Collects 10 coinbases into one wallet, send 7 transactions
@@ -66,7 +67,6 @@ Feature: Wallet Monitoring
     Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
     And I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
-    Then wallet WALLET_A1 detects all transactions are at least Broadcast
     When I mine 100 blocks on SEED_A
     Then node SEED_A is at height 110
     Then node NODE_A1 is at height 110
@@ -88,7 +88,6 @@ Feature: Wallet Monitoring
     Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
         # Use 7 of the 10 coinbase UTXOs in transactions (others require 3 confirmations)
     And I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
-    Then wallet WALLET_B1 detects all transactions are at least Broadcast
     When I mine 100 blocks on SEED_B
     Then node SEED_B is at height 110
     Then node NODE_B1 is at height 110

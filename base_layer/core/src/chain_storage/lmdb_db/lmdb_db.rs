@@ -25,9 +25,16 @@
 #![allow(clippy::ptr_arg)]
 
 use crate::{
-    blocks::{block_header::BlockHeader, Block},
+    blocks::{
+        Block,
+        BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        DeletedBitmap,
+    },
     chain_storage::{
-        accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData, DeletedBitmap},
         db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation},
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
@@ -56,8 +63,6 @@ use crate::{
         stats::DbTotalSizeStats,
         utxo_mined_info::UtxoMinedInfo,
         BlockchainBackend,
-        ChainBlock,
-        ChainHeader,
         DbBasicStats,
         DbSize,
         HorizonData,
@@ -218,12 +223,12 @@ impl LMDBDatabase {
             _file_lock: Arc::new(file_lock),
         };
 
-        db.build_indexes()?;
+        db.check_if_rebuild_required()?;
 
         Ok(db)
     }
 
-    fn build_indexes(&self) -> Result<(), ChainStorageError> {
+    fn check_if_rebuild_required(&self) -> Result<(), ChainStorageError> {
         let txn = self.read_transaction()?;
         if lmdb_len(&txn, &self.deleted_txo_mmr_position_to_height_index)? == 0 && lmdb_len(&txn, &self.inputs_db)? > 0
         {
@@ -314,20 +319,12 @@ impl LMDBDatabase {
                 InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, *height)?;
                 },
-                SetAccumulatedDataForOrphan(chain_header) => {
-                    self.set_accumulated_data_for_orphan(
-                        &write_txn,
-                        chain_header.hash(),
-                        chain_header.accumulated_data(),
-                    )?;
+                SetAccumulatedDataForOrphan(accumulated_data) => {
+                    self.set_accumulated_data_for_orphan(&write_txn, accumulated_data)?;
                 },
                 InsertChainOrphanBlock(chain_block) => {
                     self.insert_orphan_block(&write_txn, chain_block.block())?;
-                    self.set_accumulated_data_for_orphan(
-                        &write_txn,
-                        chain_block.hash(),
-                        chain_block.accumulated_data(),
-                    )?;
+                    self.set_accumulated_data_for_orphan(&write_txn, chain_block.accumulated_data())?;
                 },
                 UpdatePrunedHashSet {
                     mmr_tree,
@@ -686,24 +683,22 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    #[allow(clippy::ptr_arg)]
     fn set_accumulated_data_for_orphan(
         &self,
         txn: &WriteTransaction<'_>,
-        header_hash: &HashOutput,
         accumulated_data: &BlockHeaderAccumulatedData,
     ) -> Result<(), ChainStorageError> {
-        if !lmdb_exists(txn, &self.orphans_db, header_hash.as_slice())? {
+        if !lmdb_exists(txn, &self.orphans_db, accumulated_data.hash.as_slice())? {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "set_accumulated_data_for_orphan: orphan {} does not exist",
-                header_hash.to_hex()
+                accumulated_data.hash.to_hex()
             )));
         }
 
         lmdb_insert(
             txn,
             &self.orphan_header_accumulated_data_db,
-            header_hash.as_slice(),
+            accumulated_data.hash.as_slice(),
             &accumulated_data,
             "orphan_header_accumulated_data_db",
         )?;
@@ -739,10 +734,9 @@ impl LMDBDatabase {
         if let Some(ref last_header) = self.fetch_last_header_in_txn(txn)? {
             if last_header.height != header.height.saturating_sub(1) {
                 return Err(ChainStorageError::InvalidOperation(format!(
-                    "Attempted to insert a header out of order. Was expecting chain height to be {} but current last \
-                     header height is {}",
-                    header.height - 1,
-                    last_header.height
+                    "Attempted to insert a header out of order. The last header height is {} but attempted to insert \
+                     a header with height {}",
+                    last_header.height, header.height,
                 )));
             }
 
@@ -992,47 +986,56 @@ impl LMDBDatabase {
     }
 
     fn delete_orphan(&self, txn: &WriteTransaction<'_>, hash: &HashOutput) -> Result<(), ChainStorageError> {
-        if let Some(orphan) = lmdb_get::<_, Block>(txn, &self.orphans_db, hash.as_slice())? {
-            let parent_hash = orphan.header.prev_hash;
-            lmdb_delete_key_value(txn, &self.orphan_parent_map_index, parent_hash.as_slice(), &hash)?;
+        let orphan = match lmdb_get::<_, Block>(txn, &self.orphans_db, hash.as_slice())? {
+            Some(orphan) => orphan,
+            None => {
+                // delete_orphan is idempotent
+                debug!(
+                    target: LOG_TARGET,
+                    "delete_orphan: request to delete orphan block {} that was not found.",
+                    hash.to_hex()
+                );
+                return Ok(());
+            },
+        };
 
-            // Orphan is a tip hash
-            if lmdb_exists(txn, &self.orphan_chain_tips_db, hash.as_slice())? {
-                lmdb_delete(txn, &self.orphan_chain_tips_db, hash.as_slice(), "orphan_chain_tips_db")?;
+        let parent_hash = orphan.header.prev_hash;
+        lmdb_delete_key_value(txn, &self.orphan_parent_map_index, parent_hash.as_slice(), &hash)?;
 
-                // Parent becomes a tip hash
-                if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? {
-                    lmdb_insert(
-                        txn,
-                        &self.orphan_chain_tips_db,
-                        parent_hash.as_slice(),
-                        &parent_hash,
-                        "orphan_chain_tips_db",
-                    )?;
-                }
-            }
+        // Orphan is a tip hash
+        if lmdb_exists(txn, &self.orphan_chain_tips_db, hash.as_slice())? {
+            lmdb_delete(txn, &self.orphan_chain_tips_db, hash.as_slice(), "orphan_chain_tips_db")?;
 
-            if lmdb_exists(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? {
-                lmdb_delete(
+            // Parent becomes a tip hash
+            if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? {
+                lmdb_insert(
                     txn,
-                    &self.orphan_header_accumulated_data_db,
-                    hash.as_slice(),
-                    "orphan_header_accumulated_data_db",
+                    &self.orphan_chain_tips_db,
+                    parent_hash.as_slice(),
+                    &parent_hash,
+                    "orphan_chain_tips_db",
                 )?;
             }
-
-            if lmdb_get::<_, BlockHeaderAccumulatedData>(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?
-                .is_some()
-            {
-                lmdb_delete(
-                    txn,
-                    &self.orphan_header_accumulated_data_db,
-                    hash.as_slice(),
-                    "orphan_header_accumulated_data_db",
-                )?;
-            }
-            lmdb_delete(txn, &self.orphans_db, hash.as_slice(), "orphans_db")?;
         }
+
+        if lmdb_exists(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? {
+            lmdb_delete(
+                txn,
+                &self.orphan_header_accumulated_data_db,
+                hash.as_slice(),
+                "orphan_header_accumulated_data_db",
+            )?;
+        }
+
+        if lmdb_exists(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? {
+            lmdb_delete(
+                txn,
+                &self.orphan_header_accumulated_data_db,
+                hash.as_slice(),
+                "orphan_header_accumulated_data_db",
+            )?;
+        }
+        lmdb_delete(txn, &self.orphans_db, hash.as_slice(), "orphans_db")?;
         Ok(())
     }
 
@@ -1351,7 +1354,7 @@ impl LMDBDatabase {
         output_hash: &HashOutput,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         if let Some((index, key)) =
-            lmdb_get::<_, (u32, String)>(&txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+            lmdb_get::<_, (u32, String)>(txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
         {
             debug!(
                 target: LOG_TARGET,
@@ -1360,7 +1363,7 @@ impl LMDBDatabase {
                 index,
                 key
             );
-            match lmdb_get::<_, TransactionOutputRowData>(&txn, &self.utxos_db, key.as_str())? {
+            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, key.as_str())? {
                 Some(TransactionOutputRowData {
                     output: Some(o),
                     mmr_position,
@@ -1610,7 +1613,7 @@ impl BlockchainBackend for LMDBDatabase {
         }
 
         Err(ChainStorageError::ValueNotFound {
-            entity: "chain_header_in_all_chains",
+            entity: "chain header (in chain_header_in_all_chains)",
             field: "hash",
             value: hash.to_hex(),
         })
@@ -1928,10 +1931,10 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())
     }
 
-    fn fetch_unspent_output_by_unique_id(
+    fn fetch_utxo_by_unique_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &HashOutput,
+        unique_id: &[u8],
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let key = UniqueIdIndexKey::new(parent_public_key, unique_id);
@@ -1958,9 +1961,8 @@ impl BlockchainBackend for LMDBDatabase {
         let values: Vec<HashOutput> = lmdb_fetch_keys_starting_with_bytes(key, &txn, &self.unique_id_index)?;
         let mut result = vec![];
         for hash in values.into_iter().skip(range.start).take(range.len()) {
-            match self.fetch_output_in_txn(&txn, &hash)? {
-                Some(s) => result.push(s),
-                None => (),
+            if let Some(s) = self.fetch_output_in_txn(&txn, &hash)? {
+                result.push(s);
             }
         }
         Ok(result)
@@ -2100,14 +2102,15 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(Some(chain_header))
     }
 
-    fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
+    fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
         trace!(
             target: LOG_TARGET,
             "Call to fetch_orphan_children_of({})",
-            hash.to_hex()
+            parent_hash.to_hex()
         );
         let txn = self.read_transaction()?;
-        let orphan_hashes: Vec<HashOutput> = lmdb_get_multiple(&txn, &self.orphan_parent_map_index, hash.as_slice())?;
+        let orphan_hashes: Vec<HashOutput> =
+            lmdb_get_multiple(&txn, &self.orphan_parent_map_index, parent_hash.as_slice())?;
         let mut res = Vec::with_capacity(orphan_hashes.len());
         for hash in orphan_hashes {
             res.push(lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| {

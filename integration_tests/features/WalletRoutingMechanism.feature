@@ -17,9 +17,6 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     When I wait for wallet WALLET_A to have at least 100000000 uT
     #When I print the world
     And I multi-send 1000000 uT from wallet WALLET_A to all wallets at fee 100
-    Then all wallets detect all transactions are at least Pending
-    Then all wallets detect all transactions are at least Completed
-    Then all wallets detect all transactions are at least Broadcast
         # TODO: This wait is needed to stop next merge mining task from continuing
     When I wait 1 seconds
     And mining node MINER mines 1 blocks

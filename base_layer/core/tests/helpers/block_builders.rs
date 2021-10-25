@@ -33,20 +33,13 @@ use tari_crypto::{
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{
-        BlockAddResult,
-        BlockHeaderAccumulatedData,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainBlock,
-        ChainHeader,
-        ChainStorageError,
-    },
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
+    chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        helpers::{
+        tari_amount::MicroTari,
+        test_helpers::{
             create_random_signature_from_s_key,
             create_signature,
             create_unblinded_output,
@@ -55,7 +48,6 @@ use tari_core::{
             TestParams,
             TransactionSchema,
         },
-        tari_amount::MicroTari,
         transaction::{
             KernelBuilder,
             KernelFeatures,

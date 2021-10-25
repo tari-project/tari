@@ -76,8 +76,10 @@ pub struct MempoolServiceHandle {
 }
 
 impl MempoolServiceHandle {
-    pub fn new(mempool: Arc<Mutex<ConcreteMempoolService>>) -> Self {
-        Self { mempool }
+    pub fn new() -> Self {
+        Self {
+            mempool: Arc::new(Mutex::new(ConcreteMempoolService::new())),
+        }
     }
 }
 

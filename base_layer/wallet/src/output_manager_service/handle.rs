@@ -27,11 +27,11 @@ use crate::output_manager_service::{
 };
 use aes_gcm::Aes256Gcm;
 use std::{fmt, fmt::Formatter, sync::Arc};
-use tari_common_types::types::PublicKey;
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
-    transaction_protocol::{sender::TransactionSenderMessage, TxId},
+    transaction_protocol::sender::TransactionSenderMessage,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -77,11 +77,17 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     GetSeedWords,
     ValidateUtxos,
+    RevalidateTxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
-    FeeEstimate((MicroTari, MicroTari, u64, u64)),
+    FeeEstimate {
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: usize,
+        num_outputs: usize,
+    },
     ScanForRecoverableOutputs(Vec<TransactionOutput>),
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
@@ -118,12 +124,22 @@ impl fmt::Display for OutputManagerRequest {
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             GetSeedWords => write!(f, "GetSeedWords"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
+            RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
             ApplyEncryption(_) => write!(f, "ApplyEncryption"),
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
-            FeeEstimate(_) => write!(f, "FeeEstimate"),
+            FeeEstimate {
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            } => write!(
+                f,
+                "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
+                amount, fee_per_gram, num_kernels, num_outputs
+            ),
             ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
@@ -301,6 +317,13 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn revalidate_all_outputs(&mut self) -> Result<u64, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::RevalidateTxos).await?? {
+            OutputManagerResponse::TxoValidationStarted(request_key) => Ok(request_key),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn get_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
@@ -371,17 +394,17 @@ impl OutputManagerHandle {
         &mut self,
         amount: MicroTari,
         fee_per_gram: MicroTari,
-        num_kernels: u64,
-        num_outputs: u64,
+        num_kernels: usize,
+        num_outputs: usize,
     ) -> Result<MicroTari, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::FeeEstimate((
+            .call(OutputManagerRequest::FeeEstimate {
                 amount,
                 fee_per_gram,
                 num_kernels,
                 num_outputs,
-            )))
+            })
             .await??
         {
             OutputManagerResponse::FeeEstimate(fee) => Ok(fee),

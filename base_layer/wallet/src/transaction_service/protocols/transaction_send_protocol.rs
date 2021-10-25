@@ -29,7 +29,7 @@ use crate::{
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, OutboundTransaction, TransactionDirection, TransactionStatus},
+            models::{CompletedTransaction, OutboundTransaction},
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -42,6 +42,7 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -54,7 +55,6 @@ use tari_core::transactions::{
         proto::protocol as proto,
         recipient::RecipientSignedMessage,
         sender::SingleRoundSenderData,
-        TxId,
     },
     SenderTransactionProtocol,
 };
@@ -338,12 +338,7 @@ where
             .naive_utc()
             .signed_duration_since(outbound_tx.timestamp)
             .to_std()
-            .map_err(|_| {
-                TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                )
-            })?;
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
             .resources
@@ -368,12 +363,7 @@ where
                     .naive_utc()
                     .signed_duration_since(timestamp)
                     .to_std()
-                    .map_err(|_| {
-                        TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                        )
-                    })?;
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
         };
@@ -384,7 +374,7 @@ where
                     outbound_tx
                         .sender_protocol
                         .get_single_round_message()
-                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?,
                 )
                 .await
             {
@@ -397,7 +387,7 @@ where
                 .db
                 .increment_send_count(self.id)
                 .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
         }
 
         let mut shutdown = self.resources.shutdown_signal.clone();
@@ -707,7 +697,7 @@ where
             .outbound_message_service
             .closest_broadcast(
                 NodeId::from_public_key(&self.dest_pubkey),
-                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )

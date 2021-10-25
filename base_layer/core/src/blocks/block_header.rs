@@ -164,14 +164,6 @@ impl BlockHeader {
         BlockBuilder::new(self.version).with_header(self)
     }
 
-    /// Returns a height range in descending order
-    pub fn get_height_range(start: u64, end_inclusive: u64) -> Vec<u64> {
-        let mut heights: Vec<u64> =
-            (std::cmp::min(start, end_inclusive)..=std::cmp::max(start, end_inclusive)).collect();
-        heights.reverse();
-        heights
-    }
-
     /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
@@ -340,7 +332,7 @@ pub(crate) mod hash_serializer {
 
 #[cfg(test)]
 mod test {
-    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
+    use crate::blocks::BlockHeader;
     use tari_crypto::tari_utilities::Hashable;
     #[test]
     fn from_previous() {
@@ -359,7 +351,7 @@ mod test {
         let headers = vec![500, 350, 300, 210, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
@@ -375,7 +367,7 @@ mod test {
         let headers = vec![150, 90, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
@@ -398,7 +390,7 @@ mod test {
     #[test]
     fn timing_one_block() {
         let header = BlockHeader {
-            timestamp: EpochTime::from(0),
+            timestamp: 0.into(),
             ..BlockHeader::default()
         };
 
@@ -412,7 +404,7 @@ mod test {
         let headers = vec![150, 90]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();

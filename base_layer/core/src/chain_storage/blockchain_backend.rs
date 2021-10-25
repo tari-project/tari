@@ -1,13 +1,15 @@
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{
-        accumulated_data::DeletedBitmap,
-        pruned_output::PrunedOutput,
-        utxo_mined_info::UtxoMinedInfo,
+    blocks::{
+        Block,
         BlockAccumulatedData,
+        BlockHeader,
         BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
+        DeletedBitmap,
+    },
+    chain_storage::{
+        pruned_output::PrunedOutput,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -16,6 +18,7 @@ use crate::{
         DbValue,
         HorizonData,
         MmrTree,
+        UtxoMinedInfo,
     },
     transactions::transaction::{TransactionInput, TransactionKernel},
 };
@@ -118,10 +121,10 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists in the current UTXO
     /// set, otherwise None is returned.
-    fn fetch_unspent_output_by_unique_id(
+    fn fetch_utxo_by_unique_id(
         &self,
         parent_public_key: Option<&PublicKey>,
-        unique_id: &HashOutput,
+        unique_id: &[u8],
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
 
     /// Returns all unspent outputs with a parent public key

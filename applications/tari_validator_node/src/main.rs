@@ -28,29 +28,27 @@ mod grpc;
 mod p2p;
 mod types;
 
-use crate::grpc::validator_node_grpc_server::ValidatorNodeGrpcServer;
-
+use crate::{
+    dan_layer::{
+        dan_node::DanNode,
+        services::{MempoolService, MempoolServiceHandle},
+    },
+    grpc::{
+        validator_node_grpc_server::ValidatorNodeGrpcServer,
+        validator_node_rpc::validator_node_server::ValidatorNodeServer,
+    },
+};
 use futures::FutureExt;
 use log::*;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     process,
 };
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, task};
+use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
-
-use crate::{
-    dan_layer::{
-        dan_node::DanNode,
-        services::{ConcreteMempoolService, MempoolService, MempoolServiceHandle},
-    },
-    grpc::validator_node_rpc::validator_node_server::ValidatorNodeServer,
-};
-use std::sync::Arc;
-use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
-use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
-use tokio::{runtime::Runtime, sync::Mutex};
 
 const LOG_TARGET: &str = "validator_node::app";
 
@@ -84,7 +82,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
-    let mempool_service = MempoolServiceHandle::new(Arc::new(Mutex::new(ConcreteMempoolService::new())));
+    let mempool_service = MempoolServiceHandle::new();
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone());
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);

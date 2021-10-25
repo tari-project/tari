@@ -20,6 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    error::WalletError,
+    output_manager_service::handle::OutputManagerHandle,
+    storage::{
+        database::{WalletBackend, WalletDatabase},
+        sqlite_db::WalletSqliteDatabase,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
+    WalletSqlite,
+};
+use chrono::Utc;
+use futures::StreamExt;
+use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     sync::{
@@ -28,16 +44,10 @@ use std::{
     },
     time::{Duration, Instant},
 };
-
-use chrono::Utc;
-use futures::StreamExt;
-use log::*;
-use serde::{Deserialize, Serialize};
-use tokio::{sync::broadcast, task, time};
-
-use tari_common_types::types::HashOutput;
+use tari_common_types::{transaction::TxId, types::HashOutput};
 use tari_comms::{
-    peer_manager::NodeId,
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
     NodeIdentity,
@@ -56,22 +66,12 @@ use tari_core::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, Hashable};
-
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    error::WalletError,
-    output_manager_service::handle::OutputManagerHandle,
-    storage::{
-        database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
-    WalletSqlite,
+use tokio::{
+    sync::{broadcast, watch},
+    task,
+    time,
+    time::MissedTickBehavior,
 };
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
-use tari_core::transactions::transaction_protocol::TxId;
-use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

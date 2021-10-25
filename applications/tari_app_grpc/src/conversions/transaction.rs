@@ -52,16 +52,26 @@ impl TryFrom<grpc::Transaction> for Transaction {
         })
     }
 }
-
 #[cfg(feature = "wallet")]
 mod wallet {
     use super::*;
     use tari_core::transactions::transaction_protocol::TxId;
     use tari_wallet::transaction_service::storage::models;
 
-    impl From<models::TransactionStatus> for grpc::TransactionStatus {
-        fn from(status: models::TransactionStatus) -> Self {
-            use models::TransactionStatus::*;
+    impl From<tx::TransactionDirection> for grpc::TransactionDirection {
+        fn from(status: tx::TransactionDirection) -> Self {
+            use tx::TransactionDirection::*;
+            match status {
+                Unknown => grpc::TransactionDirection::Unknown,
+                Inbound => grpc::TransactionDirection::Inbound,
+                Outbound => grpc::TransactionDirection::Outbound,
+            }
+        }
+    }
+
+    impl From<tx::TransactionStatus> for grpc::TransactionStatus {
+        fn from(status: tx::TransactionStatus) -> Self {
+            use tx::TransactionStatus::*;
             match status {
                 Completed => grpc::TransactionStatus::Completed,
                 Broadcast => grpc::TransactionStatus::Broadcast,
@@ -70,17 +80,6 @@ mod wallet {
                 Imported => grpc::TransactionStatus::Imported,
                 Pending => grpc::TransactionStatus::Pending,
                 Coinbase => grpc::TransactionStatus::Coinbase,
-            }
-        }
-    }
-
-    impl From<models::TransactionDirection> for grpc::TransactionDirection {
-        fn from(status: models::TransactionDirection) -> Self {
-            use models::TransactionDirection::*;
-            match status {
-                Unknown => grpc::TransactionDirection::Unknown,
-                Inbound => grpc::TransactionDirection::Inbound,
-                Outbound => grpc::TransactionDirection::Outbound,
             }
         }
     }

@@ -146,6 +146,7 @@ use tokio::runtime::Runtime;
 use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
+    transaction::{TransactionDirection, TransactionStatus},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -156,7 +157,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsSecretKey,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
@@ -176,13 +177,7 @@ use tari_wallet::{
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,
-            models::{
-                CompletedTransaction,
-                InboundTransaction,
-                OutboundTransaction,
-                TransactionDirection,
-                TransactionStatus,
-            },
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
         },
     },
     utxo_scanner_service::utxo_scanning::{UtxoScannerService, RECOVERY_KEY},
@@ -1566,7 +1561,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
         return ptr::null_mut();
     }
 
-    let kernels = (*transaction).transaction.get_body().kernels();
+    let kernels = (*transaction).transaction.body().kernels();
 
     // currently we presume that each CompletedTransaction only has 1 kernel
     // if that changes this will need to be accounted for
@@ -2597,7 +2592,10 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                            saf_config: SafConfig {
+                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -3445,8 +3443,8 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
             MicroTari::from(amount),
             MicroTari::from(fee_per_gram),
-            num_kernels,
-            num_outputs,
+            num_kernels as usize,
+            num_outputs as usize,
         )) {
         Ok(fee) => fee.into(),
         Err(e) => {
@@ -5159,12 +5157,9 @@ mod test {
     use libc::{c_char, c_uchar, c_uint};
     use tempfile::tempdir;
 
-    use tari_common_types::emoji;
+    use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_test_utils::random;
-    use tari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        transaction_service::storage::models::TransactionStatus,
-    };
+    use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
 
     use crate::*;
 

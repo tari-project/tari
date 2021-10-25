@@ -1,9 +1,10 @@
-use crate::{consts, utilities::ExitCodes};
+use crate::consts;
 use config::Config;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
+    exit_codes::ExitCodes,
     ConfigBootstrap,
     DatabaseType,
     GlobalConfig,

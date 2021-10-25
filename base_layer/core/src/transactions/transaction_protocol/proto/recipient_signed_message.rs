@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::protocol as proto;
-
 use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::PublicKey;

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod aggregate_body;
+mod base_node_state;
 mod block;
 mod block_header;
 mod chain_metadata;
@@ -40,6 +41,7 @@ mod unblinded_output;
 
 pub use self::{
     aggregate_body::*,
+    base_node_state::*,
     block::*,
     block_header::*,
     chain_metadata::*,

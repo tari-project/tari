@@ -191,14 +191,7 @@ impl StateInfo {
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
-            BlockSync(info) => format!(
-                "Syncing blocks: ({}) {}",
-                info.sync_peers
-                    .first()
-                    .map(|n| n.short_str())
-                    .unwrap_or_else(|| "".to_string()),
-                info.sync_progress_string()
-            ),
+            BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
             Listening(_) => "Listening".to_string(),
             BlockSyncStarting => "Starting block sync".to_string(),
         }
@@ -287,7 +280,11 @@ impl BlockSyncInfo {
 
     pub fn sync_progress_string(&self) -> String {
         format!(
-            "{}/{} ({:.0}%)",
+            "({}) {}/{} ({:.0}%)",
+            self.sync_peers
+                .first()
+                .map(|n| n.short_str())
+                .unwrap_or_else(|| "--".to_string()),
             self.local_height,
             self.tip_height,
             (self.local_height as f64 / self.tip_height as f64 * 100.0)

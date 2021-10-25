@@ -8,13 +8,13 @@ Scenario: Get Transaction Info
     And I have a SHA3 miner MINER connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
     And I have wallet WALLET_B connected to all seed nodes
-    And I have a merge mining proxy PROXY connected to NODE and WALLET_A with default config
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
         # We need to ensure the coinbase lock heights are gone; mine enough blocks
-    When I merge mine 4 blocks via PROXY
+    When mining node MINER mines 4 blocks
     Then all nodes are at height 4
     Then I list all COINBASE transactions for wallet WALLET_A
     When I wait for wallet WALLET_A to have at least 1002000 uT
-    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    And I send 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     Then wallet WALLET_A detects all transactions are at least Pending
     Then wallet WALLET_B detects all transactions are at least Pending
     Then wallet WALLET_A detects all transactions are at least Completed

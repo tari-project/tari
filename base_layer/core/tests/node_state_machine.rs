@@ -89,7 +89,6 @@ async fn test_listening_lagging() {
     let mut alice_state_machine = BaseNodeStateMachine::new(
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
-        alice_node.outbound_nci.clone(),
         alice_node.comms.connectivity(),
         alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
@@ -148,7 +147,6 @@ async fn test_event_channel() {
     let state_machine = BaseNodeStateMachine::new(
         db.into(),
         node.local_nci.clone(),
-        node.outbound_nci.clone(),
         node.comms.connectivity(),
         node.comms.peer_manager(),
         mock.subscription(),

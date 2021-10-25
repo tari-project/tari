@@ -24,8 +24,11 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use chrono_english::DateError;
 use log::*;
-use tari_app_utilities::utilities::ExitCodes;
-use tari_core::transactions::{tari_amount::MicroTariError, transaction::TransactionError};
+use tari_common::exit_codes::ExitCodes;
+use tari_core::transactions::{
+    tari_amount::{MicroTariError, TariConversionError},
+    transaction::TransactionError,
+};
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
@@ -41,6 +44,8 @@ pub const LOG_TARGET: &str = "wallet::automation::error";
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
+    #[error("Tari value conversion error `{0}`")]
+    TariConversionError(#[from] TariConversionError),
     #[error("Transaction service error `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Transaction service error `{0}`")]

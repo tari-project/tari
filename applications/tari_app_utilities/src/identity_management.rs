@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utilities::ExitCodes;
 use log::*;
 use rand::rngs::OsRng;
 use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
-use tari_common::configuration::bootstrap::prompt;
+use tari_common::{configuration::bootstrap::prompt, exit_codes::ExitCodes};
 use tari_common_types::types::PrivateKey;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_crypto::{

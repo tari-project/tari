@@ -20,32 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use tari_crypto::{commitment::HomomorphicCommitment, script};
-
-use tari_common::configuration::Network;
-
 use crate::{
-    blocks::BlockHeader,
-    chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader, DbTransaction},
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
-    crypto::tari_utilities::Hashable,
+    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    chain_storage::DbTransaction,
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
-        helpers::{create_random_signature_from_s_key, create_utxo},
         tari_amount::{uT, MicroTari},
+        test_helpers::{create_random_signature_from_s_key, create_utxo},
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
     validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
+use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
+use tari_crypto::{commitment::HomomorphicCommitment, script};
+use tari_utilities::Hashable;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {
-    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let genesis = consensus_manager.get_genesis_block();
     let db = create_store_with_consensus(consensus_manager);
 
@@ -139,7 +136,7 @@ fn chain_balance_validation() {
     let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator
-        .validate(0, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 0, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
@@ -189,7 +186,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     validator
-        .validate(1, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Try to inflate --------------------------------------------//
@@ -233,6 +230,6 @@ fn chain_balance_validation() {
     db.commit(txn).unwrap();
 
     validator
-        .validate(2, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 2, &utxo_sum, &kernel_sum)
         .unwrap_err();
 }

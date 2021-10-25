@@ -110,7 +110,18 @@ message SubmitBlockResponse {
 message TipInfoResponse {
     MetaData metadata = 1;
     bool initial_sync_achieved = 2;
+    BaseNodeState base_node_state = 3;
 }
+
+enum BaseNodeState{
+    START_UP = 0;
+    HEADER_SYNC = 1;
+    HORIZON_SYNC = 2;
+    BLOCK_SYNC_STARTING= 3;
+    BLOCK_SYNC = 4;
+    LISTENING = 5;
+}
+
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;

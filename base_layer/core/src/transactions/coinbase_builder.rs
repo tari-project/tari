@@ -244,24 +244,22 @@ impl CoinbaseBuilder {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
-
-    use tari_common::configuration::Network;
-
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             crypto_factories::CryptoFactories,
-            helpers::TestParams,
             tari_amount::uT,
+            test_helpers::TestParams,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
     };
+    use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
     use tari_common_types::types::{BlindingFactor, PrivateKey};
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;

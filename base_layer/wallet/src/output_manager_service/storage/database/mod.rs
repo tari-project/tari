@@ -31,11 +31,11 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey};
-use tari_core::transactions::{
-    transaction::{OutputFlags, TransactionOutput},
-    transaction_protocol::TxId,
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey},
 };
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 use super::OutputStatus;
 
@@ -482,6 +482,14 @@ where T: OutputManagerBackend + 'static
     pub async fn set_output_to_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.set_output_to_unmined(hash))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || db.set_outputs_to_be_revalidated())
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

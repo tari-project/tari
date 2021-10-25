@@ -26,7 +26,10 @@ use crate::support::{
 };
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -36,13 +39,13 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::ConsensusConstantsBuilder,
+    consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized, ConsensusEncodingWrapper},
     crypto::tari_utilities::Hashable,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
-        helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         tari_amount::{uT, MicroTari},
+        test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction::OutputFeatures,
         transaction_protocol::{sender::TransactionSenderMessage, TxId},
         CryptoFactories,
@@ -76,6 +79,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
+    test_utils::create_consensus_constants,
     transaction_service::handle::TransactionServiceHandle,
 };
 use tokio::{
@@ -83,6 +87,11 @@ use tokio::{
     task,
     time::sleep,
 };
+
+fn default_metadata_byte_size() -> usize {
+    OutputFeatures::default().consensus_encode_exact_size() +
+        ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size()
+}
 
 #[allow(clippy::type_complexity)]
 async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
@@ -108,7 +117,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
-    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+    let constants = create_consensus_constants(0);
 
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
@@ -196,7 +205,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
-    let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
+    let constants = create_consensus_constants(0);
 
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
@@ -246,7 +255,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
     let alice = TestParams::new(&mut OsRng);
 
     let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
-    let mut builder = SenderTransactionProtocol::builder(1);
+    let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
     let script_private_key = PrivateKey::random(&mut OsRng);
     builder
         .with_lock_height(0)
@@ -287,22 +296,35 @@ async fn fee_estimate() {
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
     oms.add_output(uo).await.unwrap();
-
-    // minimum fee
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    // minimum fpg
     let fee_per_gram = MicroTari::from(1);
     let fee = oms
         .fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1)
         .await
         .unwrap();
-    assert_eq!(fee, MicroTari::from(100));
+    assert_eq!(
+        fee,
+        fee_calc.calculate(fee_per_gram, 1, 1, 2, 2 * default_metadata_byte_size())
+    );
 
-    let fee_per_gram = MicroTari::from(25);
+    let fee_per_gram = MicroTari::from(5);
     for outputs in 1..5 {
         let fee = oms
             .fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs)
             .await
             .unwrap();
-        assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 1, outputs as usize));
+
+        assert_eq!(
+            fee,
+            fee_calc.calculate(
+                fee_per_gram,
+                1,
+                1,
+                outputs + 1,
+                default_metadata_byte_size() * (outputs + 1)
+            )
+        );
     }
 
     // not enough funds
@@ -323,9 +345,10 @@ async fn test_utxo_selection_no_chain_metadata() {
     let (mut oms, _shutdown, _, _, _) =
         setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), None).await;
 
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
-    let fee_per_gram = MicroTari::from(10);
+    let fee_per_gram = MicroTari::from(2);
     let err = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
@@ -377,7 +400,8 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // test that we can get a fee estimate with no chain metadata
     let fee = oms.fee_estimate(amount, fee_per_gram, 1, 2).await.unwrap();
-    assert_eq!(fee, MicroTari::from(300));
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 3, default_metadata_byte_size() * 3);
+    assert_eq!(fee, expected_fee);
 
     // test if a fee estimate would be possible with pending funds included
     // at this point 52000 uT is still spendable, with pending change incoming of 1690 uT
@@ -396,7 +420,8 @@ async fn test_utxo_selection_no_chain_metadata() {
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
-    assert_eq!(tx.body.get_total_fee(), MicroTari::from(820));
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    assert_eq!(tx.body.get_total_fee(), expected_fee);
     assert_eq!(utxos_total_value, MicroTari::from(10_000));
 
     // test that largest utxo was encumbered
@@ -418,10 +443,11 @@ async fn test_utxo_selection_with_chain_metadata() {
     // setup with chain metadata at a height of 6
     let (mut oms, _shutdown, _, _, _) =
         setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), Some(6)).await;
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
-    let fee_per_gram = MicroTari::from(10);
+    let fee_per_gram = MicroTari::from(2);
     let err = oms
         .prepare_transaction_to_send(
             TxId::new_random(),
@@ -452,7 +478,8 @@ async fn test_utxo_selection_with_chain_metadata() {
 
     // test fee estimates
     let fee = oms.fee_estimate(amount, fee_per_gram, 1, 2).await.unwrap();
-    assert_eq!(fee, MicroTari::from(310));
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 2, 3, default_metadata_byte_size() * 3);
+    assert_eq!(fee, expected_fee);
 
     // test fee estimates are maturity aware
     // even though we have utxos for the fee, they can't be spent because they are not mature yet
@@ -466,7 +493,8 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(amount, 5, fee_per_gram, None).await.unwrap();
     assert_eq!(utxos_total_value, MicroTari::from(6_000));
-    assert_eq!(tx.body.get_total_fee(), MicroTari::from(820));
+    let expected_fee = fee_calc.calculate(fee_per_gram, 1, 1, 6, default_metadata_byte_size() * 6);
+    assert_eq!(tx.body.get_total_fee(), expected_fee);
 
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -537,7 +565,7 @@ async fn send_not_enough_funds() {
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
             &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
+            MicroTari::from(200 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
         oms.add_output(uo).await.unwrap();
@@ -548,7 +576,7 @@ async fn send_not_enough_funds() {
             TxId::new_random(),
             MicroTari::from(num_outputs * 2000),
             None,
-            MicroTari::from(20),
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -567,8 +595,9 @@ async fn send_no_change() {
 
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
-    let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
+    let fee_per_gram = MicroTari::from(4);
+    let constants = create_consensus_constants(0);
+    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = 500;
     oms.add_output(create_unblinded_output(
         script!(Nop),
@@ -614,23 +643,24 @@ async fn send_not_enough_for_change() {
 
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
-    let fee_per_gram = MicroTari::from(20);
-    let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
-    let value1 = 500;
+    let fee_per_gram = MicroTari::from(4);
+    let constants = create_consensus_constants(0);
+    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
+    let value1 = MicroTari(500);
     oms.add_output(create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
         TestParamsHelpers::new(),
-        MicroTari::from(value1),
+        value1,
     ))
     .await
     .unwrap();
-    let value2 = 800;
+    let value2 = MicroTari(800);
     oms.add_output(create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
         TestParamsHelpers::new(),
-        MicroTari::from(value2),
+        value2,
     ))
     .await
     .unwrap();
@@ -638,9 +668,9 @@ async fn send_not_enough_for_change() {
     match oms
         .prepare_transaction_to_send(
             TxId::new_random(),
-            MicroTari::from(value1 + value2 + 1) - fee_without_change,
+            value1 + value2 + uT - fee_without_change,
             None,
-            MicroTari::from(20),
+            fee_per_gram,
             None,
             "".to_string(),
             script!(Nop),
@@ -675,7 +705,7 @@ async fn cancel_transaction() {
             TxId::new_random(),
             MicroTari::from(1000),
             None,
-            MicroTari::from(20),
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -752,7 +782,7 @@ async fn test_get_balance() {
             TxId::new_random(),
             send_value,
             None,
-            MicroTari::from(20),
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -797,7 +827,7 @@ async fn sending_transaction_with_short_term_clear() {
             TxId::new_random(),
             MicroTari::from(1000),
             None,
-            MicroTari::from(20),
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -823,7 +853,7 @@ async fn sending_transaction_with_short_term_clear() {
             TxId::new_random(),
             MicroTari::from(1000),
             None,
-            MicroTari::from(20),
+            MicroTari::from(4),
             None,
             "".to_string(),
             script!(Nop),
@@ -852,14 +882,14 @@ async fn coin_split_with_change() {
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
     let val3 = 8_000 * uT;
-    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment);
-    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment);
-    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment);
+    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
+    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
+    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
     assert!(oms.add_output(uo1).await.is_ok());
     assert!(oms.add_output(uo2).await.is_ok());
     assert!(oms.add_output(uo3).await.is_ok());
 
-    let fee_per_gram = MicroTari::from(25);
+    let fee_per_gram = MicroTari::from(5);
     let split_count = 8;
     let (_tx_id, coin_split_tx, amount) = oms
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
@@ -867,10 +897,15 @@ async fn coin_split_with_change() {
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 2);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
-    assert_eq!(
-        coin_split_tx.body.get_total_fee(),
-        Fee::calculate(fee_per_gram, 1, 2, split_count + 1)
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    let expected_fee = fee_calc.calculate(
+        fee_per_gram,
+        1,
+        2,
+        split_count + 1,
+        (split_count + 1) * default_metadata_byte_size(),
     );
+    assert_eq!(fee, expected_fee);
     assert_eq!(amount, val2 + val3);
 }
 
@@ -881,15 +916,23 @@ async fn coin_split_no_change() {
     let backend = OutputManagerSqliteDatabase::new(connection, None);
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
-    let fee_per_gram = MicroTari::from(25);
+    let fee_per_gram = MicroTari::from(4);
     let split_count = 15;
-    let fee = Fee::calculate(fee_per_gram, 1, 3, 15);
+    let constants = create_consensus_constants(0);
+    let fee_calc = Fee::new(*constants.transaction_weight());
+    let expected_fee = fee_calc.calculate(
+        fee_per_gram,
+        1,
+        3,
+        split_count,
+        split_count * default_metadata_byte_size(),
+    );
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
-    let val3 = 6_000 * uT + fee;
-    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment);
-    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment);
-    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment);
+    let val3 = 6_000 * uT + expected_fee;
+    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
+    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
+    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
     assert!(oms.add_output(uo1).await.is_ok());
     assert!(oms.add_output(uo2).await.is_ok());
     assert!(oms.add_output(uo3).await.is_ok());
@@ -900,10 +943,7 @@ async fn coin_split_no_change() {
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 3);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count);
-    assert_eq!(
-        coin_split_tx.body.get_total_fee(),
-        Fee::calculate(fee_per_gram, 1, 3, split_count)
-    );
+    assert_eq!(fee, expected_fee);
     assert_eq!(amount, val1 + val2 + val3);
 }
 
@@ -1114,7 +1154,8 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) -
-            MicroTari::from(900_300) + //Output4 = output 1 -900_000 and 300 for fees
+            MicroTari::from(900_000) -
+            MicroTari::from(1240) + //Output4 = output 1 -900_000 and 1240 for fees
             MicroTari::from(8_000_000) +
             MicroTari::from(16_000_000)
     );
@@ -1251,7 +1292,8 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(900_300) + //spent 900_000 and 300 for fees
+            MicroTari::from(900_000) -
+            MicroTari::from(1240) + //spent 900_000 and 1240 for fees
             MicroTari::from(8_000_000) +    //output 5
             MicroTari::from(16_000_000) // output 6
     );
@@ -1361,7 +1403,7 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
-        MicroTari::from(output1_value) - MicroTari::from(900_300)
+        MicroTari::from(output1_value) - MicroTari::from(901_240)
     );
     assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
 
@@ -1419,11 +1461,166 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(900_300)
+            MicroTari::from(901_240)
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
     assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+}
+
+#[tokio::test]
+async fn test_txo_revalidation() {
+    let factories = CryptoFactories::default();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (
+        mut oms,
+        wallet_connectivity,
+        _shutdown,
+        _ts,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _base_node_service_event_publisher,
+    ) = setup_output_manager_service(backend, true).await;
+
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let output1_value = 1_000_000;
+    let output1 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output1_value),
+    );
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
+    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+
+    let output2_value = 2_000_000;
+    let output2 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output2_value),
+    );
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
+
+    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+
+    let mut block1_header = BlockHeader::new(1);
+    block1_header.height = 1;
+    let mut block4_header = BlockHeader::new(1);
+    block4_header.height = 4;
+
+    let mut block_headers = HashMap::new();
+    block_headers.insert(1, block1_header.clone());
+    block_headers.insert(4, block4_header.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    // These responses will mark outputs 1 and 2 and mined confirmed
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+    ];
+
+    let utxo_query_responses = UtxoQueryResponses {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![],
+        not_deleted_positions: vec![1, 2],
+        heights_deleted_at: vec![],
+        blocks_deleted_in: vec![],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.validate_txos().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 2);
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1],
+        not_deleted_positions: vec![2],
+        heights_deleted_at: vec![4],
+        blocks_deleted_in: vec![block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 1);
+
+    // This response sets output1 and 2 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1, 2],
+        not_deleted_positions: vec![],
+        heights_deleted_at: vec![4, 4],
+        blocks_deleted_in: vec![block4_header.hash(), block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 0);
 }
 
 #[tokio::test]

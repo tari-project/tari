@@ -23,6 +23,8 @@
 pub mod chain_metadata;
 pub mod emoji;
 pub mod luhn;
+pub mod transaction;
+mod tx_id;
 pub mod types;
 pub mod waiting_requests;
 

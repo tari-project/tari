@@ -20,53 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
-
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use tari_common::configuration::bootstrap::ApplicationType;
-use tari_crypto::{
-    common::Blake256,
-    keys::SecretKey,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
-};
-
-use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
-    CommsNode,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    CryptoFactories,
-};
-use tari_key_manager::key_manager::KeyManager;
-use tari_p2p::{
-    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
-    comms_connector::pubsub_connector,
-    initialization,
-    initialization::P2pInitializer,
-};
-use tari_service_framework::StackBuilder;
-use tari_shutdown::ShutdownSignal;
-
 use crate::{
-    assets::AssetManagerHandle,
+    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -79,6 +34,7 @@ use crate::{
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
@@ -87,12 +43,54 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-
-use crate::{
-    assets::infrastructure::initializer::AssetManagerServiceInitializer,
-    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
 };
-use tari_core::transactions::transaction_protocol::TxId;
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use std::{marker::PhantomData, sync::Arc};
+use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
+};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::{CommsPublicKey, CommsSecretKey},
+    CommsNode,
+    NodeIdentity,
+    UnspawnedCommsNode,
+};
+use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use tari_core::{
+    consensus::NetworkConsensus,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+        CryptoFactories,
+    },
+};
+use tari_crypto::{
+    common::Blake256,
+    keys::SecretKey,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+use tari_key_manager::key_manager::KeyManager;
+use tari_p2p::{
+    auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
+    comms_connector::pubsub_connector,
+    initialization,
+    initialization::P2pInitializer,
+};
+use tari_service_framework::StackBuilder;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -100,6 +98,7 @@ const LOG_TARGET: &str = "wallet";
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
 pub struct Wallet<T, U, V, W> {
+    pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
@@ -150,7 +149,7 @@ where
 
         let bn_service_db = wallet_database.clone();
 
-        let factories = config.clone().factories;
+        let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
@@ -259,6 +258,7 @@ where
             .await?;
 
         Ok(Self {
+            network: config.network,
             comms,
             dht_service: dht,
             store_and_forward_requester,

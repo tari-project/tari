@@ -82,7 +82,9 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
-        if tx.calculate_weight() > consensus_constants.get_max_block_weight_excluding_coinbase() {
+        if tx.calculate_weight(consensus_constants.transaction_weight()) >
+            consensus_constants.get_max_block_weight_excluding_coinbase()
+        {
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
@@ -106,8 +108,8 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
-        check_inputs_are_utxos(&*db, tx.get_body())?;
-        check_not_duplicate_txos(&*db, tx.get_body())?;
+        check_inputs_are_utxos(&*db, tx.body())?;
+        check_not_duplicate_txos(&*db, tx.body())?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;

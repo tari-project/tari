@@ -22,9 +22,9 @@
 
 use log::*;
 use std::time::Duration;
+use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::MessageSendStates;
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks";
 const LOG_TARGET_STRESS: &str = "stress_test::transaction_service::tasks";

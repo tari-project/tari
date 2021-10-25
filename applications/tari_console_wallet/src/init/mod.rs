@@ -26,15 +26,15 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 
-use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
-use tari_common::{ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::utilities::create_transport_type;
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_common_types::types::PrivateKey;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
@@ -337,7 +337,10 @@ pub async fn init_wallet(
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
-            saf_msg_validity: config.saf_expiry_duration,
+            saf_config: SafConfig {
+                msg_validity: config.saf_expiry_duration,
+                ..Default::default()
+            },
             dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },

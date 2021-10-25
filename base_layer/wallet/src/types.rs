@@ -23,13 +23,8 @@
 use crate::error::WalletError;
 use rand::rngs::OsRng;
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::{common::Blake256, keys::PublicKey as OtherPublicKey};
 use tari_key_manager::key_manager::KeyManager;
-
-/// The default fee per gram that the wallet will use to build transactions.
-/// TODO discuss what the default fee value should actually be
-pub const DEFAULT_FEE_PER_GRAM: MicroTari = MicroTari(25);
 
 /// Specify the Hash function used by the key manager
 pub type KeyDigest = Blake256;

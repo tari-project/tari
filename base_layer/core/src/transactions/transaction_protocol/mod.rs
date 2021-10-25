@@ -80,13 +80,13 @@
 //!   end
 //! </div>
 
+// #![allow(clippy::op_ref)]
+
 pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod sender_transaction_protocol_builder;
 pub mod single_receiver;
-mod tx_id;
-pub use tx_id::*;
 
 use crate::transactions::{tari_amount::*, transaction::TransactionError};
 use digest::Digest;

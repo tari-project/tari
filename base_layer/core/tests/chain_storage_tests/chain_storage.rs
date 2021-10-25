@@ -46,8 +46,8 @@ use tari_core::{
         create_test_db,
     },
     transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, MicroTari, T},
+        test_helpers::{schema_to_transaction, spend_utxos},
         transaction::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
@@ -119,8 +119,8 @@ fn insert_and_fetch_orphan() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let txs = vec![
-        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
-        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
+        (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_orphan_block(10, txs, &consensus_manager);
     let orphan_hash = orphan.hash();
@@ -1064,7 +1064,11 @@ fn asset_unique_id() {
 
     // check the output is not stored in the db
     let unique_id = features.unique_asset_id().unwrap();
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_none());
 
     // mint it to the chain
@@ -1075,7 +1079,11 @@ fn asset_unique_id() {
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
 
     // check it is in the db
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_some());
 
     // attempt to mint the same unique id for the same asset
@@ -1090,12 +1098,16 @@ fn asset_unique_id() {
     // new unique id
     let features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
-        parent_public_key: Some(asset),
+        parent_public_key: Some(asset.clone()),
         unique_id: Some(vec![4, 5, 6]),
         ..Default::default()
     };
     let unique_id = features.unique_asset_id().unwrap();
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_none());
 
     // mint
@@ -1106,7 +1118,11 @@ fn asset_unique_id() {
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
 
     // check it is in the db
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_some());
 
     // same id for a different asset is fine
@@ -1118,7 +1134,11 @@ fn asset_unique_id() {
         ..Default::default()
     };
     let unique_id = features.unique_asset_id().unwrap();
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_none());
 
     // mint
@@ -1129,7 +1149,11 @@ fn asset_unique_id() {
     generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
 
     // check it is in the db
-    let output_hash = db.fetch_unspent_output_by_unique_id(&unique_id).unwrap();
+    let output_hash = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .unwrap();
     assert!(output_hash.is_some());
 }
 

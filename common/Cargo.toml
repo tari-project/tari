@@ -38,6 +38,7 @@ anyhow = { version = "1.0", optional = true }
 git2 = { version = "0.8", optional = true }
 prost-build = { version = "0.8.0", optional = true }
 toml = { version = "0.5", optional = true }
+thiserror = "1.0.29"
 fs2 = "0.4.3"
 
 [dev-dependencies]

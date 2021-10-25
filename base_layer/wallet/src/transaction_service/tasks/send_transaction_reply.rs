@@ -20,20 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::SendMessageResponse};
-use tari_p2p::tari_message::TariMessageType;
-
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
     error::TransactionServiceError,
     storage::models::InboundTransaction,
     tasks::wait_on_dial::wait_on_dial,
 };
+use log::*;
 use std::time::Duration;
+use tari_common_types::transaction::TxId;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_comms_dht::outbound::{OutboundEncryption, OutboundMessageRequester};
-use tari_core::transactions::transaction_protocol::{proto::protocol as proto, TxId};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
+};
+use tari_core::transactions::transaction_protocol::proto::protocol as proto;
+use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 
@@ -195,7 +197,7 @@ async fn send_transaction_reply_store_and_forward(
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),
-            OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
+            OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
             OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, msg),
         )
