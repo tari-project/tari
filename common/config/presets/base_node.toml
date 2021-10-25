@@ -1,5 +1,19 @@
 ########################################################################################################################
 #                                                                                                                      #
+#                                      The Tari Network Configuration File                                             #
+#                                                                                                                      #
+########################################################################################################################
+
+# This file carries all the configuration options for running Tari-related nodes and infrastructure in one single
+# file. As you'll notice, almost all configuraton options are commented out. This is because they are either not
+# needed, are for advanced users that know what they want to tweak, or are already set at their default values.  If
+# things are working fine, then there's no need to change anything here.
+#
+# Each major section is clearly marked so that you can quickly find the section you're looking for. This first
+# section holds configuration options that are common to all sections.
+
+########################################################################################################################
+#                                                                                                                      #
 #                                          Base Node Configuration Options                                             #
 #                                                                                                                      #
 ########################################################################################################################
@@ -142,6 +156,7 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 #                                             Mempool Configuration Options                                            #
 #                                                                                                                      #
 ########################################################################################################################
+
 [mempool.weatherwax]
 
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
@@ -364,3 +379,4 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 # this parameter should not affect profitabilty in any meaningful way, since the transaction weights are selected to
 # closely mirror how much block space they take up
 #weight_tx_skip_count = 20
+
