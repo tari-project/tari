@@ -78,15 +78,15 @@ Feature: Wallet FFI
         And I have a base node BASE1 connected to all seed nodes
         And I have a base node BASE2 connected to all seed nodes
         And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE2
+        And I have wallet RECEIVER connected to base node BASE2
         And I have mining node MINER connected to base node BASE1 and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE2
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
-        And I have wallet RECEIVER connected to base node BASE2
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be Broadcast
         And mining node MINER mines 10 blocks
