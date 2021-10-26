@@ -426,7 +426,7 @@ where T: TransactionBackend + 'static
         self.db.fetch_unconfirmed_transactions()
     }
 
-    /// This method returns all completed transactions that must be re-broadcast
+    /// This method returns all completed transactions that must be broadcast
     pub async fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         self.db.get_transactions_to_be_broadcast()
     }

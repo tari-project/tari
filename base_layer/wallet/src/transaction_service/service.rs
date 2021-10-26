@@ -1625,12 +1625,14 @@ where
         }
 
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
-        self.broadcast_selected_completed_transactions(broadcast_join_handles)
+        self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
             .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error broadcasting all completed transactions: {:?}", resp
+                    "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' \
+                     and 'Broadcast': {:?}",
+                    resp
                 );
                 resp
             })?;
@@ -1684,7 +1686,7 @@ where
 
     /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
-    async fn broadcast_selected_completed_transactions(
+    async fn broadcast_completed_and_broadcast_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
