@@ -13,23 +13,18 @@ When(
   }
 );
 
-Then(
-  "I want to get emoji id of ffi wallet {word}",
-  { timeout: 100 },
-  async function (name) {
-    let wallet = this.getWallet(name);
-    let emoji_id = wallet.identifyEmoji();
-    console.log(emoji_id);
-    expect(emoji_id.length).to.be.equal(
-      22 * 3, // 22 emojis, 3 bytes per one emoji
-      `Emoji id has wrong length : ${emoji_id}`
-    );
-  }
-);
+Then("I want to get emoji id of ffi wallet {word}", async function (name) {
+  let wallet = this.getWallet(name);
+  let emoji_id = wallet.identifyEmoji();
+  console.log(emoji_id);
+  expect(emoji_id.length).to.be.equal(
+    22 * 3, // 22 emojis, 3 bytes per one emoji
+    `Emoji id has wrong length : ${emoji_id}`
+  );
+});
 
 When(
   "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
-  { timeout: 100 },
   function (amount, sender, receiver, feePerGram) {
     let ffi_wallet = this.getWallet(sender);
     let result = ffi_wallet.sendTransaction(
@@ -44,7 +39,6 @@ When(
 
 When(
   "I set passphrase {word} of ffi wallet {word}",
-  { timeout: 100 },
   function (passphrase, name) {
     let wallet = this.getWallet(name);
     wallet.applyEncryption(passphrase);
@@ -105,7 +99,6 @@ Then(
 
 When(
   "I add contact with alias {word} and pubkey {word} to ffi wallet {word}",
-  { timeout: 100 },
   function (alias, wallet_name, ffi_wallet_name) {
     let ffi_wallet = this.getWallet(ffi_wallet_name);
     ffi_wallet.addContact(alias, this.getWalletPubkey(wallet_name));
@@ -114,7 +107,6 @@ When(
 
 Then(
   "I have contact with alias {word} and pubkey {word} in ffi wallet {word}",
-  { timeout: 100 },
   function (alias, wallet_name, ffi_wallet_name) {
     let wallet = this.getWalletPubkey(wallet_name);
     let ffi_wallet = this.getWallet(ffi_wallet_name);
@@ -138,7 +130,6 @@ Then(
 
 When(
   "I remove contact with alias {word} from ffi wallet {word}",
-  { timeout: 100 },
   function (alias, wallet_name) {
     let ffi_wallet = this.getWallet(wallet_name);
     let contacts = ffi_wallet.getContactList();
@@ -159,7 +150,6 @@ When(
 
 Then(
   "I don't have contact with alias {word} in ffi wallet {word}",
-  { timeout: 100 },
   function (alias, wallet_name) {
     let ffi_wallet = this.getWallet(wallet_name);
     let contacts = ffi_wallet.getContactList();
@@ -182,7 +172,6 @@ Then(
 
 When(
   "I set base node {word} for ffi wallet {word}",
-  { timeout: 100 },
   function (node, wallet_name) {
     let wallet = this.getWallet(wallet_name);
     let peer = this.nodes[node].peerAddress().split("::");
@@ -192,7 +181,7 @@ When(
 
 Then(
   "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
-  { timeout: 34 * 1000 },
+  { timeout: 40 * 1000 },
   async function (wallet_name, count) {
     let wallet = this.getWallet(wallet_name);
     let broadcast = wallet.getOutboundTransactions();
@@ -213,7 +202,6 @@ Then(
 
 Then(
   "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction",
-  { timeout: 100 },
   async function (wallet_name, count) {
     const wallet = this.getWallet(wallet_name);
     let txs = wallet.getOutboundTransactions();
@@ -233,7 +221,6 @@ Then(
 
 Given(
   "I have a ffi wallet {word} connected to base node {word}",
-  { timeout: 1000 },
   async function (walletName, nodeName) {
     let ffi_wallet = await this.createAndAddFFIWallet(walletName, null);
     let peer = this.nodes[nodeName].peerAddress().split("::");
@@ -243,7 +230,6 @@ Given(
 
 Then(
   "I recover wallet {word} into ffi wallet {word} from seed words on node {word}",
-  { timeout: 2 * 1000 },
   async function (wallet_name, ffi_wallet_name, node) {
     let wallet = this.getWallet(wallet_name);
     const seed_words_text = wallet.getSeedWords();
@@ -281,7 +267,6 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} transaction",
-  { timeout: 3 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
 
@@ -343,7 +328,6 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} broadcast",
-  { timeout: 100 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
 
@@ -376,7 +360,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} mined",
-  { timeout: 4 * 1000 },
+  { timeout: 7 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
 
@@ -409,7 +393,6 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive at least {int} SAF message",
-  { timeout: 3 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
 
@@ -442,7 +425,6 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to have at least {int} uT",
-  { timeout: 4 * 1000 },
   async function (wallet_name, amount) {
     let wallet = this.getWallet(wallet_name);
 
@@ -488,7 +470,6 @@ When("I start ffi wallet {word}", async function (walletName) {
 
 When(
   "I restart ffi wallet {word} connected to base node {word}",
-  { timeout: 1000 },
   async function (walletName, node) {
     let wallet = this.getWallet(walletName);
     await wallet.restart();
@@ -497,18 +478,14 @@ When(
   }
 );
 
-Then(
-  "I want to get public key of ffi wallet {word}",
-  { timeout: 100 },
-  function (name) {
-    let wallet = this.getWallet(name);
-    let public_key = wallet.identify();
-    expect(public_key.length).to.be.equal(
-      64,
-      `Public key has wrong length : ${public_key}`
-    );
-  }
-);
+Then("I want to get public key of ffi wallet {word}", function (name) {
+  let wallet = this.getWallet(name);
+  let public_key = wallet.identify();
+  expect(public_key.length).to.be.equal(
+    64,
+    `Public key has wrong length : ${public_key}`
+  );
+});
 
 Then(
   "I want to view the transaction kernels for completed transactions in ffi wallet {word}",
