@@ -59,24 +59,24 @@ pub struct InstructionCaller {
 }
 
 impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
+    pub fn _owner_token_id(&self) -> &TokenId {
         &self.owner_token_id
     }
 }
 
 #[derive(Copy, Clone)]
 pub enum TemplateId {
-    EditableMetadata,
+    _EditableMetadata,
 }
 
 impl TemplateId {
     pub fn _parse(s: &str) -> TemplateId {
         match s {
-            "EditableMetadata" => TemplateId::EditableMetadata,
+            "EditableMetadata" => TemplateId::_EditableMetadata,
             _ => {
                 // TODO: Propagate error instead
                 dbg!("Unrecognised template");
-                TemplateId::EditableMetadata
+                TemplateId::_EditableMetadata
             },
         }
     }

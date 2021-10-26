@@ -25,9 +25,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum DigitalAssetError {
     #[error("Unknown method: {method_name}")]
-    UnknownMethod { method_name: String },
+    _UnknownMethod { method_name: String },
     #[error("Missing argument at position {position} (name: {argument_name}")]
-    MissingArgument { argument_name: String, position: usize },
+    _MissingArgument { argument_name: String, position: usize },
     #[error("Invalid sig, TODO: fill in deets")]
     InvalidSignature,
     #[error("Peer sent an invalid message: {0}")]

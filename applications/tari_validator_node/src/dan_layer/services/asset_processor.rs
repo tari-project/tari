@@ -25,7 +25,7 @@ use crate::{
         models::{AssetDefinition, Instruction, InstructionCaller, InstructionId, TemplateId},
         storage::AssetStore,
         template_command::{ExecutionResult, TemplateCommand},
-        templates::editable_metadata_template::EditableMetadataTemplate,
+        templates::editable_metadata_template::_EditableMetadataTemplate,
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -101,7 +101,7 @@ impl TemplateFactory {
         caller: InstructionCaller,
     ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match template {
-            TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args, caller),
+            TemplateId::_EditableMetadata => _EditableMetadataTemplate::_create_command(method, args, caller),
         }
     }
 }
