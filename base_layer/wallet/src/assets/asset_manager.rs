@@ -39,7 +39,6 @@ use tari_common_types::{
 };
 use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
 
-
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
 pub(crate) struct AssetManager<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyManager> {
