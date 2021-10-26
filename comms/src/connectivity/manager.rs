@@ -209,13 +209,9 @@ impl ConnectivityManagerActor {
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },
-            DialPeer {
-                node_id,
-                reply_tx,
-                tracing_id,
-            } => {
+            DialPeer { node_id, reply_tx } => {
+                let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_request");
-                // let _e = span.enter();
                 span.follows_from(tracing_id);
                 async move {
                     match self.pool.get(&node_id) {
