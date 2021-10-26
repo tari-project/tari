@@ -1067,7 +1067,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_none());
 
@@ -1082,7 +1082,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_some());
 
@@ -1106,7 +1106,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_none());
 
@@ -1121,7 +1121,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_some());
 
@@ -1137,7 +1137,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_none());
 
@@ -1152,7 +1152,7 @@ fn asset_unique_id() {
     let output_hash = db
         .db_read_access()
         .unwrap()
-        .fetch_utxo_by_unique_id(Some(&asset), &unique_id)
+        .fetch_utxo_by_unique_id(Some(&asset), unique_id)
         .unwrap();
     assert!(output_hash.is_some());
 }

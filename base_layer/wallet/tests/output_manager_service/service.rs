@@ -40,14 +40,13 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized, ConsensusEncodingWrapper},
-    crypto::tari_utilities::Hashable,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction::OutputFeatures,
-        transaction_protocol::{sender::TransactionSenderMessage, TxId},
+        transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         SenderTransactionProtocol,
     },
@@ -62,6 +61,7 @@ use tari_crypto::{
 use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
+use tari_utilities::Hashable;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -905,7 +905,7 @@ async fn coin_split_with_change() {
         split_count + 1,
         (split_count + 1) * default_metadata_byte_size(),
     );
-    assert_eq!(fee, expected_fee);
+    assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
     assert_eq!(amount, val2 + val3);
 }
 
@@ -943,7 +943,7 @@ async fn coin_split_no_change() {
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 3);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count);
-    assert_eq!(fee, expected_fee);
+    assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
     assert_eq!(amount, val1 + val2 + val3);
 }
 
@@ -1501,7 +1501,7 @@ async fn test_txo_revalidation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone()).await.unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -1512,7 +1512,7 @@ async fn test_txo_revalidation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone()).await.unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;

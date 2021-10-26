@@ -22,8 +22,9 @@
 
 use crate::{
     dan_layer::{
-        models::{Event, Instruction, Payload, Signature, View, ViewId},
+        models::{BaseLayerMetadata, BaseLayerOutput, Committee, Event, Instruction, Payload, Signature, View, ViewId},
         services::{
+            base_node_client::BaseNodeClient,
             infrastructure_services::NodeAddressable,
             BftReplicaService,
             EventsPublisher,
@@ -34,6 +35,7 @@ use crate::{
         },
     },
     digital_assets_error::DigitalAssetError,
+    types::PublicKey,
 };
 use async_trait::async_trait;
 use std::{
@@ -42,9 +44,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use super::CommitteeManager;
+
 #[derive(Debug, Clone)]
 pub struct MockMempoolService;
 
+#[async_trait]
 impl MempoolService for MockMempoolService {
     async fn submit_instruction(&mut self, _instruction: Instruction) -> Result<(), DigitalAssetError> {
         Ok(())
@@ -102,8 +107,9 @@ pub struct MockStaticPayloadProvider<TPayload: Payload> {
     static_payload: TPayload,
 }
 
+#[async_trait]
 impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<TPayload> {
-    fn create_payload(&self) -> Result<TPayload, DigitalAssetError> {
+    async fn create_payload(&self) -> Result<TPayload, DigitalAssetError> {
         Ok(self.static_payload.clone())
     }
 
@@ -111,7 +117,7 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
         self.static_payload.clone()
     }
 
-    fn get_payload_queue(&self) -> usize {
+    async fn get_payload_queue(&self) -> usize {
         1
     }
 }
@@ -160,6 +166,43 @@ pub struct MockSigningService<TAddr: NodeAddressable> {
 impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr> {
     fn sign(&self, _identity: &TAddr, _challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
         Ok(Signature {})
+    }
+}
+
+pub struct MockBaseNodeClient {}
+
+#[async_trait]
+impl BaseNodeClient for MockBaseNodeClient {
+    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError> {
+        todo!();
+    }
+
+    async fn get_current_checkpoint(
+        &mut self,
+        _height: u64,
+        _asset_public_key: PublicKey,
+        _checkpoint_unique_id: Vec<u8>,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        todo!();
+    }
+}
+
+pub fn mock_base_node_client() -> MockBaseNodeClient {
+    MockBaseNodeClient {}
+}
+
+#[derive(Clone)]
+pub struct MockCommitteeManager {
+    pub committee: Committee<&'static str>,
+}
+
+impl<TAddr: NodeAddressable> CommitteeManager<TAddr> for MockCommitteeManager {
+    fn current_committee(&self) -> Result<&Committee<TAddr>, DigitalAssetError> {
+        todo!();
+    }
+
+    fn read_from_checkpoint(&mut self, _output: BaseLayerOutput) -> Result<(), DigitalAssetError> {
+        todo!();
     }
 }
 
