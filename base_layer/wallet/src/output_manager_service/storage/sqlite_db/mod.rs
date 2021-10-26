@@ -1097,7 +1097,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             diesel::update(
                 outputs::table.filter(
                     outputs::received_in_tx_id
-                        .eq(Some(tx_id as i64))
+                        .eq(Some(tx_id.as_u64() as i64))
                         .and(outputs::coinbase_block_height.is_not_null()),
                 ),
             )

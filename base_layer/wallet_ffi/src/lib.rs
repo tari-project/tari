@@ -143,10 +143,16 @@ use tari_crypto::{
 use tari_utilities::{hex, hex::Hex};
 use tokio::runtime::Runtime;
 
+use crate::{
+    callback_handler::CallbackHandler,
+    enums::SeedWordPushResult,
+    error::{InterfaceError, TransactionError},
+    tasks::recovery_event_monitoring,
+};
 use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -186,18 +192,10 @@ use tari_wallet::{
     WalletSqlite,
 };
 
-use crate::{
-    callback_handler::CallbackHandler,
-    enums::SeedWordPushResult,
-    error::{InterfaceError, TransactionError},
-    tasks::recovery_event_monitoring,
-};
-
 mod callback_handler;
 mod enums;
 mod error;
 mod tasks;
-use tari_core::transactions::transaction_protocol::TxId;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
