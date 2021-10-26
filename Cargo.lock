@@ -6651,6 +6651,7 @@ version = "0.10.1"
 dependencies = [
  "anyhow",
  "async-trait",
+ "blake2",
  "bytecodec",
  "clap",
  "digest",

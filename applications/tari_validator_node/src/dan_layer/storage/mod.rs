@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-pub use error::PersistenceError;
+pub use error::StorageError;
 
 mod lmdb;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};

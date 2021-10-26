@@ -22,7 +22,6 @@
 
 mod asset_processor;
 mod base_node_client;
-mod bft_replica_service;
 mod committee_manager;
 mod events_publisher;
 pub mod infrastructure_services;
@@ -33,12 +32,11 @@ mod signing_service;
 
 pub use asset_processor::{AssetProcessor, ConcreteAssetProcessor, MemoryInstructionLog};
 pub use base_node_client::{BaseNodeClient, GrpcBaseNodeClient};
-pub use bft_replica_service::{BftReplicaService, ConcreteBftReplicaService};
 pub use committee_manager::{CommitteeManager, ConcreteCommitteeManager};
 pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
 pub use mempool_service::{ConcreteMempoolService, MempoolService, MempoolServiceHandle};
-pub use payload_processor::{InstructionSetProcessor, PayloadProcessor};
-pub use payload_provider::{MempoolPayloadProvider, PayloadProvider};
+pub use payload_processor::{PayloadProcessor, TariDanPayloadProcessor};
+pub use payload_provider::{PayloadProvider, TariDanPayloadProvider};
 pub use signing_service::{NodeIdentitySigningService, SigningService};
 
 #[cfg(test)]

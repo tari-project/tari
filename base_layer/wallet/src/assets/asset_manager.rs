@@ -160,25 +160,26 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
             )
             .await?;
         // TODO: get consensus threshold from somewhere else
-        let n = committee_pub_keys.len();
-        if n > u8::MAX as usize {
-            return Err(WalletError::ArgumentError {
-                argument: "committee_pub_keys".to_string(),
-                message: "Cannot be more than 255".to_string(),
-                value: n.to_string(),
-            });
-        }
-        let max_failures = n / 3;
-        let m = max_failures * 2 + 1;
-        let mut msg = [0u8; 32];
-        msg.copy_from_slice("Need a better message12345678901".as_bytes());
-
-        let output = output.with_script(script!(CheckMultiSig(
-            m as u8,
-            n as u8,
-            committee_pub_keys,
-            Box::new(msg)
-        )));
+        // TODO: Put the multisig script back
+        // let n = committee_pub_keys.len();
+        // if n > u8::MAX as usize {
+        //     return Err(WalletError::ArgumentError {
+        //         argument: "committee_pub_keys".to_string(),
+        //         message: "Cannot be more than 255".to_string(),
+        //         value: n.to_string(),
+        //     });
+        // }
+        // let max_failures = n / 3;
+        // let m = max_failures * 2 + 1;
+        // let mut msg = [0u8; 32];
+        // msg.copy_from_slice("Need a better message12345678901".as_bytes());
+        //
+        // let output = output.with_script(script!(CheckMultiSig(
+        //     m as u8,
+        //     n as u8,
+        //     committee_pub_keys,
+        //     Box::new(msg)
+        // )));
         let (tx_id, transaction) = self
             .output_manager
             .create_send_to_self_with_output(0.into(), vec![output], 100.into())

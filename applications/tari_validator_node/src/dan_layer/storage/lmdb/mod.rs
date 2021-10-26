@@ -28,7 +28,7 @@ mod helpers;
 use crate::{
     dan_layer::{
         models::TokenId,
-        storage::{error::PersistenceError, AssetStore},
+        storage::{error::StorageError, AssetStore},
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -57,7 +57,7 @@ pub struct LmdbAssetStore {
 }
 
 impl LmdbAssetStore {
-    pub fn initialize<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<Self, PersistenceError> {
+    pub fn initialize<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<Self, StorageError> {
         Ok(Self {
             db: LmdbAssetBackend::initialize(path, config)?,
             cached: None,
@@ -65,7 +65,7 @@ impl LmdbAssetStore {
     }
 
     /// Returns the full persisted ParticiaMap of the metadata state.
-    fn load_map(&self, access: &ConstAccessor<'_>) -> Result<PatriciaMap<Vec<u8>>, PersistenceError> {
+    fn load_map(&self, access: &ConstAccessor<'_>) -> Result<PatriciaMap<Vec<u8>>, StorageError> {
         let map = self
             .db
             .get_metadata(access, PATRICIA_MAP_KEY)?
@@ -131,7 +131,7 @@ pub struct LmdbAssetBackend {
 }
 
 impl LmdbAssetBackend {
-    pub(self) fn initialize<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<Self, PersistenceError> {
+    pub(self) fn initialize<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<Self, StorageError> {
         fs::create_dir_all(&path)?;
         let file_lock = file_lock::try_lock_exclusive(path.as_ref())?;
         let store = create_lmdb_store(path, config)?;
@@ -143,19 +143,15 @@ impl LmdbAssetBackend {
         })
     }
 
-    pub fn read_transaction(&self) -> Result<ReadTransaction<'_>, PersistenceError> {
+    pub fn read_transaction(&self) -> Result<ReadTransaction<'_>, StorageError> {
         Ok(ReadTransaction::new(&*self.env)?)
     }
 
-    pub fn write_transaction(&self) -> Result<WriteTransaction<'_>, PersistenceError> {
+    pub fn write_transaction(&self) -> Result<WriteTransaction<'_>, StorageError> {
         Ok(WriteTransaction::new(&*self.env)?)
     }
 
-    pub fn get_metadata<'a>(
-        &self,
-        access: &'a ConstAccessor<'_>,
-        key: u64,
-    ) -> Result<Option<&'a [u8]>, PersistenceError> {
+    pub fn get_metadata<'a>(&self, access: &'a ConstAccessor<'_>, key: u64) -> Result<Option<&'a [u8]>, StorageError> {
         let val = access.get::<_, [u8]>(&*self.metadata_db, &key).to_opt()?;
         Ok(val)
     }
@@ -165,7 +161,7 @@ impl LmdbAssetBackend {
         access: &mut WriteAccessor<'_>,
         key: u64,
         metadata: &[u8],
-    ) -> Result<(), PersistenceError> {
+    ) -> Result<(), StorageError> {
         access.put(&self.metadata_db, &key, metadata, put::Flags::empty())?;
         Ok(())
     }
