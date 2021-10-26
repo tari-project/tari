@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+# todo: update arg handling
 
 if [ $# -eq 0 ]; then
     echo
