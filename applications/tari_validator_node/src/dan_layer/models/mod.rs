@@ -70,7 +70,7 @@ pub enum TemplateId {
 }
 
 impl TemplateId {
-    pub fn parse(s: &str) -> TemplateId {
+    pub fn _parse(s: &str) -> TemplateId {
         match s {
             "EditableMetadata" => TemplateId::EditableMetadata,
             _ => {

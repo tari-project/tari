@@ -28,7 +28,7 @@ pub enum DigitalAssetError {
     UnknownMethod { method_name: String },
     #[error("Missing argument at position {position} (name: {argument_name}")]
     MissingArgument { argument_name: String, position: usize },
-    #[error("Invalid sig, tODO: fill in deets")]
+    #[error("Invalid sig, TODO: fill in deets")]
     InvalidSignature,
     #[error("Peer sent an invalid message: {0}")]
     InvalidPeerMessage(String),

@@ -41,9 +41,8 @@ use crate::{
     },
     digital_assets_error::DigitalAssetError,
 };
-
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
-
 use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
@@ -106,6 +105,7 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
+        trace!(target: LOG_TARGET, "next_event_result: {:?}", next_event_result);
 
         let started = Instant::now();
 

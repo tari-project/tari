@@ -39,10 +39,10 @@ pub trait AssetProcessor {
 }
 
 pub struct ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
-    asset_definition: AssetDefinition,
-    template_factory: TemplateFactory,
-    instruction_log: TInstructionLog,
-    data_store: TAssetStore,
+    _asset_definition: AssetDefinition,
+    _template_factory: TemplateFactory,
+    _instruction_log: TInstructionLog,
+    _data_store: TAssetStore,
 }
 
 #[async_trait]
@@ -66,19 +66,19 @@ impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> Ass
 impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
     pub fn new(data_store: TAssetStore, instruction_log: TInstructionLog, asset_definition: AssetDefinition) -> Self {
         Self {
-            template_factory: TemplateFactory {},
-            instruction_log,
-            asset_definition,
-            data_store,
+            _template_factory: TemplateFactory {},
+            _instruction_log: instruction_log,
+            _asset_definition: asset_definition,
+            _data_store: data_store,
         }
     }
 
     pub fn execute(
         &mut self,
-        method: String,
-        args: VecDeque<Vec<u8>>,
-        caller: InstructionCaller,
-        id: InstructionId,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
+        _caller: InstructionCaller,
+        _id: InstructionId,
     ) -> Result<(), DigitalAssetError> {
         unimplemented!()
         // let instruction = self
@@ -93,7 +93,7 @@ impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteAssetProc
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
-    pub fn create_command(
+    pub fn _create_command(
         &self,
         template: TemplateId,
         method: String,
