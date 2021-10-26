@@ -25,7 +25,7 @@ use std::io;
 use tari_storage::lmdb_store::LMDBError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum PersistenceError {
+pub enum StorageError {
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
     #[error("LMDB: {0}")]

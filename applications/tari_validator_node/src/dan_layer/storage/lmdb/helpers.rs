@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::storage::PersistenceError;
+use crate::dan_layer::storage::StorageError;
 use lmdb_zero::db;
 use std::path::Path;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig, LMDBStore};
 
 const DATABASES: &[(&str, db::Flags)] = &[("metadata", db::INTEGERKEY)];
 
-pub fn create_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBStore, PersistenceError> {
+pub fn create_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBStore, StorageError> {
     const CREATE_FLAG: db::Flags = db::CREATE;
 
     let mut lmdb_store = LMDBBuilder::new()

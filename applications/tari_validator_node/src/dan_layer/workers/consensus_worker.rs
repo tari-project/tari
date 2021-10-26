@@ -235,6 +235,7 @@ where
                     &mut self.outbound_service,
                     &self.payload_provider,
                     &self.signing_service,
+                    &mut self.payload_processor,
                 )
                 .await
             },
@@ -289,7 +290,6 @@ where
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
-                        &mut self.payload_processor,
                     )
                     .await
             },
