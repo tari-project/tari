@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{ConsensusHash, Instruction, Payload};
+use crate::dan_layer::models::{ConsensusHash, Instruction};
 use std::hash::Hash;
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;

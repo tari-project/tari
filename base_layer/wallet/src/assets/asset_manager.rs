@@ -38,7 +38,7 @@ use tari_common_types::{
     types::{Commitment, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
-use tari_crypto::script;
+
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
