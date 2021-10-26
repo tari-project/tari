@@ -44,7 +44,7 @@ use crate::{
     ExitCodes,
 };
 use log::*;
-use std::{fs, fs::File, io::BufReader, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, fs::File, io::BufReader, path::Path, sync::Arc, time::Duration};
 use tari_app_utilities::{
     identity_management,
     identity_management::{load_from_json, setup_node_identity},
@@ -129,14 +129,14 @@ impl DanNode {
                 handles.clone(),
                 subscription_factory.clone(),
                 shutdown.clone(),
-                &dan_config,
+                dan_config,
             )
             .await?;
         }
         Ok(())
     }
 
-    fn read_asset_definitions(&self, path: &PathBuf) -> Result<Vec<AssetDefinition>, ExitCodes> {
+    fn read_asset_definitions(&self, path: &Path) -> Result<Vec<AssetDefinition>, ExitCodes> {
         if !path.exists() {
             fs::create_dir_all(path).expect("Could not create dir");
         }

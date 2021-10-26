@@ -22,14 +22,14 @@
 
 pub struct Settings {
   pub(crate) wallet_grpc_address: String,
-  pub(crate) favourite_assets: Vec<String>,
+  pub(crate) _favourite_assets: Vec<String>,
 }
 
 impl Settings {
   pub fn new() -> Self {
     Self {
       wallet_grpc_address: "localhost:18143".to_string(),
-      favourite_assets: vec!["1234".to_string()],
+      _favourite_assets: vec!["1234".to_string()],
     }
   }
 }

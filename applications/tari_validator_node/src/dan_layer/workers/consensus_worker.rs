@@ -41,10 +41,7 @@ use crate::{
             PayloadProvider,
             SigningService,
         },
-        workers::{
-            states,
-            states::{ConsensusWorkerStateEvent, IdleState},
-        },
+        workers::{states, states::ConsensusWorkerStateEvent},
     },
     digital_assets_error::DigitalAssetError,
 };

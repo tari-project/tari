@@ -4,8 +4,6 @@
 )]
 
 use crate::app_state::ConcurrentAppState;
-use serde::Serialize;
-use tari_utilities::hex::Hex;
 
 mod app_state;
 mod commands;
@@ -17,7 +15,7 @@ fn main() {
   let state = ConcurrentAppState::new();
 
   tauri::Builder::default()
-    .manage(state.clone())
+    .manage(state)
     .invoke_handler(tauri::generate_handler![
       commands::assets::assets_create,
       commands::assets::assets_list,

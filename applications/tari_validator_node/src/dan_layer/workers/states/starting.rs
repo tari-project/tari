@@ -78,7 +78,7 @@ where TBaseNodeClient: BaseNodeClient
         if !committee_manager.current_committee()?.contains(node_id) {
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
         }
-        todo!();
+        // todo!();
 
         Ok(ConsensusWorkerStateEvent::Initialized)
     }
