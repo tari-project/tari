@@ -21,6 +21,7 @@ jobs:
           sudo apt-get update && \
           sudo apt-get -y install \
             libatk1.0-dev \
+            libsoup2.4-dev \
             libpango1.0-dev
       - name: toolchain
         uses: actions-rs/toolchain@v1
@@ -74,6 +75,8 @@ jobs:
             build-essential \
             libcairo2-dev \
             libpango1.0-dev \
+            libatk1.0-dev \
+            libsoup2.4-dev \
             libjpeg-dev \
             libgif-dev \
             librsvg2-dev
@@ -143,9 +146,10 @@ jobs:
             libprotobuf-dev \
             protobuf-compiler \
             build-essential \
-            libatk1.0-dev \
             libcairo2-dev \
             libpango1.0-dev \
+            libatk1.0-dev \
+            libsoup2.4-dev \
             libjpeg-dev \
             libgif-dev \
             librsvg2-dev
