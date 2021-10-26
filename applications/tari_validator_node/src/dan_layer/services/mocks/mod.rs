@@ -26,7 +26,6 @@ use crate::{
         services::{
             base_node_client::BaseNodeClient,
             infrastructure_services::NodeAddressable,
-            BftReplicaService,
             EventsPublisher,
             MempoolService,
             PayloadProcessor,
@@ -70,31 +69,6 @@ impl MempoolService for MockMempoolService {
 
 pub fn create_mempool_mock() -> MockMempoolService {
     MockMempoolService
-}
-
-pub struct MockBftReplicaService {
-    current_view: View,
-}
-
-impl MockBftReplicaService {
-    pub fn new() -> Self {
-        Self {
-            current_view: View {
-                view_id: ViewId(0),
-                is_leader: false,
-            },
-        }
-    }
-}
-
-impl BftReplicaService for MockBftReplicaService {
-    fn current_view(&self) -> View {
-        self.current_view.clone()
-    }
-}
-
-pub fn mock_bft() -> MockBftReplicaService {
-    MockBftReplicaService::new()
 }
 
 pub fn mock_static_payload_provider<TPayload: Payload>(
