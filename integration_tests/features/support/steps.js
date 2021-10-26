@@ -369,7 +369,7 @@ Given(
 );
 
 Given(
-    /I have (a )?wallet (.*) connected to seed node (.*)/,
+  /I have (a )?wallet (.*) connected to seed node (.*)/,
   { timeout: 20 * 1000 },
   async function (a, walletName, seedName) {
     await this.createAndAddWallet(
@@ -1364,10 +1364,7 @@ When("I mine {int} block(s)", { timeout: -1 }, async function (numBlocks) {
   let name = this.currentBaseNodeName();
   // const tipHeight = await this.getClient(name).getTipHeight();
   for (let i = 0; i < numBlocks; i++) {
-    await withTimeout(
-      60 * 1000,
-      this.mineBlock(name, 0)
-    );
+    await withTimeout(60 * 1000, this.mineBlock(name, 0));
   }
 });
 

@@ -11,7 +11,7 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
+// const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 
 class CustomWorld {
   constructor({ attach, parameters }) {
