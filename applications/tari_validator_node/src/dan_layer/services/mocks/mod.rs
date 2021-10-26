@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{BaseLayerMetadata, BaseLayerOutput, Committee, Event, Instruction, Payload, Signature, View, ViewId},
+        models::{BaseLayerMetadata, BaseLayerOutput, Committee, Event, Instruction, Payload, Signature},
         services::{
             base_node_client::BaseNodeClient,
             infrastructure_services::NodeAddressable,

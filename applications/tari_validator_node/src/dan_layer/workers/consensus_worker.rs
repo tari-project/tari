@@ -349,7 +349,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::dan_layer::services::mocks::{mock_bft, MockCommitteeManager};
+    use crate::dan_layer::services::mocks::MockCommitteeManager;
 
     use crate::dan_layer::services::{
         infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
@@ -376,7 +376,6 @@ mod test {
         events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
         let mut replica_a = ConsensusWorker::new(
-            mock_bft(),
             inbound,
             outbound,
             committee_manager,

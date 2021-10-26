@@ -345,7 +345,7 @@ mod test {
         models::ViewId,
         services::{
             infrastructure_services::mocks::mock_outbound,
-            mocks::{mock_payload_provider, mock_signing_service},
+            mocks::{mock_payload_processor, mock_payload_provider, mock_signing_service},
         },
     };
     use tokio::time::Duration;
@@ -366,6 +366,7 @@ mod test {
         let mut outbound2 = outbound.clone();
         let mut inbound = outbound.take_inbound(&"B").unwrap();
         let payload_provider = mock_payload_provider();
+        let mut payload_processor = mock_payload_processor();
         let signing = mock_signing_service();
         let task = state.next_event(
             &view,
@@ -375,6 +376,7 @@ mod test {
             &mut outbound,
             &payload_provider,
             &signing,
+            &mut payload_processor,
         );
 
         outbound2

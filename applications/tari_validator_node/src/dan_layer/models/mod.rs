@@ -50,8 +50,6 @@ pub use quorum_certificate::QuorumCertificate;
 pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
-use blake2::Digest;
-
 
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;

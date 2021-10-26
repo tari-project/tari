@@ -22,11 +22,8 @@
 
 use crate::dan_layer::models::{ConsensusHash, Instruction, InstructionSet, Payload};
 use digest::Digest;
-use std::{
-    fmt::{Debug},
-    hash::{Hash, Hasher},
-};
-use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
+use std::fmt::Debug;
+use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]
 pub struct TariDanPayload {
