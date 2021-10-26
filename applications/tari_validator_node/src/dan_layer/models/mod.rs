@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, fmt::Debug, hash::Hash};
 // mod block;
 mod asset_definition;
 mod committee;
@@ -32,6 +33,8 @@ mod quorum_certificate;
 // mod replica_info;
 mod base_layer_metadata;
 mod base_layer_output;
+mod instruction_id;
+mod tari_dan_payload;
 mod view;
 mod view_id;
 
@@ -40,18 +43,19 @@ pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
+pub use instruction_id::InstructionId;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 // pub use replica_info::ReplicaInfo;
 pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
-use std::{convert::TryFrom, fmt::Debug, hash::Hash};
+use blake2::Digest;
+use digest::Update;
+use tari_crypto::common::Blake256;
+pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
 pub use view_id::ViewId;
-
-// TODO: encapsulate
-pub struct InstructionId(pub u64);
 
 // TODO: encapsulate
 pub struct InstructionCaller {
@@ -143,12 +147,28 @@ impl TreeNodeHash {
     }
 }
 
+pub trait ConsensusHash {
+    fn consensus_hash(&self) -> &[u8];
+}
+
 // TODO: Perhaps should be CoW instead of Clone
-pub trait Payload: Hash + Debug + Clone + AsRef<[u8]> + Send + Sync + PartialEq {}
+pub trait Payload: Debug + Clone + Send + Sync + ConsensusHash {}
 
 impl Payload for &str {}
 
+impl ConsensusHash for &str {
+    fn consensus_hash(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
 impl Payload for String {}
+
+impl ConsensusHash for String {
+    fn consensus_hash(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
 
 pub trait Event: Clone + Send + Sync {}
 

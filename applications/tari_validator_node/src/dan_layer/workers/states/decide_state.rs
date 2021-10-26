@@ -45,14 +45,13 @@ use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
 
 // TODO: This is very similar to pre-commit, and commit state
-pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
+pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     node_id: TAddr,
     committee: Committee<TAddr>,
@@ -61,21 +60,19 @@ where
     ta: PhantomData<TAddr>,
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
-    p_t: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     commit_qc: Option<QuorumCertificate<TPayload>>,
     _locked_qc: Option<QuorumCertificate<TPayload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
-    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService, TPayloadProcessor>
+impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
         Self {
@@ -89,7 +86,6 @@ where
             commit_qc: None,
             _locked_qc: None,
             p_s: PhantomData,
-            p_t: PhantomData,
         }
     }
 
@@ -100,7 +96,6 @@ where
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         _signing_service: &TSigningService,
-        payload_processor: &mut TPayloadProcessor,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
@@ -121,7 +116,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, payload_processor).await? {
+                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -171,17 +166,10 @@ where
             if let Some(qc) = self.create_qc(current_view) {
                 self.commit_qc = Some(qc.clone());
                 self.broadcast(outbound, qc, current_view.view_id).await?;
-                // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
                 return Ok(None); // Replica will move this on
             }
             dbg!("committee did not agree on node");
             Ok(None)
-
-            // let high_qc = self.find_highest_qc();
-            // let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            // self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
-            //     .await?;
-            // Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
             println!(
                 "[DECIDE] Consensus has NOT YET been reached with {:?} out of {} votes",
@@ -236,7 +224,6 @@ where
         current_view: &View,
         from: &TAddr,
         view_leader: &TAddr,
-        payload_processor: &mut TPayloadProcessor,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
@@ -267,8 +254,6 @@ where
             // )
             // .await?;
             dbg!("Going to apply txs: ", justify.node().payload());
-
-            payload_processor.process_payload(justify.node().payload()).await?;
 
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {

@@ -43,18 +43,28 @@ use crate::{
 };
 use log::*;
 use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
+
+use crate::dan_layer::services::PayloadProcessor;
 use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
 
-pub struct Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
-where
+pub struct Prepare<
+    TInboundConnectionService,
+    TOutboundService,
+    TAddr,
+    TSigningService,
+    TPayloadProvider,
+    TPayload,
+    TPayloadProcessor,
+> where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     node_id: TAddr,
     locked_qc: Arc<QuorumCertificate<TPayload>>,
@@ -64,11 +74,28 @@ where
     phantom_payload_provider: PhantomData<TPayloadProvider>,
     phantom_outbound: PhantomData<TOutboundService>,
     phantom_signing: PhantomData<TSigningService>,
+    phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
 }
 
-impl<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
-    Prepare<TInboundConnectionService, TOutboundService, TAddr, TSigningService, TPayloadProvider, TPayload>
+impl<
+        TInboundConnectionService,
+        TOutboundService,
+        TAddr,
+        TSigningService,
+        TPayloadProvider,
+        TPayload,
+        TPayloadProcessor,
+    >
+    Prepare<
+        TInboundConnectionService,
+        TOutboundService,
+        TAddr,
+        TSigningService,
+        TPayloadProvider,
+        TPayload,
+        TPayloadProcessor,
+    >
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -76,6 +103,7 @@ where
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>) -> Self {
         Self {
@@ -86,6 +114,7 @@ where
             phantom_outbound: PhantomData,
             phantom_signing: PhantomData,
             received_new_view_messages: HashMap::new(),
+            phantom_processor: PhantomData,
         }
     }
 
@@ -99,6 +128,7 @@ where
         outbound_service: &mut TOutboundService,
         payload_provider: &TPayloadProvider,
         signing_service: &TSigningService,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
@@ -113,13 +143,16 @@ where
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, committee, payload_provider, outbound_service).await?{
+                        if let Some(result) = self.process_leader_message(current_view, message.clone(),
+                            &from, committee, payload_provider, outbound_service).await?{
                            next_event_result = result;
                             break;
                         }
 
                     }
-                    if let Some(result) = self.process_replica_message(&message, current_view, &from,  committee.leader_for_view(current_view.view_id),  outbound_service, signing_service).await? {
+                    if let Some(result) = self.process_replica_message(&message, current_view, &from,
+                        committee.leader_for_view(current_view.view_id),  outbound_service, signing_service,
+                    payload_processor).await? {
                         next_event_result = result;
                         break;
                     }
@@ -195,6 +228,7 @@ where
         view_leader: &TAddr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
             // println!(
@@ -218,6 +252,8 @@ where
                 if !self.is_safe_node(node, justify) {
                     unimplemented!("Node is not safe")
                 }
+
+                payload_processor.process_payload(justify.node().payload()).await?;
 
                 self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, signing_service)
                     .await?;

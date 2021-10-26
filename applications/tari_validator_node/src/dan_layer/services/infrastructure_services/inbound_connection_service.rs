@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload};
+use crate::dan_layer::models::{HotStuffMessage, InstructionSet, Payload, TariDanPayload};
 
 use crate::{
     dan_layer::services::infrastructure_services::NodeAddressable,
@@ -42,8 +42,8 @@ pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
 
 pub struct TariCommsInboundConnectionService {
     // TODO: remove option
-    receiver: Option<TariCommsInboundReceiver<InstructionSet>>,
-    sender: Sender<(CommsPublicKey, HotStuffMessage<InstructionSet>)>,
+    receiver: Option<TariCommsInboundReceiver<TariDanPayload>>,
+    sender: Sender<(CommsPublicKey, HotStuffMessage<TariDanPayload>)>,
 }
 
 impl TariCommsInboundConnectionService {
@@ -55,11 +55,11 @@ impl TariCommsInboundConnectionService {
         }
     }
 
-    pub fn clone_sender(&self) -> Sender<(CommsPublicKey, HotStuffMessage<InstructionSet>)> {
+    pub fn clone_sender(&self) -> Sender<(CommsPublicKey, HotStuffMessage<TariDanPayload>)> {
         self.sender.clone()
     }
 
-    pub fn take_receiver(&mut self) -> Option<TariCommsInboundReceiver<InstructionSet>> {
+    pub fn take_receiver(&mut self) -> Option<TariCommsInboundReceiver<TariDanPayload>> {
         // Takes the receiver, can only be done once
         self.receiver.take()
     }

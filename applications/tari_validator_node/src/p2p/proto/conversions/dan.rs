@@ -22,6 +22,7 @@
 
 use crate::{
     dan_layer::models::{
+        CheckpointData,
         HotStuffMessage,
         HotStuffMessageType,
         HotStuffTreeNode,
@@ -29,6 +30,7 @@ use crate::{
         InstructionSet,
         QuorumCertificate,
         Signature,
+        TariDanPayload,
         TokenId,
         TreeNodeHash,
         ViewId,
@@ -39,46 +41,61 @@ use crate::{
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::tari_utilities::ByteArray;
 
-impl From<&HotStuffMessage<InstructionSet>> for dan_proto::HotStuffMessage {
-    fn from(source: &HotStuffMessage<InstructionSet>) -> Self {
+impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
+    fn from(source: HotStuffMessage<TariDanPayload>) -> Self {
         Self {
             message_type: source.message_type().as_u8() as i32,
-            node: source.node().map(|n| n.into()),
-            justify: source.justify().map(|j| j.into()),
-            partial_sig: source.partial_sig().map(|s| s.into()),
+            node: source.node().map(|n| n.clone().into()),
+            justify: source.justify().map(|j| j.clone().into()),
+            partial_sig: source.partial_sig().map(|s| s.clone().into()),
             view_number: source.view_number().as_u64(),
         }
     }
 }
 
-impl From<&HotStuffTreeNode<InstructionSet>> for dan_proto::HotStuffTreeNode {
-    fn from(source: &HotStuffTreeNode<InstructionSet>) -> Self {
+impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
+    fn from(source: HotStuffTreeNode<TariDanPayload>) -> Self {
         Self {
             parent: Vec::from(source.parent().as_bytes()),
-            payload: Some(source.payload().into()),
+            payload: Some(source.payload().clone().into()),
         }
     }
 }
 
-impl From<&QuorumCertificate<InstructionSet>> for dan_proto::QuorumCertificate {
-    fn from(source: &QuorumCertificate<InstructionSet>) -> Self {
+impl From<QuorumCertificate<TariDanPayload>> for dan_proto::QuorumCertificate {
+    fn from(source: QuorumCertificate<TariDanPayload>) -> Self {
         Self {
             message_type: source.message_type().as_u8() as i32,
-            node: Some(source.node().into()),
+            node: Some(source.node().clone().into()),
             view_number: source.view_number().as_u64(),
-            signature: source.signature().map(|s| s.into()),
+            signature: source.signature().map(|s| s.clone().into()),
         }
     }
 }
 
-impl From<&Signature> for dan_proto::Signature {
-    fn from(_s: &Signature) -> Self {
+impl From<Signature> for dan_proto::Signature {
+    fn from(_s: Signature) -> Self {
         Self {}
     }
 }
 
-impl From<&InstructionSet> for dan_proto::InstructionSet {
-    fn from(source: &InstructionSet) -> Self {
+impl From<TariDanPayload> for dan_proto::TariDanPayload {
+    fn from(source: TariDanPayload) -> Self {
+        let (instruction_set, checkpoint) = source.destruct();
+        Self {
+            checkpoint: checkpoint.map(|c| c.into()),
+            instruction_set: Some(instruction_set.into()),
+        }
+    }
+}
+
+impl From<CheckpointData> for dan_proto::CheckpointData {
+    fn from(_source: CheckpointData) -> Self {
+        Self {}
+    }
+}
+impl From<InstructionSet> for dan_proto::InstructionSet {
+    fn from(source: InstructionSet) -> Self {
         Self {
             instructions: source.instructions().iter().map(|i| i.into()).collect(),
         }
@@ -97,7 +114,7 @@ impl From<&Instruction> for dan_proto::Instruction {
     }
 }
 
-impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<InstructionSet> {
+impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
     type Error = String;
 
     fn try_from(value: dan_proto::HotStuffMessage) -> Result<Self, Self::Error> {
@@ -111,7 +128,7 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<InstructionSet> {
     }
 }
 
-impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate<InstructionSet> {
+impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate<TariDanPayload> {
     type Error = String;
 
     fn try_from(value: dan_proto::QuorumCertificate) -> Result<Self, Self::Error> {
@@ -128,7 +145,7 @@ impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate<InstructionSet>
     }
 }
 
-impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<InstructionSet> {
+impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
     type Error = String;
 
     fn try_from(value: dan_proto::HotStuffTreeNode) -> Result<Self, Self::Error> {
@@ -180,5 +197,27 @@ impl TryFrom<dan_proto::Instruction> for Instruction {
             create_com_sig_from_bytes(&value.signature)
                 .map_err(|e| format!("Could not convert signature bytes to comsig: {}", e))?,
         ))
+    }
+}
+
+impl TryFrom<dan_proto::TariDanPayload> for TariDanPayload {
+    type Error = String;
+
+    fn try_from(value: dan_proto::TariDanPayload) -> Result<Self, Self::Error> {
+        let instruction_set = value
+            .instruction_set
+            .ok_or_else(|| "Instructions were not present".to_string())?
+            .try_into()?;
+        let checkpoint = value.checkpoint.map(|c| c.try_into()).transpose()?;
+
+        Ok(Self::new(instruction_set, checkpoint))
+    }
+}
+
+impl TryFrom<dan_proto::CheckpointData> for CheckpointData {
+    type Error = String;
+
+    fn try_from(_value: dan_proto::CheckpointData) -> Result<Self, Self::Error> {
+        Ok(Self::new())
     }
 }

@@ -25,7 +25,7 @@ use digest::Digest;
 use std::hash::Hash;
 use tari_crypto::common::Blake256;
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct HotStuffTreeNode<TPayload: Payload> {
     parent: TreeNodeHash,
     payload: TPayload,
@@ -60,7 +60,7 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
     pub fn calculate_hash(&self) -> TreeNodeHash {
         let result = Blake256::new()
             .chain(self.parent.0.as_slice())
-            .chain(self.payload.as_ref())
+            .chain(self.payload.consensus_hash())
             .finalize();
         TreeNodeHash(result.to_vec())
     }
@@ -71,5 +71,11 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
 
     pub fn payload(&self) -> &TPayload {
         &self.payload
+    }
+}
+
+impl<TPayload: Payload> PartialEq for HotStuffTreeNode<TPayload> {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash.eq(&other.hash)
     }
 }

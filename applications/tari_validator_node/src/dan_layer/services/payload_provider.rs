@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{InstructionSet, Payload},
+        models::{InstructionSet, Payload, TariDanPayload},
         services::MempoolService,
     },
     digital_assets_error::DigitalAssetError,
@@ -36,25 +36,26 @@ pub trait PayloadProvider<TPayload: Payload> {
     async fn get_payload_queue(&self) -> usize;
 }
 
-pub struct MempoolPayloadProvider<TMempoolService: MempoolService> {
+pub struct TariDanPayloadProvider<TMempoolService: MempoolService> {
     mempool: TMempoolService,
 }
 
-impl<TMempoolService: MempoolService> MempoolPayloadProvider<TMempoolService> {
+impl<TMempoolService: MempoolService> TariDanPayloadProvider<TMempoolService> {
     pub fn new(mempool: TMempoolService) -> Self {
         Self { mempool }
     }
 }
 
 #[async_trait]
-impl<TMempoolService: MempoolService> PayloadProvider<InstructionSet> for MempoolPayloadProvider<TMempoolService> {
-    async fn create_payload(&self) -> Result<InstructionSet, DigitalAssetError> {
+impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDanPayloadProvider<TMempoolService> {
+    async fn create_payload(&self) -> Result<TariDanPayload, DigitalAssetError> {
         let instructions = self.mempool.read_block(100).await?;
-        Ok(InstructionSet::from_slice(&instructions))
+        let instruction_set = InstructionSet::from_slice(&instructions);
+        Ok(TariDanPayload::new(instruction_set, None))
     }
 
-    fn create_genesis_payload(&self) -> InstructionSet {
-        InstructionSet::empty()
+    fn create_genesis_payload(&self) -> TariDanPayload {
+        TariDanPayload::new(InstructionSet::empty(), None)
     }
 
     async fn get_payload_queue(&self) -> usize {
