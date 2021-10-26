@@ -3547,7 +3547,7 @@ When(
 );
 
 Then(
-  "I make it rain from wallet {word} {int} tx / sec {int} sec {int} uT {int} increment to {word} via command line",
+  "I make it rain from wallet {word} {int} tx per sec {int} sec {int} uT {int} increment to {word} via command line",
   { timeout: 300 * 1000 },
   async function (sender, freq, duration, amount, amount_inc, receiver) {
     let wallet = this.getWallet(sender);
