@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,42 +20,55 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::File, path::Path, sync::Arc};
-
-use bytecodec::{
-    bincode_codec::{BincodeDecoder, BincodeEncoder},
-    DecodeExt,
-    EncodeExt,
-};
 use lmdb_zero as lmdb;
 use lmdb_zero::{put, ConstAccessor, LmdbResultExt, ReadTransaction, WriteAccessor, WriteTransaction};
-use patricia_tree::{
-    node::{Node, NodeDecoder, NodeEncoder},
-    PatriciaMap,
-};
+use std::{fs, fs::File, path::Path, sync::Arc};
 
-use helpers::create_lmdb_store;
 use tari_common::file_lock;
 use tari_storage::lmdb_store::{DatabaseRef, LMDBConfig};
 
-use crate::{
-    dan_layer::{
-        models::TokenId,
-        storage::{error::StorageError, AssetStore},
-    },
-    digital_assets_error::DigitalAssetError,
-};
+use crate::dan_layer::storage::{lmdb::helpers::create_lmdb_store, StorageError};
 
-#[cfg(test)]
-mod test;
+#[derive(Clone)]
+pub struct LmdbAssetBackend {
+    _file_lock: Arc<File>,
+    env: Arc<lmdb::Environment>,
+    metadata_db: DatabaseRef,
+}
 
-mod asset_db;
-mod helpers;
-mod lmdb_asset_backend;
-mod lmdb_asset_store;
+impl LmdbAssetBackend {
+    pub(crate) fn initialize<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<Self, StorageError> {
+        fs::create_dir_all(&path)?;
+        let file_lock = file_lock::try_lock_exclusive(path.as_ref())?;
+        let store = create_lmdb_store(path, config)?;
 
-pub use asset_db::AssetDb;
-pub use lmdb_asset_backend::LmdbAssetBackend;
-pub use lmdb_asset_store::LmdbAssetStore;
+        Ok(Self {
+            _file_lock: Arc::new(file_lock),
+            env: store.env(),
+            metadata_db: store.get_handle("metadata").unwrap().db(),
+        })
+    }
 
-const PATRICIA_MAP_KEY: u64 = 1u64;
+    pub fn read_transaction(&self) -> Result<ReadTransaction<'_>, StorageError> {
+        Ok(ReadTransaction::new(&*self.env)?)
+    }
+
+    pub fn write_transaction(&self) -> Result<WriteTransaction<'_>, StorageError> {
+        Ok(WriteTransaction::new(&*self.env)?)
+    }
+
+    pub fn get_metadata<'a>(&self, access: &'a ConstAccessor<'_>, key: u64) -> Result<Option<&'a [u8]>, StorageError> {
+        let val = access.get::<_, [u8]>(&*self.metadata_db, &key).to_opt()?;
+        Ok(val)
+    }
+
+    pub fn replace_metadata(
+        &self,
+        access: &mut WriteAccessor<'_>,
+        key: u64,
+        metadata: &[u8],
+    ) -> Result<(), StorageError> {
+        access.put(&self.metadata_db, &key, metadata, put::Flags::empty())?;
+        Ok(())
+    }
+}

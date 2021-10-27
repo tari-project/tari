@@ -34,6 +34,7 @@ mod quorum_certificate;
 mod base_layer_metadata;
 mod base_layer_output;
 mod instruction_id;
+mod sidechain_metadata;
 mod tari_dan_payload;
 mod view;
 mod view_id;
@@ -52,6 +53,7 @@ pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
 use blake2::Digest;
 use digest::Update;
+pub use sidechain_metadata::SidechainMetadata;
 use tari_crypto::common::Blake256;
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
@@ -138,7 +140,7 @@ impl TryFrom<u8> for HotStuffMessageType {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TreeNodeHash(pub Vec<u8>);
 
 impl TreeNodeHash {
@@ -147,6 +149,11 @@ impl TreeNodeHash {
     }
 }
 
+impl From<TreeNodeHash> for Vec<u8> {
+    fn from(v: TreeNodeHash) -> Self {
+        v.0
+    }
+}
 pub trait ConsensusHash {
     fn consensus_hash(&self) -> &[u8];
 }
@@ -189,5 +196,20 @@ pub struct Signature {}
 impl Signature {
     pub fn combine(&self, other: &Signature) -> Signature {
         other.clone()
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ChainHeight(u64);
+
+impl From<ChainHeight> for u64 {
+    fn from(c: ChainHeight) -> Self {
+        c.0
+    }
+}
+
+impl From<u64> for ChainHeight {
+    fn from(v: u64) -> Self {
+        ChainHeight(v)
     }
 }

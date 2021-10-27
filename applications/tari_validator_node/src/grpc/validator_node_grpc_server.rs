@@ -30,21 +30,26 @@ use crate::{
 
 use tari_crypto::tari_utilities::ByteArray;
 
+use crate::dan_layer::storage::{ChainStorageService, DbFactory};
 use tonic::{Request, Response, Status};
 
-pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService> {
-    mempool_service: TMempoolService,
+pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
+    mempool: TMempoolService,
+    db_factory: TDbFactory,
 }
 
-impl<TMempoolService: MempoolService> ValidatorNodeGrpcServer<TMempoolService> {
-    pub fn new(mempool_service: TMempoolService) -> Self {
-        Self { mempool_service }
+impl<TMempoolService: MempoolService, TDbFactory: DbFactory> ValidatorNodeGrpcServer<TMempoolService, TDbFactory> {
+    pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
+        Self { mempool, db_factory }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::validator_node_server::ValidatorNode
-    for ValidatorNodeGrpcServer<TMempoolService>
+impl<TMempoolService, TDbFactory> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService, TDbFactory>
+where
+    TMempoolService: MempoolService + Clone + Sync + Send + 'static,
+    TDbFactory: DbFactory + Sync + Send + 'static,
 {
     async fn get_token_data(
         &self,
@@ -72,8 +77,8 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
             //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
         );
 
-        let mut mempool_service = self.mempool_service.clone();
-        match mempool_service.submit_instruction(instruction).await {
+        let mut mempool = self.mempool.clone();
+        match mempool.submit_instruction(instruction).await {
             Ok(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),
@@ -85,5 +90,18 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
                 }))
             },
         }
+    }
+
+    async fn get_metadata(
+        &self,
+        request: Request<rpc::GetMetadataRequest>,
+    ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
+        dbg!(&request);
+        let db = self.db_factory.create();
+        let metadata = db.metadata.read();
+        // .map_err(|e| Status::internal(format!("Could not read metadata from storage:{}", e)))?;
+        Ok(Response::new(rpc::GetMetadataResponse {
+            sidechains: vec![metadata.into()],
+        }))
     }
 }

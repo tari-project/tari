@@ -20,11 +20,53 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod error;
+use crate::dan_layer::models::{ChainHeight, SidechainMetadata, TreeNodeHash};
+pub use chain_storage_service::{ChainStorageService, ChainStorageServiceHandle, LmdbChainStorageService};
 pub use error::StorageError;
-
-mod lmdb;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
-
-mod store;
+use std::sync::Arc;
 pub use store::{AssetDataStore, AssetStore};
+use tari_common::GlobalConfig;
+
+mod chain_storage_service;
+mod error;
+pub mod lmdb;
+mod store;
+
+pub trait DbFactory {
+    fn create(&self) -> ChainDb;
+}
+
+pub struct LmdbDbFactory {}
+
+impl LmdbDbFactory {
+    pub fn new(config: &GlobalConfig) -> Self {
+        Self {}
+    }
+}
+
+impl DbFactory for LmdbDbFactory {
+    fn create(&self) -> ChainDb {
+        ChainDb {
+            metadata: MetadataTable {},
+        }
+    }
+}
+
+pub struct ChainDb {
+    pub metadata: MetadataTable,
+}
+
+impl ChainDb {
+    pub fn commit(&mut self) -> Result<(), ()> {
+        todo!()
+    }
+}
+
+pub struct MetadataTable {}
+
+impl MetadataTable {
+    pub fn read(&self) -> SidechainMetadata {
+        SidechainMetadata::new(Default::default(), 0.into(), TreeNodeHash(vec![0u8; 32]))
+    }
+}

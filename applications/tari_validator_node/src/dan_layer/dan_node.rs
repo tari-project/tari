@@ -20,30 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dan_layer::{
-        models::{AssetDefinition, Committee},
-        services::{
-            infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
-            ConcreteAssetProcessor,
-            ConcreteCommitteeManager,
-            GrpcBaseNodeClient,
-            LoggingEventsPublisher,
-            MemoryInstructionLog,
-            MempoolService,
-            MempoolServiceHandle,
-            NodeIdentitySigningService,
-            TariDanPayloadProcessor,
-            TariDanPayloadProvider,
-        },
-        storage::{AssetDataStore, LmdbAssetStore},
-        workers::ConsensusWorker,
-    },
-    p2p::create_validator_node_rpc_service,
-    ExitCodes,
-};
-use log::*;
 use std::{fs, fs::File, io::BufReader, path::PathBuf, sync::Arc, time::Duration};
+
+use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::task;
+
 use tari_app_utilities::{
     identity_management,
     identity_management::{load_from_json, setup_node_identity},
@@ -63,7 +45,6 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
@@ -72,7 +53,29 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-use tokio::task;
+
+use crate::{
+    dan_layer::{
+        models::{AssetDefinition, Committee},
+        services::{
+            infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
+            ConcreteAssetProcessor,
+            ConcreteCommitteeManager,
+            GrpcBaseNodeClient,
+            LoggingEventsPublisher,
+            MemoryInstructionLog,
+            MempoolService,
+            MempoolServiceHandle,
+            NodeIdentitySigningService,
+            TariDanPayloadProcessor,
+            TariDanPayloadProvider,
+        },
+        storage::{lmdb::LmdbAssetStore, AssetDataStore},
+        workers::ConsensusWorker,
+    },
+    p2p::create_validator_node_rpc_service,
+    ExitCodes,
+};
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 

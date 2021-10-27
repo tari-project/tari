@@ -253,7 +253,6 @@ where
             //     &signing_service,
             // )
             // .await?;
-            dbg!("Going to apply txs: ", justify.node().payload());
 
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {

@@ -292,7 +292,6 @@ where
         sleep(Duration::from_secs(3)).await;
 
         let payload = payload_provider.create_payload().await?;
-        dbg!(&payload);
         Ok(HotStuffTreeNode::from_parent(parent, payload))
     }
 

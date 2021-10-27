@@ -8,6 +8,7 @@ const asciichart = require('asciichart')
 var indexRouter = require('./routes/index');
 var blocksRouter = require('./routes/blocks');
 var assetsRouter = require('./routes/assets');
+var validatorRouter = require('./routes/validator');
 
 var hbs = require('hbs')
 hbs.registerHelper('hex', function (buffer) {
@@ -63,6 +64,7 @@ app.use(express.static(path.join(__dirname, 'public')))
 app.use('/', indexRouter);
 app.use('/blocks', blocksRouter);
 app.use('/assets', assetsRouter);
+app.use('/validator', validatorRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

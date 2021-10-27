@@ -32,6 +32,7 @@ use crate::{
     dan_layer::{
         dan_node::DanNode,
         services::{MempoolService, MempoolServiceHandle},
+        storage::{ChainStorageService, ChainStorageServiceHandle, DbFactory, LmdbDbFactory},
     },
     grpc::{
         validator_node_grpc_server::ValidatorNodeGrpcServer,
@@ -50,7 +51,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
 
-const LOG_TARGET: &str = "validator_node::app";
+const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
     if let Err(exit_code) = main_inner() {
@@ -83,9 +84,11 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
     let mempool_service = MempoolServiceHandle::new();
+    // let chain_storage = ChainStorageServiceHandle::new();
+    let db_factory = LmdbDbFactory::new(&config);
 
-    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone());
-    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18080);
+    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory);
+    let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144);
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
     run_dan_node(shutdown.to_signal(), config, mempool_service).await?;
@@ -109,8 +112,11 @@ async fn run_dan_node(
     node.start(true, shutdown_signal, mempool_service).await
 }
 
-async fn run_grpc<TMempoolService: MempoolService + Clone + Sync + Send + 'static>(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService>,
+async fn run_grpc<
+    TMempoolService: MempoolService + Clone + Sync + Send + 'static,
+    TDbFactory: DbFactory + Sync + Send + 'static,
+>(
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

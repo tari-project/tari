@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,40 +20,58 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fs;
-
-use tari_test_utils::paths;
-
 use crate::dan_layer::{
-    models::TokenId,
-    storage::{lmdb::lmdb_asset_store::LmdbAssetStore, AssetStore},
+    models::SidechainMetadata,
+    storage::{DbFactory, LmdbDbFactory, StorageError},
 };
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-fn with_store<F: FnOnce(LmdbAssetStore)>(f: F) {
-    let path = paths::create_temporary_data_path();
-    let store = LmdbAssetStore::initialize(&path, Default::default()).unwrap();
-    f(store);
-    // TODO: This will not happen on panic
-    fs::remove_dir_all(path).unwrap();
+// One per asset, per network
+#[async_trait]
+pub trait ChainStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
 }
 
-#[test]
-fn it_replaces_the_metadata() {
-    with_store(|mut store| {
-        store.replace_metadata(&TokenId(b"123".to_vec()), &[4, 5, 6]).unwrap();
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
-        assert_eq!(metadata, vec![4, 5, 6]);
-
-        store.replace_metadata(&TokenId(b"123".to_vec()), &[5, 6, 7]).unwrap();
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
-        assert_eq!(metadata, vec![5, 6, 7]);
-    });
+pub struct LmdbChainStorageService {
+    db_factory: LmdbDbFactory,
 }
 
-#[test]
-fn it_returns_none_if_key_does_not_exist() {
-    with_store(|mut store| {
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap();
-        assert!(metadata.is_none());
-    });
+impl LmdbChainStorageService {
+    pub fn new(db_factory: LmdbDbFactory) -> Self {
+        Self { db_factory }
+    }
+}
+
+#[async_trait]
+impl ChainStorageService for LmdbChainStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        let db = self.db_factory.create();
+        let sidechain_data = db.metadata.read();
+        Ok(sidechain_data)
+    }
+}
+
+#[derive(Clone)]
+pub struct ChainStorageServiceHandle {
+    service: Arc<RwLock<LmdbChainStorageService>>,
+}
+
+impl ChainStorageServiceHandle {
+    pub fn new() -> Self {
+        todo!()
+        // Self {
+
+        // TODO: fix this ordering
+        // service: Arc::new(RwLock::new(LmdbChainStorageService {})),
+        // }
+    }
+}
+
+#[async_trait]
+impl ChainStorageService for ChainStorageServiceHandle {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        self.service.read().await.get_metadata().await
+    }
 }

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,41 +19,15 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::{dan_layer::models::SidechainMetadata, grpc::validator_node_rpc as rpc};
+use tari_crypto::tari_utilities::ByteArray;
 
-use std::fs;
-
-use tari_test_utils::paths;
-
-use crate::dan_layer::{
-    models::TokenId,
-    storage::{lmdb::lmdb_asset_store::LmdbAssetStore, AssetStore},
-};
-
-fn with_store<F: FnOnce(LmdbAssetStore)>(f: F) {
-    let path = paths::create_temporary_data_path();
-    let store = LmdbAssetStore::initialize(&path, Default::default()).unwrap();
-    f(store);
-    // TODO: This will not happen on panic
-    fs::remove_dir_all(path).unwrap();
-}
-
-#[test]
-fn it_replaces_the_metadata() {
-    with_store(|mut store| {
-        store.replace_metadata(&TokenId(b"123".to_vec()), &[4, 5, 6]).unwrap();
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
-        assert_eq!(metadata, vec![4, 5, 6]);
-
-        store.replace_metadata(&TokenId(b"123".to_vec()), &[5, 6, 7]).unwrap();
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
-        assert_eq!(metadata, vec![5, 6, 7]);
-    });
-}
-
-#[test]
-fn it_returns_none_if_key_does_not_exist() {
-    with_store(|mut store| {
-        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap();
-        assert!(metadata.is_none());
-    });
+impl From<SidechainMetadata> for rpc::SidechainMetadata {
+    fn from(source: SidechainMetadata) -> Self {
+        Self {
+            asset_public_key: source.asset_public_key().as_bytes().to_vec(),
+            committed_height: source.committed_height().into(),
+            committed_hash: source.committed_hash().clone().into(),
+        }
+    }
 }
