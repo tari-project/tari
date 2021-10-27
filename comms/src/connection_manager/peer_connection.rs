@@ -60,7 +60,7 @@ use tokio::{
     time,
 };
 use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level, Span};
+use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -116,7 +116,6 @@ pub enum PeerConnectionRequest {
     OpenSubstream {
         protocol_id: ProtocolId,
         reply_tx: oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
-        tracing_id: Option<tracing::span::Id>,
     },
     /// Disconnect all substreams and close the transport connection
     Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
@@ -207,7 +206,6 @@ impl PeerConnection {
             .send(PeerConnectionRequest::OpenSubstream {
                 protocol_id: protocol_id.clone(),
                 reply_tx,
-                tracing_id: Span::current().id(),
             })
             .await?;
         reply_rx
@@ -394,11 +392,8 @@ impl PeerConnectionActor {
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
         use PeerConnectionRequest::*;
         match request {
-            OpenSubstream {
-                protocol_id,
-                reply_tx,
-                tracing_id,
-            } => {
+            OpenSubstream { protocol_id, reply_tx } => {
+                let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "handle_request");
                 span.follows_from(tracing_id);
                 let result = self.open_negotiated_protocol_stream(protocol_id).instrument(span).await;
