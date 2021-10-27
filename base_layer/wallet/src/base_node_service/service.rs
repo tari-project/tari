@@ -42,23 +42,12 @@ use tokio::sync::RwLock;
 const LOG_TARGET: &str = "wallet::base_node_service::service";
 
 /// State determined from Base Node Service Requests
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct BaseNodeState {
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
-}
-
-impl Default for BaseNodeState {
-    fn default() -> Self {
-        Self {
-            chain_metadata: None,
-            is_synced: None,
-            updated: None,
-            latency: None,
-        }
-    }
 }
 
 /// The base node service is responsible for handling requests to be sent to the connected base node.
@@ -69,7 +58,7 @@ where T: WalletBackend + 'static
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
     wallet_connectivity: WalletConnectivityHandle,
     event_publisher: BaseNodeEventSender,
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
     state: Arc<RwLock<BaseNodeState>>,
     db: WalletDatabase<T>,
 }
@@ -90,7 +79,7 @@ where T: WalletBackend + 'static
             request_stream: Some(request_stream),
             wallet_connectivity,
             event_publisher,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             state: Default::default(),
             db,
         }
@@ -103,33 +92,13 @@ where T: WalletBackend + 'static
 
     /// Starts the service.
     pub async fn start(mut self) -> Result<(), BaseNodeServiceError> {
-        let shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("Wallet Base Node Service initialized without shutdown signal");
-
-        let monitor = BaseNodeMonitor::new(
-            self.config.base_node_monitor_refresh_interval,
-            self.state.clone(),
-            self.db.clone(),
-            self.wallet_connectivity.clone(),
-            self.event_publisher.clone(),
-        );
-
-        tokio::spawn({
-            let shutdown_signal = shutdown_signal.clone();
-            async move {
-                let monitor_fut = monitor.run();
-                futures::pin_mut!(monitor_fut);
-                future::select(shutdown_signal, monitor_fut).await;
-            }
-        });
+        self.spawn_monitor();
 
         let mut request_stream = self
             .request_stream
             .take()
             .expect("Wallet Base Node Service initialized without request_stream")
-            .take_until(shutdown_signal);
+            .take_until(self.shutdown_signal.clone());
 
         info!(target: LOG_TARGET, "Wallet Base Node Service started");
         while let Some(request_context) = request_stream.next().await {
@@ -150,6 +119,23 @@ where T: WalletBackend + 'static
             "Wallet Base Node Service shutting down because the shutdown signal was received"
         );
         Ok(())
+    }
+
+    fn spawn_monitor(&self) {
+        let monitor = BaseNodeMonitor::new(
+            self.config.base_node_monitor_refresh_interval,
+            self.state.clone(),
+            self.db.clone(),
+            self.wallet_connectivity.clone(),
+            self.event_publisher.clone(),
+        );
+
+        let shutdown_signal = self.shutdown_signal.clone();
+        tokio::spawn(async move {
+            let monitor_fut = monitor.run();
+            futures::pin_mut!(monitor_fut);
+            future::select(shutdown_signal, monitor_fut).await;
+        });
     }
 
     /// This handler is called when requests arrive from the various streams

@@ -1625,12 +1625,14 @@ where
         }
 
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
-        self.broadcast_all_completed_transactions(broadcast_join_handles)
+        self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
             .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error broadcasting all completed transactions: {:?}", resp
+                    "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' \
+                     and 'Broadcast': {:?}",
+                    resp
                 );
                 resp
             })?;
@@ -1682,22 +1684,21 @@ where
         Ok(())
     }
 
-    /// Go through all completed transactions that have not yet been broadcast and broadcast all of them to the base
+    /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
-    async fn broadcast_all_completed_transactions(
+    async fn broadcast_completed_and_broadcast_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
-        trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
-        let completed_txs = self.db.get_completed_transactions().await?;
-        for (_, completed_tx) in completed_txs {
-            if completed_tx.valid &&
-                (completed_tx.status == TransactionStatus::Completed ||
-                    completed_tx.status == TransactionStatus::Broadcast) &&
-                !completed_tx.is_coinbase()
-            {
-                self.broadcast_completed_transaction(completed_tx, join_handles).await?;
-            }
+        trace!(
+            target: LOG_TARGET,
+            "Attempting to Broadcast all valid and not cancelled Completed Transactions with status 'Completed' and \
+             'Broadcast'"
+        );
+        let txn_list = self.db.get_transactions_to_be_broadcast().await?;
+        for completed_txn in txn_list {
+            self.broadcast_completed_transaction(completed_txn, join_handles)
+                .await?;
         }
 
         Ok(())
