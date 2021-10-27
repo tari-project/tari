@@ -150,11 +150,11 @@ Feature: Wallet Transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
+    And I have wallet WALLET_B connected to all seed nodes
     And I have mining node MINER connected to base node NODE and wallet WALLET_A
     When mining node MINER mines 10 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    Then I have wallet WALLET_B connected to all seed nodes
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
     And I send 100000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
