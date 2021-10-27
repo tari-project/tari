@@ -22,7 +22,6 @@
 import React from "react";
 import {
   Alert,
-  Button,
   Card,
   CardActions,
   CardContent,
@@ -32,7 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import binding from "./binding";
-import {Link, withRouter} from "react-router-dom";
+import { Link, withRouter } from "react-router-dom";
 
 var cardStyle = {
   width: "20vw",

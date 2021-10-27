@@ -127,7 +127,7 @@ const AssetDefinition = (props) => {
   return (
     <div>
       <p>Asset Definition</p>
-      <p>Use this asset definition json file for your validator node</p>
+      <p>Use this asset definition json file for your validator nodes</p>
       <pre>{contents}</pre>
       <Button id="download" onClick={save}>
         Save asset definition file
