@@ -336,6 +336,9 @@ where
             (PreCommit, PreCommitted) => Commit,
             (Commit, Committed) => Decide,
             (Decide, Decided) => NextView,
+            (Starting, BaseLayerCheckpointNotFound) => {
+                unimplemented!("Base layer checkpoint not found!")
+            },
             (s, e) => {
                 dbg!(&s);
                 dbg!(&e);

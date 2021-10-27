@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "start": "tauri dev",
     "tauri": "tauri"
   },
   "name": "tari_collectibles",
