@@ -251,7 +251,7 @@ class Create extends React.Component {
               })}
             </List>
             <TextField
-              label="New public key"
+              label="Validator node public key"
               id="newCommitteePubKey"
               value={this.state.newCommitteePubKey}
               onChange={this.onNewCommitteePubKeyChanged}

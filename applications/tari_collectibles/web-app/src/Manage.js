@@ -59,7 +59,7 @@ class Manage extends React.Component {
     this.setState({ error: "" });
     try {
       let assets = await binding.command_assets_list();
-      console.log(assets);
+      // console.log(assets);
       this.setState({
         ownedAssets: assets,
       });
@@ -77,17 +77,19 @@ class Manage extends React.Component {
         ) : (
           ""
         )}
-        <Typography variant="h3">Assets I've Issued</Typography>
+        <Typography variant="h3">Assets Issued</Typography>
         <Grid container spacing={4}>
           {this.state.ownedAssets.map((asset) => (
-            <Grid item key={asset} xs={12} sm={6} md={4} lg={4}>
+            <Grid item key={asset.public_key} xs={12} sm={6} md={4} lg={4}>
               <Card style={cardStyle}>
-                <CardMedia
-                  component="img"
-                  sx={{ pb: "5%", height: "20vw", width: "20vw" }}
-                  image={asset.image}
-                  alt="random"
-                ></CardMedia>
+                <Link to={`/assets/manage/${asset.public_key}`}>
+                  <CardMedia
+                    component="img"
+                    sx={{ pb: "5%", height: "20vw", width: "20vw" }}
+                    image={asset.image}
+                    alt="random"
+                  ></CardMedia>
+                </Link>
                 <CardContent>
                   <Typography gutterBottom variant="h5" component="h2">
                     {asset.name}
