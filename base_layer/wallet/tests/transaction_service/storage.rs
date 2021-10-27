@@ -27,14 +27,14 @@ use aes_gcm::{
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{HashDigest, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     test_helpers::{create_unblinded_output, TestParams},
     transaction::{OutputFeatures, Transaction},
-    transaction_protocol::{sender::TransactionSenderMessage, TxId},
+    transaction_protocol::sender::TransactionSenderMessage,
     CryptoFactories,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,

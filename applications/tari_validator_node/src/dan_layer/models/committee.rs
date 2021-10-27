@@ -49,7 +49,7 @@ impl<TAddr: NodeAddressable> Committee<TAddr> {
     }
 
     pub fn contains(&self, member: &TAddr) -> bool {
-        return self.members.contains(member);
+        self.members.contains(member)
     }
 }
 

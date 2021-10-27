@@ -499,7 +499,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let f: Option<OutputFeatures> = features
                 .map(|f| f.try_into())
                 .transpose()
-                .map_err(|err| Status::invalid_argument(err))?;
+                .map_err(Status::invalid_argument)?;
             token_features.push((unique_id, f));
         }
 

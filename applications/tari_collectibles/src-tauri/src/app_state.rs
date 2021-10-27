@@ -22,7 +22,6 @@
 
 use crate::{settings::Settings, wallet_client::WalletClient};
 use std::sync::Arc;
-use tari_utilities::hex::Hex;
 use tauri::async_runtime::RwLock;
 
 pub struct AppState {

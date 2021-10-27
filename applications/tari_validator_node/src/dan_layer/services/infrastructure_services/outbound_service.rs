@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{HotStuffMessage, InstructionSet, Payload},
+        models::{HotStuffMessage, Payload},
         services::infrastructure_services::NodeAddressable,
     },
     digital_assets_error::DigitalAssetError,

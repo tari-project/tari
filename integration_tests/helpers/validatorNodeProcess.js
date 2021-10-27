@@ -3,7 +3,7 @@ const { expect } = require("chai");
 const fs = require("fs");
 const path = require("path");
 const ValidatorNodeClient = require("./validatorNodeClient");
-const { sleep, getFreePort } = require("./util");
+const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
 

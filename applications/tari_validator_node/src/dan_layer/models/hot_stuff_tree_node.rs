@@ -22,7 +22,6 @@
 
 use crate::dan_layer::models::{Payload, TreeNodeHash};
 use digest::Digest;
-use std::hash::Hash;
 use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]

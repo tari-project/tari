@@ -75,8 +75,8 @@ pub(crate) async fn assets_issue_simple_tokens(
   // let mut pubKeys = vec![];
   let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
   let mut rng = OsRng;
-  for i in 0..num_tokens {
-    let (private, public) = RistrettoPublicKey::random_keypair(&mut rng);
+  for _i in 0..num_tokens {
+    let (_private, public) = RistrettoPublicKey::random_keypair(&mut rng);
     // lol, best save that private key somewhere...
     // TODO
 
@@ -93,7 +93,8 @@ pub(crate) async fn assets_issue_simple_tokens(
 
   client
     .create_initial_asset_checkpoint(asset_pub_key, root, committee)
-    .await;
+    .await
+    .unwrap();
 
   Ok(())
 }

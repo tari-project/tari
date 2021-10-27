@@ -50,9 +50,7 @@ pub use quorum_certificate::QuorumCertificate;
 pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
-use blake2::Digest;
-use digest::Update;
-use tari_crypto::common::Blake256;
+
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
 pub use view_id::ViewId;
@@ -63,24 +61,24 @@ pub struct InstructionCaller {
 }
 
 impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
+    pub fn _owner_token_id(&self) -> &TokenId {
         &self.owner_token_id
     }
 }
 
 #[derive(Copy, Clone)]
 pub enum TemplateId {
-    EditableMetadata,
+    _EditableMetadata,
 }
 
 impl TemplateId {
-    pub fn parse(s: &str) -> TemplateId {
+    pub fn _parse(s: &str) -> TemplateId {
         match s {
-            "EditableMetadata" => TemplateId::EditableMetadata,
+            "EditableMetadata" => TemplateId::_EditableMetadata,
             _ => {
                 // TODO: Propagate error instead
                 dbg!("Unrecognised template");
-                TemplateId::EditableMetadata
+                TemplateId::_EditableMetadata
             },
         }
     }

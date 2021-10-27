@@ -80,7 +80,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
 
     async fn get_current_checkpoint(
         &mut self,
-        height: u64,
+        _height: u64,
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {

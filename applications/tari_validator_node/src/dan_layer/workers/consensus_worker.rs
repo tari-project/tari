@@ -40,10 +40,7 @@ use crate::{
             PayloadProvider,
             SigningService,
         },
-        workers::{
-            states,
-            states::{ConsensusWorkerStateEvent, IdleState},
-        },
+        workers::{states, states::ConsensusWorkerStateEvent},
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -352,11 +349,12 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::dan_layer::services::mocks::mock_bft;
+    use crate::dan_layer::services::mocks::MockCommitteeManager;
 
     use crate::dan_layer::services::{
         infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
         mocks::{
+            mock_base_node_client,
             mock_events_publisher,
             mock_payload_processor,
             mock_signing_service,
@@ -372,21 +370,22 @@ mod test {
     fn start_replica(
         inbound: MockInboundConnectionService<&'static str, &'static str>,
         outbound: MockOutboundService<&'static str, &'static str>,
-        committee: Committee<&'static str>,
+        committee_manager: MockCommitteeManager,
         node_id: &'static str,
         shutdown_signal: ShutdownSignal,
         events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
         let mut replica_a = ConsensusWorker::new(
-            mock_bft(),
             inbound,
             outbound,
-            committee,
+            committee_manager,
             node_id,
             mock_static_payload_provider("Hello"),
             events_publisher,
             mock_signing_service(),
             mock_payload_processor(),
+            AssetDefinition::default(),
+            mock_base_node_client(),
             Duration::from_secs(5),
         );
         tokio::spawn(async move {
@@ -401,6 +400,7 @@ mod test {
 
         let committee = Committee::new(vec!["A", "B"]);
         let mut outbound = mock_outbound(committee.members.clone());
+        let committee_manager = MockCommitteeManager { committee };
 
         let inbound_a = outbound.take_inbound(&"A").unwrap();
         let inbound_b = outbound.take_inbound(&"B").unwrap();
@@ -417,7 +417,7 @@ mod test {
         let task_a = start_replica(
             inbound_a,
             outbound.clone(),
-            committee.clone(),
+            committee_manager.clone(),
             "A",
             signal.clone(),
             events[0].clone(),
@@ -425,7 +425,7 @@ mod test {
         let task_b = start_replica(
             inbound_b,
             outbound.clone(),
-            committee.clone(),
+            committee_manager,
             "B",
             signal.clone(),
             events[1].clone(),
