@@ -350,14 +350,10 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer {
-                node_id,
-                reply_tx,
-                tracing_id: _tracing,
-            } => {
+            DialPeer { node_id, reply_tx } => {
+                let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "connection_manager::handle_request");
-                // This causes a panic for some reason?
-                // span.follows_from(tracing_id);
+                span.follows_from(tracing_id);
                 self.dial_peer(node_id, reply_tx).instrument(span).await
             },
             CancelDial(node_id) => {
