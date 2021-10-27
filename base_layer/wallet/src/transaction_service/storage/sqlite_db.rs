@@ -1034,6 +1034,42 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
+    fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
+        let txs = completed_transactions::table
+            .filter(completed_transactions::valid.eq(true as i32))
+            .filter(
+                completed_transactions::status
+                    .eq(TransactionStatus::Completed as i32)
+                    .or(completed_transactions::status.eq(TransactionStatus::Broadcast as i32)),
+            )
+            .filter(
+                completed_transactions::coinbase_block_height
+                    .is_null()
+                    .or(completed_transactions::coinbase_block_height.eq(0)),
+            )
+            .filter(completed_transactions::cancelled.eq(false as i32))
+            .order_by(completed_transactions::tx_id)
+            .load::<CompletedTransactionSql>(&*conn)?;
+
+        let mut result = vec![];
+        for mut tx in txs {
+            self.decrypt_if_necessary(&mut tx)?;
+            result.push(tx.try_into()?);
+        }
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - get_transactions_to_be_broadcast: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+
+        Ok(result)
+    }
+
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
@@ -2361,5 +2397,75 @@ mod test {
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_ok());
         assert!(db3.fetch(&DbKey::CompletedTransactions).is_ok());
+    }
+
+    #[test]
+    fn test_get_tranactions_to_be_rebroadcast() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let temp_dir = tempdir().unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        for i in 0..1000 {
+            let (valid, cancelled, status, coinbase_block_height) = match i % 13 {
+                0 => (true, i % 3 == 0, TransactionStatus::Completed, None),
+                1 => (true, i % 5 == 0, TransactionStatus::Broadcast, None),
+                2 => (true, i % 7 == 0, TransactionStatus::Completed, Some(i % 2)),
+                3 => (true, i % 11 == 0, TransactionStatus::Broadcast, Some(i % 2)),
+                4 => (i % 13 == 0, false, TransactionStatus::Completed, None),
+                5 => (i % 17 == 0, false, TransactionStatus::Broadcast, None),
+                6 => (true, false, TransactionStatus::Pending, None),
+                7 => (true, false, TransactionStatus::Coinbase, None),
+                8 => (true, false, TransactionStatus::MinedUnconfirmed, None),
+                9 => (true, false, TransactionStatus::Imported, None),
+                10 => (true, false, TransactionStatus::MinedConfirmed, None),
+                _ => (true, false, TransactionStatus::Completed, Some(i)),
+            };
+            let completed_tx = CompletedTransaction {
+                tx_id: i,
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                amount: MicroTari::from(100),
+                fee: MicroTari::from(100),
+                transaction: Transaction::new(
+                    vec![],
+                    vec![],
+                    vec![],
+                    PrivateKey::random(&mut OsRng),
+                    PrivateKey::random(&mut OsRng),
+                ),
+                status,
+                message: "Yo!".to_string(),
+                timestamp: Utc::now().naive_utc(),
+                cancelled,
+                direction: TransactionDirection::Unknown,
+                coinbase_block_height,
+                send_count: 0,
+                last_send_timestamp: None,
+                valid,
+                confirmations: None,
+                mined_height: None,
+                mined_in_block: None,
+            };
+            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+            completed_tx_sql.commit(&conn).unwrap();
+        }
+
+        let connection = WalletDbConnection::new(conn, None);
+        let db1 = TransactionServiceSqliteDatabase::new(connection, None);
+
+        let txn_list = db1.get_transactions_to_be_broadcast().unwrap();
+        assert_eq!(db1.get_transactions_to_be_broadcast().unwrap().len(), 185);
+        for txn in &txn_list {
+            assert!(txn.status == TransactionStatus::Completed || txn.status == TransactionStatus::Broadcast);
+            assert!(txn.valid);
+            assert!(!txn.cancelled);
+            assert!(txn.coinbase_block_height == None || txn.coinbase_block_height == Some(0));
+        }
     }
 }

@@ -1381,6 +1381,23 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
+    // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next step
+    let mut event_stream = oms.get_event_stream();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
+    loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                 if let OutputManagerEvent::TxoValidationSuccess(_) = &*event.unwrap(){
+                    break;
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(
         balance.available_balance,

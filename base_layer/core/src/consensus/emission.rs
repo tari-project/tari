@@ -73,6 +73,67 @@ impl EmissionSchedule {
         EmissionSchedule { initial, decay, tail }
     }
 
+    /// Utility function to calculate the decay parameters that are provided in [EmissionSchedule::new]. This function
+    /// is provided as a convenience and for the record, but is kept as a separate step. For performance reasons the
+    /// parameters are 'hard-coded' as a static array rather than a heap allocation.
+    ///
+    /// Input : `k`: A string representing a floating point number of (nearly) arbitrary precision, and less than one.
+    ///
+    /// Returns: An array of powers of negative two when when applied as a shift right and sum operation is equal to
+    /// (1-k)*n (to 1/2^64 precision).
+    ///
+    /// None - If k is not a valid floating point number less than one.
+    pub fn decay_params(k: &str) -> Option<Vec<u8>> {
+        // Convert string into a vector of digits. e.g. 0.9635 -> [9,6,3,5]
+        fn frac_vec(n: &str) -> Option<Vec<u8>> {
+            if !n.starts_with("0.") {
+                return None;
+            }
+            if !n.chars().skip(2).all(|i| ('0'..='9').contains(&i)) {
+                return None;
+            }
+            let arr = n.chars().skip(2).map(|i| i as u8 - 48).collect::<Vec<u8>>();
+            Some(arr)
+        }
+        // Multiply a vector of decimal fractional digits by 2. The bool indicates whether the result was greater than
+        // one
+        fn times_two(num: &mut [u8]) -> bool {
+            let len = num.len();
+            let mut carry_last = 0u8;
+            for i in 0..len {
+                let index = len - 1 - i;
+                let carry = if num[index] >= 5 { 1 } else { 0 };
+                num[index] = (2 * num[index]) % 10 + carry_last;
+                carry_last = carry;
+            }
+            carry_last > 0
+        }
+
+        fn is_zero(v: &[u8]) -> bool {
+            v.iter().all(|i| *i == 0u8)
+        }
+
+        let mut next = frac_vec(k)?;
+        let mut result = Vec::with_capacity(32);
+        let mut index = 1u8;
+        let mut exact = true;
+        while !is_zero(&next) {
+            let overflow = times_two(&mut next);
+            if !overflow {
+                result.push(index);
+            }
+            if index >= 63 {
+                exact = false;
+                break;
+            }
+            index += 1;
+        }
+        if exact {
+            result.push(index - 1);
+        }
+        Some(result)
+    }
+
     /// Return an iterator over the block reward and total supply. This is the most efficient way to iterate through
     /// the emission curve if you're interested in the supply as well as the reward.
     ///
@@ -259,5 +320,23 @@ mod test {
         let schedule = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
         assert_eq!(emission.block_reward(), schedule.block_reward(8));
         assert_eq!(emission.supply(), schedule.supply_at_block(8))
+    }
+
+    #[test]
+    fn calc_array() {
+        assert_eq!(EmissionSchedule::decay_params("1.00"), None);
+        assert_eq!(EmissionSchedule::decay_params("56345"), None);
+        assert_eq!(EmissionSchedule::decay_params("0.75").unwrap(), vec![2]);
+        assert_eq!(EmissionSchedule::decay_params("0.25").unwrap(), vec![1, 2]);
+        assert_eq!(EmissionSchedule::decay_params("0.5").unwrap(), vec![1]);
+        assert_eq!(EmissionSchedule::decay_params("0.875").unwrap(), vec![3]);
+        assert_eq!(EmissionSchedule::decay_params("0.125").unwrap(), vec![1, 2, 3]);
+        assert_eq!(EmissionSchedule::decay_params("0.64732").unwrap(), vec![
+            2, 4, 5, 7, 10, 13, 16, 19, 20, 21, 22, 25, 29, 32, 33, 34, 35, 36, 38, 45, 47, 51, 53, 58, 59, 60, 62, 63
+        ]);
+        assert_eq!(EmissionSchedule::decay_params("0.9999991208182701").unwrap(), vec![
+            21, 22, 23, 25, 26, 37, 38, 39, 41, 45, 49, 50, 51, 52, 55, 57, 59, 60, 63
+        ]);
+        assert_eq!(EmissionSchedule::decay_params("0.0").unwrap(), vec![0]);
     }
 }
