@@ -144,7 +144,11 @@ where
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
-            debug!(target: LOG_TARGET, "get_tip_info took {:.2?}", timer.elapsed());
+            debug!(
+                target: LOG_TARGET,
+                "get_tip_info took {} ms",
+                timer.elapsed().as_millis()
+            );
 
             let latency = match client.get_last_request_latency().await? {
                 Some(latency) => latency,
@@ -161,8 +165,15 @@ where
                 latency.as_millis()
             );
 
+            let timer = Instant::now();
             self.db.set_chain_metadata(chain_metadata.clone()).await?;
+            trace!(
+                target: LOG_TARGET,
+                "Update metadata in db {} ms",
+                timer.elapsed().as_millis()
+            );
 
+            let timer = Instant::now();
             self.map_state(move |_| BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
@@ -170,6 +181,7 @@ where
                 latency: Some(latency),
             })
             .await;
+            trace!(target: LOG_TARGET, "Publish event {} ms", timer.elapsed().as_millis());
 
             let delay = time::sleep(self.interval.saturating_sub(latency));
             if interrupt(base_node_watch.changed(), delay).await.is_none() {
