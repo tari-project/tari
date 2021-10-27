@@ -53,7 +53,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, PublicKey},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
@@ -75,10 +75,75 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        Self {
+        let mut new_self = Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
+        };
+
+        // TODO: Remove this call for the next #testnet_reset
+        match new_self.add_transaction_signature_for_legacy_transactions() {
+            Ok(count) => {
+                if count > 0 {
+                    info!(
+                        target: LOG_TARGET,
+                        "Updated transaction signatures for {} legacy transactions", count
+                    );
+                }
+            },
+            Err(e) => warn!(
+                target: LOG_TARGET,
+                "Legacy transaction signatures could not be updated: {:?}", e
+            ),
+        };
+
+        new_self
+    }
+
+    // TODO: Remove this function for the next #testnet_reset
+    fn add_transaction_signature_for_legacy_transactions(&mut self) -> Result<u32, TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        let txs_sql = completed_transactions::table
+            .filter(
+                completed_transactions::transaction_signature_nonce
+                    .eq(completed_transactions::transaction_signature_key),
+            )
+            .load::<CompletedTransactionSql>(&*conn)?;
+
+        let mut count = 0u32;
+        if !txs_sql.is_empty() {
+            info!(
+                target: LOG_TARGET,
+                "Updating transaction signatures for {} legacy transactions...",
+                txs_sql.len()
+            );
+            for mut tx_sql in txs_sql {
+                self.decrypt_if_necessary(&mut tx_sql)?;
+                let tx = CompletedTransaction::try_from(tx_sql.clone())?;
+                let (transaction_signature_nonce, transaction_signature_key) =
+                    if let Some(transaction_signature) = tx.transaction.first_kernel_excess_sig() {
+                        (
+                            Some(transaction_signature.get_public_nonce().as_bytes().to_vec()),
+                            Some(transaction_signature.get_signature().as_bytes().to_vec()),
+                        )
+                    } else {
+                        (
+                            Some(Signature::default().get_public_nonce().as_bytes().to_vec()),
+                            Some(Signature::default().get_signature().as_bytes().to_vec()),
+                        )
+                    };
+                tx_sql.update(
+                    UpdateCompletedTransactionSql {
+                        transaction_signature_nonce,
+                        transaction_signature_key,
+                        ..Default::default()
+                    },
+                    &(*conn),
+                )?;
+                count += 1;
+            }
         }
+
+        Ok(count)
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: MutexGuard<SqliteConnection>) -> Result<(), TransactionStorageError> {
@@ -1042,34 +1107,28 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
-    fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
         let acquire_lock = start.elapsed();
-        let txs = completed_transactions::table
-            .filter(
-                completed_transactions::mined_height
-                    .is_null()
-                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
-            )
-            .filter(completed_transactions::cancelled.eq(false as i32))
-            .order_by(completed_transactions::tx_id)
-            .load::<CompletedTransactionSql>(&*conn)?;
-
-        let mut result = vec![];
-        for mut tx in txs {
-            self.decrypt_if_necessary(&mut tx)?;
-            result.push(tx.try_into()?);
+        let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
+        match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&*conn) {
+            Ok(info) => {
+                for item in info {
+                    tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
+                }
+            },
+            Err(e) => return Err(e),
         }
         trace!(
             target: LOG_TARGET,
-            "sqlite profile - fetch_unconfirmed_transactions: lock {} + db_op {} = {} ms",
+            "sqlite profile - fetch_unconfirmed_transactions_info: lock {} + db_op {} = {} ms",
             acquire_lock.as_millis(),
             (start.elapsed() - acquire_lock).as_millis(),
             start.elapsed().as_millis()
         );
 
-        Ok(result)
+        Ok(tx_info)
     }
 
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
@@ -1591,6 +1650,8 @@ struct CompletedTransactionSql {
     confirmations: Option<i64>,
     mined_height: Option<i64>,
     mined_in_block: Option<Vec<u8>>,
+    transaction_signature_nonce: Vec<u8>,
+    transaction_signature_key: Vec<u8>,
 }
 
 impl CompletedTransactionSql {
@@ -1807,6 +1868,8 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block,
+            transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
+            transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
         })
     }
 }
@@ -1827,6 +1890,13 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
     type Error = CompletedTransactionConversionError;
 
     fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
+        let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
+            Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
+                Ok(signature) => Signature::new(public_nonce, signature),
+                Err(_) => Signature::default(),
+            },
+            Err(_) => Signature::default(),
+        };
         Ok(Self {
             tx_id: c.tx_id as u64,
             source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
@@ -1844,6 +1914,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid != 0,
+            transaction_signature,
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block: c.mined_in_block,
@@ -1865,6 +1936,77 @@ pub struct UpdateCompletedTransactionSql {
     confirmations: Option<Option<i64>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    transaction_signature_nonce: Option<Vec<u8>>,
+    transaction_signature_key: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnconfirmedTransactionInfo {
+    pub tx_id: TxId,
+    pub signature: Signature,
+    pub status: TransactionStatus,
+    pub coinbase_block_height: Option<u64>,
+}
+
+impl UnconfirmedTransactionInfo {
+    pub fn is_coinbase(&self) -> bool {
+        if let Some(height) = self.coinbase_block_height {
+            height > 0
+        } else {
+            false
+        }
+    }
+}
+
+impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
+    type Error = TransactionStorageError;
+
+    fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tx_id: i.tx_id as u64,
+            signature: Signature::new(
+                PublicKey::from_vec(&i.transaction_signature_nonce)?,
+                PrivateKey::from_vec(&i.transaction_signature_key)?,
+            ),
+            status: TransactionStatus::try_from(i.status)?,
+            coinbase_block_height: i.coinbase_block_height.map(|b| b as u64),
+        })
+    }
+}
+
+#[derive(Clone, Queryable)]
+pub struct UnconfirmedTransactionInfoSql {
+    pub tx_id: i64,
+    pub status: i32,
+    pub transaction_signature_nonce: Vec<u8>,
+    pub transaction_signature_key: Vec<u8>,
+    pub coinbase_block_height: Option<i64>,
+}
+
+impl UnconfirmedTransactionInfoSql {
+    /// This method returns completed but unconfirmed transactions
+    pub fn fetch_unconfirmed_transactions_info(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<UnconfirmedTransactionInfoSql>, TransactionStorageError> {
+        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined.
+        let query_result = completed_transactions::table
+            .select((
+                completed_transactions::tx_id,
+                completed_transactions::status,
+                completed_transactions::transaction_signature_nonce,
+                completed_transactions::transaction_signature_key,
+                completed_transactions::coinbase_block_height,
+            ))
+            .filter(
+                completed_transactions::mined_height
+                    .is_null()
+                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+            )
+            .filter(completed_transactions::cancelled.eq(false as i32))
+            .order_by(completed_transactions::tx_id)
+            .load::<UnconfirmedTransactionInfoSql>(&*conn)?;
+        Ok(query_result)
+    }
 }
 
 #[cfg(test)]
@@ -1887,7 +2029,7 @@ mod test {
 
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
-        types::{HashDigest, PrivateKey, PublicKey},
+        types::{HashDigest, PrivateKey, PublicKey, Signature},
     };
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -2094,6 +2236,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2114,6 +2257,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2243,6 +2387,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2264,6 +2409,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2275,7 +2421,7 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: MicroTari::from(100),
-            transaction: tx,
+            transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -2285,6 +2431,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2396,6 +2543,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2478,6 +2626,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2562,6 +2711,7 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 valid,
+                transaction_signature: Signature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
