@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-17 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-18 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
