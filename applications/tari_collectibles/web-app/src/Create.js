@@ -22,13 +22,10 @@
 import React from "react";
 import {
   Alert,
-  Box,
   Button,
   Container,
-  FormControl,
   FormControlLabel,
   FormGroup,
-  Grid,
   List,
   ListItem,
   ListItemText,
@@ -38,7 +35,7 @@ import {
   Typography,
 } from "@mui/material";
 import binding from "./binding";
-import {withRouter} from "react-router-dom";
+import { withRouter } from "react-router-dom";
 
 class Create extends React.Component {
   constructor(props) {
@@ -87,9 +84,9 @@ class Create extends React.Component {
 
       if (this.state.contract721 || this.state.contract100) {
         let res = await binding.command_asset_issue_simple_tokens(
-            publicKey,
-            parseInt(this.state.numberInitialTokens),
-            this.state.committee
+          publicKey,
+          parseInt(this.state.numberInitialTokens),
+          this.state.committee
         );
 
         console.log(res);
@@ -150,7 +147,7 @@ class Create extends React.Component {
 
   onDeleteCommitteeMember(index) {
     let committee = this.state.committee.filter(function (_, i, arr) {
-      return i != index;
+      return i !== parseInt(index);
     });
 
     this.setState({ committee });
@@ -254,7 +251,7 @@ class Create extends React.Component {
               })}
             </List>
             <TextField
-              label="New public key"
+              label="Validator node public key"
               id="newCommitteePubKey"
               value={this.state.newCommitteePubKey}
               onChange={this.onNewCommitteePubKeyChanged}
@@ -277,5 +274,4 @@ class Create extends React.Component {
   }
 }
 
-export default withRouter(Create)
-
+export default withRouter(Create);

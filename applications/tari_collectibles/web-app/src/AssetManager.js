@@ -20,74 +20,130 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import React from "react";
-import {Box, Button, Container, TextField, Typography} from "@mui/material";
-import {useParams, withRouter} from "react-router-dom";
+import React, { useState } from "react";
+import { Box, Button, Container, TextField, Typography } from "@mui/material";
+import { useParams, withRouter } from "react-router-dom";
 import PropTypes from "prop-types";
 import binding from "./binding";
-
+import { fs, path } from "@tauri-apps/api";
 
 class AssetManagerContent extends React.Component {
-    constructor(props) {
-        super(props);
+  constructor(props) {
+    super(props);
 
-        this.state = {
-            error: "",
-            loading: true,
-            saving: false,
-            numTokens: 0
-        }
+    this.state = {
+      error: "",
+      loading: true,
+      saving: false,
+      numTokens: 0,
+    };
 
-        this.onNumTokensToIssueChanged = this.onNumTokensToIssueChanged.bind(this);
-        this.onIssueTokens = this.onIssueTokens.bind(this);
+    this.onNumTokensToIssueChanged = this.onNumTokensToIssueChanged.bind(this);
+    this.onIssueTokens = this.onIssueTokens.bind(this);
+  }
+
+  async componentDidMount() {
+    this.setState({ loading: false });
+  }
+
+  onNumTokensToIssueChanged(e) {
+    this.setState({ numTokens: e.target.value });
+  }
+
+  async onIssueTokens() {
+    console.log("About to issue tokens");
+    this.setState({ saving: true, error: "" });
+    // Issue
+
+    try {
+      let res = await binding.command_asset_issue_simple_tokens(
+        this.props.assetPubKey,
+        parseInt(this.state.numTokens)
+      );
+      console.log(res);
+    } catch (e) {
+      this.setState({ error: "Could not issue tokens:" + e });
     }
 
-    async componentDidMount() {
+    this.setState({ saving: false });
+  }
 
-        this.setState({loading: false});
-
-    }
-
-    onNumTokensToIssueChanged(e) {
-        this.setState({numTokens: e.target.value});
-    }
-
-    async onIssueTokens() {
-        console.log("About to issue tokens");
-        this.setState({saving: true, error: ""});
-        // Issue
-
-        try {
-            let res = await binding.command_asset_issue_simple_tokens(this.props.assetPubKey, parseInt(this.state.numTokens));
-            console.log(res);
-        }
-        catch(e)
-        {
-            this.setState({error: "Could not issue tokens:" + e})
-        }
-
-        this.setState({saving: false});
-    }
-
-    render() {
-        return (<Container maxWidth="lg" sx={{mt: 4, mb: 4, py: 8}}>
-            <Typography>Asset: {this.props.assetPubKey}</Typography>
-            <Box>
-                <TextField id="numTokens" onChange={this.onNumTokensToIssueChanged} value={this.state.numTokens} type="number"
-                           disabled={this.state.saving}></TextField>
-                <Button id="issueTokens" onClick={this.onIssueTokens} disabled={this.state.saving}>Issue Tokens</Button>
-            </Box>
-        </Container>)
-    }
+  render() {
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4, py: 8 }}>
+        <Typography>Asset: {this.props.assetPubKey}</Typography>
+        <Box>
+          <TextField
+            id="numTokens"
+            onChange={this.onNumTokensToIssueChanged}
+            value={this.state.numTokens}
+            type="number"
+            disabled={this.state.saving}
+          ></TextField>
+          <Button
+            id="issueTokens"
+            onClick={this.onIssueTokens}
+            disabled={this.state.saving}
+          >
+            Issue Tokens
+          </Button>
+        </Box>
+        <Box>
+          <AssetDefinition assetPubKey={this.props.assetPubKey} />
+        </Box>
+      </Container>
+    );
+  }
 }
+
+const AssetDefinition = (props) => {
+  const { assetPubKey } = props;
+  const [msg, setMsg] = useState("");
+
+  const asset = {
+    publicKey: assetPubKey,
+    phaseTimeout: 10,
+    initialCommittee: [],
+    baseLayerConfirmationTime: 5,
+    checkpointUniqueId: [],
+    templates: [],
+  };
+  const contents = JSON.stringify(asset);
+  async function save() {
+    const filename = `${assetPubKey}.json`;
+    try {
+      const home = await path.homeDir();
+      const filePath = `${home}${filename}`;
+      await fs.writeFile({
+        contents,
+        path: filePath,
+      });
+      setMsg(`Asset definition file written to: ${filePath}`);
+    } catch (e) {
+      setMsg(`Error: ${e}`);
+    }
+  }
+
+  return (
+    <div>
+      <p>Asset Definition</p>
+      <p>Use this asset definition json file for your validator nodes</p>
+      <pre>{contents}</pre>
+      <Button id="download" onClick={save}>
+        Save asset definition file
+      </Button>
+      <p>{msg}</p>
+    </div>
+  );
+};
 
 AssetManagerContent.propTypes = {
-    assetPubKey: PropTypes.string
-}
+  assetPubKey: PropTypes.string,
+};
 
 function AssetManager() {
-    let {assetPubKey} = useParams();
-    return <AssetManagerContent assetPubKey={assetPubKey}/>
+  const { assetPubKey } = useParams();
+  return <AssetManagerContent assetPubKey={assetPubKey} />;
 }
 
 export default withRouter(AssetManager);
