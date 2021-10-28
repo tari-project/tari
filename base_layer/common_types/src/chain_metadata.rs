@@ -38,7 +38,7 @@ pub struct ChainMetadata {
     /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pruned_height: u64,
-    /// The geometric mean of the proof of work of the longest chain, none if the chain is empty
+    /// The total accumuated proof of work of the longest chain
     accumulated_difficulty: u128,
 }
 
@@ -122,18 +122,15 @@ impl ChainMetadata {
 }
 
 impl Display for ChainMetadata {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let height = self.height_of_longest_chain;
         let best_block = self.best_block.to_hex();
         let accumulated_difficulty = self.accumulated_difficulty;
-        fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
-        fmt.write_str(&format!(
-            "Geometric mean of longest chain : {}\n",
-            accumulated_difficulty
-        ))?;
-        fmt.write_str(&format!("Best block : {}\n", best_block))?;
-        fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))?;
-        fmt.write_str(&format!("Effective pruned height : {}\n", self.pruned_height))?;
+        writeln!(f, "Height of longest chain : {}", height)?;
+        writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;
+        writeln!(f, "Best block : {}", best_block)?;
+        writeln!(f, "Pruning horizon : {}", self.pruning_horizon)?;
+        writeln!(f, "Effective pruned height : {}", self.pruned_height)?;
         Ok(())
     }
 }
