@@ -1478,9 +1478,9 @@ where
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
-        let inbound_txs = self.db.get_pending_inbound_transactions().await?;
-        for (tx_id, tx) in inbound_txs {
-            self.restart_receive_transaction_protocol(tx_id, tx.source_public_key.clone(), join_handles);
+        let inbound_txs = self.db.get_pending_inbound_transaction_sender_info().await?;
+        for txn in inbound_txs {
+            self.restart_receive_transaction_protocol(txn.tx_id, txn.source_public_key, join_handles);
         }
 
         Ok(())
