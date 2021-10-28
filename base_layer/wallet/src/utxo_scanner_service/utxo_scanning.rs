@@ -57,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tracing::instrument;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -240,6 +241,7 @@ where TBackend: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "utxo_scanner_task::connect_to_peer", skip(self, peer))]
     async fn connect_to_peer(&mut self, peer: NodeId) -> Result<PeerConnection, UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         debug!(
@@ -261,6 +263,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    #[instrument(name = "utxo_scanner_task::attempt_sync", skip(self, peer))]
     async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, Duration), UtxoScannerError> {
         let mut connection = self.connect_to_peer(peer.clone()).await?;
 
@@ -324,6 +327,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    #[instrument(name = "utxo_scanner_task::get_chain_tip_header", skip(self, client))]
     async fn get_chain_tip_header(&self, client: &mut BaseNodeSyncRpcClient) -> Result<BlockHeader, UtxoScannerError> {
         let chain_metadata = client.get_chain_metadata().await?;
         let chain_height = chain_metadata.height_of_longest_chain();
@@ -333,6 +337,7 @@ where TBackend: WalletBackend + 'static
         Ok(end_header)
     }
 
+    #[instrument(name = "utxo_scanner_task::get_start_utxo_mmr_pos", skip(self, client))]
     async fn get_start_utxo_mmr_pos(&self, client: &mut BaseNodeSyncRpcClient) -> Result<u64, UtxoScannerError> {
         let metadata = self.get_metadata().await?.unwrap_or_default();
         if metadata.height_hash.is_empty() {
@@ -360,6 +365,10 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    #[instrument(
+        name = "utxo_scanner_task::scan_utxos",
+        skip(self, client, start_mmr_leaf_index, end_header)
+    )]
     async fn scan_utxos(
         &mut self,
         client: &mut BaseNodeSyncRpcClient,
@@ -436,6 +445,10 @@ where TBackend: WalletBackend + 'static
         Ok(total_scanned as u64)
     }
 
+    #[instrument(
+        name = "utxo_scanner_task::update_scanning_progress_in_db",
+        skip(self, last_utxo_index, total_amount, num_recovered, end_header_hash)
+    )]
     async fn update_scanning_progress_in_db(
         &self,
         last_utxo_index: u64,
@@ -453,6 +466,7 @@ where TBackend: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "utxo_scanner_task::scan_for_outputs", skip(self, outputs))]
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
@@ -488,6 +502,7 @@ where TBackend: WalletBackend + 'static
         Ok(found_outputs)
     }
 
+    #[instrument(name = "utxo_scanner_task::import_utxos_to_transaction_service", skip(self, utxos))]
     async fn import_utxos_to_transaction_service(
         &mut self,
         utxos: Vec<(UnblindedOutput, String)>,
@@ -518,6 +533,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    #[instrument(name = "utxo_scanner_task::set_metadata", skip(self, data))]
     async fn set_metadata(&self, data: ScanningMetadata) -> Result<(), UtxoScannerError> {
         let total_key = self.get_db_mode_key();
         let db_value = serde_json::to_string(&data)?;
@@ -525,6 +541,7 @@ where TBackend: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "utxo_scanner_task::get_metadata", skip(self))]
     async fn get_metadata(&self) -> Result<Option<ScanningMetadata>, UtxoScannerError> {
         let total_key = self.get_db_mode_key();
         let value: Option<String> = self.resources.db.get_client_key_from_str(total_key).await?;
@@ -534,6 +551,7 @@ where TBackend: WalletBackend + 'static
         }
     }
 
+    #[instrument(name = "utxo_scanner_task::clear_db", skip(self))]
     async fn clear_db(&self) -> Result<(), UtxoScannerError> {
         let total_key = self.get_db_mode_key();
         let _ = self.resources.db.clear_client_value(total_key).await?;
@@ -546,6 +564,10 @@ where TBackend: WalletBackend + 'static
 
     /// A faux incoming transaction will be created to provide a record of the event of importing a UTXO. The TxId of
     /// the generated transaction is returned.
+    #[instrument(
+        name = "utxo_scanner_task::import_unblinded_utxo_to_transaction_service",
+        skip(self, unblinded_output, source_public_key, message)
+    )]
     pub async fn import_unblinded_utxo_to_transaction_service(
         &mut self,
         unblinded_output: UnblindedOutput,

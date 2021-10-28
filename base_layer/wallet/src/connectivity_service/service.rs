@@ -39,6 +39,7 @@ use tokio::{
     time,
     time::MissedTickBehavior,
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::connectivity";
 
@@ -133,6 +134,7 @@ impl WalletConnectivityService {
         }
     }
 
+    #[instrument(name = "wallet_connectivity_service::handle_pool_request", skip(self, reply))]
     async fn handle_pool_request(&mut self, reply: ReplyOneshot) {
         use ReplyOneshot::*;
         match reply {
@@ -141,6 +143,10 @@ impl WalletConnectivityService {
         }
     }
 
+    #[instrument(
+        name = "wallet_connectivity_service::handle_get_base_node_wallet_rpc_client",
+        skip(self, reply)
+    )]
     async fn handle_get_base_node_wallet_rpc_client(
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>,
@@ -171,6 +177,10 @@ impl WalletConnectivityService {
         }
     }
 
+    #[instrument(
+        name = "wallet_connectivity_service::handle_get_base_node_sync_rpc_client",
+        skip(self, reply)
+    )]
     async fn handle_get_base_node_sync_rpc_client(
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>,
@@ -251,6 +261,7 @@ impl WalletConnectivityService {
         let _ = self.online_status_watch.send(status);
     }
 
+    #[instrument(name = "wallet_connectivity_service::try_setup_rpc_pool", skip(self, peer))]
     async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {
         let conn = match self.try_dial_peer(peer.clone()).await? {
             Some(c) => c,
@@ -272,6 +283,7 @@ impl WalletConnectivityService {
         Ok(true)
     }
 
+    #[instrument(name = "wallet_connectivity_service::try_dial_peer", skip(self, peer))]
     async fn try_dial_peer(&mut self, peer: NodeId) -> Result<Option<PeerConnection>, WalletConnectivityError> {
         tokio::select! {
             biased;

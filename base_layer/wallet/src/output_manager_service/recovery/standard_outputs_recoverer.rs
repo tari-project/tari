@@ -39,6 +39,7 @@ use crate::output_manager_service::{
     },
     MasterKeyManager,
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
@@ -65,6 +66,7 @@ where TBackend: OutputManagerBackend + 'static
 
     /// Attempt to rewind all of the given transaction outputs into unblinded outputs. If they can be rewound then add
     /// them to the database and increment the key manager index
+    #[instrument(name = "recovery::scan_and_recover_outputs", skip(self, outputs))]
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
@@ -141,6 +143,10 @@ where TBackend: OutputManagerBackend + 'static
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
     /// output to contain correct associated script private key and update the key manager to the highest index it has
     /// seen so far.
+    #[instrument(
+        name = "recovery::update_outputs_script_private_key_and_update_key_manager_index",
+        skip(self, output)
+    )]
     async fn update_outputs_script_private_key_and_update_key_manager_index(
         &mut self,
         output: &mut UnblindedOutput,

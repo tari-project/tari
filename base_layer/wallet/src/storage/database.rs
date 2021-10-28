@@ -34,6 +34,7 @@ use tari_comms::{
     tor::TorIdentity,
     types::{CommsPublicKey, CommsSecretKey},
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -98,6 +99,7 @@ where T: WalletBackend + 'static
         Self { db: Arc::new(db) }
     }
 
+    #[instrument(name = "wallet_database::get_master_secret_key", skip(self))]
     pub async fn get_master_secret_key(&self) -> Result<Option<CommsSecretKey>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -112,6 +114,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::set_master_secret_key", skip(self, key))]
     pub async fn set_master_secret_key(&self, key: CommsSecretKey) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -123,6 +126,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::clear_master_secret_key", skip(self))]
     pub async fn clear_master_secret_key(&self) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::MasterSecretKey)))
@@ -131,6 +135,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::get_tor_id", skip(self))]
     pub async fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -145,6 +150,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::set_tor_id", skip(self, id))]
     pub async fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -154,6 +160,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::get_node_address", skip(self))]
     pub async fn get_node_address(&self) -> Result<Option<Multiaddr>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -168,6 +175,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::set_node_address", skip(self, address))]
     pub async fn set_node_address(&self, address: Multiaddr) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -179,6 +187,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::get_node_features", skip(self))]
     pub async fn get_node_features(&self) -> Result<Option<PeerFeatures>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -193,6 +202,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::set_node_features", skip(self, features))]
     pub async fn set_node_features(&self, features: PeerFeatures) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -204,6 +214,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::get_chain_metadata", skip(self))]
     pub async fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -218,6 +229,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::set_chain_metadata", skip(self, metadata))]
     pub async fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -229,6 +241,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::apply_encryption", skip(self, cipher))]
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
@@ -237,6 +250,7 @@ where T: WalletBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "wallet_database::remove_encryption", skip(self))]
     pub async fn remove_encryption(&self) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.remove_encryption())
@@ -245,6 +259,7 @@ where T: WalletBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "wallet_database::set_client_key_value", skip(self, key, value))]
     pub async fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -256,6 +271,7 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "wallet_database::get_client_key_value", skip(self, key))]
     pub async fn get_client_key_value(&self, key: String) -> Result<Option<String>, WalletStorageError> {
         let db_clone = self.db.clone();
 
@@ -270,6 +286,7 @@ where T: WalletBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "wallet_database::get_client_key_from_str", skip(self, key))]
     pub async fn get_client_key_from_str<V>(&self, key: String) -> Result<Option<V>, WalletStorageError>
     where
         V: std::str::FromStr,
@@ -295,6 +312,7 @@ where T: WalletBackend + 'static
         }
     }
 
+    #[instrument(name = "wallet_database::clear_client_value", skip(self, key))]
     pub async fn clear_client_value(&self, key: String) -> Result<bool, WalletStorageError> {
         let db_clone = self.db.clone();
 

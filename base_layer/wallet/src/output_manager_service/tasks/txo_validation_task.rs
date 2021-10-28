@@ -42,6 +42,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_shutdown::ShutdownSignal;
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
@@ -74,6 +75,7 @@ where
         }
     }
 
+    #[instrument(name = "validation::execute", skip(self, _shutdown))]
     pub async fn execute(mut self, _shutdown: ShutdownSignal) -> Result<u64, OutputManagerProtocolError> {
         let mut base_node_client = self
             .connectivity
@@ -97,6 +99,10 @@ where
         Ok(self.operation_id)
     }
 
+    #[instrument(
+        name = "validation::update_spent_outputs",
+        skip(self, wallet_client, last_mined_header_hash)
+    )]
     async fn update_spent_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
@@ -207,6 +213,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "validation::update_unconfirmed_outputs", skip(self, wallet_client))]
     async fn update_unconfirmed_outputs(
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
@@ -251,6 +258,7 @@ where
     }
 
     // returns the last header found still in the chain
+    #[instrument(name = "validation::check_for_reorgs", skip(self, client))]
     async fn check_for_reorgs(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
@@ -341,7 +349,7 @@ where
     }
 
     // TODO: remove this duplicated code from transaction validation protocol
-
+    #[instrument(name = "validation::get_base_node_block_at_height", skip(self, height, client))]
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
@@ -372,6 +380,10 @@ where
         Ok(Some(block_header.hash()))
     }
 
+    #[instrument(
+        name = "validation::query_base_node_for_outputs",
+        skip(self, batch, base_node_client)
+    )]
     async fn query_base_node_for_outputs(
         &self,
         batch: &[DbUnblindedOutput],
@@ -417,6 +429,10 @@ where
     }
 
     #[allow(clippy::ptr_arg)]
+    #[instrument(
+        name = "validation::update_output_as_mined",
+        skip(self, tx, mined_in_block, mined_height, mmr_position, tip_height)
+    )]
     async fn update_output_as_mined(
         &self,
         tx: &DbUnblindedOutput,

@@ -36,6 +36,7 @@ use tari_common_types::{
     types::{BlindingFactor, Commitment, HashOutput, PrivateKey},
 };
 use tari_core::transactions::transaction::TransactionOutput;
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
@@ -204,6 +205,7 @@ where T: OutputManagerBackend + 'static
         .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "output_manager_database::set_key_manager_state", skip(self, state))]
     pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
@@ -215,6 +217,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::increment_key_index", skip(self))]
     pub async fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.increment_key_index())
@@ -223,6 +226,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::set_key_index", skip(self, index))]
     pub async fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.set_key_index(index))
@@ -231,6 +235,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::add_unspent_output", skip(self, output))]
     pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
@@ -245,6 +250,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::add_unspent_output_with_tx_id",
+        skip(self, tx_id, output)
+    )]
     pub async fn add_unspent_output_with_tx_id(
         &self,
         tx_id: TxId,
@@ -263,6 +272,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::add_output_to_be_received",
+        skip(self, tx_id, output, coinbase_block_height)
+    )]
     pub async fn add_output_to_be_received(
         &self,
         tx_id: TxId,
@@ -282,6 +295,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::get_balance",
+        skip(self, current_tip_for_time_lock_calculation)
+    )]
     pub async fn get_balance(
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
@@ -294,6 +311,10 @@ where T: OutputManagerBackend + 'static
 
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
     /// transaction in the short term.
+    #[instrument(
+        name = "output_manager_database::encumber_outputs",
+        skip(self, tx_id, outputs_to_send, outputs_to_receive)
+    )]
     pub async fn encumber_outputs(
         &self,
         tx_id: TxId,
@@ -311,6 +332,7 @@ where T: OutputManagerBackend + 'static
 
     /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
     /// against a pending transaction.
+    #[instrument(name = "output_manager_database::confirm_encumbered_outputs", skip(self, tx_id))]
     pub async fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.confirm_encumbered_outputs(tx_id))
@@ -321,6 +343,7 @@ where T: OutputManagerBackend + 'static
 
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
     /// transaction negotiation
+    #[instrument(name = "output_manager_database::clear_short_term_encumberances", skip(self))]
     pub async fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.clear_short_term_encumberances())
@@ -331,6 +354,10 @@ where T: OutputManagerBackend + 'static
 
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
+    #[instrument(
+        name = "output_manager_database::cancel_pending_transaction_outputs",
+        skip(self, tx_id)
+    )]
     pub async fn cancel_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction(tx_id))
@@ -340,6 +367,10 @@ where T: OutputManagerBackend + 'static
     }
 
     /// Check if there is a pending coinbase transaction at this block height, if there is clear it.
+    #[instrument(
+        name = "output_manager_database::clear_pending_coinbase_transaction_at_block_height",
+        skip(self, block_height)
+    )]
     pub async fn clear_pending_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
@@ -352,6 +383,7 @@ where T: OutputManagerBackend + 'static
     }
 
     /// Retrieves UTXOs sorted by value from smallest to largest.
+    #[instrument(name = "output_manager_database::fetch_sorted_unspent_outputs", skip(self))]
     pub async fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -371,6 +403,7 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    #[instrument(name = "output_manager_database::fetch_spent_outputs", skip(self))]
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -388,6 +421,7 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    #[instrument(name = "output_manager_database::fetch_unconfirmed_outputs", skip(self))]
     pub async fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         let utxos = tokio::task::spawn_blocking(move || db_clone.fetch_unconfirmed_outputs())
@@ -396,6 +430,7 @@ where T: OutputManagerBackend + 'static
         Ok(utxos)
     }
 
+    #[instrument(name = "output_manager_database::fetch_mined_unspent_outputs", skip(self))]
     pub async fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         let utxos = tokio::task::spawn_blocking(move || db_clone.fetch_mined_unspent_outputs())
@@ -404,6 +439,7 @@ where T: OutputManagerBackend + 'static
         Ok(utxos)
     }
 
+    #[instrument(name = "output_manager_database::get_timelocked_outputs", skip(self, tip))]
     pub async fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -421,6 +457,7 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    #[instrument(name = "output_manager_database::get_invalid_outputs", skip(self))]
     pub async fn get_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -438,6 +475,10 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    #[instrument(
+        name = "output_manager_database::update_output_metadata_signature",
+        skip(self, output)
+    )]
     pub async fn update_output_metadata_signature(
         &self,
         output: TransactionOutput,
@@ -449,6 +490,7 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "output_manager_database::revalidate_output", skip(self, commitment))]
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
@@ -457,6 +499,10 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(
+        name = "output_manager_database::reinstate_cancelled_inbound_output",
+        skip(self, tx_id)
+    )]
     pub async fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.reinstate_cancelled_inbound_output(tx_id))
@@ -465,6 +511,7 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "output_manager_database::apply_encryption", skip(self, cipher))]
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
@@ -473,6 +520,7 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "output_manager_database::remove_encryption", skip(self))]
     pub async fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.remove_encryption())
@@ -481,6 +529,10 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(
+        name = "output_manager_database::get_all_known_one_sided_payment_scripts",
+        skip(self)
+    )]
     pub async fn get_all_known_one_sided_payment_scripts(
         &self,
     ) -> Result<Vec<KnownOneSidedPaymentScript>, OutputManagerStorageError> {
@@ -500,14 +552,17 @@ where T: OutputManagerBackend + 'static
         Ok(scripts)
     }
 
+    #[instrument(name = "output_manager_database::get_last_mined_output", skip(self))]
     pub async fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.get_last_mined_output()
     }
 
+    #[instrument(name = "output_manager_database::get_last_spent_output", skip(self))]
     pub async fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.get_last_spent_output()
     }
 
+    #[instrument(name = "output_manager_database::add_known_script", skip(self, known_script))]
     pub async fn add_known_script(
         &self,
         known_script: KnownOneSidedPaymentScript,
@@ -524,6 +579,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::remove_output_by_commitment",
+        skip(self, commitment)
+    )]
     pub async fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
@@ -539,6 +598,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::set_received_output_mined_height",
+        skip(self, hash, mined_height, mined_in_block, mmr_position, confirmed)
+    )]
     pub async fn set_received_output_mined_height(
         &self,
         hash: HashOutput,
@@ -556,6 +619,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::set_output_to_unmined", skip(self, hash))]
     pub async fn set_output_to_unmined(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.set_output_to_unmined(hash))
@@ -564,6 +628,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::set_outputs_to_be_revalidated", skip(self))]
     pub async fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.set_outputs_to_be_revalidated())
@@ -572,6 +637,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(
+        name = "output_manager_database::mark_output_as_spent",
+        skip(self, hash, deleted_height, deleted_in_block, confirmed)
+    )]
     pub async fn mark_output_as_spent(
         &self,
         hash: HashOutput,
@@ -586,6 +655,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::mark_output_as_unspent", skip(self, hash))]
     pub async fn mark_output_as_unspent(&self, hash: HashOutput) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.mark_output_as_unspent(hash))
@@ -594,6 +664,7 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "output_manager_database::set_coinbase_abandoned", skip(self, tx_id))]
     pub async fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
         tokio::task::spawn_blocking(move || db.set_coinbase_abandoned(tx_id, abandoned))

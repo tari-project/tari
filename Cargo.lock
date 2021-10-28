@@ -4930,6 +4930,9 @@ dependencies = [
  "time",
  "tokio 1.13.0",
  "tower 0.3.1",
+ "tracing",
+ "tracing-futures",
+ "tracing-subscriber",
 ]
 
 [[package]]

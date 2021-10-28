@@ -27,6 +27,7 @@ use std::{
     sync::Arc,
 };
 use tari_comms::types::CommsPublicKey;
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::contacts_service::database";
 
@@ -90,6 +91,7 @@ where T: ContactsBackend + 'static
         Self { db: Arc::new(db) }
     }
 
+    #[instrument(name = "contacts_backend::get_contact", skip(self, pub_key))]
     pub async fn get_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Contact))
@@ -98,6 +100,7 @@ where T: ContactsBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    #[instrument(name = "contacts_backend::get_contacts", skip(self))]
     pub async fn get_contacts(&self) -> Result<Vec<Contact>, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
 
@@ -115,6 +118,7 @@ where T: ContactsBackend + 'static
         Ok(c)
     }
 
+    #[instrument(name = "contacts_backend::upsert_contact", skip(self, contact))]
     pub async fn upsert_contact(&self, contact: Contact) -> Result<(), ContactsServiceStorageError> {
         let db_clone = self.db.clone();
 
@@ -129,6 +133,7 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
+    #[instrument(name = "contacts_backend::remove_contact", skip(self, pub_key))]
     pub async fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
         let pub_key_clone = pub_key.clone();

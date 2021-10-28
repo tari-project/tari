@@ -67,6 +67,7 @@ use tari_p2p::{
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
+use tracing::instrument;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -122,6 +123,18 @@ where
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
+    #[instrument(
+        name = "wallet::start",
+        skip(
+            config,
+            wallet_database,
+            transaction_backend,
+            output_manager_backend,
+            contacts_backend,
+            shutdown_signal,
+            recovery_master_key
+        )
+    )]
     pub async fn start(
         config: WalletConfig,
         wallet_database: WalletDatabase<T>,
@@ -273,7 +286,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.clone().wait_until_shutdown().await;
+        self.comms.to_owned().wait_until_shutdown().await;
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
@@ -309,6 +322,7 @@ where
         self.wallet_connectivity.get_current_base_node_peer()
     }
 
+    #[instrument(name = "wallet::check_for_update", skip(self))]
     pub async fn check_for_update(&self) -> Option<String> {
         let mut updater = self.updater_service.clone().unwrap();
         debug!(
@@ -349,6 +363,22 @@ where
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
     #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        name = "wallet::import_utxo",
+        skip(
+            self,
+            amount,
+            spending_key,
+            script,
+            input_data,
+            source_public_key,
+            features,
+            message,
+            metadata_signature,
+            script_private_key,
+            sender_offset_public_key
+        )
+    )]
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
@@ -397,6 +427,10 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
+    #[instrument(
+        name = "wallet::import_blinded_utxo",
+        skip(self, unblinded_output, source_public_key, message)
+    )]
     pub async fn import_unblinded_utxo(
         &mut self,
         unblinded_output: UnblindedOutput,
@@ -452,6 +486,10 @@ where
     }
 
     /// Do a coin split
+    #[instrument(
+        name = "wallet::coin_split",
+        skip(self, amount_per_split, split_count, fee_per_gram, message, lock_height)
+    )]
     pub async fn coin_split(
         &mut self,
         amount_per_split: MicroTari,
@@ -482,6 +520,7 @@ where
 
     /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
     /// in which case this will fail.
+    #[instrument(name = "wallet::apply_encryption", skip(self, passphrase))]
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
         let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
@@ -496,6 +535,7 @@ where
 
     /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
     /// fail
+    #[instrument(name = "wallet::remove_encryption", skip(self))]
     pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
         self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
@@ -557,6 +597,10 @@ fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSe
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
 /// payment outputs. This is peristed so that if the Node Identity changes the wallet will still scan for outputs
 /// using old node identities.
+#[instrument(
+    name = "wallet::persist_one_sided_payment_script_for_node_identity",
+    skip(output_manager_service, node_identity)
+)]
 pub async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
     node_identity: Arc<NodeIdentity>,

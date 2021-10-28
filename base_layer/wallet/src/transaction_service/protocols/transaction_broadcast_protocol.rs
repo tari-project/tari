@@ -49,6 +49,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
@@ -80,6 +81,7 @@ where
     }
 
     /// The task that defines the execution of the protocol.
+    #[instrument(name = "broadcast_protocol::execute", skip(self))]
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         let mut shutdown = self.resources.shutdown_signal.clone();
         let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
@@ -174,6 +176,7 @@ where
     /// `Ok(true)` => Transaction was successfully submitted to UnconfirmedPool
     /// `Ok(false)` => There was a problem with the RPC call and this should be retried
     /// `Err(_)` => The transaction was rejected by the base node and the protocol should end.
+    #[instrument(name = "broadcast_protocol::submit_transaction", skip(self, tx, client))]
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
@@ -275,6 +278,7 @@ where
     /// `Ok(false)` => There was a problem with the RPC call or the transaction is not mined but still in the mempool
     /// and this should be retried `Err(_)` => The transaction was rejected by the base node and the protocol should
     /// end.
+    #[instrument(name = "broadcast_protocol::transaction_query", skip(self, signature, client))]
     async fn transaction_query(
         &mut self,
         signature: Signature,
@@ -362,6 +366,10 @@ where
         }
     }
 
+    #[instrument(
+        name = "broadcast_protocol::query_or_submit_transaction",
+        skip(self, completed_transaction, client)
+    )]
     async fn query_or_submit_transaction(
         &mut self,
         completed_transaction: CompletedTransaction,
@@ -390,6 +398,7 @@ where
         }
     }
 
+    #[instrument(name = "broadcast_protocol::cancel_transaction", skip(self))]
     async fn cancel_transaction(&mut self) {
         if let Err(e) = self
             .resources

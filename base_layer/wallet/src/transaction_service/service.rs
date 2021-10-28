@@ -90,6 +90,7 @@ use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot},
     task::JoinHandle,
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -662,6 +663,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        name = "transaction_service::handle_base_node_service_event",
+        skip(self, event, transaction_validation_join_handles)
+    )]
     async fn handle_base_node_service_event(
         &mut self,
         event: Arc<BaseNodeEvent>,
@@ -696,6 +701,19 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[instrument(
+        name = "transaction_service::send_transaction",
+        skip(
+            self,
+            dest_pubkey,
+            amount,
+            fee_per_gram,
+            message,
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel
+        )
+    )]
     pub async fn send_transaction(
         &mut self,
         dest_pubkey: CommsPublicKey,
@@ -785,6 +803,10 @@ where
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of Tari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[instrument(
+        name = "transaction_service::send_one_sided_transaction",
+        skip(self, dest_pubkey, amount, fee_per_gram, message, transaction_broadcast_join_handles)
+    )]
     pub async fn send_one_sided_transaction(
         &mut self,
         dest_pubkey: CommsPublicKey,
@@ -917,6 +939,10 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[instrument(
+        name = "transaction_service::accept_recipient_reply",
+        skip(self, source_pubkey, recipient_reply)
+    )]
     pub async fn accept_recipient_reply(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1047,6 +1073,10 @@ where
     }
 
     /// Handle the final clean up after a Send Transaction protocol completes
+    #[instrument(
+        name = "transaction_service::complete_send_transaction_protocol",
+        skip(self, join_result, transaction_broadcast_join_handles)
+    )]
     async fn complete_send_transaction_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
@@ -1102,6 +1132,7 @@ where
     }
 
     /// Cancel a pending transaction
+    #[instrument(name = "transaction_service::cancel_pending_transaction", skip(self, tx_id))]
     async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
             warn!(
@@ -1154,6 +1185,10 @@ where
     // }
 
     /// Handle a Transaction Cancelled message received from the Comms layer
+    #[instrument(
+        name = "transaction_service::handle_transaction_cancelled_message",
+        skip(self, source_pubkey, transaction_cancelled)
+    )]
     pub async fn handle_transaction_cancelled_message(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1179,6 +1214,10 @@ where
     }
 
     #[allow(clippy::map_entry)]
+    #[instrument(
+        name = "transaction_service::restart_all_send_transaction_protocols",
+        skip(self, join_handles)
+    )]
     async fn restart_all_send_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1220,6 +1259,10 @@ where
     /// # Arguments
     /// 'source_pubkey' - The pubkey from which the message was sent and to which the reply will be sent.
     /// 'sender_message' - Message from a sender containing the setup of the transaction being sent to you
+    #[instrument(
+        name = "transaction_service::accept_transaction",
+        skip(self, source_pubkey, sender_message, traced_message_tag, join_handles)
+    )]
     pub async fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1339,6 +1382,10 @@ where
     /// Accept the public reply from a recipient and apply the reply to the relevant transaction protocol
     /// # Arguments
     /// 'recipient_reply' - The public response from a recipient with data required to complete the transaction
+    #[instrument(
+        name = "transaction_service::accept_finalized_transaction",
+        skip(self, source_pubkey, finalized_transaction, join_handles)
+    )]
     pub async fn accept_finalized_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
@@ -1409,6 +1456,10 @@ where
     }
 
     /// Handle the final clean up after a Send Transaction protocol completes
+    #[instrument(
+        name = "transaction_service::complete_receive_transaction_protocol",
+        skip(self, join_result, transaction_broadcast_join_handles)
+    )]
     async fn complete_receive_transaction_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
@@ -1474,6 +1525,10 @@ where
         }
     }
 
+    #[instrument(
+        name = "transaction_service::restart_all_receive_transaction_protocols",
+        skip(self, join_handles)
+    )]
     async fn restart_all_receive_transaction_protocols(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1486,6 +1541,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        name = "transaction_service::restart_receive_transaction_protocol",
+        skip(self, tx_id, source_public_key, join_handles)
+    )]
     fn restart_receive_transaction_protocol(
         &mut self,
         tx_id: TxId,
@@ -1517,6 +1576,10 @@ where
         }
     }
 
+    #[instrument(
+        name = "transaction_service::restart_transaction_negotiation_protocols",
+        skip(self, send_transaction_join_handles, receive_transaction_join_handles)
+    )]
     async fn restart_transaction_negotiation_protocols(
         &mut self,
         send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1548,6 +1611,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        name = "transaction_service::start_transaction_revalidation",
+        skip(self, join_handles)
+    )]
     async fn start_transaction_revalidation(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1556,6 +1623,10 @@ where
         self.start_transaction_validation_protocol(join_handles).await
     }
 
+    #[instrument(
+        name = "transaction_service::start_transaction_validation_protocol",
+        skip(self, join_handles)
+    )]
     async fn start_transaction_validation_protocol(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1582,6 +1653,10 @@ where
     }
 
     /// Handle the final clean up after a Transaction Validation protocol completes
+    #[instrument(
+        name = "transaction_service::complete_transaction_validation_protocol",
+        skip(self, join_result, transaction_broadcast_join_handles)
+    )]
     async fn complete_transaction_validation_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
@@ -1616,6 +1691,10 @@ where
         }
     }
 
+    #[instrument(
+        name = "transaction_service::restart_broadcast_protocols",
+        skip(self, broadcast_join_handles)
+    )]
     async fn restart_broadcast_protocols(
         &mut self,
         broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1641,6 +1720,10 @@ where
     }
 
     /// Start to protocol to Broadcast the specified Completed Transaction to the Base Node.
+    #[instrument(
+        name = "transaction_service::broadcast_completed_transaction",
+        skip(self, completed_tx, join_handles)
+    )]
     async fn broadcast_completed_transaction(
         &mut self,
         completed_tx: CompletedTransaction,
@@ -1686,6 +1769,10 @@ where
 
     /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
+    #[instrument(
+        name = "transaction_service::broadcast_completed_and_broadcast_transactions",
+        skip(self, join_handles)
+    )]
     async fn broadcast_completed_and_broadcast_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
@@ -1705,6 +1792,10 @@ where
     }
 
     /// Handle the final clean up after a Transaction Broadcast protocol completes
+    #[instrument(
+        name = "transaction_service::complete_transaction_broadcast_protocol",
+        skip(self, join_result)
+    )]
     async fn complete_transaction_broadcast_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
@@ -1735,6 +1826,7 @@ where
     }
 
     /// Handle an incoming basenode response message
+    #[instrument(name = "transaction_service::handle_base_node_response", skip(self, response))]
     pub async fn handle_base_node_response(
         &mut self,
         response: base_node_proto::BaseNodeServiceResponse,
@@ -1758,6 +1850,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "transaction_service::set_power_mode", skip(self, mode))]
     async fn set_power_mode(&mut self, mode: PowerMode) -> Result<(), TransactionServiceError> {
         let timeout = match mode {
             PowerMode::Low => self.config.low_power_polling_timeout,
@@ -1769,6 +1862,10 @@ where
     }
 
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
+    #[instrument(
+        name = "transaction_service::add_utxo_import_transaction",
+        skip(self, value, source_public_key, message, maturity)
+    )]
     pub async fn add_utxo_import_transaction(
         &mut self,
         value: MicroTari,
@@ -1802,6 +1899,10 @@ where
     }
 
     /// Submit a completed transaction to the Transaction Manager
+    #[instrument(
+        name = "transaction_service::submit_transaction",
+        skip(self, transaction_broadcast_join_handles, completed_transaction)
+    )]
     async fn submit_transaction(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1826,6 +1927,10 @@ where
 
     /// Submit a completed coin split transaction to the Transaction Manager. This is different from
     /// `submit_transaction` in that it will expose less information about the completed transaction.
+    #[instrument(
+        name = "transaction_service::submit_coin_split_transaction",
+        skip(self, tx_id, tx, fee, amount, message)
+    )]
     pub async fn submit_coin_split_transaction(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1857,6 +1962,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        name = "transaction_service::generate_coinbase_transaction",
+        skip(self, reward, fees, block_height)
+    )]
     async fn generate_coinbase_transaction(
         &mut self,
         reward: MicroTari,
@@ -1941,6 +2050,7 @@ where
 
     /// Check if a Recovery Status is currently stored in the databse, this indicates that a wallet recovery is in
     /// progress
+    #[instrument(name = "transaction_service::check_recovery_status", skip(self))]
     async fn check_recovery_status(&self) -> Result<(), TransactionServiceError> {
         let value = self.wallet_db.get_client_key_value(RECOVERY_KEY.to_owned()).await?;
         match value {

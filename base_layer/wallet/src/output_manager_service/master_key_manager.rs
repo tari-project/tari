@@ -37,6 +37,7 @@ use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::master_key_manager";
 
@@ -159,6 +160,10 @@ where TBackend: OutputManagerBackend + 'static
         Ok(script_key.k)
     }
 
+    #[instrument(
+        name = "key_manager::get_coinbase_spend_and_script_key_for_height",
+        skip(self, height)
+    )]
     pub async fn get_coinbase_spend_and_script_key_for_height(
         &self,
         height: u64,

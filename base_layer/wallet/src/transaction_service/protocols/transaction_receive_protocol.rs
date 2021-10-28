@@ -45,6 +45,7 @@ use tari_core::transactions::{
 };
 use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
@@ -90,6 +91,7 @@ where
         }
     }
 
+    #[instrument(name = "receive_protocol::execute", skip(self))]
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
@@ -109,6 +111,7 @@ where
         Ok(self.id)
     }
 
+    #[instrument(name = "receive_protocol::accept_transaction", skip(self))]
     async fn accept_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = self.sender_message.clone() {
@@ -211,6 +214,7 @@ where
         }
     }
 
+    #[instrument(name = "receive_protocol::wait_for_finalization", skip(self))]
     async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError> {
         let mut receiver = self
             .transaction_finalize_receiver
@@ -469,6 +473,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "receive_protocol::timeout_transaction", skip(self))]
     async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,

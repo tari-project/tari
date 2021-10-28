@@ -60,6 +60,7 @@ use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,
 };
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";
@@ -118,6 +119,7 @@ where
     }
 
     /// Execute the Transaction Send Protocol as an async task.
+    #[instrument(name = "send_protocol::execute", skip(self))]
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
@@ -138,6 +140,7 @@ where
         Ok(self.id)
     }
 
+    #[instrument(name = "send_protocol::prepare_transaction", skip(self))]
     async fn prepare_transaction(&mut self) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError> {
         let service_reply_channel = match self.service_request_reply_channel.take() {
             Some(src) => src,
@@ -191,6 +194,7 @@ where
         }
     }
 
+    #[instrument(name = "send_protocol::initial_send_transaction", skip(self, sender_protocol))]
     async fn initial_send_transaction(
         &mut self,
         mut sender_protocol: SenderTransactionProtocol,
@@ -295,6 +299,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "send_protocol::wait_for_reply", skip(self))]
     async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError> {
         // Waiting  for Transaction Reply
         let tx_id = self.id;
@@ -540,6 +545,7 @@ where
     /// setting. If the selected sending mechanism fail to send the transaction will be cancelled.
     /// # Argumentswallet_sync_with_base_node
     /// `msg`: The transaction data message to be sent
+    #[instrument(name = "send_protocol::send_transaction", skip(self, msg))]
     async fn send_transaction(
         &mut self,
         msg: SingleRoundSenderData,
@@ -565,6 +571,7 @@ where
     /// the transaction will be cancelled.
     /// # Argumentswallet_sync_with_base_node
     /// `msg`: The transaction data message to be sent
+    #[instrument(name = "send_protocol::send_transaction_direct", skip(self, msg))]
     async fn send_transaction_direct(
         &mut self,
         msg: SingleRoundSenderData,
@@ -675,6 +682,7 @@ where
     /// # Arguments
     /// `msg`: The transaction data message to be sent
     /// 'send_events': A bool indicating whether we should send events during the operation or not.
+    #[instrument(name = "send_protocol::send_transaction_store_and_forward", skip(self, msg))]
     async fn send_transaction_store_and_forward(
         &mut self,
         msg: SingleRoundSenderData,
@@ -773,6 +781,7 @@ where
         }
     }
 
+    #[instrument(name = "send_protocol::timeout_transaction", skip(self))]
     async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,

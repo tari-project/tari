@@ -50,6 +50,7 @@ use tari_core::{
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
@@ -86,6 +87,7 @@ where
         }
     }
 
+    #[instrument(name = "validation_protocol::execute", skip(self))]
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         let mut base_node_wallet_client = self
             .connectivity
@@ -164,6 +166,7 @@ where
         }
     }
 
+    #[instrument(name = "validation_protocol::check_for_reorgs", skip(self, client))]
     async fn check_for_reorgs(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
@@ -228,6 +231,10 @@ where
         Ok(())
     }
 
+    #[instrument(
+        name = "validation_protocol::query_base_node_for_transactions",
+        skip(self, batch, base_node_client)
+    )]
     async fn query_base_node_for_transactions(
         &self,
         batch: &[CompletedTransaction],
@@ -300,6 +307,10 @@ where
         ))
     }
 
+    #[instrument(
+        name = "validation_protocol::get_base_node_block_at_height",
+        skip(self, height, client)
+    )]
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
@@ -331,6 +342,10 @@ where
     }
 
     #[allow(clippy::ptr_arg)]
+    #[instrument(
+        name = "validation_protocol::update_transaction_as_mined",
+        skip(self, tx, mined_in_block, mined_height, num_confirmations)
+    )]
     async fn update_transaction_as_mined(
         &mut self,
         tx: &CompletedTransaction,
@@ -376,6 +391,10 @@ where
     }
 
     #[allow(clippy::ptr_arg)]
+    #[instrument(
+        name = "validation_protocol::update_coinbase_as_abandoned",
+        skip(self, tx, mined_in_block, mined_height, num_confirmations)
+    )]
     async fn update_coinbase_as_abandoned(
         &mut self,
         tx: &CompletedTransaction,
@@ -407,6 +426,7 @@ where
         Ok(())
     }
 
+    #[instrument(name = "validation_protocol::update_transaction_as_unmined", skip(self, tx))]
     async fn update_transaction_as_unmined(
         &mut self,
         tx: &CompletedTransaction,

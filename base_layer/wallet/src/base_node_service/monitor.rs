@@ -41,6 +41,7 @@ use std::{
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::protocol::rpc::RpcError;
 use tokio::{sync::RwLock, time};
+use tracing::instrument;
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 
@@ -110,6 +111,7 @@ where
         );
     }
 
+    #[instrument(name = "base_node_monitor::monitor_node", skip(self))]
     async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
         let mut base_node_watch = self.wallet_connectivity.get_current_base_node_watcher();
         loop {
