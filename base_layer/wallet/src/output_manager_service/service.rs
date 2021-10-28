@@ -49,7 +49,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_comms::types::CommsPublicKey;
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -70,6 +70,7 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 
@@ -107,13 +108,13 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        master_secret_key: CommsSecretKey,
+        master_seed: CipherSeed,
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
         db.clear_short_term_encumberances().await?;
 
-        let master_key_manager = MasterKeyManager::new(master_secret_key, db.clone()).await?;
+        let master_key_manager = MasterKeyManager::new(master_seed, db.clone()).await?;
 
         let resources = OutputManagerResources {
             config,
