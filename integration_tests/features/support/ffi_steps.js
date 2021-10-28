@@ -162,14 +162,14 @@ When(
 
 Then(
   "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
-  { timeout: 40 * 1000 },
+  { timeout: 125 * 1000 },
   async function (walletName, count) {
     let wallet = this.getWallet(walletName);
     let broadcast = wallet.getOutboundTransactions();
     let length = broadcast.getLength();
     broadcast.destroy();
     let retries = 1;
-    const retries_limit = 100;
+    const retries_limit = 120;
     while (length != count && retries <= retries_limit) {
       await sleep(1000);
       broadcast = wallet.getOutboundTransactions();
@@ -248,6 +248,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} transaction",
+  { timeout: 125 * 1000 },
   async function (walletName, amount) {
     let wallet = this.getWallet(walletName);
 
@@ -262,7 +263,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().received >= amount)) {
@@ -276,7 +277,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} finalization",
-  { timeout: 126 * 1000 },
+  { timeout: 125 * 1000 },
   async function (walletName, amount) {
     let wallet = this.getWallet(walletName);
 
@@ -295,7 +296,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().finalized >= amount)) {
@@ -309,6 +310,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} broadcast",
+  { timeout: 125 * 1000 },
   async function (walletName, amount) {
     let wallet = this.getWallet(walletName);
 
@@ -327,7 +329,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().broadcast >= amount)) {
@@ -341,7 +343,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} mined",
-  { timeout: 7 * 1000 },
+  { timeout: 125 * 1000 },
   async function (walletName, amount) {
     let wallet = this.getWallet(walletName);
 
@@ -360,7 +362,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().mined >= amount)) {
@@ -374,6 +376,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {word} {int} SAF message",
+  { timeout: 125 * 1000 },
   async function (walletName, comparison, amount) {
     const atLeast = "AT_LEAST";
     const exactly = "EXACTLY";
@@ -395,7 +398,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().saf >= amount)) {
@@ -413,6 +416,7 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to have at least {int} uT",
+  { timeout: 125 * 1000 },
   async function (walletName, amount) {
     let wallet = this.getWallet(walletName);
 
@@ -427,7 +431,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     let balance = wallet.getBalance().available;
@@ -442,7 +446,7 @@ Then(
 
 Then(
   "ffi wallet {word} detects {word} {int} ffi transactions to be Broadcast",
-  { timeout: 1200 * 1000 },
+  { timeout: 125 * 1000 },
   async function (walletName, comparison, amount) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const atLeast = "AT_LEAST";
@@ -467,7 +471,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().broadcast >= amount)) {
@@ -542,15 +546,19 @@ Then(
   }
 );
 
-When("I stop ffi wallet {word}", async function (walletName) {
-When("I stop ffi wallet {word}", { timeout: 100 }, function (walletName) {
-  let wallet = this.getWallet(walletName);
-  await wallet.stop();
-  wallet.resetCounters();
-});
+When(
+  "I stop ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    await wallet.stop();
+    wallet.resetCounters();
+  }
+);
 
 Then(
   "I start TXO validation on ffi wallet {word}",
+  { timeout: 125 * 1000 },
   async function (walletName) {
     const wallet = this.getWallet(walletName);
     await wallet.startTxoValidation();
@@ -560,10 +568,14 @@ Then(
   }
 );
 
-Then("I start TX validation on ffi wallet {word}", async function (walletName) {
-  const wallet = this.getWallet(walletName);
-  await wallet.startTxValidation();
-  while (!wallet.getTxValidationStatus().tx_validation_complete) {
-    await sleep(1000);
+Then(
+  "I start TX validation on ffi wallet {word}",
+  { timeout: 125 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
+    await wallet.startTxValidation();
+    while (!wallet.getTxValidationStatus().tx_validation_complete) {
+      await sleep(1000);
+    }
   }
-});
+);

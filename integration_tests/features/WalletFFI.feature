@@ -47,10 +47,10 @@ Feature: Wallet FFI
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE
         And I have wallet SENDER connected to base node BASE
+        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I have mining node MINER connected to base node BASE and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
         And wallet SENDER detects all transactions are at least Broadcast
@@ -103,10 +103,10 @@ Feature: Wallet FFI
         And I have a base node BASE1 connected to all seed nodes
         And I have a base node BASE2 connected to all seed nodes
         And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE1
         And I have mining node MINER connected to base node BASE1 and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE1
         And I stop ffi wallet FFI_WALLET
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         And I restart ffi wallet FFI_WALLET connected to base node BASE2

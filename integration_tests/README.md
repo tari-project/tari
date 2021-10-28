@@ -59,7 +59,7 @@
   # Runs a specific FFI test
   npm test -- --profile ci --name "My wallet FFI test scenario name"
   # Runs a complete set of FFI tests
-  npm test -- --profile ci --tags "@my-wallet-ffi-tag-name"
+  npm test -- --profile ci --tags "@wallet-ffi"
   ```
 
 - Runs all @critical tests, but not @long-running
