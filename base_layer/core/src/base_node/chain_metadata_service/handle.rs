@@ -30,8 +30,8 @@ use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerChainMetadata {
-    pub node_id: NodeId,
-    pub chain_metadata: ChainMetadata,
+    node_id: NodeId,
+    chain_metadata: ChainMetadata,
 }
 
 impl PeerChainMetadata {
@@ -40,6 +40,14 @@ impl PeerChainMetadata {
             node_id,
             chain_metadata,
         }
+    }
+
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
+    pub fn claimed_chain_metadata(&self) -> &ChainMetadata {
+        &self.chain_metadata
     }
 }
 
