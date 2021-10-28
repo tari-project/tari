@@ -62,10 +62,10 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 }
 
 pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
-    let mut header = BlockHeader::new(spec.version);
+    let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
-    header.prev_hash = prev_block.hash();
+    // header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {
         rules.calculate_coinbase_and_fees(
             header.height,

@@ -1108,19 +1108,6 @@ impl LMDBDatabase {
 
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
-        for output in outputs {
-            total_utxo_sum = &total_utxo_sum + &output.commitment;
-            output_mmr.push(output.hash())?;
-            witness_mmr.push(output.witness_hash())?;
-            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
-            self.insert_output(
-                txn,
-                &block_hash,
-                header.height,
-                &output,
-                (witness_mmr.get_leaf_count()? - 1) as u32,
-            )?;
-        }
 
         for input in inputs {
             total_utxo_sum = &total_utxo_sum - &input.commitment;
@@ -1135,6 +1122,20 @@ impl LMDBDatabase {
             }
             debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
             self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
+        }
+
+        for output in outputs {
+            total_utxo_sum = &total_utxo_sum + &output.commitment;
+            output_mmr.push(output.hash())?;
+            witness_mmr.push(output.witness_hash())?;
+            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
+            self.insert_output(
+                txn,
+                &block_hash,
+                header.height,
+                &output,
+                (witness_mmr.get_leaf_count()? - 1) as u32,
+            )?;
         }
 
         // Merge current deletions with the tip bitmap
