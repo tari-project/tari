@@ -235,7 +235,12 @@ where B: BlockchainBackend
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
-        Ok(self.consensus_manager.consensus_constants(height))
+        Ok(self.rules().consensus_constants(height))
+    }
+
+    /// Returns a reference to the consensus rules
+    pub fn rules(&self) -> &ConsensusManager {
+        &self.consensus_manager
     }
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`

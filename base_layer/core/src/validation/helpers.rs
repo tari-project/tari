@@ -339,7 +339,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 .features
                 .unique_id
                 .as_ref()
-                .map(|ui| (output.features.parent_public_key.clone(), ui.clone()))
+                .map(|ui| (output.features.parent_public_key.as_ref(), ui))
         })
         .collect::<Vec<_>>();
     for input in body.inputs() {
@@ -348,12 +348,12 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
             let exactly_one = output_unique_ids
                 .iter()
                 .filter(|(parent_public_key, output_unique_id)| {
-                    input.features.parent_public_key.as_ref() == parent_public_key.as_ref() &&
-                        unique_id == output_unique_id
+                    input.features.parent_public_key.as_ref() == *parent_public_key && unique_id == *output_unique_id
                 })
+                .take(2)
                 .collect::<Vec<_>>();
             // Unless a burn flag is present
-            if input.features.flags & OutputFlags::BURN_NON_FUNGIBLE == OutputFlags::BURN_NON_FUNGIBLE {
+            if input.features.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
                 if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }
