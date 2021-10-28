@@ -974,7 +974,7 @@ impl LMDBDatabase {
                     "utxo_commitment_index",
                 )?;
                 if let Some(unique_id) = output.features.unique_asset_id() {
-                    let mut key = UniqueIdIndexKey::new(output.features.parent_public_key.as_ref(), unique_id);
+                    let key = UniqueIdIndexKey::new(output.features.parent_public_key.as_ref(), unique_id);
                     lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
                 }
             }
