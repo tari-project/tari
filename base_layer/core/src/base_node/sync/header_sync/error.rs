@@ -47,8 +47,11 @@ pub enum BlockHeaderSyncError {
     FailedToBan(ConnectivityError),
     #[error("Connectivity Error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error("Peer could not send a stronger chain than the local chain")]
-    WeakerChain,
+    #[error(
+        "Peer could not provide a stronger chain than the local chain. Claimed was {claimed} but validated was \
+         {actual} (local: {local})"
+    )]
+    WeakerChain { claimed: u128, actual: u128, local: u128 },
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
     #[error("Unable to locate start hash `{0}`")]
@@ -63,7 +66,15 @@ pub enum BlockHeaderSyncError {
     InvalidProtocolResponse(String),
     #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken { actual: String, expected: String },
-
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
+    #[error(
+        "Peer claimed a stronger chain than they were able to provide. Claimed {claimed}, Actual: {actual:?}, local: \
+         {local}"
+    )]
+    PeerSentInaccurateChainMetadata {
+        claimed: u128,
+        actual: Option<u128>,
+        local: u128,
+    },
 }
