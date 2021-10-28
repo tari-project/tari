@@ -514,7 +514,7 @@ mod fetch_utxo_by_unique_id {
 
         // Height 2 - mint
         let (block, _) = create_next_block(blocks.last().unwrap(), txns);
-        assert!(db.add_block(block.clone()).unwrap().is_added());
+        assert!(db.add_block(block).unwrap().is_added());
 
         // Height 4
         let (blocks, _) = add_many_chained_blocks(2, &db);
@@ -548,7 +548,7 @@ mod fetch_utxo_by_unique_id {
         let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 
         // Height 5 - spend
-        let (block, _) = create_next_block(&blocks.last().unwrap(), txns);
+        let (block, _) = create_next_block(blocks.last().unwrap(), txns);
         assert!(db.add_block(block).unwrap().is_added());
 
         // Height 10
@@ -592,22 +592,22 @@ mod fetch_utxo_by_unique_id {
             assert_utxo_not_found(Some(i));
         });
         (5..=10).for_each(|i| {
-            assert_utxo_found(&asset_utxo1, Some(i));
+            assert_utxo_found(asset_utxo1, Some(i));
         });
 
-        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![asset_utxo2.clone()], to: vec![1 * T])]);
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![asset_utxo2.clone()], to: vec![T])]);
 
         // Height 11 - burn
-        let (block, _) = create_next_block(&blocks.last().unwrap(), txns);
+        let (block, _) = create_next_block(blocks.last().unwrap(), txns);
         assert!(db.add_block(block).unwrap().is_added());
 
-        assert_utxo_found(&asset_utxo2, None);
+        assert_utxo_found(asset_utxo2, None);
         (0..=4).for_each(|i| {
             assert_utxo_not_found(Some(i));
         });
         (5..=10).for_each(|i| {
-            assert_utxo_found(&asset_utxo1, Some(i));
+            assert_utxo_found(asset_utxo1, Some(i));
         });
-        assert_utxo_found(&asset_utxo2, Some(11));
+        assert_utxo_found(asset_utxo2, Some(11));
     }
 }

@@ -49,7 +49,7 @@ where V: DeserializeOwned
     /// Returns the item on or after the key prefix, progressing forwards until the key prefix no longer matches
     pub fn next(&mut self) -> Result<Option<(Vec<u8>, V)>, ChainStorageError> {
         if !self.has_seeked {
-            if let Some((k, val)) = self.seek_gte(&self.prefix_key)? {
+            if let Some((k, val)) = self.seek_gte(self.prefix_key)? {
                 return Ok(Some((k, val)));
             }
         }
@@ -86,7 +86,7 @@ where V: DeserializeOwned
             Some(r) => r,
             None => return Ok(None),
         };
-        Self::deserialize_if_matches(&key, k, v)
+        Self::deserialize_if_matches(key, k, v)
     }
 
     fn deserialize_if_matches(

@@ -1109,7 +1109,7 @@ async fn consensus_validation_unique_id() {
     };
     let txs = vec![txn_schema!(
         from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
 

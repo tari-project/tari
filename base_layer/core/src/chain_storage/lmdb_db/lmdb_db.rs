@@ -914,9 +914,9 @@ impl LMDBDatabase {
         let hash_hex = block_hash.to_hex();
         debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
         debug!(target: LOG_TARGET, "Deleting UTXOs...");
-        let height =
-            self.fetch_height_from_hash(write_txn, block_hash)
-                .or_not_found("Block", "hash", hash_hex.clone())?;
+        let height = self
+            .fetch_height_from_hash(write_txn, block_hash)
+            .or_not_found("Block", "hash", hash_hex)?;
         let block_accum_data =
             self.fetch_block_accumulated_data(write_txn, height)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -935,8 +935,8 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, height, &block_hash)?;
-        self.delete_block_kernels(write_txn, &block_hash)?;
+        self.delete_block_inputs_outputs(write_txn, height, block_hash)?;
+        self.delete_block_kernels(write_txn, block_hash)?;
 
         Ok(())
     }
@@ -1778,7 +1778,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        Ok(lmdb_fetch_matching_after(&txn, &self.kernels_db, &header_hash)?
+        Ok(lmdb_fetch_matching_after(&txn, &self.kernels_db, header_hash)?
             .into_iter()
             .map(|f: TransactionKernelRowData| f.kernel)
             .collect())
@@ -2038,7 +2038,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        Ok(lmdb_fetch_matching_after(&txn, &self.utxos_db, &header_hash)?
+        Ok(lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash)?
             .into_iter()
             .map(|f: TransactionOutputRowData| match f.output {
                 Some(o) => PrunedOutput::NotPruned { output: o },
@@ -2052,7 +2052,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        Ok(lmdb_fetch_matching_after(&txn, &self.inputs_db, &header_hash)?
+        Ok(lmdb_fetch_matching_after(&txn, &self.inputs_db, header_hash)?
             .into_iter()
             .map(|f: TransactionInputRowData| f.input)
             .collect())

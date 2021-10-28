@@ -1074,7 +1074,7 @@ fn asset_unique_id() {
     // mint it to the chain
     let tx = txn_schema!(
         from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
     );
 
     let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
@@ -1118,7 +1118,7 @@ fn asset_unique_id() {
     // mint unique_id2
     let tx = txn_schema!(
         from: vec![outputs[1][2].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
     );
     let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
     assert!(result.is_added());
@@ -1150,7 +1150,7 @@ fn asset_unique_id() {
     // mint
     let tx = txn_schema!(
         from: vec![outputs[1][3].clone()],
-        to: vec![0 * T], fee: 20.into(), lock: 0, features: features.clone()
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
     );
     let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
     assert!(result.is_added());
