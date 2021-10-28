@@ -13,7 +13,7 @@ class InterfaceFFI {
   static void = ref.types.void;
   static bool = ref.types.bool;
   static int = ref.types.int;
-  static ulonglong = ref.types.ulonglong;
+  static ulonglong = ref.types.uint64; // Note: 'ref.types.ulonglong' has a memory alignment problem
   static uchar = ref.types.uchar;
   static uint = ref.types.uint;
   static string = ref.types.CString;
@@ -285,6 +285,7 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -303,6 +304,10 @@ class InterfaceFFI {
       ],
       wallet_upsert_contact: [this.bool, [this.ptr, this.ptr, this.intPtr]],
       wallet_remove_contact: [this.bool, [this.ptr, this.ptr, this.intPtr]],
+      balance_get_available: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_time_locked: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_pending_incoming: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_pending_outgoing: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_get_available_balance: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_get_pending_incoming_balance: [
         this.ulonglong,
@@ -426,6 +431,7 @@ class InterfaceFFI {
         [this.ptr, this.ptr, this.ptr, this.intPtr],
       ],
       wallet_destroy: [this.void, [this.ptr]],
+      balance_destroy: [this.void, [this.ptr]],
       file_partial_backup: [this.void, [this.string, this.string, this.intPtr]],
       log_debug_message: [this.void, [this.string]],
       get_emoji_set: [this.ptr, []],
@@ -1119,6 +1125,9 @@ class InterfaceFFI {
   static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
+  static createCallbackBalanceUpdated(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
+  }
   static createCallbackTransactionValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
@@ -1151,6 +1160,7 @@ class InterfaceFFI {
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
+    callback_balance_updated,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1174,6 +1184,7 @@ class InterfaceFFI {
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
       callback_txo_validation_complete,
+      callback_balance_updated,
       callback_transaction_validation_complete,
       callback_saf_message_received,
       recovery_in_progress,
@@ -1233,6 +1244,34 @@ class InterfaceFFI {
     let error = this.initError();
     let result = this.fn.wallet_remove_contact(ptr, contact_ptr, error);
     this.checkErrorResult(error, `walletRemoveContact`);
+    return result;
+  }
+
+  static balanceGetAvailable(ptr) {
+    let error = this.initError();
+    let result = this.fn.balance_get_available(ptr, error);
+    this.checkErrorResult(error, `balanceGetAvailable`);
+    return result;
+  }
+
+  static balanceGetTimeLocked(ptr) {
+    let error = this.initError();
+    let result = this.fn.balance_get_available(ptr, error);
+    this.checkErrorResult(error, `balanceGetTimeLocked`);
+    return result;
+  }
+
+  static balanceGetPendingIncoming(ptr) {
+    let error = this.initError();
+    let result = this.fn.balance_get_pending_incoming(ptr, error);
+    this.checkErrorResult(error, `balanceGetPendingIncoming`);
+    return result;
+  }
+
+  static balanceGetPendingOutgoing(ptr) {
+    let error = this.initError();
+    let result = this.fn.balance_get_pending_outgoing(ptr, error);
+    this.checkErrorResult(error, `balanceGetPendingOutgoing`);
     return result;
   }
 
@@ -1533,6 +1572,10 @@ class InterfaceFFI {
 
   static walletDestroy(ptr) {
     this.fn.wallet_destroy(ptr);
+  }
+
+  static balanceDestroy(ptr) {
+    this.fn.balance_destroy(ptr);
   }
   //endregion
 }

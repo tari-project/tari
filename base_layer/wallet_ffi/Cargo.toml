@@ -52,3 +52,4 @@ env_logger = "0.7.1"
 tari_key_manager = { version = "^0.11", path = "../key_manager" }
 tari_common_types = { version = "^0.11", path = "../../base_layer/common_types"}
 tari_test_utils = { version = "^0.11", path = "../../infrastructure/test_utils"}
+tari_service_framework = { path = "../../base_layer/service_framework" }
