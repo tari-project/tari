@@ -837,11 +837,7 @@ Then(
 
 Then(/node (.*) has a pruned height of (\d+)/, async function (name, height) {
   const client = this.getClient(name);
-  await waitFor(
-      async () => await client.getPrunedHeight(),
-      height,
-      115 * 1000
-    );
+  await waitFor(async () => await client.getPrunedHeight(), height, 115 * 1000);
   const currentHeight = await client.getPrunedHeight();
   console.log(
     `Node ${name} has a pruned height: ${currentHeight} (should be`,
