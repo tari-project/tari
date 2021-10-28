@@ -6,6 +6,7 @@ Feature: Wallet Recovery
         Given I have a seed node NODE
         And I have 1 base nodes connected to all seed nodes
         And I have wallet WALLET_A connected to all seed nodes
+        And I have wallet WALLET_C connected to all seed nodes
         And I have mining node MINER connected to base node NODE and wallet WALLET_A
         When mining node MINER mines 10 blocks
         When I mine 5 blocks on NODE
@@ -13,7 +14,6 @@ Feature: Wallet Recovery
         Then all nodes are at height 15
         When I recover wallet WALLET_A into wallet WALLET_B connected to all seed nodes
         Then wallet WALLET_A and wallet WALLET_B have the same balance
-        And I have wallet WALLET_C connected to all seed nodes
         And I send 100000 uT from wallet WALLET_B to wallet WALLET_C at fee 100
         When I mine 5 blocks on NODE
         Then all nodes are at height 20
@@ -47,10 +47,10 @@ Feature: Wallet Recovery
         Given I have a seed node NODE
         And I have 1 base nodes connected to all seed nodes
         And I have wallet WALLET_A connected to all seed nodes
+        And I have wallet WALLET_B connected to all seed nodes
         And I have mining node MINER connected to base node NODE and wallet WALLET_A
         When mining node MINER mines 10 blocks
         Then all nodes are at height 10
-        And I have wallet WALLET_B connected to all seed nodes
         And I stop wallet WALLET_B
         # Send 2 one-sided payments to WALLET_B so it can spend them in two cases
         Then I send a one-sided transaction of 1000000 uT from WALLET_A to WALLET_B at fee 20
