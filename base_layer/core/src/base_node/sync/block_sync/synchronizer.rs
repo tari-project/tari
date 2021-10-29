@@ -78,7 +78,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(Arc<ChainBlock>, u64, &NodeId) + Send + Sync + 'static {
         self.hooks.add_on_progress_block_hook(hook);
     }
 
@@ -137,6 +137,8 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         peer: &NodeId,
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<(), BlockSyncError> {
+        self.hooks.call_on_starting_hook();
+
         let tip_header = self.db.fetch_last_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
         if tip_header.height <= local_metadata.height_of_longest_chain() {
@@ -238,8 +240,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .commit()
                 .await?;
 
-            self.hooks
-                .call_on_progress_block_hooks(block.clone(), tip_height, &[peer.clone()]);
+            self.hooks.call_on_progress_block_hooks(block.clone(), tip_height, peer);
 
             debug!(
                 target: LOG_TARGET,

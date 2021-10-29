@@ -36,24 +36,23 @@ Feature: Wallet FFI
         And I have a ffi wallet FFI_WALLET connected to base node BASE1
         And I set base node BASE2 for ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
-        And I stop node BASE1
-        And I wait 5 seconds
-        # Broken step with reason base node is not persisted
-        # See details on:
-        # Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
-        # And I restart ffi wallet FFI_WALLET
+        And I stop node BASE2
         And I restart ffi wallet FFI_WALLET connected to base node BASE2
-        Then I wait for ffi wallet FFI_WALLET to receive at least 1 SAF message
+        And I wait 5 seconds
+        Then I wait for ffi wallet FFI_WALLET to receive EXACTLY 0 SAF message
+        And I start base node BASE2
+        Then I wait for ffi wallet FFI_WALLET to receive AT_LEAST 1 SAF message
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE
         And I have wallet SENDER connected to base node BASE
+        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I have mining node MINER connected to base node BASE and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
         And wallet SENDER detects all transactions are at least Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
@@ -68,53 +67,49 @@ Feature: Wallet FFI
         Given I have a base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I have wallet WALLET connected to base node BASE
-        And I wait 5 seconds
         And I add contact with alias ALIAS and pubkey WALLET to ffi wallet FFI_WALLET
         Then I have contact with alias ALIAS and pubkey WALLET in ffi wallet FFI_WALLET
         When I remove contact with alias ALIAS from ffi wallet FFI_WALLET
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    # flaky on circle CI
-    @flaky
     Scenario: As a client I want to retrieve a list of transactions I have made and received
-        Given I have a base node BASE
-        And I have wallet SENDER connected to base node BASE
-        And I have mining node MINER connected to base node BASE and wallet SENDER
+        Given I have a seed node SEED
+        And I have a base node BASE1 connected to all seed nodes
+        And I have a base node BASE2 connected to all seed nodes
+        And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE2
+        And I have wallet RECEIVER connected to base node BASE2
+        And I have mining node MINER connected to base node BASE1 and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
-        And I have wallet RECEIVER connected to base node BASE
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
+        Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
         And I start TXO validation on ffi wallet FFI_WALLET
         And I start TX validation on ffi wallet FFI_WALLET
-        Then I wait for ffi wallet FFI_WALLET to receive 1 mined
+        Then I wait for ffi wallet FFI_WALLET to receive 2 mined
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
-        Given I have a base node BASE
-        And I have wallet SENDER connected to base node BASE
-        And I have mining node MINER connected to base node BASE and wallet SENDER
+        Given I have a seed node SEED
+        And I have a base node BASE1 connected to all seed nodes
+        And I have a base node BASE2 connected to all seed nodes
+        And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE1
+        And I have mining node MINER connected to base node BASE1 and wallet SENDER
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
-        And I have a ffi wallet FFI_WALLET connected to base node BASE
         And I stop ffi wallet FFI_WALLET
-        And I wait 10 seconds
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
-        And I wait 5 seconds
-        # Broken step with reason base node is not persisted
-        # Log:
-        # [wallet::transaction_service::callback_handler] DEBUG Calling Received Finalized Transaction callback function for TxId: 7595706993517535281
-        # [wallet::transaction_service::service] WARN  Error broadcasting completed transaction TxId: 7595706993517535281 to mempool: NoBaseNodeKeysProvided
-        # And I restart ffi wallet FFI_WALLET
-        And I restart ffi wallet FFI_WALLET connected to base node BASE
+        And I restart ffi wallet FFI_WALLET connected to base node BASE2
         Then I wait for ffi wallet FFI_WALLET to receive 1 transaction
         Then I wait for ffi wallet FFI_WALLET to receive 1 finalization
         Then I wait for ffi wallet FFI_WALLET to receive 1 broadcast

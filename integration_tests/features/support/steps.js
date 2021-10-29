@@ -15,6 +15,7 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
+  waitForIterate,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -27,11 +28,11 @@ const AUTOUPDATE_HASHES_TXT_SIG_URL =
 const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
   "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.bad.sig";
 
-Given(/I have a seed node (.*)/, { timeout: 20 * 1000 }, async function (name) {
+Given(/I have a seed node (.*)/, { timeout: 30 * 1000 }, async function (name) {
   return await this.createSeedNode(name);
 });
 
-Given("I have {int} seed nodes", { timeout: 20 * 1000 }, async function (n) {
+Given("I have {int} seed nodes", { timeout: 30 * 1000 }, async function (n) {
   const promises = [];
   for (let i = 0; i < n; i++) {
     promises.push(this.createSeedNode(`SeedNode${i}`));
@@ -45,7 +46,7 @@ Then(/all transactions must have succeeded/, function () {
 
 Given(
   /I have a base node (.*) connected to all seed nodes/,
-  { timeout: 20 * 1000 },
+  { timeout: 30 * 1000 },
   async function (name) {
     await this.createAndAddNode(name, this.seedAddresses());
   }
@@ -53,7 +54,7 @@ Given(
 
 Given(
   /I have a base node (.*) connected to seed (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 30 * 1000 },
   async function (name, seedNode) {
     await this.createAndAddNode(name, this.seeds[seedNode].peerAddress());
   }
@@ -61,7 +62,7 @@ Given(
 
 Given(
   /I have a base node (.*) connected to nodes (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 30 * 1000 },
   async function (name, nodes) {
     const addresses = [];
     nodes = nodes.split(",");
@@ -74,7 +75,7 @@ Given(
 
 Given(
   /I have a node (.*) with auto update enabled/,
-  { timeout: 20 * 1000 },
+  { timeout: 30 * 1000 },
   async function (name) {
     const node = await this.createNode(name, {
       common: {
@@ -94,7 +95,7 @@ Given(
 
 Given(
   /I have a node (.*) with auto update configured with a bad signature/,
-  { timeout: 20 * 1000 },
+  { timeout: 30 * 1000 },
   async function (name) {
     const node = await this.createNode(name, {
       common: {
@@ -150,7 +151,7 @@ Given(
 
 Given(
   /I have a base node (.*) connected to node (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 10 * 1000 },
   async function (name, node) {
     await this.createAndAddNode(name, this.nodes[node].peerAddress());
   }
@@ -158,7 +159,7 @@ Given(
 
 Given(
   /I have a base node (\S+)$/,
-  { timeout: 20 * 1000 },
+  { timeout: 10 * 1000 },
   async function (name) {
     await this.createAndAddNode(name);
   }
@@ -166,7 +167,7 @@ Given(
 
 Given(
   /I have a SHA3 miner (.*) connected to seed node (.*)/,
-  { timeout: 40 * 1000 },
+  { timeout: 10 * 1000 },
   async function (name, seed) {
     // add the base_node
     await this.createAndAddNode(name, this.seeds[seed].peerAddress(), this);
@@ -190,7 +191,7 @@ Given(
 
 Given(
   /I have a SHA3 miner (.*) connected to node (.*)/,
-  { timeout: 40 * 1000 },
+  { timeout: 10 * 1000 },
   async function (name, basenode) {
     // add the base_node
     await this.createAndAddNode(name, this.nodes[basenode].peerAddress(), this);
@@ -214,7 +215,7 @@ Given(
 
 Given(
   /I have a SHA3 miner (.*) connected to all seed nodes/,
-  { timeout: 40 * 1000 },
+  { timeout: 10 * 1000 },
   async function (name) {
     // add the base_node
     await this.createAndAddNode(name, this.seedAddresses(), this);
@@ -238,7 +239,7 @@ Given(
 
 Given(
   /I connect node (.*) to node (.*)/,
-  { timeout: 1200 * 1000 },
+  { timeout: 40 * 1000 },
   async function (nodeNameA, nodeNameB) {
     console.log(
       "Connecting (add new peer seed, shut down, then start up)",
@@ -266,11 +267,11 @@ Given(
 Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
-  async function (name, node, horizon) {
-    const miner = this.createNode(name, { pruningHorizon: horizon });
-    miner.setPeerSeeds([this.nodes[node].peerAddress()]);
-    await miner.startNew();
-    await this.addNode(name, miner);
+  async function (name, connected_to, horizon) {
+    const node = this.createNode(name, { pruningHorizon: horizon });
+    node.setPeerSeeds([this.nodes[connected_to].peerAddress()]);
+    await node.startNew();
+    await this.addNode(name, node);
   }
 );
 
@@ -299,7 +300,7 @@ Given(
 
 Given(
   "I have {int} base nodes connected to all seed nodes",
-  { timeout: 190 * 1000 },
+  { timeout: 20 * 1000 },
   async function (n) {
     const promises = [];
     for (let i = 0; i < n; i++) {
@@ -315,7 +316,6 @@ Given(
 
 Given(
   /I have stress-test wallet (.*) connected to the seed node (.*) with broadcast monitoring timeout (.*)/,
-  { timeout: 20 * 1000 },
   async function (walletName, seedName, timeout) {
     const wallet = new WalletProcess(
       walletName,
@@ -353,7 +353,6 @@ Given(
 
 Given(
   /I have wallet (.*) connected to seed node (.*)/,
-  { timeout: 20 * 1000 },
   async function (walletName, seedName) {
     await this.createAndAddWallet(
       walletName,
@@ -364,7 +363,6 @@ Given(
 
 Given(
   /I have wallet (.*) connected to base node (.*)/,
-  { timeout: 20 * 1000 },
   async function (walletName, nodeName) {
     await this.createAndAddWallet(
       walletName,
@@ -373,13 +371,9 @@ Given(
   }
 );
 
-Given(
-  /I have wallet (.*) connected to all seed nodes/,
-  { timeout: 20 * 1000 },
-  async function (name) {
-    await this.createAndAddWallet(name, this.seedAddresses());
-  }
-);
+Given(/I have wallet (.*) connected to all seed nodes/, async function (name) {
+  await this.createAndAddWallet(name, this.seedAddresses());
+});
 
 Given(
   /I have non-default wallet (.*) connected to all seed nodes using (.*)/,
@@ -422,7 +416,6 @@ Given(
 
 Given(
   /I recover wallet (.*) into wallet (.*) connected to all seed nodes/,
-  { timeout: 120 * 1000 },
   async function (walletNameA, walletNameB) {
     const seedWords = this.getWallet(walletNameA).getSeedWords();
     console.log(
@@ -451,7 +444,6 @@ Given(
 
 Given(
   /I recover wallet (.*) into (\d+) wallets connected to all seed nodes/,
-  { timeout: 120 * 1000 },
   async function (walletNameA, numwallets) {
     const seedWords = this.getWallet(walletNameA).getSeedWords();
     for (let i = 1; i <= numwallets; i++) {
@@ -482,7 +474,6 @@ Given(
 
 Then(
   /I wait for (\d+) wallets to have at least (\d+) uT/,
-  { timeout: 710 * 1000 },
   async function (numwallets, amount) {
     for (let i = 1; i <= numwallets; i++) {
       const walletClient = await this.getWallet(i.toString()).connectClient();
@@ -509,7 +500,6 @@ Then(
 
 Then(
   /Wallet (.*) and (\d+) wallets have the same balance/,
-  { timeout: 120 * 1000 },
   async function (wallet, numwallets) {
     const walletClient = await this.getWallet(wallet).connectClient();
     let balance = await walletClient.getBalance();
@@ -637,7 +627,6 @@ When(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
-  { timeout: 20 * 1000 },
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -656,7 +645,6 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission disabled/,
-  { timeout: 20 * 1000 },
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -675,7 +663,6 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission enabled/,
-  { timeout: 20 * 1000 },
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -812,7 +799,7 @@ Then("Proxy response for block header by hash is valid", function () {
   assert(lastResult.result.status, "OK");
 });
 
-When(/I start base node (.*)/, { timeout: 20 * 1000 }, async function (name) {
+When(/I start base node (.*)/, { timeout: 6 * 1000 }, async function (name) {
   await this.startNode(name);
 });
 
@@ -830,11 +817,15 @@ When(/I stop node (.*)/, async function (name) {
 
 Then(
   /node (.*) is at height (\d+)/,
-  { timeout: 120 * 1000 },
+  { timeout: 15 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
-    await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
-    const currentHeight = await client.getTipHeight();
+    const currentHeight = await waitForIterate(
+      () => client.getTipHeight(),
+      height,
+      1000,
+      15
+    );
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
       height,
@@ -844,25 +835,21 @@ Then(
   }
 );
 
-Then(
-  /node (.*) has a pruned height of (\d+)/,
-  { timeout: 120 * 1000 },
-  async function (name, height) {
-    const client = this.getClient(name);
-    await waitFor(async () => client.getPrunedHeight(), height, 115 * 1000);
-    const currentHeight = await client.getPrunedHeight();
-    console.log(
-      `Node ${name} has a pruned height: ${currentHeight} (should be`,
-      height,
-      `)`
-    );
-    expect(currentHeight).to.equal(height);
-  }
-);
+Then(/node (.*) has a pruned height of (\d+)/, async function (name, height) {
+  const client = this.getClient(name);
+  await waitFor(async () => await client.getPrunedHeight(), height, 115 * 1000);
+  const currentHeight = await client.getPrunedHeight();
+  console.log(
+    `Node ${name} has a pruned height: ${currentHeight} (should be`,
+    height,
+    `)`
+  );
+  expect(currentHeight).to.equal(height);
+});
 
 Then(
   /node (.*) is at the same height as node (.*)/,
-  { timeout: 130 * 1000 },
+  { timeout: 20 * 1000 },
   async function (nodeA, nodeB) {
     var expectedHeight, currentHeight;
     expectedHeight = parseInt(await this.getClient(nodeB).getTipHeight());
@@ -889,11 +876,11 @@ Then(
 
 Then(
   "all nodes are on the same chain at height {int}",
-  { timeout: 1200 * 1000 },
+  { timeout: 15 * 1000 },
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
+      await waitForIterate(() => client.getTipHeight(), height, 1000, 200);
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
@@ -917,7 +904,7 @@ Then(
 
 Then(
   "all nodes are on the same chain tip",
-  { timeout: 1200 * 1000 },
+  { timeout: 800 * 1000 },
   async function () {
     await waitFor(
       async () => {
@@ -951,13 +938,17 @@ Then(
 
 Then(
   "all nodes are at height {int}",
-  { timeout: 1200 * 1000 },
+  { timeout: 800 * 1000 },
   async function (height) {
     await waitFor(
       async () => {
         let result = true;
         await this.forEachClientAsync(async (client, name) => {
-          await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
+          await waitFor(
+            async () => await client.getTipHeight(),
+            height,
+            60 * 1000
+          );
           const currTip = await client.getTipHeight();
           console.log(
             `Node ${name} is at tip: ${currTip} (should be ${height})`
@@ -980,7 +971,7 @@ Then(
   async function (node) {
     const client = this.getClient(node);
     await waitForPredicate(
-      async () => (await client.initial_sync_achieved()) === true,
+      async () => await client.initial_sync_achieved(),
       20 * 60 * 1000,
       1000
     );
@@ -990,21 +981,17 @@ Then(
   }
 );
 
-Then(
-  /node (.*) is in state (.*)/,
-  { timeout: 21 * 60 * 1000 },
-  async function (node, state) {
-    const client = this.getClient(node);
-    await waitForPredicate(
-      async () => (await client.get_node_state()) == state,
-      20 * 60 * 1000,
-      1000
-    );
-    let result = await this.getClient(node).get_node_state();
-    console.log(`Node ${node} is in the current state: ${result}`);
-    expect(result).to.equal(state);
-  }
-);
+Then(/node (.*) is in state (.*)/, async function (node, state) {
+  const client = this.getClient(node);
+  await waitForPredicate(
+    async () => (await client.get_node_state()) == state,
+    20 * 60 * 1000,
+    1000
+  );
+  let result = await this.getClient(node).get_node_state();
+  console.log(`Node ${node} is in the current state: ${result}`);
+  expect(result).to.equal(state);
+});
 
 Then(
   /(.*) does not have a new software update/,
@@ -1058,7 +1045,7 @@ Then(
       let currentHeight;
       for (let i = 1; i <= 12; i++) {
         await waitFor(
-          async () => client.getTipHeight(),
+          async () => await client.getTipHeight(),
           expectedHeight,
           10 * 1000
         );
@@ -1190,32 +1177,26 @@ When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
   expect(this.lastResult.result).to.equal("ACCEPTED");
 });
 
-Then(
-  /(.*) has (.*) in (.*) state/,
-  { timeout: 21 * 60 * 1000 },
-  async function (node, txn, pool) {
-    const client = this.getClient(node);
-    const sig = this.transactions[txn].body.kernels[0].excess_sig;
-    this.lastResult = await waitFor(
-      async () => {
-        let tx_result = await client.transactionStateResult(sig);
-        console.log(
-          `Node ${node} response is: ${tx_result}, should be: ${pool}`
-        );
-        return tx_result === pool;
-      },
-      true,
-      20 * 60 * 1000
-    );
-    expect(this.lastResult).to.equal(true);
-  }
-);
+Then(/(.*) has (.*) in (.*) state/, async function (node, txn, pool) {
+  const client = this.getClient(node);
+  const sig = this.transactions[txn].body.kernels[0].excess_sig;
+  this.lastResult = await waitFor(
+    async () => {
+      let tx_result = await client.transactionStateResult(sig);
+      console.log(`Node ${node} response is: ${tx_result}, should be: ${pool}`);
+      return tx_result === pool;
+    },
+    true,
+    // TODO: Does it make sense to fix this timeout?
+    20 * 60 * 1000
+  );
+  expect(this.lastResult).to.equal(true);
+});
 
 // The number is rounded down. E.g. if 1% can fail out of 17, that is 16.83 have to succeed.
 // It's means at least 16 have to succeed.
 Then(
   /(.*) is in the (.*) of all nodes(, where (\d+)% can fail)?/,
-  { timeout: 1200 * 1000 },
   async function (txn, pool, canFail) {
     const sig = this.transactions[txn].body.kernels[0].excess_sig;
     await this.forEachClientAsync(
@@ -1274,7 +1255,6 @@ Then(
 
 When(
   /I mine a block on (.*) with coinbase (.*)/,
-  { timeout: 600 * 1000 },
   async function (name, coinbaseName) {
     const tipHeight = await this.getClient(name).getTipHeight();
     let autoTransactionResult = await this.createTransactions(
@@ -1291,7 +1271,6 @@ When(
 
 When(
   /I mine (\d+) custom weight blocks on (.*) with weight (\d+)/,
-  { timeout: -1 },
   async function (numBlocks, name, weight) {
     const tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
@@ -1317,7 +1296,7 @@ When(
 
 When(
   /mining node (.*) mines (\d+) blocks with min difficulty (\d+) and max difficulty (\d+)/,
-  { timeout: 600 * 1000 },
+  { timeout: 80 * 1000 },
   async function (miner, numBlocks, min, max) {
     const miningNode = this.getMiningNode(miner);
     await miningNode.init(
@@ -1334,7 +1313,7 @@ When(
 
 When(
   /mining node (.*) mines (\d+) blocks$/,
-  { timeout: 600 * 1000 },
+  { timeout: 20 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
     // Don't wait for sync before mining
@@ -1352,7 +1331,7 @@ When(
 
 When(
   /I mine (\d+) blocks on (.*)/,
-  { timeout: -1 },
+  { timeout: 40 * 1000 },
   async function (numBlocks, name) {
     const tipHeight = await this.getClient(name).getTipHeight();
     for (let i = 0; i < numBlocks; i++) {
@@ -1393,15 +1372,11 @@ When(
   }
 );
 
-When(
-  /I merge mine (.*) blocks via (.*)/,
-  { timeout: 600 * 1000 },
-  async function (numBlocks, mmProxy) {
-    for (let i = 0; i < numBlocks; i++) {
-      await this.mergeMineBlock(mmProxy);
-    }
+When(/I merge mine (.*) blocks via (.*)/, async function (numBlocks, mmProxy) {
+  for (let i = 0; i < numBlocks; i++) {
+    await this.mergeMineBlock(mmProxy);
   }
-);
+});
 
 // TODO: This step is still really flaky, rather use the co-mine with mining node step:
 //       Error: 13 INTERNAL:
@@ -1409,7 +1384,7 @@ When(
 //          header_hash:55545... in the database'
 When(
   /I co-mine (.*) blocks via merge mining proxy (.*) and base node (.*) with wallet (.*)/,
-  { timeout: 1200 * 1000 },
+  { timeout: 20 * 1000 },
   async function (numBlocks, mmProxy, node, wallet) {
     let tipHeight = await this.getClient(node).getTipHeight();
     this.lastResult = tipHeight;
@@ -1591,7 +1566,7 @@ When("I print the world", function () {
 
 Then(
   /I wait for wallet (.*) to have at least (.*) uT/,
-  { timeout: 710 * 1000 },
+  { timeout: 40 * 1000 },
   async function (wallet, amount) {
     const walletClient = await this.getWallet(wallet).connectClient();
     console.log("\n");
@@ -1616,7 +1591,7 @@ Then(
 
 Then(
   /I wait for wallet (.*) to have less than (.*) uT/,
-  { timeout: 710 * 1000 },
+  { timeout: 6 * 1000 },
   async function (wallet, amount) {
     let walletClient = await this.getWallet(wallet).connectClient();
     console.log("\n");
@@ -1641,7 +1616,6 @@ Then(
 
 Then(
   /wallet (.*) and wallet (.*) have the same balance/,
-  { timeout: 65 * 1000 },
   async function (walletNameA, walletNameB) {
     const walletClientA = await this.getWallet(walletNameA).connectClient();
     var balanceA = await walletClientA.getBalance();
@@ -1758,7 +1732,7 @@ async function send_tari(
 
 When(
   /I send (.*) uT from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 25 * 5 * 1000 },
+  { timeout: 60 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
@@ -1809,7 +1783,7 @@ When(
 
 When(
   /I send(.*) uT without waiting for broadcast from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 25 * 5 * 1000 },
+  { timeout: 40 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
@@ -1845,7 +1819,7 @@ When(
 
 When(
   /I multi-send (.*) transactions of (.*) uT from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 25 * 5 * 1000 },
+  { timeout: 10 * 1000 },
   async function (number, tariAmount, source, dest, fee) {
     console.log("\n");
     const sourceClient = await this.getWallet(source).connectClient();
@@ -1947,7 +1921,7 @@ When(
 
 When(
   /I transfer (.*) uT from (.*) to (.*) and (.*) at fee (.*)/,
-  { timeout: 25 * 5 * 1000 },
+  { timeout: 40 * 1000 },
   async function (tariAmount, source, dest1, dest2, feePerGram) {
     const sourceClient = await this.getWallet(source).connectClient();
     const destClient1 = await this.getWallet(dest1).connectClient();
@@ -2043,7 +2017,7 @@ When(
 
 When(
   /I transfer (.*) uT to self from wallet (.*) at fee (.*)/,
-  { timeout: 25 * 5 * 1000 },
+  { timeout: 7 * 1000 },
   async function (tariAmount, source, feePerGram) {
     const sourceClient = await this.getWallet(source).connectClient();
     const sourceInfo = await sourceClient.identify();
@@ -2125,7 +2099,7 @@ When(
 
 When(
   /I send a one-sided transaction of (.*) uT from (.*) to (.*) at fee (.*)/,
-  { timeout: 65 * 1000 },
+  { timeout: 8 * 1000 },
   async function (amount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
@@ -2478,7 +2452,7 @@ Then(
 
 Then(
   /wallet (.*) detects all transactions are at least Broadcast/,
-  { timeout: 1200 * 1000 },
+  { timeout: 150 * 1000 },
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
@@ -2769,7 +2743,7 @@ Then(
 
 Then(
   /wallet (.*) detects all transactions as Mined_Confirmed/,
-  { timeout: 6000 * 1000 },
+  { timeout: 30 * 1000 },
   async function (walletName) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const wallet = this.getWallet(walletName);
@@ -2816,7 +2790,6 @@ Then(
 
 Then(
   /while mining via node (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
-  { timeout: 1200 * 1000 },
   async function (nodeName, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
@@ -2875,7 +2848,7 @@ Then(
 
 Then(
   /while mining via SHA3 miner (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/,
-  { timeout: 3600 * 1000 },
+  { timeout: 30 * 1000 },
   async function (miner, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
@@ -2930,7 +2903,7 @@ Then(
 
 Then(
   /all wallets detect all transactions as Mined_Confirmed/,
-  { timeout: 6000 * 1000 },
+  { timeout: 40 * 1000 },
   async function () {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
@@ -2979,7 +2952,6 @@ Then(
 
 When(
   /I list all (.*) transactions for wallet (.*)/,
-  { timeout: 20 * 1000 },
   async function (transaction_type, walletName) {
     const wallet = this.getWallet(walletName);
     const walletClient = await wallet.connectClient();
@@ -3005,7 +2977,6 @@ When(
 
 Then(
   /wallet (.*) has (.*) coinbase transactions/,
-  { timeout: 20 * 1000 },
   async function (walletName, count) {
     const walletClient = await this.getWallet(walletName).connectClient();
     const transactions = await walletClient.getAllCoinbaseTransactions();
@@ -3016,7 +2987,7 @@ Then(
 
 Then(
   /wallet (.*) detects at least (.*) coinbase transactions as Mined_Confirmed/,
-  { timeout: 605 * 1000 },
+  { timeout: 34 * 1000 },
   async function (walletName, count) {
     const walletClient = await this.getWallet(walletName).connectClient();
     await waitFor(
@@ -3142,7 +3113,6 @@ Then(
 
 Then(
   /all (.*) transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/,
-  { timeout: 20 * 1000 },
   async function (transaction_type, walletNameA, walletNameB) {
     let walletClientA = await this.getWallet(walletNameA).connectClient();
     let walletClientB = await this.getWallet(walletNameB).connectClient();
@@ -3191,7 +3161,6 @@ Then(
 
 Then(
   /all (.*) transactions for wallet (.*) are valid/,
-  { timeout: 20 * 1000 },
   async function (transaction_type, walletName) {
     let walletClient = await this.getWallet(walletName).connectClient();
     var transactions;
@@ -3229,7 +3198,7 @@ Then("difficulties are available", function () {
 
 When(
   /I coin split tari in wallet (.*) to produce (.*) UTXOs of (.*) uT each with fee_per_gram (.*) uT/,
-  { timeout: 4800 * 1000 },
+  { timeout: 7 * 1000 },
   async function (walletName, splitNum, splitValue, feePerGram) {
     console.log("\n");
     const numberOfSplits = Math.ceil(splitNum / 499);
@@ -3300,7 +3269,7 @@ When(
 
 When(
   /I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/,
-  { timeout: 43200 * 1000 },
+  { timeout: 7 * 1000 },
   async function (
     numTransactions,
     amount,
@@ -3377,7 +3346,6 @@ When(
 
 Given(
   /I change the password of wallet (.*) to (.*) via command line/,
-  { timeout: 20 * 1000 },
   async function (name, newPassword) {
     let wallet = this.getWallet(name);
     await wallet.changePassword("kensentme", newPassword);
@@ -3386,7 +3354,6 @@ Given(
 
 Then(
   /the password of wallet (.*) is (not)? ?(.*)/,
-  { timeout: 20 * 1000 },
   async function (name, is_not, password) {
     let wallet = this.getWallet(name);
     try {
@@ -3401,7 +3368,6 @@ Then(
 
 When(
   /I wait for (.*) to connect to (.*)/,
-  { timeout: 30 * 1000 },
   async function (firstNode, secondNode) {
     const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
     const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
@@ -3414,21 +3380,16 @@ When(
   }
 );
 
-Then(
-  /(.*) is connected to (.*)/,
-  { timeout: 30 * 1000 },
-  async function (firstNode, secondNode) {
-    const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
-    const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
-    const secondNodeIdentity = await secondNodeClient.identify();
-    let peers = await firstNodeClient.listConnectedPeers();
-    assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
-  }
-);
+Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
+  const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
+  const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
+  const secondNodeIdentity = await secondNodeClient.identify();
+  let peers = await firstNodeClient.listConnectedPeers();
+  assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
+});
 
 When(
   /I wait for (.*) to have (.*) connectivity/,
-  { timeout: 30 * 1000 },
   async function (nodeName, expectedStatus) {
     const node = await this.getNodeOrWalletClient(nodeName);
     const expected = ConnectivityStatus[expectedStatus.toUpperCase()];
@@ -3445,7 +3406,6 @@ When(
 
 When(
   /I wait for (.*) to have (\d+) node connections/,
-  { timeout: 30 * 1000 },
   async function (nodeName, numConnections) {
     const node = await this.getNodeOrWalletClient(nodeName);
     numConnections = +numConnections;
@@ -3463,7 +3423,6 @@ When(
 
 Given(
   "I change base node of {word} to {word} via command line",
-  { timeout: 20 * 1000 },
   async function (wallet_name, base_node_name) {
     let wallet = this.getWallet(wallet_name);
     let base_node = this.getNode(base_node_name);
@@ -3561,7 +3520,6 @@ Then(
 
 Then(
   "I get count of utxos of wallet {word} and it's at least {int} via command line",
-  { timeout: 180 * 1000 },
   async function (name, amount) {
     let wallet = this.getWallet(name);
     let output = await wallet_run_command(wallet, `count-utxos`);
@@ -3585,7 +3543,6 @@ When(
 
 When(
   "I discover peer {word} on wallet {word} via command line",
-  { timeout: 180 * 1000 },
   async function (node, name) {
     let wallet = this.getWallet(name);
     let peer = this.getNode(node).peerAddress().split("::")[0];
@@ -3597,7 +3554,7 @@ When(
 
 When(
   "I run whois {word} on wallet {word} via command line",
-  { timeout: 60 * 1000 },
+  { timeout: 6 * 1000 },
   async function (who, name) {
     await sleep(5000);
     let wallet = this.getWallet(name);
@@ -3611,7 +3568,6 @@ When(
 
 When(
   "I set custom base node of {word} to {word} via command line",
-  { timeout: 60 * 1000 },
   async function (wallet_name, base_node_name) {
     let wallet = this.getWallet(wallet_name);
     let base_node = this.getNode(base_node_name);
@@ -3628,7 +3584,6 @@ When(
 
 When(
   "I clear custom base node of wallet {word} via command line",
-  { timeout: 60 * 1000 },
   async function (name) {
     let wallet = this.getWallet(name);
     let output = await wallet_run_command(wallet, "clear-custom-base-node");
@@ -3641,7 +3596,6 @@ When(
 
 When(
   "I export the utxos of wallet {word} via command line",
-  { timeout: 60 * 1000 },
   async function (name) {
     let wallet = this.getWallet(name);
     let output = await wallet_run_command(wallet, "export-utxos");
@@ -3658,7 +3612,6 @@ When(
 
 Then(
   /I wait until base node (.*) has (.*) unconfirmed transactions in its mempool/,
-  { timeout: 180 * 1000 },
   async function (baseNode, numTransactions) {
     const client = this.getClient(baseNode);
     await waitFor(
@@ -3720,7 +3673,7 @@ Then(
 
 When(
   "I have {int} base nodes with pruning horizon {int} force syncing on node {word}",
-  { timeout: 190 * 1000 },
+  { timeout: 7 * 1000 },
   async function (nodes_count, horizon, force_sync_to) {
     const promises = [];
     const force_sync_address = this.getNode(force_sync_to).peerAddress();
