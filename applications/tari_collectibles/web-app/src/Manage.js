@@ -65,7 +65,7 @@ class Manage extends React.Component {
       });
     } catch (err) {
       console.error(err);
-      this.setState({ error: "Could not load assets:" + err });
+      this.setState({ error: "Failed to load assets: " + err });
     }
   }
 

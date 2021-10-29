@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   Alert,
   Button,
@@ -36,6 +36,10 @@ import {
 } from "@mui/material";
 import binding from "./binding";
 import { withRouter } from "react-router-dom";
+import { appWindow } from "@tauri-apps/api/window";
+import { dialog } from "@tauri-apps/api";
+import { Command } from "@tauri-apps/api/shell";
+import { fetch, ResponseType } from "@tauri-apps/api/http";
 
 class Create extends React.Component {
   constructor(props) {
@@ -44,7 +48,8 @@ class Create extends React.Component {
     this.state = {
       name: "Asset1",
       description: "",
-      image: "https://source.unsplash.com/random",
+      image: "",
+      cid: "",
       error: "",
       isSaving: false,
       contract001: true,
@@ -55,22 +60,27 @@ class Create extends React.Component {
       newCommitteePubKey: "",
     };
 
-    this.save = this.save.bind(this);
-    this.onNameChanged = this.onNameChanged.bind(this);
-    this.onDescriptionChanged = this.onDescriptionChanged.bind(this);
-    this.onImageChanged = this.onImageChanged.bind(this);
-    this.onContract001Changed = this.onContract001Changed.bind(this);
-    this.onContract721Changed = this.onContract721Changed.bind(this);
-    this.onContract100Changed = this.onContract100Changed.bind(this);
-    this.onNumberInitialTokensChanged =
-      this.onNumberInitialTokensChanged.bind(this);
-    this.onDeleteCommitteeMember = this.onDeleteCommitteeMember.bind(this);
-    this.onNewCommitteePubKeyChanged =
-      this.onNewCommitteePubKeyChanged.bind(this);
-    this.onAddCommitteeMember = this.onAddCommitteeMember.bind(this);
+    this.cleanup = null;
   }
 
-  async save() {
+  componentDidMount() {
+    this.cleanup = appWindow.listen("tauri://file-drop", this.dropFile);
+  }
+
+  dropFile = async ({ payload }) => {
+    if (payload.length > 0) {
+      // only use the first file if multiple are dropped
+      this.addFileToIPFS(payload[0]);
+    }
+  };
+
+  componentWillUnmount() {
+    if (this.cleanup) {
+      this.cleanup.then((unlisten) => unlisten());
+    }
+  }
+
+  save = async () => {
     this.setState({ isSaving: true });
     let name = this.state.name;
     let description = this.state.description;
@@ -101,41 +111,41 @@ class Create extends React.Component {
       console.log(err);
     }
     this.setState({ isSaving: false });
-  }
+  };
 
-  onNameChanged(e) {
+  onNameChanged = (e) => {
     this.setState({ name: e.target.value });
-  }
+  };
 
-  onContract001Changed(e) {
+  onContract001Changed = (e) => {
     this.setState({ contract001: e.target.checked });
-  }
+  };
 
-  onContract721Changed(e) {
+  onContract721Changed = (e) => {
     this.setState({ contract721: e.target.checked });
-  }
+  };
 
-  onContract100Changed(e) {
+  onContract100Changed = (e) => {
     this.setState({ contract100: e.target.checked });
-  }
+  };
 
-  onNumberInitialTokensChanged(e) {
+  onNumberInitialTokensChanged = (e) => {
     this.setState({ numberInitialTokens: e.target.value });
-  }
+  };
 
-  onDescriptionChanged(e) {
+  onDescriptionChanged = (e) => {
     this.setState({
       description: e.target.value,
     });
-  }
+  };
 
-  onNewCommitteePubKeyChanged(e) {
+  onNewCommitteePubKeyChanged = (e) => {
     this.setState({
       newCommitteePubKey: e.target.value,
     });
-  }
+  };
 
-  onAddCommitteeMember() {
+  onAddCommitteeMember = () => {
     let committee = [...this.state.committee];
     committee.push(this.state.newCommitteePubKey);
     console.log(committee);
@@ -143,21 +153,83 @@ class Create extends React.Component {
       committee,
       newCommitteePubKey: "",
     });
-  }
+  };
 
-  onDeleteCommitteeMember(index) {
+  onDeleteCommitteeMember = (index) => {
     let committee = this.state.committee.filter(function (_, i, arr) {
       return i !== parseInt(index);
     });
 
     this.setState({ committee });
-  }
+  };
 
-  onImageChanged(e) {
+  onImageChanged = (e) => {
     this.setState({
       image: e.target.value,
     });
-  }
+  };
+
+  selectFile = async () => {
+    const filePath = await dialog.open({
+      filters: [
+        { name: "image types", extensions: ["png", "jpg", "jpeg", "gif"] }, // TODO more formats
+      ],
+      multiple: false,
+    });
+    await this.addFileToIPFS(filePath);
+  };
+
+  addFileToIPFS = async (filePath) => {
+    const parts = filePath.split("/");
+    const name = parts[parts.length - 1];
+    // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
+    // resulting in "file argument 'path' is required"
+    // so we'll shell out to the ipfs command
+    let cid = "";
+    try {
+      const command = new Command("ipfs", ["add", "-Q", filePath]);
+      let processing = false;
+      command.stdout.on("data", (line) => {
+        if (!processing) {
+          processing = true;
+          cid = line;
+          const cp = new Command("ipfs", [
+            "files",
+            "cp",
+            `/ipfs/${cid}`,
+            `/${name}`,
+          ]);
+          cp.spawn();
+          this.setState({ cid });
+        }
+      });
+      command.stderr.on("data", (line) => {
+        console.error("error: ", line);
+      });
+      const child = command.spawn();
+      return child;
+
+      // console.log("command", command);
+      // const { success, output, error } = commandOutput(command);
+      // if (success) {
+      //   const cid = output;
+      //   console.log("cid", cid);
+      //   const command = await runCommand("ipfs", [
+      //     "files",
+      //     "cp",
+      //     `/ipfs/${cid}`,
+      //     `/${name}`,
+      //   ]);
+      //   const { error } = commandOutput(command);
+      //   if (error) console.error("error: ", error);
+      // } else {
+      //   console.error("error: ", error);
+      // }
+    } catch (e) {
+      // todo: display error
+      console.error("catch error: ", e);
+    }
+  };
 
   render() {
     return (
@@ -201,15 +273,15 @@ class Create extends React.Component {
               onChange={this.onDescriptionChanged}
               disabled={this.state.isSaving || !this.state.contract001}
             ></TextField>
-            <TextField
-              id="image"
-              label="Image (url)"
-              variant="filled"
-              color="primary"
-              value={this.state.image}
-              onChange={this.onImageChanged}
-              disabled={this.state.isSaving || !this.state.contract001}
-            ></TextField>
+
+            <p>Image</p>
+            <ImageSelector
+              selectFile={this.selectFile}
+              setImage={(image) => this.setState({ image })}
+              cid={this.state.cid}
+              setCid={(cid) => this.setState({ cid })}
+              image={this.state.image}
+            />
 
             <FormControlLabel
               control={
@@ -273,5 +345,111 @@ class Create extends React.Component {
     );
   }
 }
+
+const ImageSwitch = ({ setMode }) => {
+  return (
+    <div>
+      <Button onClick={() => setMode("url")}>HTTP or IPFS URL</Button>
+      <Button onClick={() => setMode("upload")}>Upload file to IPFS</Button>
+    </div>
+  );
+};
+
+const ImageUrl = ({ setImage }) => {
+  const [url, setUrl] = useState("");
+
+  return (
+    <div>
+      <p>Link to a web or ipfs url</p>
+      <TextField
+        id="image"
+        label="Image (url)"
+        variant="filled"
+        color="primary"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+      ></TextField>
+      <Button onClick={() => setImage(url)}>Save</Button>
+    </div>
+  );
+};
+
+const ImageUpload = ({ selectFile }) => {
+  return (
+    <div>
+      <p>Select an image, or drag and drop an image onto this window</p>
+      <Button onClick={selectFile}>Click to Select Image</Button>
+    </div>
+  );
+};
+
+const ImageSelector = ({ cid, image, selectFile, setImage, setCid }) => {
+  const [mode, setMode] = useState("");
+
+  if (image) {
+    return (
+      <div>
+        <img src={image} alt="" width="200px" />
+        <br />
+        <p onClick={() => setImage("")}>Change</p>
+      </div>
+    );
+  }
+  if (cid) {
+    return <IpfsImage cid={cid} setCid={setCid} />;
+  }
+
+  let display;
+
+  switch (mode) {
+    case "url":
+      display = <ImageUrl setImage={setImage} />;
+      break;
+    case "upload":
+      display = <ImageUpload selectFile={selectFile} />;
+      break;
+    default:
+      display = <ImageSwitch setMode={(m) => setMode(m)} />;
+  }
+
+  return display;
+};
+
+const IpfsImage = ({ cid, setCid }) => {
+  const [src, setSrc] = useState("");
+
+  useMemo(async () => {
+    try {
+      const response = await fetch(
+        `http://localhost:5001/api/v0/cat?arg=${cid}`,
+        {
+          method: "POST",
+          responseType: ResponseType.Binary,
+        }
+      );
+      const typedArray = Uint8Array.from(response.data);
+      const blob = new Blob([typedArray.buffer]);
+      const reader = new FileReader();
+      reader.onloadend = () => setSrc(reader.result);
+      reader.onerror = () => console.error("error");
+      reader.readAsDataURL(blob);
+    } catch (e) {
+      // handle error
+      console.error(e);
+    }
+  }, [cid]);
+
+  if (src) {
+    return (
+      <div>
+        <img src={src} alt="" width="200px" />
+        <br />
+        <p onClick={() => setCid("")}>Change</p>
+      </div>
+    );
+  }
+
+  return <p>ipfs image loading...</p>;
+};
 
 export default withRouter(Create);
