@@ -379,7 +379,7 @@ mod test {
 
         // Test wallet settings
         assert!(runtime.block_on(db.get_master_seed()).unwrap().is_none());
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
         runtime.block_on(db.set_master_seed(seed.clone())).unwrap();
         let stored_seed = runtime.block_on(db.get_master_seed()).unwrap().unwrap();
         assert_eq!(seed, stored_seed);

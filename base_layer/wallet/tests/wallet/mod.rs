@@ -374,7 +374,7 @@ async fn test_wallet() {
         .join("alice_db_backup")
         .with_extension("sqlite3");
 
-    let alice_seed = CipherSeed::new().unwrap();
+    let alice_seed = CipherSeed::new();
 
     alice_wallet.db.set_master_seed(alice_seed).await.unwrap();
 
@@ -411,7 +411,7 @@ async fn test_do_not_overwrite_master_key() {
 
     // create a wallet and shut it down
     let mut shutdown = Shutdown::new();
-    let recovery_seed = CipherSeed::new().unwrap();
+    let recovery_seed = CipherSeed::new();
     let wallet = create_wallet(
         dir.path(),
         "wallet_db",
@@ -427,7 +427,7 @@ async fn test_do_not_overwrite_master_key() {
 
     // try to use a new master key to create a wallet using the existing wallet database
     let shutdown = Shutdown::new();
-    let recovery_seed = CipherSeed::new().unwrap();
+    let recovery_seed = CipherSeed::new();
     match create_wallet(
         dir.path(),
         "wallet_db",

@@ -350,7 +350,7 @@ pub fn test_key_manager_crud() {
     assert!(runtime.block_on(db.increment_key_index()).is_err());
 
     let state1 = KeyManagerState {
-        seed: CipherSeed::new().unwrap(),
+        seed: CipherSeed::new(),
         branch_seed: "blah".to_string(),
         primary_key_index: 0,
     };

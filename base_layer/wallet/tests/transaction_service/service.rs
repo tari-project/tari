@@ -205,7 +205,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
             oms_backend,
             factories.clone(),
             Network::Weatherwax.into(),
-            CipherSeed::new().unwrap(),
+            CipherSeed::new(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -340,7 +340,7 @@ pub fn setup_transaction_service_no_comms(
             shutdown.to_signal(),
             basenode_service_handle.clone(),
             wallet_connectivity.clone(),
-            CipherSeed::new().unwrap(),
+            CipherSeed::new(),
         ))
         .unwrap();
 

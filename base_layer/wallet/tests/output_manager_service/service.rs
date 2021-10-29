@@ -264,7 +264,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        CipherSeed::new().unwrap(),
+        CipherSeed::new(),
     )
     .await
     .unwrap();
@@ -1682,7 +1682,7 @@ async fn test_oms_key_manager_discrepancy() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
 
-    let master_seed1 = CipherSeed::new().unwrap();
+    let master_seed1 = CipherSeed::new();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
@@ -1721,7 +1721,7 @@ async fn test_oms_key_manager_discrepancy() {
     drop(output_manager_service2);
 
     let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
-    let master_seed2 = CipherSeed::new().unwrap();
+    let master_seed2 = CipherSeed::new();
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         ts_handle,

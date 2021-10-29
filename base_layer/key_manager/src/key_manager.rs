@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{cipher_seed::CipherSeed, error::KeyManagerError};
+use crate::cipher_seed::CipherSeed;
 use digest::Digest;
 use std::marker::PhantomData;
 use tari_crypto::{
@@ -51,14 +51,14 @@ where
     D: Digest,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
-    pub fn new() -> Result<KeyManager<K, D>, KeyManagerError> {
-        Ok(KeyManager {
-            seed: CipherSeed::new()?,
+    pub fn new() -> KeyManager<K, D> {
+        KeyManager {
+            seed: CipherSeed::new(),
             branch_seed: "".to_string(),
             primary_key_index: 0,
             digest_type: PhantomData,
             key_type: PhantomData,
-        })
+        }
     }
 
     /// Constructs a KeyManager from known parts
@@ -108,14 +108,14 @@ mod test {
 
     #[test]
     fn test_new_keymanager() {
-        let km1 = KeyManager::<RistrettoSecretKey, Sha256>::new().unwrap();
-        let km2 = KeyManager::<RistrettoSecretKey, Sha256>::new().unwrap();
+        let km1 = KeyManager::<RistrettoSecretKey, Sha256>::new();
+        let km2 = KeyManager::<RistrettoSecretKey, Sha256>::new();
         assert_ne!(km1.seed, km2.seed);
     }
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::new().unwrap();
+        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::new();
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -135,7 +135,7 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::from(CipherSeed::new().unwrap(), "Test".to_string(), 0);
+        let mut km = KeyManager::<RistrettoSecretKey, Sha256>::from(CipherSeed::new(), "Test".to_string(), 0);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;

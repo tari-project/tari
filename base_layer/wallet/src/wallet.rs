@@ -509,7 +509,7 @@ async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     let master_seed = match recovery_seed {
         None => match db_master_seed {
             None => {
-                let seed = CipherSeed::new()?;
+                let seed = CipherSeed::new();
                 db.set_master_seed(seed.clone()).await?;
                 seed
             },

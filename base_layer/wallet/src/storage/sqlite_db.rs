@@ -723,7 +723,7 @@ mod test {
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
-        let secret_seed1 = CipherSeed::new().unwrap();
+        let secret_seed1 = CipherSeed::new();
 
         {
             let conn = connection.acquire_lock();
@@ -743,7 +743,7 @@ mod test {
             panic!("Should be a Master Secret Key");
         };
 
-        let secret_seed2 = CipherSeed::new().unwrap();
+        let secret_seed2 = CipherSeed::new();
 
         {
             let conn = connection.acquire_lock();
@@ -768,7 +768,7 @@ mod test {
 
         assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
 
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
         {
             let conn = connection.acquire_lock();
             WalletSettingSql::new(DbKey::MasterSeed.to_string(), seed.encipher(None).unwrap().to_hex())
@@ -794,7 +794,7 @@ mod test {
         let db_path = format!("{}/{}", db_folder, db_name);
         let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
         let key_values = vec![
             ClientKeyValueSql::new("key1".to_string(), "value1".to_string()),
             ClientKeyValueSql::new("key2".to_string(), "value2".to_string()),

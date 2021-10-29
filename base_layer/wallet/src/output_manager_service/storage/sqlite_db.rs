@@ -2183,7 +2183,7 @@ mod test {
         assert!(KeyManagerStateSql::get_state(&conn).is_err());
 
         let state1 = KeyManagerState {
-            seed: CipherSeed::new().unwrap(),
+            seed: CipherSeed::new(),
             branch_seed: random::string(8),
             primary_key_index: 0,
         };
@@ -2276,7 +2276,7 @@ mod test {
         let cipher = Aes256Gcm::new(key);
 
         let starting_state = KeyManagerState {
-            seed: CipherSeed::new().unwrap(),
+            seed: CipherSeed::new(),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };
@@ -2319,7 +2319,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let starting_state = KeyManagerState {
-            seed: CipherSeed::new().unwrap(),
+            seed: CipherSeed::new(),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };

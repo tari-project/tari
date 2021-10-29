@@ -90,7 +90,7 @@ pub struct CipherSeed {
 }
 
 impl CipherSeed {
-    pub fn new() -> Result<Self, KeyManagerError> {
+    pub fn new() -> Self {
         let mut entropy = [0u8; CIPHER_SEED_ENTROPY_BYTES];
         OsRng.fill_bytes(&mut entropy);
         let mut salt = [0u8; CIPHER_SEED_SALT_BYTES];
@@ -98,12 +98,12 @@ impl CipherSeed {
 
         let birthday = u16::try_from(Utc::now().timestamp() as u64 / (24 * 60 * 60)).unwrap_or(0u16);
 
-        Ok(Self {
+        Self {
             version: CIPHER_SEED_VERSION,
             birthday,
             entropy,
             salt,
-        })
+        }
     }
 
     pub fn encipher(&self, passphrase: Option<String>) -> Result<Vec<u8>, KeyManagerError> {
@@ -283,7 +283,7 @@ mod test {
 
     #[test]
     fn test_cipher_seed_generation_and_deciphering() {
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
 
         let mut enciphered_seed = seed.encipher(Some("Passphrase".to_string())).unwrap();
 
@@ -319,7 +319,7 @@ mod test {
     #[test]
     fn test_cipher_seed_to_mnemonic_and_from_mnemonic() {
         // Valid Mnemonic sequence
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
         match seed.to_mnemonic(&MnemonicLanguage::Japanese, None) {
             Ok(mnemonic_seq) => {
                 match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
@@ -356,7 +356,7 @@ mod test {
 
     #[test]
     fn cipher_seed_to_and_from_mnemonic_with_passphrase() {
-        let seed = CipherSeed::new().unwrap();
+        let seed = CipherSeed::new();
         match seed.to_mnemonic(&MnemonicLanguage::Spanish, Some("Passphrase".to_string())) {
             Ok(mnemonic_seq) => match CipherSeed::from_mnemonic(&mnemonic_seq, Some("Passphrase".to_string())) {
                 Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
