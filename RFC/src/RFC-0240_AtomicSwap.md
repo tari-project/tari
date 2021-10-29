@@ -143,7 +143,7 @@ characters are used as private keys, while uppercase characters are used as publ
 
 | Name        | Symbol              | Definition |
 |:------------|---------------------| -----------|
-| Pre-image   | \\( \preimage \\) | The random string used for the pre-image of the hash |
+| Pre-image   | \\( \preimage \\) | The random byte data used for the pre-image of the hash |
 | 
 
 
