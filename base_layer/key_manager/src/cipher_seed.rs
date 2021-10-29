@@ -245,6 +245,12 @@ impl Drop for CipherSeed {
     }
 }
 
+impl Default for CipherSeed {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mnemonic<CipherSeed> for CipherSeed {
     /// Generates a CipherSeed that represent the provided mnemonic sequence of words, the language of the mnemonic
     /// sequence is autodetected

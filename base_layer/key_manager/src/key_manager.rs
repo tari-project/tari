@@ -100,6 +100,12 @@ where
     }
 }
 
+impl<K, D> Default for KeyManager<K, D> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::key_manager::*;
