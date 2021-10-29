@@ -53,12 +53,12 @@ message GetTokenDataResponse {
 }
 
 message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated bytes args = 3;
-    bytes token_id = 4;
-    bytes signature = 5;
-    uint64 id = 6;
+    bytes asset_public_key = 1;
+    uint32 template_id = 2;
+    string method = 3;
+    repeated bytes args = 4;
+//    bytes token_id = 5;
+//    bytes signature = 6;
 }
 
 message ExecuteInstructionResponse {

@@ -33,7 +33,6 @@ mod quorum_certificate;
 // mod replica_info;
 mod base_layer_metadata;
 mod base_layer_output;
-mod instruction_id;
 mod sidechain_metadata;
 mod tari_dan_payload;
 mod view;
@@ -44,7 +43,6 @@ pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
-pub use instruction_id::InstructionId;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 // pub use replica_info::ReplicaInfo;
@@ -70,9 +68,9 @@ impl InstructionCaller {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum TemplateId {
-    EditableMetadata,
+    EditableMetadata = 2,
 }
 
 impl TemplateId {
@@ -83,6 +81,18 @@ impl TemplateId {
                 // TODO: Propagate error instead
                 dbg!("Unrecognised template");
                 TemplateId::EditableMetadata
+            },
+        }
+    }
+}
+
+impl From<u32> for TemplateId {
+    fn from(v: u32) -> Self {
+        // Must be an easier way than this
+        match v {
+            2 => TemplateId::EditableMetadata,
+            _ => {
+                unimplemented!()
             },
         }
     }

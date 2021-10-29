@@ -30,7 +30,10 @@ use crate::{
 
 use tari_crypto::tari_utilities::ByteArray;
 
-use crate::dan_layer::storage::{ChainStorageService, DbFactory};
+use crate::dan_layer::{
+    models::TemplateId,
+    storage::{ChainStorageService, DbFactory},
+};
 use tonic::{Request, Response, Status};
 
 pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
@@ -68,13 +71,14 @@ where
         let instruction = Instruction::new(
             PublicKey::from_bytes(&request.asset_public_key)
                 .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
+            request.template_id.into(),
             request.method.clone(),
             request.args.clone(),
-            TokenId(request.token_id.clone()),
-            // TODO: put signature in here
-            ComSig::default()
-            // create_com_sig_from_bytes(&request.signature)
-            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            /* TokenId(request.token_id.clone()),
+             * TODO: put signature in here
+             * ComSig::default()
+             * create_com_sig_from_bytes(&request.signature)
+             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
 
         let mut mempool = self.mempool.clone();

@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{InstructionCaller, TokenId},
-        storage::AssetStore,
+        storage::{AssetStore, StateDbUnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
     },
     digital_assets_error::DigitalAssetError,
@@ -36,44 +36,47 @@ impl EditableMetadataTemplate {
     pub fn create_command(
         method: String,
         mut args: VecDeque<Vec<u8>>,
-        caller: InstructionCaller,
-    ) -> Result<impl TemplateCommand, DigitalAssetError> {
-        match method.as_str() {
-            "update" => {
-                let token_id = caller.owner_token_id().clone();
-                let metadata = args.pop_front().ok_or_else(|| DigitalAssetError::MissingArgument {
-                    argument_name: "metadata".to_string(),
-                    position: 0,
-                })?;
-                // TODO: check for too many args
-
-                Ok(UpdateMetadataCommand::new(token_id, metadata, caller))
-            },
-            _ => Err(DigitalAssetError::UnknownMethod {
-                method_name: method.clone(),
-            }),
-        }
+        // caller: InstructionCaller,
+    ) -> Result<UpdateMetadataCommand, DigitalAssetError> {
+        unimplemented!()
+        // match method.as_str() {
+        //     "update" => {
+        //         unimplemented!()
+        //         // // let token_id = caller.owner_token_id().clone();
+        //         // let metadata = args.pop_front().ok_or_else(|| DigitalAssetError::MissingArgument {
+        //         //     argument_name: "metadata".to_string(),
+        //         //     position: 0,
+        //         // })?;
+        //         // // TODO: check for too many args
+        //         //
+        //         // Ok(UpdateMetadataCommand::new(token_id, metadata))
+        //     },
+        //     _ => Err(DigitalAssetError::UnknownMethod {
+        //         method_name: method.clone(),
+        //     }),
+        // }
     }
 }
 pub struct UpdateMetadataCommand {
     token_id: TokenId,
     metadata: Vec<u8>,
-    _caller: InstructionCaller,
+    // _caller: InstructionCaller,
 }
 
 impl UpdateMetadataCommand {
-    pub fn new(token_id: TokenId, metadata: Vec<u8>, caller: InstructionCaller) -> Self {
+    pub fn new(token_id: TokenId, metadata: Vec<u8>) -> Self {
         Self {
             token_id,
             metadata,
-            _caller: caller,
+            // _caller: caller,
         }
     }
 }
 
 impl TemplateCommand for UpdateMetadataCommand {
-    fn try_execute(&self, data_store: &mut dyn AssetStore) -> Result<ExecutionResult, DigitalAssetError> {
-        data_store.replace_metadata(&self.token_id, &self.metadata)?;
-        Ok(ExecutionResult::Ok)
+    fn try_execute(&self, state_db: &mut StateDbUnitOfWork) -> Result<ExecutionResult, DigitalAssetError> {
+        // data_store.replace_metadata(&self.token_id, &self.metadata)?;
+        unimplemented!()
+        // Ok(ExecutionResult::Ok)
     }
 }

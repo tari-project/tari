@@ -21,21 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dan_layer::models::TokenId,
+    dan_layer::models::{TemplateId, TokenId},
     types::{com_sig_to_bytes, ComSig, PublicKey},
 };
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 
-// TODO: fix hash derive
-#[allow(clippy::derive_hash_xor_eq)]
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Instruction {
     asset_id: PublicKey,
+    template_id: TemplateId,
     method: String,
     args: Vec<Vec<u8>>,
-    from: TokenId,
-    signature: ComSig,
+    // from: TokenId,
+    // signature: ComSig,
     hash: Vec<u8>,
 }
 
@@ -46,14 +45,22 @@ impl PartialEq for Instruction {
 }
 
 impl Instruction {
-    pub fn new(asset_id: PublicKey, method: String, args: Vec<Vec<u8>>, from: TokenId, _signature: ComSig) -> Self {
+    pub fn new(
+        asset_id: PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<Vec<u8>>,
+        /* from: TokenId,
+         * _signature: ComSig, */
+    ) -> Self {
         let mut s = Self {
             asset_id,
+            template_id,
             method,
             args,
-            from,
+            // from,
             // TODO: this is obviously wrong
-            signature: ComSig::default(),
+            // signature: ComSig::default(),
             hash: vec![],
         };
         s.hash = s.calculate_hash();
@@ -64,6 +71,10 @@ impl Instruction {
         &self.asset_id
     }
 
+    pub fn template_id(&self) -> TemplateId {
+        self.template_id
+    }
+
     pub fn method(&self) -> &str {
         &self.method
     }
@@ -72,16 +83,16 @@ impl Instruction {
         &self.args
     }
 
-    // TODO: rename to avoid use of from
-    pub fn from_owner(&self) -> &TokenId {
-        &self.from
-    }
+    // // TODO: rename to avoid use of from
+    // pub fn from_owner(&self) -> &TokenId {
+    //     &self.from
+    // }
 
-    pub fn _signature(&self) -> &ComSig {
-        &self.signature
-    }
+    // pub fn _signature(&self) -> &ComSig {
+    //     &self.signature
+    // }
 
-    pub fn _hash(&self) -> &[u8] {
+    pub fn hash(&self) -> &[u8] {
         &self.hash
     }
 
@@ -92,9 +103,8 @@ impl Instruction {
         for a in &self.args {
             b = b.chain(a);
         }
-        b.chain(self.from.as_bytes())
-            .chain(com_sig_to_bytes(&self.signature))
-            .finalize()
-            .to_vec()
+        // b.chain(self.from.as_bytes())
+        //     .chain(com_sig_to_bytes(&self.signature))
+        b.finalize().to_vec()
     }
 }

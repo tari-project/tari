@@ -70,7 +70,7 @@ use crate::{
             TariDanPayloadProcessor,
             TariDanPayloadProvider,
         },
-        storage::{lmdb::LmdbAssetStore, AssetDataStore},
+        storage::{lmdb::LmdbAssetStore, AssetDataStore, DbFactory, LmdbDbFactory},
         workers::ConsensusWorker,
     },
     p2p::create_validator_node_rpc_service,
@@ -122,6 +122,7 @@ impl DanNode {
         if asset_definitions.is_empty() {
             warn!(target: LOG_TARGET, "No assets to process. Exiting");
         }
+        let db_factory = LmdbDbFactory::new(&self.config);
         for asset in asset_definitions {
             // TODO: spawn into multiple processes. This requires some routing as well.
             self.start_asset_worker(
@@ -132,6 +133,7 @@ impl DanNode {
                 subscription_factory.clone(),
                 shutdown.clone(),
                 &dan_config,
+                db_factory.clone(),
             )
             .await?;
         }
@@ -158,7 +160,10 @@ impl DanNode {
         Ok(result)
     }
 
-    async fn start_asset_worker<TMempoolService: MempoolService + Clone>(
+    async fn start_asset_worker<
+        TMempoolService: MempoolService + Clone,
+        TDbFactory: DbFactory + Clone + Send + Sync,
+    >(
         &self,
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
@@ -167,6 +172,7 @@ impl DanNode {
         subscription_factory: SubscriptionFactory,
         shutdown: ShutdownSignal,
         config: &ValidatorNodeConfig,
+        db_factory: TDbFactory,
     ) -> Result<(), ExitCodes> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         // TODO: read from base layer get asset definition
@@ -200,7 +206,7 @@ impl DanNode {
             .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
         let data_store = AssetDataStore::new(backend);
         let instruction_log = MemoryInstructionLog::default();
-        let asset_processor = ConcreteAssetProcessor::new(data_store, instruction_log, asset_definition.clone());
+        let asset_processor = ConcreteAssetProcessor::new(instruction_log, asset_definition.clone());
 
         let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service);
         let mut inbound = TariCommsInboundConnectionService::new();
@@ -216,7 +222,6 @@ impl DanNode {
         let dht = handles.expect_handle::<Dht>();
         let outbound = TariCommsOutboundService::new(dht.outbound_requester(), loopback);
         let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
-
         let mut consensus_worker = ConsensusWorker::new(
             receiver,
             outbound,
@@ -229,6 +234,7 @@ impl DanNode {
             asset_definition,
             base_node_client,
             timeout,
+            db_factory,
         );
         consensus_worker
             .run(shutdown.clone(), None)

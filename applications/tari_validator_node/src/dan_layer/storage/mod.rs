@@ -35,8 +35,10 @@ mod store;
 
 pub trait DbFactory {
     fn create(&self) -> ChainDb;
+    fn create_state_db(&self) -> StateDb;
 }
 
+#[derive(Clone)]
 pub struct LmdbDbFactory {}
 
 impl LmdbDbFactory {
@@ -50,6 +52,10 @@ impl DbFactory for LmdbDbFactory {
         ChainDb {
             metadata: MetadataTable {},
         }
+    }
+
+    fn create_state_db(&self) -> StateDb {
+        StateDb { unit_of_work: None }
     }
 }
 
@@ -68,5 +74,47 @@ pub struct MetadataTable {}
 impl MetadataTable {
     pub fn read(&self) -> SidechainMetadata {
         SidechainMetadata::new(Default::default(), 0.into(), TreeNodeHash(vec![0u8; 32]))
+    }
+}
+
+pub struct StateDb {
+    unit_of_work: Option<StateDbUnitOfWork>,
+}
+
+impl StateDb {
+    pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
+        unimplemented!()
+        // let mut unit_of_work = self.current_unit_of_work_mut();
+        // if unit_of_work.is_none() {
+        //     self.unit_of_work = Some(StateDbUnitOfWork {});
+        //     unit_of_work = self.unit_of_work
+        // };
+        // unit_of_work.as_mut().unwrap()
+    }
+
+    fn current_unit_of_work_mut(&mut self) -> Option<&mut StateDbUnitOfWork> {
+        unimplemented!()
+        // let mut result = self.unit_of_work.as_mut();
+        // let mut child = result;
+        // while let Some(c) = child {
+        //     result = child;
+        //     child = c.child.as_mut();
+        // }
+        //
+        // return result;
+    }
+}
+
+pub struct StateDbUnitOfWork {
+    child: Option<Arc<StateDbUnitOfWork>>,
+}
+
+impl StateDbUnitOfWork {
+    pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
+        unimplemented!()
+    }
+
+    pub fn commit(&mut self) -> Result<(), StorageError> {
+        unimplemented!()
     }
 }

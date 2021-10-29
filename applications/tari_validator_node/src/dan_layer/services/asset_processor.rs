@@ -22,8 +22,8 @@
 
 use crate::{
     dan_layer::{
-        models::{AssetDefinition, Instruction, InstructionCaller, InstructionId, TemplateId},
-        storage::AssetStore,
+        models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
+        storage::{AssetStore, StateDb, StateDbUnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },
@@ -32,61 +32,65 @@ use crate::{
 use async_trait::async_trait;
 use std::collections::VecDeque;
 
-// TODO: Better name needed
-#[async_trait]
 pub trait AssetProcessor {
-    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError>;
+    // purposefully made sync, because instructions should be run in order, and complete before the
+    // next one starts. There may be a better way to enforce this though...
+    fn execute_instruction(
+        &mut self,
+        instruction: &Instruction,
+        state_db: &mut StateDbUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
 }
 
-pub struct ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
+pub struct ConcreteAssetProcessor<TInstructionLog> {
     asset_definition: AssetDefinition,
     template_factory: TemplateFactory,
     instruction_log: TInstructionLog,
-    data_store: TAssetStore,
 }
 
-#[async_trait]
-impl<TAssetStore: AssetStore + Send, TInstructionLog: InstructionLog + Send> AssetProcessor
-    for ConcreteAssetProcessor<TAssetStore, TInstructionLog>
-{
-    async fn execute_instruction(&mut self, instruction: &Instruction) -> Result<(), DigitalAssetError> {
-        // TODO: This is thread blocking
+impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
+    fn execute_instruction(
+        &mut self,
+        instruction: &Instruction,
+        state_db: &mut StateDbUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
         self.execute(
+            instruction.template_id(),
             instruction.method().to_owned(),
             instruction.args().to_vec().into(),
-            InstructionCaller {
-                owner_token_id: instruction.from_owner().to_owned(),
-            },
-            // TODO: put in instruction
-            InstructionId(0),
+            // InstructionCaller {
+            //     owner_token_id: instruction.from_owner().to_owned(),
+            // },
+            instruction.hash().into(),
+            state_db,
         )
     }
 }
 
-impl<TAssetStore: AssetStore, TInstructionLog: InstructionLog> ConcreteAssetProcessor<TAssetStore, TInstructionLog> {
-    pub fn new(data_store: TAssetStore, instruction_log: TInstructionLog, asset_definition: AssetDefinition) -> Self {
+impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
+    pub fn new(instruction_log: TInstructionLog, asset_definition: AssetDefinition) -> Self {
         Self {
             template_factory: TemplateFactory {},
             instruction_log,
             asset_definition,
-            data_store,
         }
     }
 
     pub fn execute(
         &mut self,
+        template_id: TemplateId,
         method: String,
         args: VecDeque<Vec<u8>>,
-        caller: InstructionCaller,
-        id: InstructionId,
+        // caller: InstructionCaller,
+        hash: Vec<u8>,
+        state_db: &mut StateDbUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        unimplemented!()
-        // let instruction = self
-        //     .template_factory
-        //     .create_command(self.template_id, method, args, caller)?;
-        // let result = instruction.try_execute(&mut self.data_store)?;
-        // self.instruction_log.store(id, result);
-        // Ok(())
+        let instruction = self.template_factory.create_command(template_id, method, args)?;
+        let unit_of_work = state_db.new_unit_of_work();
+        let result = instruction.try_execute(unit_of_work)?;
+        unit_of_work.commit()?;
+        self.instruction_log.store(hash, result);
+        Ok(())
     }
 }
 
@@ -98,25 +102,25 @@ impl TemplateFactory {
         template: TemplateId,
         method: String,
         args: VecDeque<Vec<u8>>,
-        caller: InstructionCaller,
+        // caller: InstructionCaller,
     ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match template {
-            TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args, caller),
+            TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args),
         }
     }
 }
 
 pub trait InstructionLog {
-    fn store(&mut self, id: InstructionId, result: ExecutionResult);
+    fn store(&mut self, hash: Vec<u8>, result: ExecutionResult);
 }
 
 #[derive(Default)]
 pub struct MemoryInstructionLog {
-    log: Vec<(InstructionId, ExecutionResult)>,
+    log: Vec<(Vec<u8>, ExecutionResult)>,
 }
 
 impl InstructionLog for MemoryInstructionLog {
-    fn store(&mut self, id: InstructionId, result: ExecutionResult) {
-        self.log.push((id, result))
+    fn store(&mut self, hash: Vec<u8>, result: ExecutionResult) {
+        self.log.push((hash, result))
     }
 }

@@ -60,13 +60,14 @@ impl<TMempoolService: MempoolService + Clone> ValidatorNodeRpcService for Valida
         let instruction = Instruction::new(
             PublicKey::from_bytes(&request.asset_public_key)
                 .map_err(|_err| RpcStatus::bad_request("asset_public_key was not a valid public key"))?,
+            request.template_id.into(),
             request.method.clone(),
             request.args.clone(),
-            TokenId(request.token_id.clone()),
-            // TODO: put signature in here
-            ComSig::default()
-            // create_com_sig_from_bytes(&request.signature)
-            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            /* TokenId(request.token_id.clone()),
+             * TODO: put signature in here
+             * ComSig::default()
+             * create_com_sig_from_bytes(&request.signature)
+             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
 
         let mut mempool_service = self.mempool_service.clone();

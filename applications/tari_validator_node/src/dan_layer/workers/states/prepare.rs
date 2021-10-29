@@ -44,7 +44,7 @@ use crate::{
 
 use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
 
-use crate::dan_layer::services::PayloadProcessor;
+use crate::dan_layer::{services::PayloadProcessor, storage::DbFactory};
 use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
@@ -57,6 +57,7 @@ pub struct Prepare<
     TPayloadProvider,
     TPayload,
     TPayloadProcessor,
+    TDbFactory,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -64,7 +65,8 @@ pub struct Prepare<
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
+    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TDbFactory: DbFactory,
 {
     node_id: TAddr,
     locked_qc: Arc<QuorumCertificate<TPayload>>,
@@ -76,6 +78,7 @@ pub struct Prepare<
     phantom_signing: PhantomData<TSigningService>,
     phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    db_factory: TDbFactory,
 }
 
 impl<
@@ -86,6 +89,7 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
+        TDbFactory,
     >
     Prepare<
         TInboundConnectionService,
@@ -95,6 +99,7 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
+        TDbFactory,
     >
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
@@ -103,9 +108,10 @@ where
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
+    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TDbFactory: DbFactory + Clone,
 {
-    pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>) -> Self {
+    pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>, db_factory: TDbFactory) -> Self {
         Self {
             node_id,
             locked_qc,
@@ -115,6 +121,7 @@ where
             phantom_signing: PhantomData,
             received_new_view_messages: HashMap::new(),
             phantom_processor: PhantomData,
+            db_factory,
         }
     }
 
@@ -252,7 +259,9 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                payload_processor.process_payload(justify.node().payload()).await?;
+                payload_processor
+                    .process_payload(justify.node().payload(), &self.db_factory)
+                    .await?;
 
                 self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, signing_service)
                     .await?;
