@@ -76,7 +76,7 @@ To do an Atomic swap from BTC to XTR we need 4 wallets, 2 BTC wallets, and 2 XTR
 
 As an example, Alice wants to trade some of her XTR for Bob's BTC. Alice and Bob need to agree on an amount of XTR and BTC to swap. Once an agreement is reached, the swap is executed in the following steps:
 
-* Alice chooses a random string, \\( \preimage \\), as the pre-image and hashes it with SHA256. She then sends the hash 
+* Alice chooses a set of random bytes, \\( \preimage \\), as the pre-image and hashes it with SHA256. She then sends the hash 
 of the pre-image, \\( \hash{\preimage} \\), to Bob along with her BTC address.
 
 * Bob sends her a public version of his [script key], \\( K_{Sb} \\), for use in the XTR transaction, which we can refer 
