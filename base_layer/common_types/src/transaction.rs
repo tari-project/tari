@@ -24,6 +24,8 @@ pub enum TransactionStatus {
     Coinbase,
     /// This transaction is mined and confirmed at the current base node's height
     MinedConfirmed,
+    /// This transaction was Rejected by the mempool
+    Rejected,
 }
 
 #[derive(Debug, Error)]
@@ -44,6 +46,7 @@ impl TryFrom<i32> for TransactionStatus {
             4 => Ok(TransactionStatus::Pending),
             5 => Ok(TransactionStatus::Coinbase),
             6 => Ok(TransactionStatus::MinedConfirmed),
+            7 => Ok(TransactionStatus::Rejected),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -66,6 +69,7 @@ impl Display for TransactionStatus {
             TransactionStatus::Imported => write!(f, "Imported"),
             TransactionStatus::Pending => write!(f, "Pending"),
             TransactionStatus::Coinbase => write!(f, "Coinbase"),
+            TransactionStatus::Rejected => write!(f, "Rejected"),
         }
     }
 }
