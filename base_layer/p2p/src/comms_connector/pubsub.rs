@@ -254,6 +254,7 @@ mod test {
 
         assert_eq!(topic1b[0].a, 11);
         assert_eq!(topic1b[1].a, 33);
+        assert_eq!(topic1b[1].b, "three three");
 
         let topic2 = collect_stream!(sub2, take = 4, timeout = Duration::from_secs(10));
 
