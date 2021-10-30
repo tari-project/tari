@@ -40,7 +40,7 @@ use crate::{
             PayloadProvider,
             SigningService,
         },
-        storage::DbFactory,
+        storage::{ChainStorageService, DbFactory},
         workers::{
             states,
             states::{ConsensusWorkerStateEvent, IdleState},
@@ -67,6 +67,7 @@ pub struct ConsensusWorker<
     TCommitteeManager,
     TBaseNodeClient,
     TDbFactory,
+    TChainStorageService,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -75,10 +76,11 @@ pub struct ConsensusWorker<
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
     TDbFactory: DbFactory,
+    TChainStorageService: ChainStorageService<TPayload>,
 {
     inbound_connections: TInboundConnectionService,
     outbound_service: TOutboundService,
@@ -96,6 +98,7 @@ pub struct ConsensusWorker<
     asset_definition: AssetDefinition,
     base_node_client: TBaseNodeClient,
     db_factory: TDbFactory,
+    chain_storage_service: TChainStorageService,
 }
 
 impl<
@@ -110,6 +113,7 @@ impl<
         TCommitteeManager,
         TBaseNodeClient,
         TDbFactory,
+        TChainStorageService,
     >
     ConsensusWorker<
         TInboundConnectionService,
@@ -123,6 +127,7 @@ impl<
         TCommitteeManager,
         TBaseNodeClient,
         TDbFactory,
+        TChainStorageService,
     >
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + 'static + Send + Sync,
@@ -132,10 +137,11 @@ where
     TPayloadProvider: PayloadProvider<TPayload>,
     TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
     TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
     TDbFactory: DbFactory + Clone,
+    TChainStorageService: ChainStorageService<TPayload>,
 {
     pub fn new(
         inbound_connections: TInboundConnectionService,
@@ -151,6 +157,7 @@ where
         base_node_client: TBaseNodeClient,
         timeout: Duration,
         db_factory: TDbFactory,
+        chain_storage_service: TChainStorageService,
     ) -> Self {
         let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
 
@@ -171,6 +178,7 @@ where
             asset_definition,
             base_node_client,
             db_factory,
+            chain_storage_service,
         }
     }
 
@@ -230,6 +238,10 @@ where
                         &mut self.base_node_client,
                         &self.asset_definition,
                         &mut self.committee_manager,
+                        &self.db_factory,
+                        &self.payload_provider,
+                        &self.payload_processor,
+                        &self.chain_storage_service,
                         &self.node_id,
                     )
                     .await

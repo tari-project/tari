@@ -32,7 +32,7 @@ use crate::{
     dan_layer::{
         dan_node::DanNode,
         services::{MempoolService, MempoolServiceHandle},
-        storage::{ChainStorageService, ChainStorageServiceHandle, DbFactory, LmdbDbFactory},
+        storage::{ChainStorageService, DbFactory, LmdbDbFactory},
     },
     grpc::{
         validator_node_grpc_server::ValidatorNodeGrpcServer,

@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{InstructionSet, Payload, TariDanPayload},
+        models::{AssetDefinition, InstructionSet, Payload, TariDanPayload},
         services::MempoolService,
     },
     digital_assets_error::DigitalAssetError,

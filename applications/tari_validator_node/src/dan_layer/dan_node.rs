@@ -22,6 +22,7 @@
 
 use std::{fs, fs::File, io::BufReader, path::PathBuf, sync::Arc, time::Duration};
 
+use crate::dan_layer::storage::sqlite::SqliteStorageService;
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::task;
@@ -222,6 +223,7 @@ impl DanNode {
         let dht = handles.expect_handle::<Dht>();
         let outbound = TariCommsOutboundService::new(dht.outbound_requester(), loopback);
         let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
+        let chain_storage = SqliteStorageService {};
         let mut consensus_worker = ConsensusWorker::new(
             receiver,
             outbound,
@@ -235,6 +237,7 @@ impl DanNode {
             base_node_client,
             timeout,
             db_factory,
+            chain_storage,
         );
         consensus_worker
             .run(shutdown.clone(), None)

@@ -20,18 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{ChainHeight, SidechainMetadata, TreeNodeHash};
-pub use chain_storage_service::{ChainStorageService, ChainStorageServiceHandle, LmdbChainStorageService};
+use crate::dan_layer::models::{ChainHeight, HotStuffTreeNode, SidechainMetadata, TreeNodeHash};
+pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
 use std::sync::Arc;
 pub use store::{AssetDataStore, AssetStore};
 use tari_common::GlobalConfig;
+use tokio::sync::RwLock;
 
 mod chain_storage_service;
 mod error;
 pub mod lmdb;
 mod store;
+
+// feature sql
+pub mod sqlite;
 
 pub trait DbFactory {
     fn create(&self) -> ChainDb;
@@ -51,6 +55,7 @@ impl DbFactory for LmdbDbFactory {
     fn create(&self) -> ChainDb {
         ChainDb {
             metadata: MetadataTable {},
+            headers: HeadersTable {},
         }
     }
 
@@ -61,10 +66,37 @@ impl DbFactory for LmdbDbFactory {
 
 pub struct ChainDb {
     pub metadata: MetadataTable,
+    pub headers: HeadersTable,
 }
 
 impl ChainDb {
-    pub fn commit(&mut self) -> Result<(), ()> {
+    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork {
+        ChainDbUnitOfWork { clean: vec![] }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return true;
+    }
+}
+
+pub enum UnitOfWorkTracker {
+    SidechainMetadata,
+}
+
+pub struct ChainDbUnitOfWork {
+    clean: Vec<UnitOfWorkTracker>,
+}
+
+impl ChainDbUnitOfWork {
+    pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
+        self.clean.push(item);
+    }
+
+    pub fn commit(&mut self) -> Result<(), StorageError> {
+        Ok(())
+    }
+
+    pub fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError> {
         todo!()
     }
 }
@@ -72,10 +104,14 @@ impl ChainDb {
 pub struct MetadataTable {}
 
 impl MetadataTable {
-    pub fn read(&self) -> SidechainMetadata {
-        SidechainMetadata::new(Default::default(), 0.into(), TreeNodeHash(vec![0u8; 32]))
+    pub fn read(&self, unit_of_work: &mut ChainDbUnitOfWork) -> SidechainMetadata {
+        let x = SidechainMetadata::new(Default::default(), 0.into(), TreeNodeHash(vec![0u8; 32]));
+        unit_of_work.register_clean(UnitOfWorkTracker::SidechainMetadata);
+        x
     }
 }
+
+pub struct HeadersTable {}
 
 pub struct StateDb {
     unit_of_work: Option<StateDbUnitOfWork>,
@@ -83,7 +119,8 @@ pub struct StateDb {
 
 impl StateDb {
     pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
-        unimplemented!()
+        self.unit_of_work = Some(StateDbUnitOfWork { child: None });
+        self.unit_of_work.as_mut().unwrap()
         // let mut unit_of_work = self.current_unit_of_work_mut();
         // if unit_of_work.is_none() {
         //     self.unit_of_work = Some(StateDbUnitOfWork {});
@@ -106,15 +143,16 @@ impl StateDb {
 }
 
 pub struct StateDbUnitOfWork {
-    child: Option<Arc<StateDbUnitOfWork>>,
+    child: Option<Arc<RwLock<StateDbUnitOfWork>>>,
 }
 
 impl StateDbUnitOfWork {
     pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
-        unimplemented!()
+        // TODO: better implementation
+        self
     }
 
     pub fn commit(&mut self) -> Result<(), StorageError> {
-        unimplemented!()
+        Ok(())
     }
 }

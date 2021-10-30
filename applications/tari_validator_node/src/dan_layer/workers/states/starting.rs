@@ -22,8 +22,15 @@
 
 use crate::{
     dan_layer::{
-        models::AssetDefinition,
-        services::{infrastructure_services::NodeAddressable, BaseNodeClient, CommitteeManager},
+        models::{AssetDefinition, Payload, QuorumCertificate, TariDanPayload},
+        services::{
+            infrastructure_services::NodeAddressable,
+            BaseNodeClient,
+            CommitteeManager,
+            PayloadProcessor,
+            PayloadProvider,
+        },
+        storage::{ChainStorageService, DbFactory},
         workers::states::ConsensusWorkerStateEvent,
     },
     digital_assets_error::DigitalAssetError,
@@ -46,11 +53,23 @@ where TBaseNodeClient: BaseNodeClient
         }
     }
 
-    pub async fn next_event<TAddr: NodeAddressable, TCommitteeManager: CommitteeManager<TAddr>>(
+    pub async fn next_event<
+        TAddr: NodeAddressable,
+        TCommitteeManager: CommitteeManager<TAddr>,
+        TPayload: Payload,
+        TPayloadProvider: PayloadProvider<TPayload>,
+        TPayloadProcessor: PayloadProcessor<TPayload>,
+        TDbFactory: DbFactory,
+        TChainStorageService: ChainStorageService<TPayload>,
+    >(
         &self,
         base_node_client: &mut TBaseNodeClient,
         asset_definition: &AssetDefinition,
         committee_manager: &mut TCommitteeManager,
+        db_factory: &TDbFactory,
+        payload_provider: &TPayloadProvider,
+        payload_processor: &TPayloadProcessor,
+        chain_storage_service: &TChainStorageService,
         node_id: &TAddr,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         info!(
@@ -77,6 +96,19 @@ where TBaseNodeClient: BaseNodeClient
 
         if !committee_manager.current_committee()?.contains(node_id) {
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
+        }
+
+        // read and create the genesis block
+        let chain_db = db_factory.create();
+        if chain_db.is_empty() {
+            let mut tx = chain_db.new_unit_of_work();
+            // let metadata = chain_db.metadata.read(&mut tx);
+            let payload = payload_provider.create_genesis_payload();
+
+            payload_processor.process_payload(&payload, &mut tx).await?;
+            let genesis_qc = QuorumCertificate::genesis(payload);
+            let mut tx = chain_storage_service.save_qc(&genesis_qc, tx).await?;
+            tx.commit()?;
         }
 
         Ok(ConsensusWorkerStateEvent::Initialized)

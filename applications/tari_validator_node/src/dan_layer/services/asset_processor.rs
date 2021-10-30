@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
-        storage::{AssetStore, StateDb, StateDbUnitOfWork},
+        storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },
@@ -36,9 +36,9 @@ pub trait AssetProcessor {
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
     fn execute_instruction(
-        &mut self,
+        &self,
         instruction: &Instruction,
-        state_db: &mut StateDbUnitOfWork,
+        db: &mut ChainDbUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 }
 
@@ -50,9 +50,9 @@ pub struct ConcreteAssetProcessor<TInstructionLog> {
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
     fn execute_instruction(
-        &mut self,
+        &self,
         instruction: &Instruction,
-        state_db: &mut StateDbUnitOfWork,
+        db: &mut ChainDbUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         self.execute(
             instruction.template_id(),
@@ -62,7 +62,7 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
             //     owner_token_id: instruction.from_owner().to_owned(),
             // },
             instruction.hash().into(),
-            state_db,
+            db,
         )
     }
 }
@@ -83,12 +83,12 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
         args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
         hash: Vec<u8>,
-        state_db: &mut StateDbUnitOfWork,
+        unit_of_work: &mut ChainDbUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         let instruction = self.template_factory.create_command(template_id, method, args)?;
-        let unit_of_work = state_db.new_unit_of_work();
-        let result = instruction.try_execute(unit_of_work)?;
-        unit_of_work.commit()?;
+        // let unit_of_work = state_db.new_unit_of_work();
+        let result = instruction.try_execute(&mut unit_of_work)?;
+        // unit_of_work.commit()?;
         self.instruction_log.store(hash, result);
         Ok(())
     }

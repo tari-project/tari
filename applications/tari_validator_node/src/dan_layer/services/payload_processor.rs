@@ -24,15 +24,19 @@ use crate::{
     dan_layer::{
         models::{InstructionSet, Payload, TariDanPayload},
         services::{AssetProcessor, MempoolService},
-        storage::{ChainDb, DbFactory},
+        storage::{ChainDb, ChainDbUnitOfWork, DbFactory},
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
 
 #[async_trait]
-pub trait PayloadProcessor<TPayload: Payload, TDbFactory: DbFactory> {
-    async fn process_payload(&mut self, payload: &TPayload, db_factory: &TDbFactory) -> Result<(), DigitalAssetError>;
+pub trait PayloadProcessor<TPayload: Payload> {
+    async fn process_payload(
+        &self,
+        payload: &TPayload,
+        unit_of_work: &mut ChainDbUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
 }
 
 pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
@@ -56,19 +60,15 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 }
 
 #[async_trait]
-impl<
-        TAssetProcessor: AssetProcessor + Send,
-        TMempoolService: MempoolService + Send,
-        TDbFactory: DbFactory + Send + Sync,
-    > PayloadProcessor<TariDanPayload, TDbFactory> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
+impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
+    PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
     async fn process_payload(
-        &mut self,
+        &self,
         payload: &TariDanPayload,
-        db_factory: &TDbFactory,
+        unit_of_work: &mut ChainDbUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        let mut db = db_factory.create_state_db();
-        let mut unit_of_work = db.new_unit_of_work();
+        // let mut unit_of_work = db.new_unit_of_work();
         for instruction in payload.instructions() {
             dbg!("Executing instruction");
             dbg!(&instruction);
@@ -77,10 +77,10 @@ impl<
                 .execute_instruction(instruction, &mut unit_of_work)?;
         }
 
-        self.mempool_service.remove_instructions(payload.instructions()).await?;
+        // self.mempool_service.remove_instructions(payload.instructions()).await?;
 
         // TODO: Remove this....Unit of work should actually be committed only at COMMIT stage
-        unit_of_work.commit()?;
+        // unit_of_work.commit()?;
 
         Ok(())
     }

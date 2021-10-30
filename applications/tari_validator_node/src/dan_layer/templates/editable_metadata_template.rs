@@ -23,7 +23,7 @@
 use crate::{
     dan_layer::{
         models::{InstructionCaller, TokenId},
-        storage::{AssetStore, StateDbUnitOfWork},
+        storage::{AssetStore, ChainDbUnitOfWork, StateDbUnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
     },
     digital_assets_error::DigitalAssetError,
@@ -74,7 +74,7 @@ impl UpdateMetadataCommand {
 }
 
 impl TemplateCommand for UpdateMetadataCommand {
-    fn try_execute(&self, state_db: &mut StateDbUnitOfWork) -> Result<ExecutionResult, DigitalAssetError> {
+    fn try_execute(&self, state_db: &mut ChainDbUnitOfWork) -> Result<ExecutionResult, DigitalAssetError> {
         // data_store.replace_metadata(&self.token_id, &self.metadata)?;
         unimplemented!()
         // Ok(ExecutionResult::Ok)

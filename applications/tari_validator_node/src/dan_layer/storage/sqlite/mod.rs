@@ -21,44 +21,29 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::{
-    models::{Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainDbUnitOfWork, DbFactory, LmdbDbFactory, StorageError},
+    models::{QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{ChainDbUnitOfWork, ChainStorageService, StorageError},
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
-// TODO: perhaps rename to ChainBusinessLogic
-// One per asset, per network
+pub struct SqliteStorageService {}
+
 #[async_trait]
-pub trait ChainStorageService<TPayload: Payload> {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
-    async fn save_qc(&self, node: &QuorumCertificate<TPayload>, db: &mut ChainDbUnitOfWork)
-        -> Result<(), StorageError>;
+impl ChainStorageService<TariDanPayload> for SqliteStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        todo!()
+    }
+
+    async fn save_qc(
+        &self,
+        qc: &QuorumCertificate<TariDanPayload>,
+        db: &mut ChainDbUnitOfWork,
+    ) -> Result<(), StorageError> {
+        let node = qc.node();
+        for instruction in node.payload().instructions() {
+            db.add_instruction(node.hash(), instruction);
+        }
+        db.add_node(node.hash().clone(), node.parent().clone());
+        db.add_qc(qc);
+    }
 }
-// #[derive(Clone)]
-// pub struct ChainStorageServiceHandle {
-//     service: Arc<RwLock<ChainStorageService>>,
-// }
-//
-// impl ChainStorageServiceHandle {
-//     pub fn new() -> Self {
-//         todo!()
-//         // Self {
-//
-//         // TODO: fix this ordering
-//         // service: Arc::new(RwLock::new(LmdbChainStorageService {})),
-//         // }
-//     }
-// }
-//
-// #[async_trait]
-// impl<TPayload: Payload> ChainStorageService<TPayload> for ChainStorageServiceHandle {
-//     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-//         self.service.read().await.get_metadata().await
-//     }
-//
-//     async fn save_qc(&self, node: &QuorumCertificate<TPayload>, db: ChainDbUnitOfWork) -> Result<(), StorageError> {
-//         self.service.write().await.save_qc(node, db)
-//     }
-// }

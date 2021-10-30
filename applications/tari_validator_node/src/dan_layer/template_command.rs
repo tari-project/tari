@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    dan_layer::storage::{AssetStore, StateDbUnitOfWork},
+    dan_layer::storage::{AssetStore, ChainDbUnitOfWork, StateDbUnitOfWork},
     digital_assets_error::DigitalAssetError,
 };
 
 pub trait TemplateCommand {
-    fn try_execute(&self, state_db: &mut StateDbUnitOfWork) -> Result<ExecutionResult, DigitalAssetError>;
+    fn try_execute(&self, state_db: &mut ChainDbUnitOfWork) -> Result<ExecutionResult, DigitalAssetError>;
 }
 
 pub enum ExecutionResult {

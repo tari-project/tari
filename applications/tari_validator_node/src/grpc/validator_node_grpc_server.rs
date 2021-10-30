@@ -102,7 +102,8 @@ where
     ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
         dbg!(&request);
         let db = self.db_factory.create();
-        let metadata = db.metadata.read();
+        let mut tx = db.new_unit_of_work();
+        let metadata = db.metadata.read(&mut tx);
         // .map_err(|e| Status::internal(format!("Could not read metadata from storage:{}", e)))?;
         Ok(Response::new(rpc::GetMetadataResponse {
             sidechains: vec![metadata.into()],

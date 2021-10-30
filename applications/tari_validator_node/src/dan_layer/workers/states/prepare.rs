@@ -65,7 +65,7 @@ pub struct Prepare<
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
     TDbFactory: DbFactory,
 {
     node_id: TAddr,
@@ -108,7 +108,7 @@ where
     TSigningService: SigningService<TAddr>,
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload, TDbFactory>,
+    TPayloadProcessor: PayloadProcessor<TPayload>,
     TDbFactory: DbFactory + Clone,
 {
     pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>, db_factory: TDbFactory) -> Self {
@@ -259,9 +259,14 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                payload_processor
-                    .process_payload(justify.node().payload(), &self.db_factory)
+                let db = self.db_factory.create();
+                let mut unit_of_work = db.new_unit_of_work();
+
+                let res = payload_processor
+                    .process_payload(justify.node().payload(), &mut unit_of_work)
                     .await?;
+
+                // TODO: Check result equals qc result
 
                 self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, signing_service)
                     .await?;
