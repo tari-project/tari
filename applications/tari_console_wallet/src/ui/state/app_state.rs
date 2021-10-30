@@ -78,7 +78,6 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
-use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -91,7 +90,6 @@ pub struct AppState {
     node_config: GlobalConfig,
     config: AppStateConfig,
     wallet_connectivity: WalletConnectivityHandle,
-    output_manager_service: OutputManagerHandle,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
 
@@ -118,7 +116,6 @@ impl AppState {
             node_config: node_config.clone(),
             config: AppStateConfig::default(),
             wallet_connectivity,
-            output_manager_service: output_manager_service.clone(),
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
                 Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
