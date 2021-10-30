@@ -1,0 +1,146 @@
+# A customised logfile configuration for running the Tari system in docker
+
+#  timestamp [target] LEVEL message
+refresh_rate: 30 seconds
+appenders:
+  # An appender named "stdout" that writes to stdout
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
+
+  # An appender named "network" that writes to a file with a custom pattern encoder
+  network:
+    kind: rolling_file
+    path: "log/network.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/network.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  # An appender named "core" that writes to a file with a custom pattern encoder
+  core:
+    kind: rolling_file
+    path: "log/core.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/core.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  # An appender named "other" that writes to a file with a custom pattern encoder
+  other:
+    kind: rolling_file
+    path: "log/other.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/other.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+# Set the default logging level to "info"
+root:
+  level: info
+  appenders:
+    - core
+    - stdout
+
+loggers:
+  # All events that get logged to core. Many of these are in separate log folders corresponding to their docker containers
+  tari::application:
+    level: debug
+    appenders:
+      - core
+    additive: false
+  c:
+    level: debug
+    appenders:
+      - core
+    additive: false
+  tari:
+    level: debug
+    appenders:
+      - core
+    additive: false
+  wallet:
+    level: debug
+    appenders:
+      - core
+    additive: false
+  tari_mining_node:
+    level: debug
+    appenders:
+      - core
+    additive: false
+  tari_mm_proxy:
+    level: info
+    appenders:
+      - core
+    additive: false
+
+
+  # Comms messages get logged to the 'network' log
+  comms:
+    level: info
+    appenders:
+      - network
+    additive: false
+  p2p:
+    level: info
+    appenders:
+      - network
+    additive: false
+  yamux:
+    level: info
+    appenders:
+      - network
+    additive: false
+  mio:
+    level: error
+    appenders:
+      - network
+    additive: false
+
+  # Miscellaneous events. Log these in 'other'
+  rustyline:
+    level: error
+    appenders:
+      - other
+    additive: false
+  tokio_util:
+    level: error
+    appenders:
+      - other
+    additive: false
+  pgp:
+    level: warn
+    appenders:
+      - other
+    additive: false
+  stress_test:
+    level: info
+    appenders:
+      - other
+    additive: false

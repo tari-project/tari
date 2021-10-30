@@ -146,7 +146,6 @@ impl GlobalConfig {
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
-
         let network = one_of::<Network>(&cfg, &[
             &format!("{}.network", application.as_config_str()),
             "common.network",
