@@ -432,10 +432,15 @@ After(async function (testCase) {
 
 async function stopAndHandleLogs(objects, testCase, context) {
   for (const key in objects) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${objects[key].baseDir}`, context);
+    try {
+      if (testCase.result.status !== "passed") {
+        await attachLogs(`${objects[key].baseDir}`, context);
+      }
+      await objects[key].stop();
+    } catch (e) {
+      console.log(e);
+      // Continue with others
     }
-    await objects[key].stop();
   }
 }
 
