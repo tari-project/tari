@@ -237,6 +237,14 @@ impl OutputFeatures {
     pub fn unique_asset_id(&self) -> Option<&[u8]> {
         self.unique_id.as_deref()
     }
+
+    pub fn is_non_fungible_mint(&self) -> bool {
+        self.flags.contains(OutputFlags::MINT_NON_FUNGIBLE)
+    }
+
+    pub fn is_non_fungible_burn(&self) -> bool {
+        self.flags.contains(OutputFlags::BURN_NON_FUNGIBLE)
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {
