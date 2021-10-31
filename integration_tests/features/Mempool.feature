@@ -1,7 +1,7 @@
 @mempool @base-node
 Feature: Mempool
 
-  @critical @flaky
+  @critical
   Scenario: Transactions are propagated through a network
     #
     # The randomness of the TX1 propagation can result in this test not passing.
@@ -12,19 +12,21 @@ Feature: Mempool
     And I have 8 base nodes connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
+    Then all nodes are at height 3
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
-  @critical @flaky
+  @critical
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     And I have a base node SENDER connected to all seed nodes
     And I have 2 base nodes connected to all seed nodes
     When I mine a block on SENDER with coinbase CB1
     When I mine 2 blocks on SENDER
+    Then all nodes are at height 3
     When I create a transaction TX1 spending CB1 to UTX1
     When I submit transaction TX1 to SENDER
     Then SENDER has TX1 in MEMPOOL state
@@ -32,6 +34,7 @@ Feature: Mempool
     Given I have a base node NODE1 connected to all seed nodes
     Then NODE1 has TX1 in MEMPOOL state
     When I mine 1 blocks on SENDER
+    Then all nodes are at height 4
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
@@ -96,24 +99,32 @@ Feature: Mempool
     Then SENDER has TX1 in NOT_STORED state
     Then SENDER has TX2 in MINED state
 
-  @critical @flaky
+  @critical
   Scenario: Mempool clearing out invalid transactions after a reorg
     Given I have a seed node SEED_A
     And I have a base node NODE_A connected to seed SEED_A
+    And I have wallet WALLET_A connected to base node NODE_A
+    And I have mining node MINING_A connected to base node NODE_A and wallet WALLET_A
     When I mine a block on NODE_A with coinbase CB_A
-    When I mine 3 blocks on NODE_A
+    And mining node MINING_A mines 3 blocks with min difficulty 1 and max difficulty 20
+    Then node SEED_A is at height 4
     Given I have a seed node SEED_B
     And I have a base node NODE_B connected to seed SEED_B
+    And I have wallet WALLET_B connected to base node NODE_B
+    And I have mining node MINING_B connected to base node NODE_B and wallet WALLET_B
     When I mine a block on NODE_B with coinbase CB_B
-    When I mine 10 blocks on NODE_B
+    And mining node MINING_B mines 10 blocks with min difficulty 100 and max difficulty 9999999999
+    Then node SEED_B is at height 11
     When I create a custom fee transaction TXA spending CB_A to UTX1 with fee 16
     When I create a custom fee transaction TXB spending CB_B to UTX1 with fee 16
     When I submit transaction TXA to NODE_A
     When I submit transaction TXB to NODE_B
     Then NODE_A has TXA in MEMPOOL state
     Then NODE_B has TXB in MEMPOOL state
-    When I mine 1 blocks on NODE_A
-    When I mine 1 blocks on NODE_B
+    And mining node MINING_A mines 1 blocks with min difficulty 1 and max difficulty 20
+    And mining node MINING_B mines 1 blocks with min difficulty 100 and max difficulty 9999999999
+    Then node SEED_A is at height 5
+    Then node SEED_B is at height 12
     And I connect node NODE_A to node NODE_B
     Then all nodes are at height 12
     Then NODE_A has TXA in NOT_STORED state

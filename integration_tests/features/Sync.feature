@@ -67,25 +67,30 @@ Feature: Block Sync
     When I mine 15 blocks on PNODE2
     Then all nodes are at height 23
 
-  @long-running @flaky
+  @long-running
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
-    And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
-    When I mine 40 blocks on NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 6
+    When mining node MINING1 mines 40 blocks with min difficulty 51 and max difficulty 9999999999
     Then all nodes are at height 40
     When I stop node NODE1
-    Given I have a base node NODE2 connected to node PNODE1
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
-    When I mine 5 blocks on NODE2
-    Then node NODE2 is at height 5
+    Given I have a base node NODE2
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
+    When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 50
+    And I connect node NODE2 to node PNODE1
+    And I connect node NODE2 to node PNODE2
     Then node PNODE2 is at height 40
+    Then node NODE2 is at height 5
     When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
     And I connect node NODE2 to node NODE1
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
     When I mine 10 blocks on NODE1
-    Then all transactions must have succeeded
     Then all nodes are at height 50
 
   Scenario Outline: Syncing node while also mining before tip sync
@@ -96,11 +101,11 @@ Feature: Block Sync
     And I have a base node SYNCER connected to all seed nodes
     And I have mine-before-tip mining node MINER2 connected to base node SYNCER and wallet WALLET2
     And I stop node SYNCER
-    When mining node MINER mines <X1> blocks with min difficulty 1 and max difficulty 9999999999
+    When mining node MINER mines <X1> blocks with min difficulty 21 and max difficulty 9999999999
     Then node SEED is at height <X1>
     When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
-    And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
+    And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 20
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:

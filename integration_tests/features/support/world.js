@@ -341,11 +341,13 @@ class CustomWorld {
   async stopNode(name) {
     const node = this.seeds[name] || this.nodes[name];
     await node.stop();
+    console.log("\n", name, "stopped\n")
   }
 
   async startNode(name, args) {
     const node = this.seeds[name] || this.nodes[name];
     await node.start(args);
+    console.log("\n", name, "started\n")
   }
 
   addTransaction(pubKey, txId) {

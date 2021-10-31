@@ -76,7 +76,7 @@ Feature: Wallet CLI
         And I have wallet RECEIVER connected to base node BASE
         And I have mining node MINE connected to base node BASE and wallet SENDER
         And mining node MINE mines 15 blocks
-        Then wallets SENDER should have 12 spendable coinbase outputs
+        Then wallets SENDER should have exactly 12 spendable coinbase outputs
         # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
         # TODO: base node connection.
         And I wait 30 seconds
