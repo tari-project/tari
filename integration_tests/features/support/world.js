@@ -256,6 +256,21 @@ class CustomWorld {
     return miner;
   }
 
+  async createMiningNode(name, node, wallet) {
+    const baseNode = this.getNode(node);
+    const walletNode = await this.getOrCreateWallet(wallet);
+    const miningNode = new MiningNodeProcess(
+      name,
+      baseNode.getGrpcAddress(),
+      this.getClient(node),
+      walletNode.getGrpcAddress(),
+      this.logFilePathMiningNode,
+      true
+    );
+    this.addMiningNode(name, miningNode);
+    return miningNode;
+  }
+
   getWallet(name) {
     const wallet = this.wallets[name] || this.walletsFFI[name];
     if (!wallet) {
@@ -448,7 +463,6 @@ function attachLogs(path, context) {
     archive.pipe(zipFile);
 
     glob(path + "/**/*.log", {}, function (err, files) {
-      console.log(files);
       for (let i = 0; i < files.length; i++) {
         // Append the file name at the bottom
         fs.appendFileSync(files[i], `>>>> End of ${files[i]}`);

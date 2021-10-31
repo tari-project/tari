@@ -383,11 +383,17 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
     let key = "common.dns_seeds";
-    let dns_seeds = optional(cfg.get_array(key))?
-        .unwrap_or_default()
-        .into_iter()
-        .map(|v| v.into_str().unwrap())
-        .collect::<Vec<_>>();
+    let dns_seeds = match cfg.get_array(key) {
+        Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => optional(cfg.get_str(key))?
+            .map(|s| {
+                s.split(',')
+                    .map(|v| v.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");

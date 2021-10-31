@@ -250,12 +250,18 @@ Given(
     const nodeA = this.getNode(nodeNameA);
     const nodeB = this.getNode(nodeNameB);
     nodeA.setPeerSeeds([nodeB.peerAddress()]);
+    console.log("Stopping node");
     await this.stopNode(nodeNameA);
+    console.log("Starting node");
     await this.startNode(nodeNameA);
     await waitFor(
       async () => {
-        let node_a_result = (await nodeA.get_node_state()) === "LISTENING";
-        let node_b_result = (await nodeB.get_node_state()) === "LISTENING";
+        let nodeAState = await nodeA.get_node_state();
+        console.log(`${nodeNameA} state: ${nodeAState}`);
+        let nodeBState = await nodeB.get_node_state();
+        console.log(`${nodeNameB} state: ${nodeBState}`);
+        let node_a_result = nodeAState === "LISTENING";
+        let node_b_result = nodeAState === "LISTENING";
         return node_a_result && node_b_result;
       },
       true,
@@ -682,17 +688,7 @@ Given(
 Given(
   /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
   async function (miner, node, wallet) {
-    const baseNode = this.getNode(node);
-    const walletNode = await this.getOrCreateWallet(wallet);
-    const miningNode = new MiningNodeProcess(
-      miner,
-      baseNode.getGrpcAddress(),
-      this.getClient(node),
-      walletNode.getGrpcAddress(),
-      this.logFilePathMiningNode,
-      true
-    );
-    this.addMiningNode(miner, miningNode);
+    await this.createMiningNode(miner, node, wallet);
   }
 );
 
@@ -1317,12 +1313,30 @@ When(
 );
 
 When(
+  /I mine (.*) blocks on (.*) with difficulty (.*)/,
+  { timeout: 20 * 1000 },
+  async function (numBlocks, node, difficulty) {
+    const miner = await this.createMiningNode("temp", node, "temp");
+    await miner.init(
+      parseInt(numBlocks),
+      null,
+      parseInt(difficulty),
+      parseInt(difficulty),
+      false,
+      null
+    );
+    await miner.startNew();
+  }
+);
+
+When(
   /mining node (.*) mines (\d+) blocks$/,
   { timeout: 20 * 1000 },
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
-    // Don't wait for sync before mining
-    await miningNode.init(numBlocks, null, 1, 100000, false, null);
+    // Don't wait for sync before mining. Also use a max difficulty of 1, since most tests assume
+    // that 1 block = 1 difficulty
+    await miningNode.init(numBlocks, null, 1, 1, false, null);
     await miningNode.startNew();
   }
 );
@@ -1335,7 +1349,7 @@ When(
 );
 
 When(
-  /I mine (\d+) blocks on (.*)/,
+  /I mine (\d+) blocks on (\S*)$/,
   { timeout: 40 * 1000 },
   async function (numBlocks, name) {
     const tipHeight = await this.getClient(name).getTipHeight();
