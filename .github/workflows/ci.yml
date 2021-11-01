@@ -8,7 +8,8 @@ on:
     types: [opened, synchronize, reopened]
 
 name: CI
-
+env:
+  toolchain: nightly-2021-08-18
 jobs:
   clippy:
     name: clippy
@@ -19,31 +20,41 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
-      - name: cargo clippy
-        uses: actions-rs/cargo@v1
+      - name: Clippy check
+        uses: actions-rs/clippy-check@v1
         with:
-          command: clippy
-          args: -- -D warnings -W clippy::cognitive_complexity
-      - name: cargo clippy --all-targets
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets -- -D warnings
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
   test:
     name: test
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2
-
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: ubuntu dependencies
         if: startsWith(matrix.os,'ubuntu')
         run: |
@@ -64,7 +75,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
 
