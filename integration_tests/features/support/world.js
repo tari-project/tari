@@ -447,10 +447,15 @@ After(async function (testCase) {
 
 async function stopAndHandleLogs(objects, testCase, context) {
   for (const key in objects) {
-    if (testCase.result.status === "failed") {
-      await attachLogs(`${objects[key].baseDir}`, context);
+    try {
+      if (testCase.result.status !== "passed") {
+        await attachLogs(`${objects[key].baseDir}`, context);
+      }
+      await objects[key].stop();
+    } catch (e) {
+      console.log(e);
+      // Continue with others
     }
-    await objects[key].stop();
   }
 }
 
@@ -466,7 +471,9 @@ function attachLogs(path, context) {
       for (let i = 0; i < files.length; i++) {
         // Append the file name at the bottom
         fs.appendFileSync(files[i], `>>>> End of ${files[i]}`);
-        archive.append(fs.createReadStream(files[i]), { name: files[i] });
+        archive.append(fs.createReadStream(files[i]), {
+          name: files[i].replace("./temp", ""),
+        });
       }
       archive.finalize().then(function () {
         context.attach(
