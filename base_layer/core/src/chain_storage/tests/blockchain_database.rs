@@ -569,7 +569,7 @@ mod add_block {
         let features = OutputFeatures::for_minting(asset_pk, Default::default(), unique_id, None);
         let (txns, _) = schema_to_transaction(&[txn_schema!(
             from: vec![outputs[0].clone()],
-            to: vec![1 * T],
+            to: vec![T],
             features: features
         )]);
 
