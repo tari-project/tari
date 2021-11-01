@@ -97,7 +97,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.hooks.add_on_rewind_hook(hook);
     }
 
-    pub async fn synchronize(&mut self) -> Result<PeerConnection, BlockHeaderSyncError> {
+    pub async fn synchronize(&mut self) -> Result<SyncPeer, BlockHeaderSyncError> {
         debug!(target: LOG_TARGET, "Starting header sync.",);
         self.hooks.call_on_starting_hook();
 
@@ -115,7 +115,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Attempting to synchronize headers with `{}`", node_id
             );
             match self.attempt_sync(&sync_peer, peer_conn.clone()).await {
-                Ok(()) => return Ok(peer_conn),
+                Ok(()) => return Ok(sync_peer),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     warn!(target: LOG_TARGET, "{}", err);

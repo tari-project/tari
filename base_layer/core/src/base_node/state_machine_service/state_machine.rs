@@ -54,7 +54,7 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
-    pub block_sync_validation_concurrency: usize,
+    pub sync_validation_concurrency: usize,
 }
 
 impl Default for BaseNodeStateMachineConfig {
@@ -68,7 +68,7 @@ impl Default for BaseNodeStateMachineConfig {
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,
-            block_sync_validation_concurrency: 8,
+            sync_validation_concurrency: 8,
         }
     }
 }
@@ -138,11 +138,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (HeaderSync(_), HeadersSynchronized(conn)) => {
+            (HeaderSync(_), HeadersSynchronized(sync_peer)) => {
                 if self.config.pruning_horizon > 0 {
-                    HorizonStateSync(states::HorizonStateSync::with_peer(conn))
+                    HorizonStateSync(states::HorizonStateSync::new(sync_peer))
                 } else {
-                    BlockSync(states::BlockSync::with_peer(conn))
+                    BlockSync(states::BlockSync::new(sync_peer))
                 }
             },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),

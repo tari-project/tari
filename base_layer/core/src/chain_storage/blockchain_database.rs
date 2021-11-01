@@ -31,6 +31,7 @@ use crate::{
         DeletedBitmap,
         HistoricalBlock,
         NewBlockTemplate,
+        UpdateBlockAccumulatedData,
     },
     chain_storage::{
         consts::{
@@ -208,8 +209,30 @@ where B: BlockchainBackend
         };
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
-            let genesis_block = blockchain_db.consensus_manager.get_genesis_block();
-            blockchain_db.insert_block(Arc::new(genesis_block))?;
+            let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
+            blockchain_db.insert_block(genesis_block.clone())?;
+            let mut txn = DbTransaction::new();
+            let utxo_sum = genesis_block
+                .block()
+                .body
+                .outputs()
+                .iter()
+                .map(|k| &k.commitment)
+                .sum::<Commitment>();
+            let kernel_sum = genesis_block
+                .block()
+                .body
+                .kernels()
+                .iter()
+                .map(|k| &k.excess)
+                .sum::<Commitment>();
+            txn.update_block_accumulated_data(genesis_block.hash().clone(), UpdateBlockAccumulatedData {
+                utxo_sum: Some(utxo_sum.clone()),
+                kernel_sum: Some(kernel_sum.clone()),
+                ..Default::default()
+            });
+            txn.set_pruned_height(0, kernel_sum, utxo_sum);
+            blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
         if cleanup_orphans_at_startup {
@@ -573,7 +596,10 @@ where B: BlockchainBackend
 
     /// Returns the sum of all kernels
     pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
-        Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum)
+        Ok(self
+            .fetch_block_accumulated_data(at_hash.clone())?
+            .cumulative_kernel_sum()
+            .clone())
     }
 
     /// Returns `n` hashes from height _h - offset_ where _h_ is the tip header height back to `h - n - offset`.
@@ -869,6 +895,12 @@ where B: BlockchainBackend
         store_pruning_horizon(&mut *db, pruning_horizon)
     }
 
+    /// Prunes the blockchain up to and including the given height
+    pub fn prune_to_height(&self, height: u64) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        prune_to_height(&mut *db, height)
+    }
+
     /// Fetch a block from the blockchain database.
     ///
     /// # Returns
@@ -972,9 +1004,9 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
-    pub fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
+    pub fn fetch_horizon_data(&self) -> Result<HorizonData, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_horizon_data()
+        Ok(db.fetch_horizon_data()?.unwrap_or_default())
     }
 
     pub fn fetch_complete_deleted_bitmap_at(
@@ -1071,7 +1103,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let BlockAccumulatedData {
         kernels,
         outputs,
-        range_proofs,
+        witness: range_proofs,
         ..
     } = db
         .fetch_block_accumulated_data(&header.prev_hash)?
@@ -2034,6 +2066,7 @@ fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: us
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
 }
+
 fn prune_database_if_needed<T: BlockchainBackend>(
     db: &mut T,
     pruning_horizon: u64,
@@ -2055,34 +2088,60 @@ fn prune_database_if_needed<T: BlockchainBackend>(
         pruning_interval,
     );
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
-        let last_pruned = metadata.pruned_height();
-        info!(
-            target: LOG_TARGET,
-            "Pruning blockchain database at height {} (was={})", abs_pruning_horizon, last_pruned,
-        );
-        let mut last_block = db.fetch_block_accumulated_data_by_height(last_pruned).or_not_found(
-            "BlockAccumulatedData",
-            "height",
-            last_pruned.to_string(),
-        )?;
-        let mut txn = DbTransaction::new();
-        for block_to_prune in (last_pruned + 1)..abs_pruning_horizon {
-            let curr_block = db.fetch_block_accumulated_data_by_height(block_to_prune).or_not_found(
-                "BlockAccumulatedData",
-                "height",
-                block_to_prune.to_string(),
-            )?;
-            // Note, this could actually be done in one step instead of each block, since deleted is
-            // accumulated
-            let inputs_to_prune = curr_block.deleted.bitmap().clone() - last_block.deleted.bitmap();
-            last_block = curr_block;
-
-            txn.prune_outputs_and_update_horizon(inputs_to_prune.to_vec(), block_to_prune);
-        }
-
-        db.write(txn)?;
+        prune_to_height(db, abs_pruning_horizon - 1)?;
     }
 
+    Ok(())
+}
+
+fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let last_pruned = metadata.pruned_height();
+    if target_horizon_height < last_pruned {
+        return Err(ChainStorageError::InvalidArguments {
+            func: "prune_to_block",
+            arg: "target_horizon_height",
+            message: format!(
+                "Target pruning horizon {} is less than current pruning horizon {}",
+                target_horizon_height, last_pruned
+            ),
+        });
+    }
+
+    info!(
+        target: LOG_TARGET,
+        "Pruning blockchain database at height {} (was={})", target_horizon_height, last_pruned,
+    );
+    let mut last_block = db.fetch_block_accumulated_data_by_height(last_pruned).or_not_found(
+        "BlockAccumulatedData",
+        "height",
+        last_pruned.to_string(),
+    )?;
+    let mut txn = DbTransaction::new();
+    for block_to_prune in (last_pruned + 1)..=target_horizon_height {
+        let header = db.fetch_chain_header_by_height(block_to_prune)?;
+        let curr_block = db.fetch_block_accumulated_data_by_height(block_to_prune).or_not_found(
+            "BlockAccumulatedData",
+            "height",
+            block_to_prune.to_string(),
+        )?;
+        // Note, this could actually be done in one step instead of each block, since deleted is
+        // accumulated
+        let output_mmr_positions = curr_block.deleted() - last_block.deleted();
+        last_block = curr_block;
+
+        txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
+        txn.delete_all_inputs_in_block(header.hash().clone());
+    }
+
+    txn.set_pruned_height(
+        target_horizon_height,
+        last_block.cumulative_kernel_sum().clone(),
+        last_block.cumulative_utxo_sum().clone(),
+    );
+    // TODO: prune block accumulated data
+
+    db.write(txn)?;
     Ok(())
 }
 

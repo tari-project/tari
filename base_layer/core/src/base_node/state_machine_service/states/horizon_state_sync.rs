@@ -25,38 +25,39 @@
 
 // TODO: Move the horizon synchronizer to the `sync` module
 
-use log::*;
+mod config;
+pub use self::config::HorizonSyncConfig;
 
-pub use error::HorizonSyncError;
-use horizon_state_synchronization::HorizonStateSynchronization;
-use tari_comms::PeerConnection;
-
-use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::CryptoFactories};
+mod error;
+mod horizon_state_synchronization;
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
     StateEvent,
     StateInfo,
 };
-
-pub use self::config::HorizonSyncConfig;
-
-mod config;
-
-mod error;
-
-mod horizon_state_synchronization;
+use crate::{
+    base_node::{sync::SyncPeer, BaseNodeStateMachine},
+    chain_storage::BlockchainBackend,
+    transactions::CryptoFactories,
+};
+use horizon_state_synchronization::HorizonStateSynchronization;
+use log::*;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
 #[derive(Clone, Debug)]
 pub struct HorizonStateSync {
-    sync_peer: PeerConnection,
+    sync_peer: SyncPeer,
 }
 
 impl HorizonStateSync {
-    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+    pub fn new(sync_peer: SyncPeer) -> Self {
         Self { sync_peer }
+    }
+
+    pub fn sync_peer(&self) -> &SyncPeer {
+        &self.sync_peer
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -83,12 +84,12 @@ impl HorizonStateSync {
             return StateEvent::HorizonStateSynchronized;
         }
 
-        let info = HorizonSyncInfo::new(vec![self.sync_peer.peer_node_id().clone()], HorizonSyncStatus::Starting);
+        let info = HorizonSyncInfo::new(vec![self.sync_peer.node_id().clone()], HorizonSyncStatus::Starting);
         shared.set_state_info(StateInfo::HorizonSync(info));
 
         let prover = CryptoFactories::default().range_proof;
         let mut horizon_state =
-            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), horizon_sync_height, &prover);
+            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), horizon_sync_height, prover);
 
         match horizon_state.synchronize().await {
             Ok(()) => {

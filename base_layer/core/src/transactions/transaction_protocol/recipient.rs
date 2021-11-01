@@ -263,7 +263,7 @@ mod test {
         assert!(factories
             .commitment
             .open_value(&p.spend_key, 500, &data.output.commitment));
-        assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
+        data.output.verify_range_proof(&factories.range_proof).unwrap();
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();

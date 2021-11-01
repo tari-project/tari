@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{error::ChainStorageError, MmrTree},
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    chain_storage::error::ChainStorageError,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
@@ -35,7 +35,6 @@ use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
 
 #[derive(Debug)]
 pub struct DbTransaction {
@@ -142,31 +141,26 @@ impl DbTransaction {
         self
     }
 
-    pub fn update_pruned_hash_set(
-        &mut self,
-        mmr_tree: MmrTree,
-        header_hash: HashOutput,
-        pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::UpdatePrunedHashSet {
-            mmr_tree,
-            header_hash,
-            pruned_hash_set: Box::new(pruned_hash_set),
-        });
-        self
-    }
-
-    pub fn prune_outputs_and_update_horizon(&mut self, output_mmr_positions: Vec<u32>, horizon: u64) -> &mut Self {
-        self.operations.push(WriteOperation::PruneOutputsAndUpdateHorizon {
+    pub fn prune_outputs_at_positions(&mut self, output_mmr_positions: Vec<u32>) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputsAtMmrPositions {
             output_positions: output_mmr_positions,
-            horizon,
         });
         self
     }
 
-    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+    pub fn delete_all_inputs_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
         self.operations
-            .push(WriteOperation::UpdateDeletedBlockAccumulatedDataWithDiff { header_hash, deleted });
+            .push(WriteOperation::DeleteAllInputsInBlock { block_hash });
+        self
+    }
+
+    pub fn update_block_accumulated_data(
+        &mut self,
+        header_hash: HashOutput,
+        values: UpdateBlockAccumulatedData,
+    ) -> &mut Self {
+        self.operations
+            .push(WriteOperation::UpdateBlockAccumulatedData { header_hash, values });
         self
     }
 
@@ -298,25 +292,18 @@ pub enum WriteOperation {
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
     InsertMoneroSeedHeight(Vec<u8>, u64),
-    UpdatePrunedHashSet {
-        mmr_tree: MmrTree,
+    UpdateBlockAccumulatedData {
         header_hash: HashOutput,
-        pruned_hash_set: Box<PrunedHashSet>,
-    },
-    UpdateDeletedBlockAccumulatedDataWithDiff {
-        header_hash: HashOutput,
-        deleted: Bitmap,
+        values: UpdateBlockAccumulatedData,
     },
     UpdateDeletedBitmap {
         deleted: Bitmap,
     },
-    PruneOutputsAndUpdateHorizon {
+    PruneOutputsAtMmrPositions {
         output_positions: Vec<u32>,
-        horizon: u64,
     },
-    UpdateKernelSum {
-        header_hash: HashOutput,
-        kernel_sum: Commitment,
+    DeleteAllInputsInBlock {
+        block_hash: BlockHash,
     },
     SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
     SetBestBlock {
@@ -383,14 +370,6 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
-            UpdatePrunedHashSet {
-                mmr_tree, header_hash, ..
-            } => write!(
-                f,
-                "Update pruned hash set: {} header: {}",
-                mmr_tree,
-                header_hash.to_hex()
-            ),
             InsertPrunedOutput {
                 header_hash: _,
                 header_height: _,
@@ -398,23 +377,14 @@ impl fmt::Display for WriteOperation {
                 witness_hash: _,
                 mmr_position: _,
             } => write!(f, "Insert pruned output"),
-            UpdateDeletedBlockAccumulatedDataWithDiff {
-                header_hash: _,
-                deleted: _,
-            } => write!(f, "Add deleted data for block"),
+            UpdateBlockAccumulatedData { header_hash, .. } => {
+                write!(f, "Update Block data for block {}", header_hash.to_hex())
+            },
             UpdateDeletedBitmap { deleted } => {
                 write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
             },
-            PruneOutputsAndUpdateHorizon {
-                output_positions,
-                horizon,
-            } => write!(
-                f,
-                "Prune {} outputs and set horizon to {}",
-                output_positions.len(),
-                horizon
-            ),
-            UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
+            PruneOutputsAtMmrPositions { output_positions } => write!(f, "Prune {} output(s)", output_positions.len()),
+            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash.to_hex()),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)
             },

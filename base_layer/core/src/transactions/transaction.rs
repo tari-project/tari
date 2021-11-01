@@ -263,6 +263,8 @@ pub enum TransactionError {
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
+    #[error("Range proof verification has failed")]
+    InvalidRangeProof,
     #[error("An error occurred while performing a commitment signature: {0}")]
     SigningError(#[from] CommitmentSignatureError),
     #[error("Invalid kernel in body")]
@@ -687,8 +689,12 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+        if prover.verify(&self.proof.0, &self.commitment) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidRangeProof)
+        }
     }
 
     /// Verify that the metadata signature is valid
@@ -1477,7 +1483,7 @@ mod test {
         });
         let script = unblinded_output1.script.clone();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
-        assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
+        tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
         let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
             value: (2u64.pow(32) + 1u64).into(),
@@ -1517,7 +1523,8 @@ mod test {
             )
             .unwrap(),
         );
-        assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
+        let err = tx_output3.verify_range_proof(&factories.range_proof).unwrap_err();
+        assert!(matches!(err, TransactionError::InvalidRangeProof));
     }
 
     #[test]

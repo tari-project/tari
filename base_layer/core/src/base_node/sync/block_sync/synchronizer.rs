@@ -23,7 +23,7 @@
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{hooks::Hooks, rpc},
+        sync::{hooks::Hooks, rpc, SyncPeer},
         BlockSyncConfig,
     },
     blocks::{Block, ChainBlock},
@@ -41,11 +41,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    PeerConnection,
-};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
 use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
@@ -54,7 +50,7 @@ pub struct BlockSynchronizer<B> {
     config: BlockSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
-    sync_peer: Option<PeerConnection>,
+    sync_peer: SyncPeer,
     block_validator: Arc<dyn BlockSyncBodyValidation>,
     hooks: Hooks,
 }
@@ -64,7 +60,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         config: BlockSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        sync_peer: Option<PeerConnection>,
+        sync_peer: SyncPeer,
         block_validator: Arc<dyn BlockSyncBodyValidation>,
     ) -> Self {
         Self {
@@ -89,7 +85,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
     #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
-        let peer_conn = self.get_next_sync_peer().await?;
+        let peer_conn = self.connect_to_sync_peer().await?;
         let node_id = peer_conn.peer_node_id().clone();
         info!(
             target: LOG_TARGET,
@@ -108,20 +104,9 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
     }
 
-    async fn get_next_sync_peer(&mut self) -> Result<PeerConnection, BlockSyncError> {
-        match self.sync_peer {
-            Some(ref peer) => Ok(peer.clone()),
-            None => {
-                let mut peers = self
-                    .connectivity
-                    .select_connections(ConnectivitySelection::random_nodes(1, vec![]))
-                    .await?;
-                if peers.is_empty() {
-                    return Err(BlockSyncError::NoSyncPeers);
-                }
-                Ok(peers.remove(0))
-            },
-        }
+    async fn connect_to_sync_peer(&mut self) -> Result<PeerConnection, BlockSyncError> {
+        let connection = self.connectivity.dial_peer(self.sync_peer.node_id().clone()).await?;
+        Ok(connection)
     }
 
     async fn attempt_block_sync(&mut self, mut conn: PeerConnection) -> Result<(), BlockSyncError> {

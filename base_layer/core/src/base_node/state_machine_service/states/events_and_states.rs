@@ -36,7 +36,7 @@ use crate::base_node::{
 use randomx_rs::RandomXFlag;
 use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{peer_manager::NodeId, PeerConnection};
+use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug)]
 pub enum BaseNodeState {
@@ -54,7 +54,7 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    HeadersSynchronized(PeerConnection),
+    HeadersSynchronized(SyncPeer),
     HeaderSyncFailed,
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
@@ -125,7 +125,7 @@ impl Display for StateEvent {
         match self {
             Initialized => f.write_str("Initialized"),
             BlocksSynchronized => f.write_str("Synchronised Blocks"),
-            HeadersSynchronized(conn) => write!(f, "Headers Synchronized from peer `{}`", conn.peer_node_id()),
+            HeadersSynchronized(sync_peer) => write!(f, "Headers Synchronized from peer `{}`", sync_peer),
             HeaderSyncFailed => f.write_str("Header Synchronization Failed"),
             HorizonStateSynchronized => f.write_str("Horizon State Synchronized"),
             HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failed"),

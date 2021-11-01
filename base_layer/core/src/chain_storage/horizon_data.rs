@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::Commitment;
-use tari_crypto::tari_utilities::ByteArray;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct HorizonData {
     kernel_sum: Commitment,
     utxo_sum: Commitment,
@@ -35,10 +34,7 @@ impl HorizonData {
     }
 
     pub fn zero() -> Self {
-        HorizonData {
-            kernel_sum: Commitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
-            utxo_sum: Commitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
-        }
+        Default::default()
     }
 
     pub fn kernel_sum(&self) -> &Commitment {

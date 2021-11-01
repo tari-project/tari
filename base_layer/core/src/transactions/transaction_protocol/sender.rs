@@ -385,11 +385,7 @@ impl SenderTransactionProtocol {
     ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
-                if !rec.output.verify_range_proof(prover)? {
-                    return Err(TPE::ValidationError(
-                        "Recipient output range proof failed to verify".into(),
-                    ));
-                }
+                rec.output.verify_range_proof(prover)?;
                 // Consolidate transaction info
                 info.outputs.push(rec.output.clone());
 
@@ -738,7 +734,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
+            transaction::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -1027,13 +1023,13 @@ mod test {
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info =
             SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
-            Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert_eq!(
-                e,
-                TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
-            ),
-        }
+        let err = alice
+            .add_single_recipient_info(bob_info, &factories.range_proof)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            TransactionProtocolError::TransactionBuildError(TransactionError::InvalidRangeProof)
+        ));
     }
 
     #[test]

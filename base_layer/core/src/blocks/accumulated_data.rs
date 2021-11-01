@@ -49,29 +49,32 @@ use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) outputs: PrunedHashSet,
+    pub(crate) witness: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
-    pub(crate) range_proofs: PrunedHashSet,
-    pub(crate) kernel_sum: Commitment,
+    pub(crate) cumulative_kernel_sum: Commitment,
+    pub(crate) cumulative_utxo_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
     pub fn new(
         kernels: PrunedHashSet,
         outputs: PrunedHashSet,
-        range_proofs: PrunedHashSet,
+        witness: PrunedHashSet,
         deleted: Bitmap,
-        total_kernel_sum: Commitment,
+        cumulative_kernel_sum: Commitment,
+        cumulative_utxo_sum: Commitment,
     ) -> Self {
         Self {
             kernels,
             outputs,
-            range_proofs,
+            witness,
             deleted: DeletedBitmap { deleted },
-            kernel_sum: total_kernel_sum,
+            cumulative_kernel_sum,
+            cumulative_utxo_sum,
         }
     }
 
@@ -79,12 +82,21 @@ impl BlockAccumulatedData {
         &self.deleted.deleted
     }
 
-    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.range_proofs, self.deleted.deleted)
+    pub fn set_deleted(&mut self, deleted: DeletedBitmap) -> &mut Self {
+        self.deleted = deleted;
+        self
     }
 
-    pub fn kernel_sum(&self) -> &Commitment {
-        &self.kernel_sum
+    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
+        (self.kernels, self.outputs, self.witness, self.deleted.deleted)
+    }
+
+    pub fn cumulative_kernel_sum(&self) -> &Commitment {
+        &self.cumulative_kernel_sum
+    }
+
+    pub fn cumulative_utxo_sum(&self) -> &Commitment {
+        &self.cumulative_utxo_sum
     }
 }
 
@@ -96,8 +108,9 @@ impl Default for BlockAccumulatedData {
             deleted: DeletedBitmap {
                 deleted: Bitmap::create(),
             },
-            range_proofs: Default::default(),
-            kernel_sum: Default::default(),
+            witness: Default::default(),
+            cumulative_kernel_sum: Default::default(),
+            cumulative_utxo_sum: Default::default(),
         }
     }
 }
@@ -110,9 +123,19 @@ impl Display for BlockAccumulatedData {
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
             self.kernels.len().unwrap_or(0),
-            self.range_proofs.len().unwrap_or(0)
+            self.witness.len().unwrap_or(0)
         )
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateBlockAccumulatedData {
+    pub kernel_hash_set: Option<PrunedHashSet>,
+    pub utxo_hash_set: Option<PrunedHashSet>,
+    pub witness_hash_set: Option<PrunedHashSet>,
+    pub deleted_diff: Option<DeletedBitmap>,
+    pub utxo_sum: Option<Commitment>,
+    pub kernel_sum: Option<Commitment>,
 }
 
 /// Wrapper struct to serialize and deserialize Bitmap
