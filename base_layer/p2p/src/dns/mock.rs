@@ -34,7 +34,7 @@ use trust_dns_client::{
 #[derive(Clone)]
 pub struct MockClientHandle<O: OnSend, E> {
     messages: Arc<Vec<Result<DnsResponse, E>>>,
-    on_send: O,
+    _on_send: O,
 }
 
 impl<E> MockClientHandle<DefaultOnSend, E> {
@@ -44,7 +44,7 @@ impl<E> MockClientHandle<DefaultOnSend, E> {
 
         MockClientHandle {
             messages: Arc::new(messages),
-            on_send: DefaultOnSend,
+            _on_send: DefaultOnSend,
         }
     }
 }
