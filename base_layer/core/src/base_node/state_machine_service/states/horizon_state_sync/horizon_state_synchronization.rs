@@ -29,8 +29,9 @@ use crate::{
         },
         sync::{rpc, SyncPeer},
     },
-    blocks::{BlockHeader, UpdateBlockAccumulatedData},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
+    blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree, PrunedOutput},
+    crypto::commitment::HomomorphicCommitment,
     proto::base_node::{
         sync_utxo as proto_sync_utxo,
         sync_utxos_response::UtxoOrDeleted,
@@ -617,6 +618,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         )));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
+        // TODO: Use accumulated sums
+        let (utxo_sum, kernel_sum) = self.calculate_commitment_sums(&header).await?;
 
         self.shared
             .sync_validators
@@ -624,8 +627,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .validate(
                 &*self.db().inner().db_read_access()?,
                 header.height(),
-                &self.utxo_sum,
-                &self.kernel_sum,
+                &utxo_sum,
+                &kernel_sum,
             )
             .map_err(HorizonSyncError::FinalStateValidationFailed)?;
 
@@ -647,6 +650,88 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .await?;
 
         Ok(())
+    }
+
+    /// (UTXO sum, Kernel sum)
+    async fn calculate_commitment_sums(
+        &self,
+        header: &ChainHeader,
+    ) -> Result<(Commitment, Commitment), HorizonSyncError> {
+        let mut pruned_utxo_sum = HomomorphicCommitment::default();
+        let mut pruned_kernel_sum = HomomorphicCommitment::default();
+
+        let mut prev_mmr = 0;
+        let mut prev_kernel_mmr = 0;
+        let bitmap = Arc::new(
+            self.db()
+                .fetch_complete_deleted_bitmap_at(header.hash().clone())
+                .await?
+                .into_bitmap(),
+        );
+        for h in 0..=header.height() {
+            let curr_header = self.db().fetch_chain_header(h).await?;
+
+            trace!(
+                target: LOG_TARGET,
+                "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
+                curr_header.height(),
+                curr_header.header().output_mmr_size,
+                prev_mmr,
+                curr_header.header().output_mmr_size - 1
+            );
+            let (utxos, _) = self
+                .db()
+                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header().output_mmr_size - 1, bitmap.clone())
+                .await?;
+            trace!(
+                target: LOG_TARGET,
+                "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
+                curr_header.height(),
+                curr_header.header().kernel_mmr_size,
+                prev_kernel_mmr,
+                curr_header.header().kernel_mmr_size - 1
+            );
+            let kernels = self
+                .db()
+                .fetch_kernels_by_mmr_position(prev_kernel_mmr, curr_header.header().kernel_mmr_size - 1)
+                .await?;
+
+            let mut utxo_sum = HomomorphicCommitment::default();
+            debug!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
+            debug!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
+            let mut prune_counter = 0;
+            for u in utxos {
+                match u {
+                    PrunedOutput::NotPruned { output } => {
+                        utxo_sum = &output.commitment + &utxo_sum;
+                    },
+                    _ => {
+                        prune_counter += 1;
+                    },
+                }
+            }
+            if prune_counter > 0 {
+                debug!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
+            }
+            prev_mmr = curr_header.header().output_mmr_size;
+
+            pruned_utxo_sum = &utxo_sum + &pruned_utxo_sum;
+
+            for k in kernels {
+                pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
+            }
+            prev_kernel_mmr = curr_header.header().kernel_mmr_size;
+
+            trace!(
+                target: LOG_TARGET,
+                "Height: {} Kernel sum:{:?} Pruned UTXO sum: {:?}",
+                h,
+                pruned_kernel_sum,
+                pruned_utxo_sum
+            );
+        }
+
+        Ok((pruned_utxo_sum, pruned_kernel_sum))
     }
 
     #[inline]
