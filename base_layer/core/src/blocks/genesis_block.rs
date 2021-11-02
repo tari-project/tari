@@ -39,7 +39,7 @@ use tari_crypto::{
     tari_utilities::{hash::Hashable, hex::*},
 };
 
-const LATEST_BLOCK_VERSION: u16 = 1;
+const LATEST_BLOCK_VERSION: u16 = 2;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -319,7 +319,7 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort(1);
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("28 Oct 2021 06:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
@@ -402,7 +402,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
     );
     body.sort(2);
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("28 Oct 2021 00:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 00:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {

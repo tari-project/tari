@@ -21,21 +21,26 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockchainDatabase, ChainStorageError},
-    consensus::ConsensusManager,
+    blocks::{genesis_block::get_genesis_block, Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{BlockchainDatabase, ChainStorageError, Validators},
+    consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::Difficulty,
     test_helpers::{
-        blockchain::{create_new_blockchain, TempDatabase},
+        blockchain::{create_new_blockchain, create_store_with_consensus_and_validators, TempDatabase},
         create_block,
         BlockSpec,
     },
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
     txn_schema,
+    validation::{
+        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        header_validator::HeaderValidator,
+        ValidationError,
+    },
 };
 use rand::rngs::OsRng;
 use std::sync::Arc;
@@ -81,7 +86,14 @@ fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
 ) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
-    let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
+    let tip = db.get_chain_metadata().unwrap();
+    let mut prev_block = Arc::new(
+        db.fetch_block_by_hash(tip.best_block().clone())
+            .unwrap()
+            .unwrap()
+            .try_into_block()
+            .unwrap(),
+    );
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size as u64 {
@@ -371,17 +383,6 @@ mod fetch_block_hashes_from_header_tip {
 
 mod add_block {
     use super::*;
-    use crate::{
-        blocks::genesis_block::get_genesis_block,
-        chain_storage::Validators,
-        consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder},
-        test_helpers::blockchain::create_store_with_consensus_and_validators,
-        validation::{
-            block_validators::{BodyOnlyValidator, OrphanBlockValidator},
-            header_validator::HeaderValidator,
-            ValidationError,
-        },
-    };
 
     fn setup() -> BlockchainDatabase<TempDatabase> {
         let network = Network::LocalNet;
@@ -402,7 +403,7 @@ mod add_block {
     }
 
     #[test]
-    fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {
+    fn it_rejects_duplicate_commitments_in_the_utxo_set() {
         let db = setup();
         let (blocks, outputs) = add_many_chained_blocks(5, &db);
 
@@ -460,7 +461,47 @@ mod add_block {
     }
 
     #[test]
-    fn it_enforces_a_single_mint_transaction_per_unique_id() {
+    fn it_allows_distinct_unique_ids_belonging_to_same_parent() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(2, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
+        let unique_id = vec![1; 3];
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (mut transactions, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T],
+            features: features
+        )]);
+
+        let unique_id = vec![2; 3];
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[1].clone()],
+            to: vec![2 * T],
+            features: features
+        )]);
+
+        transactions.extend(txns);
+
+        let (block, _) = create_next_block(&db, prev_block, transactions);
+        db.add_block(block).unwrap().assert_added();
+    }
+
+    #[test]
+    fn it_rejects_duplicate_mint_or_burn_transactions_per_unique_id() {
         let db = setup();
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
@@ -468,7 +509,7 @@ mod add_block {
 
         let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
         let unique_id = vec![1u8; 3];
-        let features = OutputFeatures::for_minting(asset_pk, Default::default(), unique_id, None);
+        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
         let (txns, _) = schema_to_transaction(&[txn_schema!(
             from: vec![outputs[0].clone()],
             to: vec![10 * T, 10 * T],
@@ -478,14 +519,68 @@ mod add_block {
         let (block, _) = create_next_block(&db, prev_block, txns);
         let err = db.add_block(block).unwrap_err();
 
-        // TODO:  The validator does not check the block contents - the database index prevents it
-        unpack_enum!(ChainStorageError::KeyExists { .. } = err);
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
 
-        // unpack_enum!(
-        //     ChainStorageError::ValidationError {
-        //         source: ValidationError::ContainsDuplicateUtxoUniqueID
-        //     } = err
-        // );
+        let features = OutputFeatures {
+            flags: OutputFlags::BURN_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T, 10 * T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, prev_block, txns);
+        let err = db.add_block(block).unwrap_err();
+
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
+    }
+
+    #[test]
+    fn it_rejects_duplicate_mint_or_burn_transactions_in_blockchain() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
+        let unique_id = vec![1u8; 3];
+        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
+        let (txns, outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, prev_block, txns);
+        db.add_block(block.clone()).unwrap().assert_added();
+
+        let features = OutputFeatures::for_minting(asset_pk, Default::default(), unique_id, None);
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, &block, txns);
+        let err = db.add_block(block).unwrap_err();
+
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
     }
 }
 

@@ -292,6 +292,7 @@ pub fn check_sorting_and_duplicates(block: &Block) -> Result<(), ValidationError
     }
 
     if block.version() == 1 {
+        // TODO: #testnetreset clean up
         let wrapped = body
             .kernels()
             .iter()
@@ -455,7 +456,20 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 
 /// This function checks that the outputs do not already exist in the UTxO set.
 pub fn check_not_duplicate_txos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
+    let mut unique_ids = Vec::new();
     for output in body.outputs() {
+        // Check outputs for duplicate asset ids
+        if output.features.is_non_fungible_mint() || output.features.is_non_fungible_burn() {
+            if let Some(unique_id) = output.features.unique_asset_id() {
+                let parent_pk = output.features.parent_public_key.as_ref();
+
+                let asset_tuple = (parent_pk, unique_id);
+                if unique_ids.contains(&asset_tuple) {
+                    return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                }
+                unique_ids.push(asset_tuple)
+            }
+        }
         check_not_duplicate_txo(db, output)?;
     }
     Ok(())
@@ -486,7 +500,7 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 
     if let Some(unique_id) = &output.features.unique_id {
         // Needs to have a mint flag
-        if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) &&
+        if output.features.is_non_fungible_mint() &&
             db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id)?
                 .is_some()
         {
