@@ -36,7 +36,6 @@ use crate::{
         tasks::TxoValidationTask,
         MasterKeyManager,
     },
-    transaction_service::handle::TransactionServiceHandle,
     types::HashDigest,
 };
 use blake2::Digest;
@@ -95,7 +94,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: OutputManagerServiceConfig,
-        transaction_service: TransactionServiceHandle,
         request_stream: reply_channel::Receiver<
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
@@ -118,7 +116,6 @@ where
         let resources = OutputManagerResources {
             config,
             db,
-            transaction_service,
             factories,
             connectivity,
             event_publisher,
