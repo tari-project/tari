@@ -8,8 +8,11 @@ on:
     types: [opened, synchronize, reopened]
 
 name: CI
+
 env:
-  toolchain: nightly-2021-08-18
+  CARGO_HTTP_MULTIPLEXING: false
+  toolchain: nightly-2021-09-18
+
 jobs:
   clippy:
     name: clippy

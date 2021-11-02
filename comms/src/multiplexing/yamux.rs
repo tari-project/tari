@@ -144,7 +144,7 @@ impl Control {
         let stream = self.inner.open_stream().await?;
         Ok(Substream {
             stream: stream.compat(),
-            counter_guard,
+            _counter_guard: counter_guard,
         })
     }
 
@@ -193,7 +193,7 @@ impl Stream for IncomingSubstreams {
         match futures::ready!(Pin::new(&mut self.inner).poll_recv(cx)) {
             Some(stream) => Poll::Ready(Some(Substream {
                 stream: stream.compat(),
-                counter_guard: self.substream_counter.new_guard(),
+                _counter_guard: self.substream_counter.new_guard(),
             })),
             None => Poll::Ready(None),
         }
@@ -209,7 +209,7 @@ impl Drop for IncomingSubstreams {
 #[derive(Debug)]
 pub struct Substream {
     stream: Compat<yamux::Stream>,
-    counter_guard: AtomicRefCounterGuard,
+    _counter_guard: AtomicRefCounterGuard,
 }
 
 impl StreamId for Substream {
