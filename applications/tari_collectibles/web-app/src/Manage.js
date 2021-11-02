@@ -33,7 +33,7 @@ import {
 import binding from "./binding";
 import { Link, withRouter } from "react-router-dom";
 
-var cardStyle = {
+const cardStyle = {
   width: "20vw",
   transitionDuration: "0.3s",
   height: "30vw",
@@ -58,7 +58,7 @@ class Manage extends React.Component {
   async componentDidMount() {
     this.setState({ error: "" });
     try {
-      let assets = await binding.command_assets_list();
+      let assets = await binding.command_assets_list_owned();
       // console.log(assets);
       this.setState({
         ownedAssets: assets,

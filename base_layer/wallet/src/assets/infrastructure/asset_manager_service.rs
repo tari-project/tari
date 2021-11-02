@@ -59,7 +59,6 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
-                trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
@@ -84,6 +83,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
     }
 
     pub async fn handle_request(&mut self, request: AssetManagerRequest) -> Result<AssetManagerResponse, WalletError> {
+        trace!(target: LOG_TARGET, "Handling Service API Request {:?}", request);
         match request {
             AssetManagerRequest::ListOwned { .. } => Ok(AssetManagerResponse::ListOwned {
                 assets: self.manager.list_owned().await?,

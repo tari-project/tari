@@ -20,45 +20,91 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import { Container, Grid, Button } from "@mui/material";
+import React from "react";
+import { AssetCard, Spinner } from "./components";
+import binding from "./binding";
+import { toHexString } from "./helpers";
 
-import {
-    Button, Card, CardActions, CardContent, CardMedia, Container,
-    Grid,
-    Typography
-} from "@mui/material";
-import {withRouter} from "react-router-dom";
+const explorerUrl = (blockHash) =>
+  `https:://explore.tari.com/block/${blockHash.toString("hex")}`;
 
-const tokens = [{
-    name: "Hello world"
-}];
+class DashboardContent extends React.Component {
+  constructor(props) {
+    super(props);
 
-function DashboardContent (){
+    this.state = {
+      error: null,
+      isLoading: false,
+      assets: [],
+    };
+  }
+
+  async componentDidMount() {
+    this.setState({
+      isLoading: true,
+    });
+
+    try {
+      let outputs = await binding.command_assets_list_registered_assets(0, 100);
+      this.setState({
+        // TODO: Fetch asset metadata from somewhere
+        assets: outputs.map((o) => ({
+          name: toHexString(o.unique_id),
+          description: `Asset registration at block #${
+            o.mined_height
+          } (${toHexString(o.mined_in_block)})`,
+          public_key: o.asset_public_key ? toHexString(o.asset_public_key) : "",
+          image_url: "https://source.unsplash.com/random",
+        })),
+        isLoading: false,
+      });
+    } catch (err) {
+      console.error(err);
+      this.setState({
+        error: "Could not load assets:" + err,
+        isLoading: false,
+      });
+    }
+  }
+
+  renderTokens() {
+    const { assets, isLoading } = this.state;
+    if (!isLoading && assets.length === 0) {
+      return <div>No assets found.</div>;
+    }
+
+    return this.state.assets.map((asset) => {
+      const actions = (
+        <Button
+          size="small"
+          to={`/view/${(asset.unique_id || "").toString("hex")}`}
+        >
+          View
+        </Button>
+      );
+
+      return (
+        <Grid item key={asset.public_key} xs={12} sm={6} md={4}>
+          <AssetCard asset={asset} actions={actions} />
+        </Grid>
+      );
+    });
+  }
+
+  render() {
+    const { isLoading, error } = this.state;
 
     return (
-<Container maxWidth="md" sx={{ mt: 4, mb: 4, py:8}}>
-    <Grid container spacing={4}>
-        { tokens.map((token) =>
-          (<Grid item key={token} xs={12} sm={6} md={4}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column'}}>
-                  <CardMedia component="img" sx={{ pb: "5%"  }} image="https://source.unsplash.com/random" alt="random"></CardMedia>
-                  <CardContent sx={{ flexGrox:1}}>
-                      <Typography gutterBottom variant="h5" component="h2">
-                          Heading
-                      </Typography>
-                      <Typography>
-                          This is a token
-                      </Typography>
-                  </CardContent>
-                  <CardActions>
-                      <Button size="small">View</Button>
-                      <Button size="small">Edit</Button>
-                  </CardActions>
-              </Card>
-          </Grid>))
-
-        }
-    </Grid>
-    </Container>)
+      <Container maxWidth="md" sx={{ mt: 4, mb: 4, py: 8 }}>
+        <Grid container spacing={4}>
+          {this.renderTokens()}
+          {isLoading ? <Spinner /> : <span />}
+          {error ? <p>{error}</p> : <span />}
+        </Grid>
+      </Container>
+    );
+  }
 }
 
-export default  withRouter(DashboardContent)
+export default DashboardContent;

@@ -118,6 +118,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type GetTokensStream = mpsc::Receiver<Result<tari_rpc::GetTokensResponse, Status>>;
+    type ListAssetRegistrationsStream = mpsc::Receiver<Result<tari_rpc::ListAssetRegistrationsResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
@@ -409,6 +410,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(tokens) => tokens,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
+                    let _ = tx.send(Err(Status::internal("Internal error")));
                     return;
                 },
             };
@@ -456,6 +458,74 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         }
                         return;
                     },
+                }
+            }
+        });
+        Ok(Response::new(rx))
+    }
+
+    async fn list_asset_registrations(
+        &self,
+        request: Request<tari_rpc::ListAssetRegistrationsRequest>,
+    ) -> Result<Response<Self::ListAssetRegistrationsStream>, Status> {
+        let request = request.into_inner();
+
+        let mut handler = self.node_service.clone();
+        let (mut tx, rx) = mpsc::channel(50);
+        task::spawn(async move {
+            debug!(
+                target: LOG_TARGET,
+                "Starting thread to process ListAssetRegistrationsStream: {:?}", request,
+            );
+            let start = request.offset as usize;
+            let end = (request.offset + request.count) as usize;
+
+            let outputs = match handler.get_asset_registrations(start..=end).await {
+                Ok(outputs) => outputs,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
+                    let _ = tx.send(Err(Status::internal("Internal error")));
+                    return;
+                },
+            };
+
+            debug!(target: LOG_TARGET, "Found {} tokens", outputs.len(),);
+
+            for output in outputs {
+                let mined_height = output.mined_height;
+                let header_hash = output.header_hash;
+                let output = match output.output.into_unpruned_output() {
+                    Some(output) => output,
+                    None => {
+                        continue;
+                    },
+                };
+                let features = match output.features.clone().try_into() {
+                    Ok(f) => f,
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
+                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        break;
+                    },
+                };
+                let response = tari_rpc::ListAssetRegistrationsResponse {
+                    asset_public_key: output
+                        .features
+                        .mint_non_fungible
+                        .map(|mint| mint.asset_public_key.to_vec())
+                        .unwrap_or_default(),
+                    unique_id: output.features.unique_id.unwrap_or_default(),
+                    owner_commitment: output.commitment.to_vec(),
+                    mined_in_block: header_hash,
+                    mined_height,
+                    script: output.script.as_bytes(),
+                    features: Some(features),
+                };
+                if let Err(err) = tx.send(Ok(response)).await {
+                    // This error can only happen if the Receiver has dropped, meaning the request was
+                    // cancelled/disconnected
+                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", err);
+                    return;
                 }
             }
         });

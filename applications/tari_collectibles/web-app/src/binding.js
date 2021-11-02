@@ -25,8 +25,12 @@ async function command_assets_create(name, description, image) {
   return await invoke("assets_create", { name, description, image });
 }
 
-async function command_assets_list() {
-  return await invoke("assets_list", {});
+async function command_assets_list_owned() {
+  return await invoke("assets_list_owned", {});
+}
+
+async function command_assets_list_registered_assets(offset, count) {
+  return await invoke("assets_list_registered_assets", { offset, count });
 }
 
 async function command_asset_issue_simple_tokens(
@@ -43,7 +47,8 @@ async function command_asset_issue_simple_tokens(
 
 const commands = {
   command_assets_create,
-  command_assets_list,
+  command_assets_list_owned,
+  command_assets_list_registered_assets,
   command_asset_issue_simple_tokens,
 };
 

@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::chain_storage::PrunedOutput;
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtxoMinedInfo {
     pub output: PrunedOutput,
     pub mmr_position: u32,

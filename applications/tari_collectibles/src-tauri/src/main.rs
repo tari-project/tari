@@ -6,6 +6,7 @@
 use crate::app_state::ConcurrentAppState;
 
 mod app_state;
+mod base_node_client;
 mod commands;
 mod models;
 mod settings;
@@ -18,7 +19,8 @@ fn main() {
     .manage(state)
     .invoke_handler(tauri::generate_handler![
       commands::assets::assets_create,
-      commands::assets::assets_list,
+      commands::assets::assets_list_owned,
+      commands::assets::assets_list_registered_assets,
       commands::assets::assets_issue_simple_tokens
     ])
     .run(tauri::generate_context!())

@@ -133,7 +133,7 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
             .committee
             .iter()
             .map(|c| {
-                PublicKey::from_bytes(c).map_err(|er| format!("committee member was not a valid public key: {}", er))
+                PublicKey::from_bytes(c).map_err(|err| format!("committee member was not a valid public key: {}", err))
             })
             .collect::<Result<_, _>>()?;
 

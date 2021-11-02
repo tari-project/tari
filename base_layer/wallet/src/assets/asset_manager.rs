@@ -109,7 +109,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(0.into(), vec![output], 100.into())
+            .create_send_to_self_with_output(0.into(), vec![output], 20.into())
             .await?;
         Ok((tx_id, transaction))
     }

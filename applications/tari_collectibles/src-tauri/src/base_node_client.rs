@@ -20,36 +20,52 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_client::BaseNodeClient, settings::Settings, wallet_client::WalletClient};
-use std::sync::Arc;
-use tauri::async_runtime::RwLock;
+use futures::StreamExt;
+use tari_app_grpc::tari_rpc as grpc;
 
-pub struct AppState {
-  config: Settings,
+pub struct BaseNodeClient {
+  client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
 }
 
-#[derive(Clone)]
-pub struct ConcurrentAppState {
-  inner: Arc<RwLock<AppState>>,
-}
+impl BaseNodeClient {
+  pub async fn connect(endpoint: String) -> Result<Self, String> {
+    let client = grpc::base_node_client::BaseNodeClient::connect(endpoint.clone())
+      .await
+      .map_err(|err| {
+        format!(
+          "No connection to wallet. Is it running with grpc on '{}' ? Error: {}",
+          endpoint, err
+        )
+      })?;
 
-impl ConcurrentAppState {
-  pub fn new() -> Self {
-    Self {
-      inner: Arc::new(RwLock::new(AppState {
-        config: Settings::new(),
-      })),
+    Ok(Self { client })
+  }
+
+  pub async fn list_registered_assets(
+    &mut self,
+    offset: u64,
+    count: u64,
+  ) -> Result<Vec<grpc::ListAssetRegistrationsResponse>, String> {
+    let client = self.client_mut();
+    let request = grpc::ListAssetRegistrationsRequest { offset, count };
+    let mut stream = client
+      .list_asset_registrations(request)
+      .await
+      .map(|response| response.into_inner())
+      .map_err(|s| format!("Could not get register assets: {}", s))?;
+
+    let mut assets = vec![];
+    while let Some(result) = stream.next().await {
+      let asset = result.map_err(|err| err.to_string())?;
+      assets.push(asset);
     }
+
+    Ok(assets)
   }
 
-  pub async fn create_wallet_client(&self) -> WalletClient {
-    WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
-  }
-
-  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, String> {
-    let lock = self.inner.read().await;
-    let client =
-      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
-    Ok(client)
+  fn client_mut(
+    &mut self,
+  ) -> &mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel> {
+    &mut self.client
   }
 }

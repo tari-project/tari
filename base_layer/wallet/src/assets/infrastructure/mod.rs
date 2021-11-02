@@ -31,6 +31,7 @@ use tari_core::transactions::transaction::{OutputFeatures, Transaction};
 
 pub mod initializer;
 
+#[derive(Debug)]
 pub enum AssetManagerRequest {
     ListOwned {},
     GetOwnedAsset {

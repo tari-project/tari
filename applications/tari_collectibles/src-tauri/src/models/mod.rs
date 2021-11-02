@@ -21,5 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod asset_info;
-
 pub use asset_info::AssetInfo;
+
+mod registered_asset_info;
+pub use registered_asset_info::RegisteredAssetInfo;

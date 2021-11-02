@@ -20,36 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_client::BaseNodeClient, settings::Settings, wallet_client::WalletClient};
-use std::sync::Arc;
-use tauri::async_runtime::RwLock;
+import {
+  Card,
+  CardActions,
+  CardContent,
+  CardMedia,
+  Typography,
+} from "@mui/material";
 
-pub struct AppState {
-  config: Settings,
-}
-
-#[derive(Clone)]
-pub struct ConcurrentAppState {
-  inner: Arc<RwLock<AppState>>,
-}
-
-impl ConcurrentAppState {
-  pub fn new() -> Self {
-    Self {
-      inner: Arc::new(RwLock::new(AppState {
-        config: Settings::new(),
-      })),
-    }
-  }
-
-  pub async fn create_wallet_client(&self) -> WalletClient {
-    WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
-  }
-
-  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, String> {
-    let lock = self.inner.read().await;
-    let client =
-      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
-    Ok(client)
-  }
+export default function AssetCard({ asset, heading, style, actions }) {
+  style = style || {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+  };
+  return (
+    <Card sx={style}>
+      <CardMedia
+        component="img"
+        sx={{ pb: "5%" }}
+        image={asset.image_url}
+        alt="random"
+      />
+      <CardContent sx={{ flexGrox: 1 }}>
+        <Typography gutterBottom variant="h5" component="h2">
+          {heading || asset.name}
+        </Typography>
+        <Typography>{asset.description}</Typography>
+      </CardContent>
+      {actions ? <CardActions>{actions}</CardActions> : <span />}
+    </Card>
+  );
 }

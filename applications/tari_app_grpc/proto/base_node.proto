@@ -84,6 +84,22 @@ service BaseNode {
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
 
     rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
+    rpc ListAssetRegistrations(ListAssetRegistrationsRequest) returns (stream ListAssetRegistrationsResponse);
+}
+
+message ListAssetRegistrationsRequest {
+    uint64 offset = 2;
+    uint64 count = 3;
+}
+
+message ListAssetRegistrationsResponse {
+    bytes asset_public_key = 1;
+    bytes unique_id = 2;
+    bytes owner_commitment = 3;
+    uint64 mined_height = 4;
+    bytes mined_in_block = 5;
+    OutputFeatures features = 6;
+    bytes script = 7;
 }
 
 message GetTokensRequest {

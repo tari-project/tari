@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::UtxoMinedInfo,
     proof_of_work::Difficulty,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
@@ -51,6 +52,9 @@ pub enum NodeCommsResponse {
     FetchTokensResponse {
         outputs: Vec<TransactionOutput>,
     },
+    FetchAssetRegistrationsResponse {
+        outputs: Vec<UtxoMinedInfo>,
+    },
 }
 
 impl Display for NodeCommsResponse {
@@ -79,6 +83,7 @@ impl Display for NodeCommsResponse {
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
             FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
+            FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
         }
     }
 }
