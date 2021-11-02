@@ -34,7 +34,6 @@ use crate::{
         },
         services::{
             infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-            PayloadProcessor,
             SigningService,
         },
         workers::states::ConsensusWorkerStateEvent,

@@ -297,7 +297,15 @@ macro_rules! txn_schema {
             features: $features
         )
     }};
-
+   (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock: 0,
+            features: $features
+        )
+    }};
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
         txn_schema!(
             from: $input,

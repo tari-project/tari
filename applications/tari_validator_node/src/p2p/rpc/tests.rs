@@ -25,10 +25,7 @@ use crate::{
     dan_layer::services::mocks::{create_mempool_mock, MockMempoolService},
     p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcServiceImpl},
 };
-use tari_comms::protocol::rpc::{
-    mock::{MockRpcServer, RpcRequestMock},
-    Request,
-};
+use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::test_helpers::create_peer_manager;
 use tari_test_utils::paths::temp_tari_path;
 

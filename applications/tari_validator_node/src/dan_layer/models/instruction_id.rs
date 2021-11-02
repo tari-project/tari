@@ -20,16 +20,5 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub struct Settings {
-  pub(crate) wallet_grpc_address: String,
-  pub(crate) _favourite_assets: Vec<String>,
-}
-
-impl Settings {
-  pub fn new() -> Self {
-    Self {
-      wallet_grpc_address: "localhost:18143".to_string(),
-      _favourite_assets: vec!["1234".to_string()],
-    }
-  }
-}
+// TODO: encapsulate
+pub struct InstructionId(pub u64);

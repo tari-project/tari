@@ -31,10 +31,10 @@ use crate::{
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::RwLock;
 
-pub struct EditableMetadataTemplate {}
+pub struct _EditableMetadataTemplate {}
 
-impl EditableMetadataTemplate {
-    pub fn create_command(
+impl _EditableMetadataTemplate {
+    pub fn _create_command(
         method: String,
         mut args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
@@ -43,16 +43,16 @@ impl EditableMetadataTemplate {
         // match method.as_str() {
         //     "update" => {
         //         unimplemented!()
-        //         // // let token_id = caller.owner_token_id().clone();
-        //         // let metadata = args.pop_front().ok_or_else(|| DigitalAssetError::MissingArgument {
+        //         // // let token_id = caller._owner_token_id().clone();
+        //         // let metadata = args.pop_front().ok_or_else(|| DigitalAssetError::_MissingArgument {
         //         //     argument_name: "metadata".to_string(),
         //         //     position: 0,
         //         // })?;
         //         // // TODO: check for too many args
         //         //
-        //         // Ok(UpdateMetadataCommand::new(token_id, metadata))
+        //         // Ok(UpdateMetadataCommand::_new(token_id, metadata))
         //     },
-        //     _ => Err(DigitalAssetError::UnknownMethod {
+        //     _ => Err(DigitalAssetError::_UnknownMethod {
         //         method_name: method.clone(),
         //     }),
         // }
@@ -65,7 +65,7 @@ pub struct UpdateMetadataCommand {
 }
 
 impl UpdateMetadataCommand {
-    pub fn new(token_id: TokenId, metadata: Vec<u8>) -> Self {
+    pub fn _new(token_id: TokenId, metadata: Vec<u8>) -> Self {
         Self {
             token_id,
             metadata,

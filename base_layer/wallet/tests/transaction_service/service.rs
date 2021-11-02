@@ -42,7 +42,7 @@ use std::{
 };
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
@@ -67,7 +67,6 @@ use tari_core::{
     },
     blocks::BlockHeader,
     consensus::ConsensusConstantsBuilder,
-    crypto::tari_utilities::Hashable,
     proto::{
         base_node as base_node_proto,
         base_node::{
@@ -86,7 +85,6 @@ use tari_core::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
-            TxId,
         },
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -105,6 +103,7 @@ use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage,
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
+use tari_utilities::Hashable;
 use tari_wallet::{
     base_node_service::{
         config::BaseNodeServiceConfig,

@@ -39,6 +39,8 @@ use tari_crypto::{
     tari_utilities::{hash::Hashable, hex::*},
 };
 
+const LATEST_BLOCK_VERSION: u16 = 2;
+
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
     use Network::*;
@@ -47,7 +49,7 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
         Ridcully => get_ridcully_genesis_block(),
         Stibbons => unimplemented!(),
         Weatherwax => get_weatherwax_genesis_block(),
-        LocalNet => get_weatherwax_genesis_block(),
+        LocalNet => get_igor_genesis_block(),
         Igor => get_igor_genesis_block(),
         Dibbler => get_dibbler_genesis_block(),
     }
@@ -317,11 +319,11 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     body.sort(1);
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("27 Aug 2021 06:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: 0,
+            version: LATEST_BLOCK_VERSION,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
@@ -400,11 +402,11 @@ fn get_dibbler_genesis_block_raw() -> Block {
     );
     body.sort(2);
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("09 Sep 2021 00:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 00:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: 0,
+            version: LATEST_BLOCK_VERSION,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),

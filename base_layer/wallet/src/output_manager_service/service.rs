@@ -793,7 +793,7 @@ where
         let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
                 output.features.consensus_encode_exact_size() +
-                ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or_else(|| &nop_script))
+                ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or(&nop_script))
                     .consensus_encode_exact_size()
         });
         let input_selection = self

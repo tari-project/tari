@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    blocks::ChainBlock,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     test_helpers::{
         blockchain::{TempDatabase, TestBlockchain},
@@ -29,8 +30,8 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::T,
-        test_helpers::schema_to_transaction,
-        transaction::TransactionError,
+        test_helpers::{schema_to_transaction, TransactionSchema},
+        transaction::{OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -39,6 +40,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tari_common::configuration::Network;
+use tari_common_types::types::PublicKey;
 use tari_test_utils::unpack_enum;
 
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
@@ -48,13 +50,20 @@ fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<
         rules,
         CryptoFactories::default(),
         false,
-        2,
+        6,
     );
     (blockchain, validator)
 }
 
 fn setup() -> (TestBlockchain, BlockValidator<TempDatabase>) {
-    setup_with_rules(ConsensusManager::builder(Network::LocalNet).build())
+    let rules = ConsensusManager::builder(Network::LocalNet)
+        .add_consensus_constants(
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .with_coinbase_lockheight(0)
+                .build(),
+        )
+        .build();
+    setup_with_rules(rules)
 }
 
 #[tokio::test]
@@ -133,14 +142,7 @@ async fn it_checks_double_spends() {
 
 #[tokio::test]
 async fn it_checks_input_maturity() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
-        .add_consensus_constants(
-            ConsensusConstantsBuilder::new(Network::LocalNet)
-                .with_coinbase_lockheight(0)
-                .build(),
-        )
-        .build();
-    let (mut blockchain, validator) = setup_with_rules(rules);
+    let (mut blockchain, validator) = setup();
 
     let (_, coinbase_a) = blockchain.add_next_tip("A", Default::default());
     let mut schema = txn_schema!(from: vec![coinbase_a], to: vec![50 * T]);
@@ -162,14 +164,7 @@ async fn it_checks_input_maturity() {
 
 #[tokio::test]
 async fn it_checks_txo_sort_order() {
-    let rules = ConsensusManager::builder(Network::LocalNet)
-        .add_consensus_constants(
-            ConsensusConstantsBuilder::new(Network::LocalNet)
-                .with_coinbase_lockheight(0)
-                .build(),
-        )
-        .build();
-    let (mut blockchain, validator) = setup_with_rules(rules);
+    let (mut blockchain, validator) = setup();
 
     let (_, coinbase_a) = blockchain.add_next_tip("A", Default::default());
 
@@ -186,4 +181,152 @@ async fn it_checks_txo_sort_order() {
 
     let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
     assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+}
+
+mod unique_id {
+    use super::*;
+
+    pub fn create_block(
+        blockchain: &TestBlockchain,
+        parent_name: &'static str,
+        schema: TransactionSchema,
+    ) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let (txs, outputs) = schema_to_transaction(&[schema]);
+        let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+        let (block, _) = blockchain.create_chained_block(parent_name, BlockSpec::new().with_transactions(txs).finish());
+        let asset_output = outputs
+            .into_iter()
+            .find(|o| o.features.unique_asset_id().is_some())
+            .unwrap();
+        (block, asset_output)
+    }
+
+    #[tokio::test]
+    async fn it_checks_for_duplicate_unique_id_in_block() {
+        let (mut blockchain, validator) = setup();
+
+        let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
+        let unique_id = vec![1; 3];
+        let parent_pk = PublicKey::default();
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+
+        // Two outputs with same features
+        let schema =
+            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T, 12 * T], fee: 5.into(), lock: 0, features: features);
+
+        let (block, _) = create_block(&blockchain, "1", schema);
+
+        let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
+        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
+    }
+
+    #[tokio::test]
+    async fn it_allows_spending_to_new_utxo() {
+        let (mut blockchain, validator) = setup();
+
+        let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
+        let unique_id = vec![1; 3];
+        let parent_pk = PublicKey::default();
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+
+        let schema =
+            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
+
+        let (block, asset_output) = create_block(&blockchain, "1", schema);
+        validator.validate_block_body(block.block().clone()).await.unwrap();
+        blockchain.append_block("2", block);
+
+        let features = OutputFeatures {
+            flags: OutputFlags::empty(),
+            parent_public_key: Some(parent_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+
+        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
+        let (block, _) = create_block(&blockchain, "2", schema);
+        validator.validate_block_body(block.block().clone()).await.unwrap();
+        blockchain.append_block("3", block);
+    }
+
+    #[tokio::test]
+    async fn it_checks_for_duplicate_unique_id_in_blockchain() {
+        let (mut blockchain, validator) = setup();
+
+        let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
+        let unique_id = vec![1; 3];
+        let parent_pk = PublicKey::default();
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+
+        let schema =
+            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
+
+        let (block, asset_output) = create_block(&blockchain, "1", schema);
+        validator.validate_block_body(block.block().clone()).await.unwrap();
+        blockchain.append_block("2", block);
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+
+        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
+        let (block, _) = create_block(&blockchain, "2", schema);
+        let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
+        assert!(matches!(err, ValidationError::ContainsDuplicateUtxoUniqueID))
+    }
+
+    #[tokio::test]
+    async fn it_allows_burn_flag() {
+        let (mut blockchain, validator) = setup();
+
+        let (_, coinbase_a) = blockchain.add_next_tip("1", Default::default());
+        let unique_id = vec![1; 3];
+        let parent_pk = PublicKey::default();
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+
+        let schema =
+            txn_schema!(from: vec![coinbase_a], to: vec![5000 * T], fee: 5.into(), lock: 0, features: features);
+
+        let (block, asset_output) = create_block(&blockchain, "1", schema);
+        validator.validate_block_body(block.block().clone()).await.unwrap();
+        blockchain.append_block("2", block);
+
+        let features = OutputFeatures {
+            flags: OutputFlags::BURN_NON_FUNGIBLE,
+            parent_public_key: Some(parent_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+
+        let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
+        let (block, _) = create_block(&blockchain, "2", schema);
+        validator.validate_block_body(block.block().clone()).await.unwrap();
+    }
 }

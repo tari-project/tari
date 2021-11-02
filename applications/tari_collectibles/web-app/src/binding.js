@@ -19,23 +19,32 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-import {invoke} from '@tauri-apps/api/tauri'
+import { invoke } from "@tauri-apps/api/tauri";
 
 async function command_assets_create(name, description, image) {
-    return await invoke('assets_create', {name, description, image});
+  return await invoke("assets_create", { name, description, image });
 }
 
 async function command_assets_list() {
-    return await invoke('assets_list', {});
+  return await invoke("assets_list", {});
 }
 
-
-async function command_asset_issue_simple_tokens(assetPubKey, numTokens, committee) {
-    return await invoke("assets_issue_simple_tokens", {assetPubKey, numTokens, committee});
+async function command_asset_issue_simple_tokens(
+  assetPubKey,
+  numTokens,
+  committee
+) {
+  return await invoke("assets_issue_simple_tokens", {
+    assetPubKey,
+    numTokens,
+    committee,
+  });
 }
 
-export default {
-    command_assets_create,
-    command_assets_list,
-    command_asset_issue_simple_tokens
+const commands = {
+  command_assets_create,
+  command_assets_list,
+  command_asset_issue_simple_tokens,
 };
+
+export default commands;

@@ -42,10 +42,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const { Given, When, Then } = require("cucumber");
-const expect = require("chai").expect;
-
-const { sleep, waitForIterate } = require("../../helpers/util");
+const { When } = require("cucumber");
+// const expect = require("chai").expect;
+// const { sleep, waitForIterate } = require("../../helpers/util");
 
 When(
   "I register an NFT asset with committee of {int}",
@@ -64,17 +63,15 @@ When(
     console.log(committee);
     console.log(this);
 
-
     let wallet = this.currentWallet();
     let client = await wallet.connectClient();
     console.log(await client.getBalance());
     await client.registerAsset("Asset 1");
 
-
     return "pending";
   }
 );
 
-When("I create {int} NFT(s)", function (int) {
+When("I create {int} NFT(s)", function () {
   return "pending";
 });

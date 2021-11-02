@@ -43,6 +43,7 @@ pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
+pub use instruction_id::InstructionId;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 // pub use replica_info::ReplicaInfo;
@@ -63,7 +64,7 @@ pub struct InstructionCaller {
 }
 
 impl InstructionCaller {
-    pub fn owner_token_id(&self) -> &TokenId {
+    pub fn _owner_token_id(&self) -> &TokenId {
         &self.owner_token_id
     }
 }
@@ -74,13 +75,13 @@ pub enum TemplateId {
 }
 
 impl TemplateId {
-    pub fn parse(s: &str) -> TemplateId {
+    pub fn _parse(s: &str) -> TemplateId {
         match s {
-            "EditableMetadata" => TemplateId::EditableMetadata,
+            "EditableMetadata" => TemplateId::_EditableMetadata,
             _ => {
                 // TODO: Propagate error instead
                 dbg!("Unrecognised template");
-                TemplateId::EditableMetadata
+                TemplateId::_EditableMetadata
             },
         }
     }
@@ -168,24 +169,23 @@ pub trait ConsensusHash {
     fn consensus_hash(&self) -> &[u8];
 }
 
-// TODO: Perhaps should be CoW instead of Clone
-pub trait Payload: Debug + Clone + Send + Sync + ConsensusHash {}
-
-impl Payload for &str {}
-
 impl ConsensusHash for &str {
     fn consensus_hash(&self) -> &[u8] {
         self.as_bytes()
     }
 }
 
-impl Payload for String {}
-
 impl ConsensusHash for String {
     fn consensus_hash(&self) -> &[u8] {
         self.as_bytes()
     }
 }
+
+// TODO: Perhaps should be CoW instead of Clone
+pub trait Payload: Debug + Clone + Send + Sync + ConsensusHash {}
+
+impl Payload for &str {}
+impl Payload for String {}
 
 pub trait Event: Clone + Send + Sync {}
 

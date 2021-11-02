@@ -20,13 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::File, io::BufReader, path::PathBuf, sync::Arc, time::Duration};
-
-use crate::dan_layer::storage::sqlite::SqliteStorageService;
+use crate::{
+    dan_layer::{
+        models::{AssetDefinition, Committee},
+        services::{
+            infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
+            ConcreteAssetProcessor,
+            ConcreteCommitteeManager,
+            GrpcBaseNodeClient,
+            LoggingEventsPublisher,
+            MemoryInstructionLog,
+            MempoolService,
+            MempoolServiceHandle,
+            NodeIdentitySigningService,
+            TariDanPayloadProcessor,
+            TariDanPayloadProvider,
+        },
+        storage::{AssetDataStore, LmdbAssetStore},
+        workers::ConsensusWorker,
+    },
+    p2p::create_validator_node_rpc_service,
+    ExitCodes,
+};
 use log::*;
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::task;
-
+use std::{fs, fs::File, io::BufReader, path::Path, sync::Arc, time::Duration};
 use tari_app_utilities::{
     identity_management,
     identity_management::{load_from_json, setup_node_identity},
@@ -54,29 +71,6 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
-
-use crate::{
-    dan_layer::{
-        models::{AssetDefinition, Committee},
-        services::{
-            infrastructure_services::{TariCommsInboundConnectionService, TariCommsOutboundService},
-            ConcreteAssetProcessor,
-            ConcreteCommitteeManager,
-            GrpcBaseNodeClient,
-            LoggingEventsPublisher,
-            MemoryInstructionLog,
-            MempoolService,
-            MempoolServiceHandle,
-            NodeIdentitySigningService,
-            TariDanPayloadProcessor,
-            TariDanPayloadProvider,
-        },
-        storage::{lmdb::LmdbAssetStore, AssetDataStore, BackendAdapter, DbFactory, SqliteDbFactory},
-        workers::ConsensusWorker,
-    },
-    p2p::create_validator_node_rpc_service,
-    ExitCodes,
-};
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 
@@ -133,7 +127,7 @@ impl DanNode {
                 handles.clone(),
                 subscription_factory.clone(),
                 shutdown.clone(),
-                &dan_config,
+                dan_config,
                 db_factory.clone(),
             )
             .await?;
@@ -141,7 +135,7 @@ impl DanNode {
         Ok(())
     }
 
-    fn read_asset_definitions(&self, path: &PathBuf) -> Result<Vec<AssetDefinition>, ExitCodes> {
+    fn read_asset_definitions(&self, path: &Path) -> Result<Vec<AssetDefinition>, ExitCodes> {
         if !path.exists() {
             fs::create_dir_all(path).expect("Could not create dir");
         }

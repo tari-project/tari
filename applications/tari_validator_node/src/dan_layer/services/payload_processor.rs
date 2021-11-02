@@ -22,7 +22,7 @@
 
 use crate::{
     dan_layer::{
-        models::{InstructionSet, Payload, TariDanPayload},
+        models::{Payload, TariDanPayload},
         services::{AssetProcessor, MempoolService},
         storage::{ChainDb, ChainDbUnitOfWork, DbFactory, UnitOfWork},
     },

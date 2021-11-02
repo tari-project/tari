@@ -25,7 +25,7 @@ use crate::{
         models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
         storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork, UnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
-        templates::editable_metadata_template::EditableMetadataTemplate,
+        templates::editable_metadata_template::_EditableMetadataTemplate,
     },
     digital_assets_error::DigitalAssetError,
 };
@@ -98,7 +98,7 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
-    pub fn create_command(
+    pub fn _create_command(
         &self,
         template: TemplateId,
         method: String,
@@ -106,7 +106,7 @@ impl TemplateFactory {
         // caller: InstructionCaller,
     ) -> Result<impl TemplateCommand, DigitalAssetError> {
         match template {
-            TemplateId::EditableMetadata => EditableMetadataTemplate::create_command(method, args),
+            TemplateId::_EditableMetadata => _EditableMetadataTemplate::_create_command(method, args),
         }
     }
 }

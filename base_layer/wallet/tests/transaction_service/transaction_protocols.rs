@@ -43,7 +43,6 @@ use tari_core::{
         rpc::BaseNodeWalletRpcServer,
     },
     blocks::BlockHeader,
-    crypto::tari_utilities::Hashable,
     proto::{
         base_node::{
             TxLocation as TxLocationProto,
@@ -55,7 +54,6 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::schema_to_transaction,
-        transaction_protocol::TxId,
         CryptoFactories,
     },
     txn_schema,
@@ -63,6 +61,7 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
+use tari_utilities::Hashable;
 use tari_wallet::{
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
@@ -797,9 +796,12 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
 
-    assert_eq!(completed_txs.get(&1).unwrap().status, TransactionStatus::Broadcast);
     assert_eq!(
-        completed_txs.get(&2).unwrap().status,
+        completed_txs.get(&1.into()).unwrap().status,
+        TransactionStatus::Broadcast
+    );
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
         TransactionStatus::MinedUnconfirmed
     );
 
@@ -870,7 +872,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         completed_txs.get(&2.into()).unwrap().status,
         TransactionStatus::MinedConfirmed
     );
-    assert_eq!(completed_txs.get(&2).unwrap().confirmations.unwrap(), 4);
+    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 4);
 }
 
 /// Test that revalidation clears the correct db fields and calls for validation of is said transactions
@@ -894,7 +896,7 @@ async fn tx_revalidation() {
         .await;
     wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     add_transaction_to_database(
-        1,
+        1.into(),
         1 * T,
         true,
         Some(TransactionStatus::Completed),
@@ -903,7 +905,7 @@ async fn tx_revalidation() {
     )
     .await;
     add_transaction_to_database(
-        2,
+        2.into(),
         2 * T,
         true,
         Some(TransactionStatus::Completed),
@@ -912,7 +914,7 @@ async fn tx_revalidation() {
     )
     .await;
 
-    let tx2 = resources.db.get_completed_transaction(2).await.unwrap();
+    let tx2 = resources.db.get_completed_transaction(2.into()).await.unwrap();
 
     // set tx2 as fully mined
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
@@ -976,12 +978,15 @@ async fn tx_revalidation() {
     // revalidate sets all to unvalidated, so lets check that thay are
     resources.db.mark_all_transactions_as_unvalidated().await.unwrap();
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
-    assert_eq!(completed_txs.get(&2).unwrap().status, TransactionStatus::MinedConfirmed);
-    assert_eq!(completed_txs.get(&2).unwrap().mined_height, None);
-    assert_eq!(completed_txs.get(&2).unwrap().mined_in_block, None);
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
+        TransactionStatus::MinedConfirmed
+    );
+    assert_eq!(completed_txs.get(&2.into()).unwrap().mined_height, None);
+    assert_eq!(completed_txs.get(&2.into()).unwrap().mined_in_block, None);
 
     let protocol = TransactionValidationProtocol::new(
-        5,
+        5.into(),
         resources.db.clone(),
         wallet_connectivity.clone(),
         resources.config.clone(),
@@ -995,8 +1000,11 @@ async fn tx_revalidation() {
 
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     // data should now be updated and changed
-    assert_eq!(completed_txs.get(&2).unwrap().status, TransactionStatus::MinedConfirmed);
-    assert_eq!(completed_txs.get(&2).unwrap().confirmations.unwrap(), 8);
+    assert_eq!(
+        completed_txs.get(&2.into()).unwrap().status,
+        TransactionStatus::MinedConfirmed
+    );
+    assert_eq!(completed_txs.get(&2.into()).unwrap().confirmations.unwrap(), 8);
 }
 
 /// Test that validation detects transactions becoming mined unconfirmed and then confirmed with some going back to

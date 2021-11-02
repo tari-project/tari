@@ -25,8 +25,8 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::PrivateKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_protocol::TxId, CryptoFactories};
+use tari_common_types::{transaction::TxId, types::PrivateKey};
+use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_crypto::keys::SecretKey;
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,

@@ -38,7 +38,6 @@ use tari_common_types::{
     types::{Commitment, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
-use tari_crypto::script;
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
@@ -247,7 +246,7 @@ impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
         let m = String::from_utf8(Vec::from(metadata)).unwrap();
         let mut m = m
             .as_str()
-            .split("|")
+            .split('|')
             .map(|s| s.to_string())
             .collect::<Vec<String>>()
             .into_iter();
@@ -256,9 +255,9 @@ impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
         let image = m.next();
 
         AssetMetadata {
-            name: name.unwrap_or("".to_string()),
-            description: description.unwrap_or("".to_string()),
-            image: image.unwrap_or("".to_string()),
+            name: name.unwrap_or_else(|| "".to_string()),
+            description: description.unwrap_or_else(|| "".to_string()),
+            image: image.unwrap_or_else(|| "".to_string()),
         }
     }
 }
@@ -267,7 +266,7 @@ impl AssetMetadataSerializer for V1AssetMetadataSerializer {
     fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
         let str = format!("{}|{}|{}", model.name, model.description, model.image);
 
-        str.clone().into_bytes()
+        str.into_bytes()
     }
 }
 

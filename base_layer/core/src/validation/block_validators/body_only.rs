@@ -39,6 +39,12 @@ use tari_utilities::hex::Hex;
 #[derive(Default)]
 pub struct BodyOnlyValidator;
 
+impl BodyOnlyValidator {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
