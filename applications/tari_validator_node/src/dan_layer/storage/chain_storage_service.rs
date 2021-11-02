@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::{
-    models::{Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainDbUnitOfWork, DbFactory, LmdbDbFactory, StorageError},
+    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{ChainDbUnitOfWork, DbFactory, StorageError, UnitOfWork},
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -33,8 +33,11 @@ use tokio::sync::RwLock;
 #[async_trait]
 pub trait ChainStorageService<TPayload: Payload> {
     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
-    async fn save_qc(&self, node: &QuorumCertificate<TPayload>, db: &mut ChainDbUnitOfWork)
-        -> Result<(), StorageError>;
+    async fn save_node<TUnitOfWork: UnitOfWork>(
+        &self,
+        node: &HotStuffTreeNode<TPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError>;
 }
 // #[derive(Clone)]
 // pub struct ChainStorageServiceHandle {

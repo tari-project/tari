@@ -32,7 +32,7 @@ use crate::{
     dan_layer::{
         dan_node::DanNode,
         services::{MempoolService, MempoolServiceHandle},
-        storage::{ChainStorageService, DbFactory, LmdbDbFactory},
+        storage::{BackendAdapter, ChainStorageService, DbFactory, SqliteDbFactory},
     },
     grpc::{
         validator_node_grpc_server::ValidatorNodeGrpcServer,
@@ -85,7 +85,7 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
     let mempool_service = MempoolServiceHandle::new();
     // let chain_storage = ChainStorageServiceHandle::new();
-    let db_factory = LmdbDbFactory::new(&config);
+    let db_factory = SqliteDbFactory::new(&config);
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory);
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144);
@@ -114,9 +114,10 @@ async fn run_dan_node(
 
 async fn run_grpc<
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
-    TDbFactory: DbFactory + Sync + Send + 'static,
+    TBackendAdapter: BackendAdapter + Sync + Send + 'static,
+    TDbFactory: DbFactory<TBackendAdapter> + Sync + Send + 'static,
 >(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory>,
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

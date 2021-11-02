@@ -21,10 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::dan_layer::{
-    models::{QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainDbUnitOfWork, ChainStorageService, StorageError},
+    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
 };
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct SqliteStorageService {}
 
@@ -34,16 +36,37 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
         todo!()
     }
 
-    async fn save_qc(
+    async fn save_node<TUnitOfWork: UnitOfWork>(
         &self,
-        qc: &QuorumCertificate<TariDanPayload>,
-        db: &mut ChainDbUnitOfWork,
+        node: &HotStuffTreeNode<TariDanPayload>,
+        db: TUnitOfWork,
     ) -> Result<(), StorageError> {
-        let node = qc.node();
+        let mut db = db;
         for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash(), instruction);
+            db.add_instruction(node.hash().clone(), instruction.clone())?;
         }
-        db.add_node(node.hash().clone(), node.parent().clone());
-        db.add_qc(qc);
+        db.add_node(node.hash().clone(), node.parent().clone())?;
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct SqliteBackendAdapter {}
+
+pub struct SqliteTransaction {}
+
+impl BackendAdapter for SqliteBackendAdapter {
+    type BackendTransaction = SqliteTransaction;
+
+    fn create_transaction(&self) -> Self::BackendTransaction {
+        SqliteTransaction {}
+    }
+
+    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
+        todo!()
+    }
+
+    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
+        todo!()
     }
 }

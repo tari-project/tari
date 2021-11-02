@@ -71,7 +71,7 @@ use crate::{
             TariDanPayloadProcessor,
             TariDanPayloadProvider,
         },
-        storage::{lmdb::LmdbAssetStore, AssetDataStore, DbFactory, LmdbDbFactory},
+        storage::{lmdb::LmdbAssetStore, AssetDataStore, BackendAdapter, DbFactory, SqliteDbFactory},
         workers::ConsensusWorker,
     },
     p2p::create_validator_node_rpc_service,
@@ -123,7 +123,7 @@ impl DanNode {
         if asset_definitions.is_empty() {
             warn!(target: LOG_TARGET, "No assets to process. Exiting");
         }
-        let db_factory = LmdbDbFactory::new(&self.config);
+        let db_factory = SqliteDbFactory::new(&self.config);
         for asset in asset_definitions {
             // TODO: spawn into multiple processes. This requires some routing as well.
             self.start_asset_worker(
@@ -163,7 +163,8 @@ impl DanNode {
 
     async fn start_asset_worker<
         TMempoolService: MempoolService + Clone,
-        TDbFactory: DbFactory + Clone + Send + Sync,
+        TBackendAdapter: BackendAdapter + Send + Sync,
+        TDbFactory: DbFactory<TBackendAdapter> + Clone + Send + Sync,
     >(
         &self,
         asset_definition: AssetDefinition,

@@ -30,7 +30,7 @@ use crate::{
             PayloadProcessor,
             PayloadProvider,
         },
-        storage::{ChainStorageService, DbFactory},
+        storage::{BackendAdapter, ChainStorageService, DbFactory, UnitOfWork},
         workers::states::ConsensusWorkerStateEvent,
     },
     digital_assets_error::DigitalAssetError,
@@ -59,7 +59,8 @@ where TBaseNodeClient: BaseNodeClient
         TPayload: Payload,
         TPayloadProvider: PayloadProvider<TPayload>,
         TPayloadProcessor: PayloadProcessor<TPayload>,
-        TDbFactory: DbFactory,
+        TBackendAdapter: BackendAdapter,
+        TDbFactory: DbFactory<TBackendAdapter>,
         TChainStorageService: ChainStorageService<TPayload>,
     >(
         &self,
@@ -102,12 +103,14 @@ where TBaseNodeClient: BaseNodeClient
         let chain_db = db_factory.create();
         if chain_db.is_empty() {
             let mut tx = chain_db.new_unit_of_work();
+
+            let tx2 = tx.clone();
             // let metadata = chain_db.metadata.read(&mut tx);
             let payload = payload_provider.create_genesis_payload();
 
-            payload_processor.process_payload(&payload, &mut tx).await?;
+            payload_processor.process_payload(&payload, tx2).await?;
             let genesis_qc = QuorumCertificate::genesis(payload);
-            let mut tx = chain_storage_service.save_qc(&genesis_qc, tx).await?;
+            chain_storage_service.save_node(genesis_qc.node(), tx.clone()).await?;
             tx.commit()?;
         }
 

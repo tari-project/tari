@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::dan_layer::models::{ChainHeight, HotStuffTreeNode, SidechainMetadata, TreeNodeHash};
+use crate::dan_layer::{
+    models::{ChainHeight, HotStuffTreeNode, Instruction, SidechainMetadata, TreeNodeHash},
+    storage::sqlite::SqliteBackendAdapter,
+};
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 pub use store::{AssetDataStore, AssetStore};
 use tari_common::GlobalConfig;
-use tokio::sync::RwLock;
 
 mod chain_storage_service;
 mod error;
@@ -37,43 +39,43 @@ mod store;
 // feature sql
 pub mod sqlite;
 
-pub trait DbFactory {
-    fn create(&self) -> ChainDb;
-    fn create_state_db(&self) -> StateDb;
+pub trait DbFactory<TBackendAdapter: BackendAdapter> {
+    fn create(&self) -> ChainDb<TBackendAdapter>;
 }
 
 #[derive(Clone)]
-pub struct LmdbDbFactory {}
+pub struct SqliteDbFactory {}
 
-impl LmdbDbFactory {
+impl SqliteDbFactory {
     pub fn new(config: &GlobalConfig) -> Self {
         Self {}
     }
+
+    fn create_adapter(&self) -> SqliteBackendAdapter {
+        SqliteBackendAdapter {}
+    }
 }
 
-impl DbFactory for LmdbDbFactory {
-    fn create(&self) -> ChainDb {
+impl DbFactory<SqliteBackendAdapter> for SqliteDbFactory {
+    fn create(&self) -> ChainDb<SqliteBackendAdapter> {
         ChainDb {
-            metadata: MetadataTable {},
-            headers: HeadersTable {},
+            adapter: self.create_adapter(),
         }
     }
-
-    fn create_state_db(&self) -> StateDb {
-        StateDb { unit_of_work: None }
-    }
 }
 
-pub struct ChainDb {
-    pub metadata: MetadataTable,
-    pub headers: HeadersTable,
+pub struct ChainDb<TBackendAdapter: BackendAdapter> {
+    adapter: TBackendAdapter,
 }
 
-impl ChainDb {
-    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork {
-        ChainDbUnitOfWork { clean: vec![] }
+impl<TBackendAdaper: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdaper> {
+    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdaper> {
+        ChainDbUnitOfWork {
+            inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(self.adapter.clone()))),
+        }
     }
-
+}
+impl<TBackendAdaper: BackendAdapter> ChainDb<TBackendAdaper> {
     pub fn is_empty(&self) -> bool {
         return true;
     }
@@ -83,35 +85,95 @@ pub enum UnitOfWorkTracker {
     SidechainMetadata,
 }
 
-pub struct ChainDbUnitOfWork {
-    clean: Vec<UnitOfWorkTracker>,
+pub enum NewUnitOfWorkTracker {
+    Node {
+        hash: TreeNodeHash,
+        parent: TreeNodeHash,
+    },
+    Instruction {
+        instruction: Instruction,
+        node_hash: TreeNodeHash,
+    },
 }
 
-impl ChainDbUnitOfWork {
-    pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
-        self.clean.push(item);
-    }
+pub trait BackendAdapter: Send + Sync + Clone {
+    type BackendTransaction;
+    fn create_transaction(&self) -> Self::BackendTransaction;
+    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), StorageError>;
+    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), StorageError>;
+}
 
-    pub fn commit(&mut self) -> Result<(), StorageError> {
+pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
+    backend_adapter: TBackendAdapter,
+    clean_items: Vec<UnitOfWorkTracker>,
+    dirty_items: Vec<UnitOfWorkTracker>,
+    new_items: Vec<NewUnitOfWorkTracker>,
+}
+
+impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
+    pub fn new(backend_adapter: TBackendAdapter) -> Self {
+        Self {
+            backend_adapter,
+            clean_items: vec![],
+            dirty_items: vec![],
+            new_items: vec![],
+        }
+    }
+}
+
+pub trait UnitOfWork: Clone + Send + Sync {
+    fn commit(&mut self) -> Result<(), StorageError>;
+    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError>;
+    fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
+}
+
+// Cloneable, Send, Sync wrapper
+pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
+    inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
+}
+
+impl<TBackendAdapter: BackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapter> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendAdapter> {
+    // pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
+    //     self.clean.push(item);
+    // }
+
+    fn commit(&mut self) -> Result<(), StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        let tx = inner.backend_adapter.create_transaction();
+        for item in inner.new_items.iter() {
+            inner.backend_adapter.insert(item, &tx)?;
+        }
+
+        inner.backend_adapter.commit(&tx)?;
         Ok(())
     }
 
-    pub fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError> {
-        todo!()
+    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .unwrap()
+            .new_items
+            .push(NewUnitOfWorkTracker::Node { hash, parent });
+        Ok(())
+    }
+
+    fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .unwrap()
+            .new_items
+            .push(NewUnitOfWorkTracker::Instruction { node_hash, instruction });
+        Ok(())
     }
 }
-
-pub struct MetadataTable {}
-
-impl MetadataTable {
-    pub fn read(&self, unit_of_work: &mut ChainDbUnitOfWork) -> SidechainMetadata {
-        let x = SidechainMetadata::new(Default::default(), 0.into(), TreeNodeHash(vec![0u8; 32]));
-        unit_of_work.register_clean(UnitOfWorkTracker::SidechainMetadata);
-        x
-    }
-}
-
-pub struct HeadersTable {}
 
 pub struct StateDb {
     unit_of_work: Option<StateDbUnitOfWork>,

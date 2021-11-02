@@ -24,18 +24,20 @@ use crate::{
     dan_layer::{
         models::{InstructionSet, Payload, TariDanPayload},
         services::{AssetProcessor, MempoolService},
-        storage::{ChainDb, ChainDbUnitOfWork, DbFactory},
+        storage::{ChainDb, ChainDbUnitOfWork, DbFactory, UnitOfWork},
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
-    async fn process_payload(
+    async fn process_payload<TUnitOfWork: UnitOfWork + Send>(
         &self,
         payload: &TPayload,
-        unit_of_work: &mut ChainDbUnitOfWork,
+        unit_of_work: TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 }
 
@@ -63,10 +65,10 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
     PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
-    async fn process_payload(
+    async fn process_payload<TUnitOfWork: UnitOfWork + Clone + Send>(
         &self,
         payload: &TariDanPayload,
-        unit_of_work: &mut ChainDbUnitOfWork,
+        unit_of_work: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         // let mut unit_of_work = db.new_unit_of_work();
         for instruction in payload.instructions() {
@@ -74,7 +76,7 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolServ
             dbg!(&instruction);
             // TODO: Should we swallow + log the error instead of propagating it?
             self.asset_processor
-                .execute_instruction(instruction, &mut unit_of_work)?;
+                .execute_instruction(instruction, unit_of_work.clone())?;
         }
 
         // self.mempool_service.remove_instructions(payload.instructions()).await?;

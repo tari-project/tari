@@ -23,22 +23,23 @@
 use crate::{
     dan_layer::{
         models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
-        storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork},
+        storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork, UnitOfWork},
         template_command::{ExecutionResult, TemplateCommand},
         templates::editable_metadata_template::EditableMetadataTemplate,
     },
     digital_assets_error::DigitalAssetError,
 };
 use async_trait::async_trait;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
+use tokio::sync::RwLock;
 
 pub trait AssetProcessor {
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
-    fn execute_instruction(
+    fn execute_instruction<TUnitOfWork: UnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: &mut ChainDbUnitOfWork,
+        db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 }
 
@@ -49,10 +50,10 @@ pub struct ConcreteAssetProcessor<TInstructionLog> {
 }
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
-    fn execute_instruction(
+    fn execute_instruction<TUnitOfWork: UnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: &mut ChainDbUnitOfWork,
+        db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         self.execute(
             instruction.template_id(),
@@ -76,20 +77,20 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
         }
     }
 
-    pub fn execute(
-        &mut self,
+    pub fn execute<TUnitOfWork: UnitOfWork>(
+        &self,
         template_id: TemplateId,
         method: String,
         args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
         hash: Vec<u8>,
-        unit_of_work: &mut ChainDbUnitOfWork,
+        db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         let instruction = self.template_factory.create_command(template_id, method, args)?;
         // let unit_of_work = state_db.new_unit_of_work();
-        let result = instruction.try_execute(&mut unit_of_work)?;
+        let result = instruction.try_execute(db)?;
         // unit_of_work.commit()?;
-        self.instruction_log.store(hash, result);
+        // self.instruction_log.store(hash, result);
         Ok(())
     }
 }

@@ -32,27 +32,41 @@ use tari_crypto::tari_utilities::ByteArray;
 
 use crate::dan_layer::{
     models::TemplateId,
-    storage::{ChainStorageService, DbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory},
 };
+use std::marker::PhantomData;
 use tonic::{Request, Response, Status};
 
-pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
+pub struct ValidatorNodeGrpcServer<
+    TMempoolService: MempoolService,
+    TBackendAdapter: BackendAdapter,
+    TDbFactory: DbFactory<TBackendAdapter>,
+> {
     mempool: TMempoolService,
     db_factory: TDbFactory,
+    // TODO: Can probably remove
+    pd: PhantomData<TBackendAdapter>,
 }
 
-impl<TMempoolService: MempoolService, TDbFactory: DbFactory> ValidatorNodeGrpcServer<TMempoolService, TDbFactory> {
+impl<TMempoolService: MempoolService, TBackendAdapter: BackendAdapter, TDbFactory: DbFactory<TBackendAdapter>>
+    ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
+{
     pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
-        Self { mempool, db_factory }
+        Self {
+            mempool,
+            db_factory,
+            pd: PhantomData,
+        }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService, TDbFactory> rpc::validator_node_server::ValidatorNode
-    for ValidatorNodeGrpcServer<TMempoolService, TDbFactory>
+impl<TMempoolService, TBackendAdapter, TDbFactory> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
 where
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
-    TDbFactory: DbFactory + Sync + Send + 'static,
+    TBackendAdapter: BackendAdapter + Sync + Send + 'static,
+    TDbFactory: DbFactory<TBackendAdapter> + Sync + Send + 'static,
 {
     async fn get_token_data(
         &self,
@@ -102,11 +116,12 @@ where
     ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
         dbg!(&request);
         let db = self.db_factory.create();
-        let mut tx = db.new_unit_of_work();
-        let metadata = db.metadata.read(&mut tx);
-        // .map_err(|e| Status::internal(format!("Could not read metadata from storage:{}", e)))?;
-        Ok(Response::new(rpc::GetMetadataResponse {
-            sidechains: vec![metadata.into()],
-        }))
+        todo!()
+        // let mut tx = db.new_unit_of_work();
+        // let metadata = db.metadata.read(&mut tx);
+        // // .map_err(|e| Status::internal(format!("Could not read metadata from storage:{}", e)))?;
+        // Ok(Response::new(rpc::GetMetadataResponse {
+        //     sidechains: vec![metadata.into()],
+        // }))
     }
 }

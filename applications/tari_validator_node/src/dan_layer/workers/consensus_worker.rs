@@ -40,7 +40,7 @@ use crate::{
             PayloadProvider,
             SigningService,
         },
-        storage::{ChainStorageService, DbFactory},
+        storage::{BackendAdapter, ChainStorageService, DbFactory},
         workers::{
             states,
             states::{ConsensusWorkerStateEvent, IdleState},
@@ -49,7 +49,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
 };
 use log::*;
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -66,6 +66,7 @@ pub struct ConsensusWorker<
     TPayloadProcessor,
     TCommitteeManager,
     TBaseNodeClient,
+    TBackendAdapter,
     TDbFactory,
     TChainStorageService,
 > where
@@ -79,7 +80,8 @@ pub struct ConsensusWorker<
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    TDbFactory: DbFactory,
+    TBackendAdapter: BackendAdapter,
+    TDbFactory: DbFactory<TBackendAdapter>,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     inbound_connections: TInboundConnectionService,
@@ -99,6 +101,7 @@ pub struct ConsensusWorker<
     base_node_client: TBaseNodeClient,
     db_factory: TDbFactory,
     chain_storage_service: TChainStorageService,
+    pd: PhantomData<TBackendAdapter>,
 }
 
 impl<
@@ -112,6 +115,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
+        TBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -126,6 +130,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
+        TBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -139,8 +144,11 @@ where
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
+
     TBaseNodeClient: BaseNodeClient,
-    TDbFactory: DbFactory + Clone,
+    // TODO: REmove this Send
+    TBackendAdapter: BackendAdapter + Send + Sync,
+    TDbFactory: DbFactory<TBackendAdapter> + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     pub fn new(
@@ -179,6 +187,7 @@ where
             base_node_client,
             db_factory,
             chain_storage_service,
+            pd: PhantomData,
         }
     }
 

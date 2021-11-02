@@ -44,7 +44,10 @@ use crate::{
 
 use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
 
-use crate::dan_layer::{services::PayloadProcessor, storage::DbFactory};
+use crate::dan_layer::{
+    services::PayloadProcessor,
+    storage::{BackendAdapter, DbFactory},
+};
 use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
@@ -57,6 +60,7 @@ pub struct Prepare<
     TPayloadProvider,
     TPayload,
     TPayloadProcessor,
+    TBackendAdapter,
     TDbFactory,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
@@ -66,7 +70,8 @@ pub struct Prepare<
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TDbFactory: DbFactory,
+    TBackendAdapter: BackendAdapter,
+    TDbFactory: DbFactory<TBackendAdapter>,
 {
     node_id: TAddr,
     locked_qc: Arc<QuorumCertificate<TPayload>>,
@@ -79,6 +84,7 @@ pub struct Prepare<
     phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     db_factory: TDbFactory,
+    pd: PhantomData<TBackendAdapter>,
 }
 
 impl<
@@ -89,6 +95,7 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
+        TBackendAdapter,
         TDbFactory,
     >
     Prepare<
@@ -99,6 +106,7 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
+        TBackendAdapter,
         TDbFactory,
     >
 where
@@ -109,7 +117,8 @@ where
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TDbFactory: DbFactory + Clone,
+    TBackendAdapter: BackendAdapter + Send + Sync,
+    TDbFactory: DbFactory<TBackendAdapter> + Clone,
 {
     pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>, db_factory: TDbFactory) -> Self {
         Self {
@@ -122,6 +131,7 @@ where
             received_new_view_messages: HashMap::new(),
             phantom_processor: PhantomData,
             db_factory,
+            pd: PhantomData,
         }
     }
 
@@ -260,10 +270,10 @@ where
                 }
 
                 let db = self.db_factory.create();
-                let mut unit_of_work = db.new_unit_of_work();
+                let unit_of_work = db.new_unit_of_work();
 
                 let res = payload_processor
-                    .process_payload(justify.node().payload(), &mut unit_of_work)
+                    .process_payload(justify.node().payload(), unit_of_work)
                     .await?;
 
                 // TODO: Check result equals qc result
