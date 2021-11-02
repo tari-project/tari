@@ -1,3 +1,9 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                             Merge Mining Configuration Options                                      #
+#                                                                                                                      #
+########################################################################################################################
+
 [merge_mining_proxy.weatherwax]
 
 # URL to monerod
@@ -28,3 +34,4 @@ monerod_password = ""
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
+

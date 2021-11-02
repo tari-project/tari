@@ -77,7 +77,7 @@ impl BlockSync {
         let local_nci = shared.local_node_interface.clone();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
-        synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
+        synchronizer.on_progress(move |block, remote_tip_height, sync_peer| {
             let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
                 block.block().clone().into(),
@@ -90,7 +90,7 @@ impl BlockSync {
                 state_info: StateInfo::BlockSync(BlockSyncInfo {
                     tip_height: remote_tip_height,
                     local_height,
-                    sync_peers: sync_peers.to_vec(),
+                    sync_peers: vec![sync_peer.clone()],
                 }),
                 randomx_vm_cnt,
                 randomx_vm_flags,

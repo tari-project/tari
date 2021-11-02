@@ -98,10 +98,7 @@ pub enum TransactionStage {
 }
 
 #[derive(Debug)]
-pub struct SentTransaction {
-    id: TxId,
-    stage: TransactionStage,
-}
+pub struct SentTransaction {}
 
 fn get_transaction_parameters(
     args: Vec<ParsedArgument>,
@@ -454,10 +451,7 @@ pub async fn monitor_transactions(
                         "tx direct send event for tx_id: {}, success: {}", *id, success
                     );
                     if wait_stage == TransactionStage::DirectSendOrSaf {
-                        results.push(SentTransaction {
-                            id: *id,
-                            stage: TransactionStage::DirectSendOrSaf,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }
@@ -469,10 +463,7 @@ pub async fn monitor_transactions(
                         "tx store and forward event for tx_id: {}, success: {}", *id, success
                     );
                     if wait_stage == TransactionStage::DirectSendOrSaf {
-                        results.push(SentTransaction {
-                            id: *id,
-                            stage: TransactionStage::DirectSendOrSaf,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }
@@ -481,10 +472,7 @@ pub async fn monitor_transactions(
                 TransactionEvent::ReceivedTransactionReply(id) if tx_ids.contains(id) => {
                     debug!(target: LOG_TARGET, "tx reply event for tx_id: {}", *id);
                     if wait_stage == TransactionStage::Negotiated {
-                        results.push(SentTransaction {
-                            id: *id,
-                            stage: TransactionStage::Negotiated,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }
@@ -493,10 +481,7 @@ pub async fn monitor_transactions(
                 TransactionEvent::TransactionBroadcast(id) if tx_ids.contains(id) => {
                     debug!(target: LOG_TARGET, "tx mempool broadcast event for tx_id: {}", *id);
                     if wait_stage == TransactionStage::Broadcast {
-                        results.push(SentTransaction {
-                            id: *id,
-                            stage: TransactionStage::Broadcast,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }
@@ -515,10 +500,7 @@ pub async fn monitor_transactions(
                         is_valid
                     );
                     if wait_stage == TransactionStage::MinedUnconfirmed {
-                        results.push(SentTransaction {
-                            id: *tx_id,
-                            stage: TransactionStage::MinedUnconfirmed,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }
@@ -530,10 +512,7 @@ pub async fn monitor_transactions(
                         "tx mined confirmed event for tx_id: {}, is_valid:{}", *tx_id, is_valid
                     );
                     if wait_stage == TransactionStage::Mined {
-                        results.push(SentTransaction {
-                            id: *tx_id,
-                            stage: TransactionStage::Mined,
-                        });
+                        results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
                         }

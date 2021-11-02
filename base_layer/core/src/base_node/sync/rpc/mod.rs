@@ -28,11 +28,9 @@ mod sync_utxos_task;
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
-// mod sync_utxos;
-
 // TODO: Tests need to be rewritten
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 #[cfg(feature = "base_node")]
 use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};

@@ -118,7 +118,7 @@ impl ChainMetadataService {
         use ConnectivityEvent::*;
         match event {
             PeerDisconnected(node_id) | PeerBanned(node_id) => {
-                if let Some(pos) = self.peer_chain_metadata.iter().position(|p| p.node_id == node_id) {
+                if let Some(pos) = self.peer_chain_metadata.iter().position(|p| *p.node_id() == node_id) {
                     debug!(
                         target: LOG_TARGET,
                         "Removing disconnected/banned peer `{}` from chain metadata list ", node_id
@@ -251,7 +251,7 @@ impl ChainMetadataService {
             if let Some(pos) = self
                 .peer_chain_metadata
                 .iter()
-                .position(|peer_chainstate| &peer_chainstate.node_id == node_id)
+                .position(|peer_chainstate| peer_chainstate.node_id() == node_id)
             {
                 self.peer_chain_metadata.remove(pos);
             }
@@ -284,7 +284,7 @@ impl ChainMetadataService {
         if let Some(pos) = self
             .peer_chain_metadata
             .iter()
-            .position(|peer_chainstate| &peer_chainstate.node_id == node_id)
+            .position(|peer_chainstate| peer_chainstate.node_id() == node_id)
         {
             self.peer_chain_metadata.remove(pos);
         }
@@ -411,9 +411,9 @@ mod test {
         service.handle_liveness_event(&sample_event).await.unwrap();
         assert_eq!(service.peer_chain_metadata.len(), 1);
         let metadata = service.peer_chain_metadata.remove(0);
-        assert_eq!(metadata.node_id, node_id);
+        assert_eq!(*metadata.node_id(), node_id);
         assert_eq!(
-            metadata.chain_metadata.height_of_longest_chain(),
+            metadata.claimed_chain_metadata().height_of_longest_chain(),
             proto_chain_metadata.height_of_longest_chain.unwrap()
         );
     }
@@ -443,13 +443,13 @@ mod test {
         assert!(service
             .peer_chain_metadata
             .iter()
-            .any(|p| &p.node_id == nodes[0].node_id()));
+            .any(|p| p.node_id() == nodes[0].node_id()));
         service.handle_connectivity_event(ConnectivityEvent::PeerBanned(nodes[0].node_id().clone()));
         // Check that banned peer was removed
         assert!(service
             .peer_chain_metadata
             .iter()
-            .all(|p| &p.node_id != nodes[0].node_id()));
+            .all(|p| p.node_id() != nodes[0].node_id()));
     }
 
     #[tokio::test]

@@ -210,6 +210,8 @@ pub enum TransactionStorageError {
     AeadError(String),
     #[error("Transaction (TxId: '{0}') is not mined")]
     TransactionNotMined(TxId),
+    #[error("Conversion error: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

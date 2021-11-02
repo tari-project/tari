@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-17
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18
 
 commands:
   test:
@@ -76,13 +76,13 @@ commands:
       - run:
           name: Cargo fmt
           command: |
-            TOOLCHAIN=$(cat rust-toolchain)
+            TOOLCHAIN=$(awk '/channel = /{print $NF}' rust-toolchain.toml)
             rustup component add --toolchain $TOOLCHAIN rustfmt
             cargo fmt --all -- --check
       - run:
           name: Run clippy (main source)
           command: |
-            TOOLCHAIN=$(cat rust-toolchain)
+            TOOLCHAIN=$(awk '/channel = /{print $NF}' rust-toolchain.toml)
             rustup component add --toolchain $TOOLCHAIN clippy
             cargo clippy -- -D warnings -W clippy::cognitive_complexity
       - run:
@@ -129,7 +129,7 @@ commands:
       - run:
           name: Run cucumber scenarios
           no_output_timeout: 20m
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci" --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 2 --retryTagFilter "@flaky and not @broken"
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci" --tags "not @long-running and not @broken and not @wallet-ffi" --format json:cucumber_output/tests.cucumber --exit --retry 3 --retry-tag-filter "@flaky and not @broken"
       - run:
           name: Generate report
           command: cd integration_tests && node ./generate_report.js
@@ -137,7 +137,7 @@ commands:
       # Below step requires NodeJS v12 to run correctly, see explanation in WalletFFI.feature
       - run:
           name: Run FFI wallet library cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci"  --tags "not @long-running and not @broken and not @flaky and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "ci"  --tags "not @long-running and not @broken and @wallet-ffi" --format json:cucumber_output/tests_ffi.cucumber --exit --retry 3 --retry-tag-filter "@flaky and not @broken"
           when: always
       - run:
           name: Generate report (ffi)
