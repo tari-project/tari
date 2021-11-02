@@ -22,8 +22,6 @@
 
 use crate::automation::{commands::WalletCommand, error::ParseError};
 
-use chrono::{DateTime, Utc};
-use chrono_english::{parse_date_string, Dialect};
 use core::str::SplitWhitespace;
 use std::{
     fmt::{Display, Formatter},
@@ -34,6 +32,7 @@ use tari_comms::multiaddr::Multiaddr;
 
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 #[derive(Debug)]
 pub struct ParsedCommand {
@@ -78,7 +77,7 @@ pub enum ParsedArgument {
     Text(String),
     Float(f64),
     Int(u64),
-    Date(DateTime<Utc>),
+    Date(OffsetDateTime),
     OutputToCSVFile(String),
     CSVFileName(String),
     Address(Multiaddr),
@@ -216,11 +215,10 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     // start time utc or 'now'
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
-    let now = Utc::now();
     let start_time = if start_time != "now" {
-        parse_date_string(start_time, now, Dialect::Uk).map_err(ParseError::Date)?
+        OffsetDateTime::parse(start_time, &Rfc3339)?
     } else {
-        now
+        OffsetDateTime::now_utc()
     };
     parsed_args.push(ParsedArgument::Date(start_time));
 

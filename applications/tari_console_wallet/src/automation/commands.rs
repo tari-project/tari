@@ -30,7 +30,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
 use futures::FutureExt;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
@@ -59,6 +58,7 @@ use tari_wallet::{
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
 };
+use time::OffsetDateTime;
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
@@ -274,7 +274,7 @@ pub async fn make_it_rain(
     }?;
 
     let start_time = match args[4].clone() {
-        Date(dt) => Ok(dt as DateTime<Utc>),
+        Date(dt) => Ok(dt),
         _ => Err(CommandError::Argument),
     }?;
 
@@ -296,13 +296,13 @@ pub async fn make_it_rain(
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let delay_ms = if start_time > now {
             println!(
                 "`make-it-rain` scheduled to start at {}: msg \"{}\"",
                 start_time, message
             );
-            (start_time - now).num_milliseconds() as u64
+            (start_time - now).whole_milliseconds() as u64
         } else {
             0
         };
@@ -314,7 +314,7 @@ pub async fn make_it_rain(
         sleep(Duration::from_millis(delay_ms)).await;
 
         let num_txs = (txps * duration as f64) as usize;
-        let started_at = Utc::now();
+        let started_at = OffsetDateTime::now_utc();
 
         struct TransactionSendStats {
             i: usize,
@@ -348,7 +348,7 @@ pub async fn make_it_rain(
                     ParsedArgument::Text(message.clone()),
                 ];
                 // Manage transaction submission rate
-                let actual_ms = (Utc::now() - started_at).num_milliseconds();
+                let actual_ms = (OffsetDateTime::now_utc() - started_at).whole_milliseconds() as i64;
                 let target_ms = (i as f64 / (txps / 1000.0)) as i64;
                 if target_ms - actual_ms > 0 {
                     // Maximum delay between Txs set to 120 s
@@ -420,7 +420,7 @@ pub async fn make_it_rain(
             num_txs,
             transaction_type,
             message,
-            Utc::now()
+            OffsetDateTime::now_utc(),
         );
     });
 

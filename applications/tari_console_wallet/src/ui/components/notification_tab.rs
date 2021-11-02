@@ -9,7 +9,9 @@
 //       notification, the UI should go there if I click on it.
 
 use crate::ui::{components::Component, state::AppState};
+use anyhow::Error;
 use tari_comms::runtime::Handle;
+use time::{error::Format, format_description::FormatItem, macros::format_description};
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
@@ -19,6 +21,8 @@ use tui::{
     Frame,
 };
 
+const DT_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day] [hour]-[minute]-[second] ");
+
 pub struct NotificationTab {}
 
 impl NotificationTab {
@@ -26,7 +30,7 @@ impl NotificationTab {
         Self {}
     }
 
-    fn draw_notifications<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    fn draw_notifications<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) -> Result<(), Error>
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Notifications",
@@ -37,22 +41,21 @@ impl NotificationTab {
             .constraints([Constraint::Min(42)].as_ref())
             .margin(1)
             .split(area);
-        let mut text: Vec<Spans> = app_state
+        let text = app_state
             .get_notifications()
             .iter()
+            .rev()
             .map(|(time, line)| {
-                Spans::from(vec![
-                    Span::styled(
-                        time.format("%Y-%m-%d %H:%M:%S ").to_string(),
-                        Style::default().fg(Color::LightGreen),
-                    ),
+                Ok(Spans::from(vec![
+                    Span::styled(time.format(&DT_FORMAT)?, Style::default().fg(Color::LightGreen)),
                     Span::raw(line),
-                ])
+                ]))
             })
-            .collect();
-        text.reverse();
-        let paragraph = Paragraph::new(text.clone()).wrap(Wrap { trim: true });
+            .collect::<Result<Vec<Spans>, Format>>()
+            .unwrap();
+        let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
         f.render_widget(paragraph, notifications_area[0]);
+        Ok(())
     }
 }
 
@@ -61,7 +64,9 @@ impl<B: Backend> Component<B> for NotificationTab {
         let areas = Layout::default()
             .constraints([Constraint::Min(42)].as_ref())
             .split(area);
-        self.draw_notifications(f, areas[0], app_state);
+        if let Err(err) = self.draw_notifications(f, areas[0], app_state) {
+            log::error!("Notification tab rendering failed: {}", err);
+        }
     }
 
     fn on_tick(&mut self, app_state: &mut AppState) {
