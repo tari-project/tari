@@ -36,7 +36,14 @@ use crate::{
             TariDanPayloadProcessor,
             TariDanPayloadProvider,
         },
-        storage::{AssetDataStore, LmdbAssetStore},
+        storage::{
+            sqlite::SqliteStorageService,
+            AssetDataStore,
+            BackendAdapter,
+            DbFactory,
+            LmdbAssetStore,
+            SqliteDbFactory,
+        },
         workers::ConsensusWorker,
     },
     p2p::create_validator_node_rpc_service,
@@ -63,6 +70,7 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
@@ -71,6 +79,7 @@ use tari_p2p::{
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
+use tokio::task;
 
 const LOG_TARGET: &str = "tari::dan::dan_node";
 

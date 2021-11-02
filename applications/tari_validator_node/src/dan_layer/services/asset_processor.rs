@@ -86,28 +86,27 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
         hash: Vec<u8>,
         db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        let instruction = self.template_factory.create_command(template_id, method, args)?;
+        todo!()
+        // let instruction = self.template_factory.create_command(template_id, method, args)?;
         // let unit_of_work = state_db.new_unit_of_work();
-        let result = instruction.try_execute(db)?;
+        // let result = instruction.try_execute(db)?;
         // unit_of_work.commit()?;
         // self.instruction_log.store(hash, result);
-        Ok(())
+        // Ok(())
     }
 }
 
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
-    pub fn _create_command(
+    pub fn create_command(
         &self,
         template: TemplateId,
         method: String,
         args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
-    ) -> Result<impl TemplateCommand, DigitalAssetError> {
-        match template {
-            TemplateId::_EditableMetadata => _EditableMetadataTemplate::_create_command(method, args),
-        }
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
     }
 }
 

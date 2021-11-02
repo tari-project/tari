@@ -43,7 +43,6 @@ pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
-pub use instruction_id::InstructionId;
 pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 // pub use replica_info::ReplicaInfo;
@@ -77,11 +76,11 @@ pub enum TemplateId {
 impl TemplateId {
     pub fn _parse(s: &str) -> TemplateId {
         match s {
-            "EditableMetadata" => TemplateId::_EditableMetadata,
+            "EditableMetadata" => TemplateId::EditableMetadata,
             _ => {
                 // TODO: Propagate error instead
                 dbg!("Unrecognised template");
-                TemplateId::_EditableMetadata
+                TemplateId::EditableMetadata
             },
         }
     }

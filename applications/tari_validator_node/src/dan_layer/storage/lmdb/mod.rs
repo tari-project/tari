@@ -22,8 +22,6 @@
 
 use std::{fs, fs::File, path::Path, sync::Arc};
 
-mod helpers;
-
 use crate::{
     dan_layer::{
         models::TokenId,
@@ -46,14 +44,6 @@ use patricia_tree::{
 use helpers::create_lmdb_store;
 use tari_common::file_lock;
 use tari_storage::lmdb_store::{DatabaseRef, LMDBConfig};
-
-use crate::{
-    dan_layer::{
-        models::TokenId,
-        storage::{error::StorageError, AssetStore},
-    },
-    digital_assets_error::DigitalAssetError,
-};
 
 #[cfg(test)]
 mod test;
