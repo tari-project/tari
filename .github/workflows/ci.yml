@@ -9,6 +9,10 @@ on:
 
 name: CI
 
+env:
+  CARGO_HTTP_MULTIPLEXING: false
+  toolchain: nightly-2021-09-18
+
 jobs:
   clippy:
     name: clippy
@@ -19,102 +23,41 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
-      - name: cargo clippy
-        uses: actions-rs/cargo@v1
+      - name: Clippy check
+        uses: actions-rs/clippy-check@v1
         with:
-          command: clippy
-          args: -- -D warnings -W clippy::cognitive_complexity
-      - name: cargo clippy --all-targets
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets -- -D warnings
-  build:
-    name: build
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-18.04, macos-10.15, windows-2019]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: checkout
-        uses: actions/checkout@v2
-
-      - name: ubuntu dependencies
-        if: startsWith(matrix.os,'ubuntu')
-        run: |
-          sudo apt-get update && \
-          sudo apt-get -y install \
-            libssl-dev \
-            openssl \
-            libsqlite3-dev \
-            clang-10 \
-            pkg-config \
-            git \
-            cmake \
-            zip \
-            libc++-dev \
-            libc++abi-dev \
-            libprotobuf-dev \
-            protobuf-compiler
-
-      - name: macOS dependencies
-        if: startsWith(matrix.os,'macos')
-        run: brew install cmake zip
-
-      - name: windows dependencies
-        if: startsWith(matrix.os,'windows')
-        run: |
-          vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
-          choco upgrade llvm zip psutils strawberryperl -y
-
-      - name: windows env
-        if: startsWith(matrix.os,'Windows')
-        shell: bash
-        run: |
-          echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
-          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
-
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2021-08-18
-          components: clippy, rustfmt
-          override: true
-
-      - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
-
-      - name: cargo build wallet
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release -p tari_wallet
-
-      - name: cargo build wallet ffi
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release -p tari_wallet_ffi
-
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
   test:
     name: test
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2
-
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: ubuntu dependencies
         if: startsWith(matrix.os,'ubuntu')
         run: |
@@ -135,7 +78,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
 

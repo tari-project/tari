@@ -16,6 +16,8 @@ try {
   let err = ref.alloc(i32);
   // console.log(err);
 
+  let recoveryInProgress = ref.alloc(bool);
+
   console.log("Create Tor transport...");
   let tor = lib.transport_tor_create(
     "/ip4/127.0.0.1/tcp/9051",
@@ -79,17 +81,13 @@ try {
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txCancelled: ", ptr);
   });
-  // callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const utxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
+  // callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+  const txoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
     console.log("utxoValidation: ", i, j);
   });
-  // callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const stxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
-    console.log("stxoValidation: ", i, j);
-  });
-  // callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const itxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
-    console.log("itxoValidation: ", i, j);
+  // callback_balance_updated: unsafe extern "C" fn(*mut Balance),
+  const balanceUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
+    console.log("balanceUpdated: ", ptr);
   });
   // callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
   const txValidation = ffi.Callback("void", [u64, u8], function (i, j) {
@@ -117,11 +115,11 @@ try {
     directSendResult,
     safResult,
     txCancelled,
-    utxoValidation,
-    stxoValidation,
-    itxoValidation,
+    txoValidation,
+    balanceUpdated,
     txValidation,
     safsReceived,
+    recoveryInProgress,
     err
   );
 

@@ -817,14 +817,14 @@ When(/I stop node (.*)/, async function (name) {
 
 Then(
   /node (.*) is at height (\d+)/,
-  { timeout: 15 * 1000 },
+  { timeout: 600 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
     const currentHeight = await waitForIterate(
       () => client.getTipHeight(),
       height,
       1000,
-      15
+      5 * height // 5 seconds per block
     );
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
@@ -837,11 +837,7 @@ Then(
 
 Then(/node (.*) has a pruned height of (\d+)/, async function (name, height) {
   const client = this.getClient(name);
-  await waitFor(
-      async () => await client.getPrunedHeight(),
-      height,
-      115 * 1000
-    );
+  await waitFor(async () => await client.getPrunedHeight(), height, 115 * 1000);
   const currentHeight = await client.getPrunedHeight();
   console.log(
     `Node ${name} has a pruned height: ${currentHeight} (should be`,
@@ -880,11 +876,16 @@ Then(
 
 Then(
   "all nodes are on the same chain at height {int}",
-  { timeout: 15 * 1000 },
+  { timeout: 600 * 1000 },
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitForIterate(() => client.getTipHeight(), height, 1000, 200);
+      await waitForIterate(
+        () => client.getTipHeight(),
+        height,
+        1000,
+        5 * height /* 5 seconds per block */
+      );
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
@@ -951,7 +952,7 @@ Then(
           await waitFor(
             async () => await client.getTipHeight(),
             height,
-            60 * 1000
+            5 * height * 1000 /* 5 seconds per block */
           );
           const currTip = await client.getTipHeight();
           console.log(

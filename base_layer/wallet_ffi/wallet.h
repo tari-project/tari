@@ -57,6 +57,8 @@ struct TariContact;
 
 struct TariCompletedTransactions;
 
+struct TariBalance;
+
 struct TariCompletedTransaction;
 
 struct TariPendingOutboundTransactions;
@@ -424,6 +426,8 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
+/// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
@@ -464,6 +468,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *),
                                  void (*callback_txo_validation_complete)(unsigned long long, unsigned char),
+                                 void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_saf_message_received)(),
                                  bool *recovery_in_progress,
@@ -483,6 +488,18 @@ bool wallet_upsert_contact(struct TariWallet *wallet, struct TariContact *contac
 
 // Removes a TariContact form the TariWallet
 bool wallet_remove_contact(struct TariWallet *wallet, struct TariContact *contact, int *error_out);
+
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_available(struct TariBalance *balance, int *error_out);
+
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_time_locked(struct TariBalance *balance, int *error_out);
+
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int *error_out);
+
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
 
 // Gets the available balance from a TariWallet
 unsigned long long wallet_get_available_balance(struct TariWallet *wallet, int *error_out);
@@ -692,6 +709,9 @@ bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
+
+// Frees memory for a TariBalance
+void balance_destroy(struct TariBalance *balance);
 
 // This function will produce a partial backup of the specified wallet database file (full file path must be provided.
 // This backup will be written to the provided file (full path must include the filename and extension) and will include

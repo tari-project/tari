@@ -106,7 +106,7 @@ impl DnsClient {
 #[derive(Clone)]
 pub struct Client<C> {
     inner: C,
-    shutdown: Arc<Shutdown>,
+    _shutdown: Arc<Shutdown>,
 }
 
 impl Client<AsyncDnssecClient> {
@@ -121,7 +121,7 @@ impl Client<AsyncDnssecClient> {
 
         Ok(Self {
             inner: client,
-            shutdown: Arc::new(shutdown),
+            _shutdown: Arc::new(shutdown),
         })
     }
 }
@@ -135,7 +135,7 @@ impl Client<AsyncClient> {
 
         Ok(Self {
             inner: client,
-            shutdown: Arc::new(shutdown),
+            _shutdown: Arc::new(shutdown),
         })
     }
 }
@@ -165,7 +165,7 @@ mod mock {
             let client = MockClientHandle::mock(messages);
             Ok(Self {
                 inner: client,
-                shutdown: Arc::new(Shutdown::new()),
+                _shutdown: Arc::new(Shutdown::new()),
             })
         }
     }

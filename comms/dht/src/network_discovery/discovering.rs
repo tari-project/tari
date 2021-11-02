@@ -41,10 +41,8 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 pub(super) struct Discovering {
     params: DiscoveryParams,
     context: NetworkDiscoveryContext,
-    candidate_peers: Vec<PeerConnection>,
     stats: DhtNetworkDiscoveryRoundInfo,
     neighbourhood_threshold: NodeDistance,
-    excluded_peers: Vec<NodeId>,
 }
 
 impl Discovering {
@@ -52,10 +50,8 @@ impl Discovering {
         Self {
             params,
             context,
-            candidate_peers: Vec::new(),
             stats: Default::default(),
             neighbourhood_threshold: NodeDistance::max_distance(),
-            excluded_peers: Vec::new(),
         }
     }
 
