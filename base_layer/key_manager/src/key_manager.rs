@@ -100,7 +100,11 @@ where
     }
 }
 
-impl<K, D> Default for KeyManager<K, D> {
+impl<K, D> Default for KeyManager<K, D>
+where
+    K: SecretKey,
+    D: Digest,
+{
     fn default() -> Self {
         Self::new()
     }
