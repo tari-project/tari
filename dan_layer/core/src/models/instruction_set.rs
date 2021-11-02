@@ -19,10 +19,61 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::models::{ConsensusHash, Instruction};
+use std::hash::Hash;
+use tari_crypto::common::Blake256;
+use tari_mmr::MerkleMountainRange;
+
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct InstructionSetHash(Vec<u8>);
+
+impl InstructionSetHash {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+// TODO: Implement hash properly
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Clone, Debug)]
+pub struct InstructionSet {
+    hash: InstructionSetHash,
+    instructions: Vec<Instruction>,
+}
+
+impl InstructionSet {
+    pub fn empty() -> Self {
+        Self::from_slice(&[])
+    }
+
+    pub fn from_slice(instructions: &[Instruction]) -> Self {
+        let ins = Vec::from(instructions);
+        let mut result = Self {
+            instructions: ins,
+            hash: InstructionSetHash(vec![]),
+        };
+        result.hash = result.calculate_hash();
+        result
+    }
+
+    pub fn calculate_hash(&self) -> InstructionSetHash {
+        let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
+        // assume instructions are sorted
+        for instruction in &self.instructions {
+            mmr.push(instruction.calculate_hash()).unwrap();
+        }
+
+        InstructionSetHash(mmr.get_merkle_root().unwrap())
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        self.instructions.as_slice()
+    }
+}
+
+impl ConsensusHash for InstructionSet {
+    fn consensus_hash(&self) -> &[u8] {
+        self.hash.as_bytes()
+    }
 }

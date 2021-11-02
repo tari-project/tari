@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,48 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use crate::{
+    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{ChainDbUnitOfWork, DbFactory, StorageError, UnitOfWork},
+};
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
+// TODO: perhaps rename to ChainBusinessLogic
+// One per asset, per network
+#[async_trait]
+pub trait ChainStorageService<TPayload: Payload> {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
+    async fn save_node<TUnitOfWork: UnitOfWork>(
         &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
-
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+        node: &HotStuffTreeNode<TPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError>;
 }
-
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
-}
+// #[derive(Clone)]
+// pub struct ChainStorageServiceHandle {
+//     service: Arc<RwLock<ChainStorageService>>,
+// }
+//
+// impl ChainStorageServiceHandle {
+//     pub fn new() -> Self {
+//         todo!()
+//         // Self {
+//
+//         // TODO: fix this ordering
+//         // service: Arc::new(RwLock::new(LmdbChainStorageService {})),
+//         // }
+//     }
+// }
+//
+// #[async_trait]
+// impl<TPayload: Payload> ChainStorageService<TPayload> for ChainStorageServiceHandle {
+//     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+//         self.service.read().await.get_metadata().await
+//     }
+//
+//     async fn save_qc(&self, node: &QuorumCertificate<TPayload>, db: ChainDbUnitOfWork) -> Result<(), StorageError> {
+//         self.service.write().await.save_qc(node, db)
+//     }
+// }

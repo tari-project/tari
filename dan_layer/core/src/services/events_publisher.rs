@@ -19,10 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::models::Event;
+use log::*;
+use std::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+};
+
+const LOG_TARGET: &str = "tari::dan::services::events_publisher";
+
+pub trait EventsPublisher<TEvent: Event> {
+    fn publish(&mut self, event: TEvent);
+}
+
+pub struct LoggingEventsPublisher<TEvent: Event> {
+    // TODO: remove
+    phantom: PhantomData<TEvent>,
+}
+
+impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
+    pub fn new() -> Self {
+        Self { phantom: PhantomData }
+    }
+}
+impl<TEvent: Event + Debug + Display> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
+    fn publish(&mut self, event: TEvent) {
+        info!(target: LOG_TARGET, "[Event] Event received:{}", event);
+    }
 }

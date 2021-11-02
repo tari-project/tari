@@ -19,10 +19,35 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    models::Signature,
+    services::infrastructure_services::NodeAddressable,
+};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
+
+pub trait SigningService<TAddr: NodeAddressable> {
+    fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError>;
+}
+
+pub struct NodeIdentitySigningService {
+    node_identity: NodeIdentity,
+}
+
+impl NodeIdentitySigningService {
+    pub fn new(node_identity: NodeIdentity) -> Self {
+        Self { node_identity }
+    }
+}
+
+impl SigningService<CommsPublicKey> for NodeIdentitySigningService {
+    fn sign(&self, identity: &CommsPublicKey, _challenge: &[u8]) -> Result<Signature, DigitalAssetError> {
+        if identity != self.node_identity.public_key() {
+            return Err(DigitalAssetError::InvalidSignature);
+        }
+
+        // TODO better sig
+        Ok(Signature {})
+    }
 }

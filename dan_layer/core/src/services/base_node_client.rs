@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    models::{BaseLayerMetadata, BaseLayerOutput},
+    types::PublicKey,
+};
+use async_trait::async_trait;
+use std::{convert::TryInto, net::SocketAddr};
+use tari_crypto::tari_utilities::ByteArray;
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+#[async_trait]
+pub trait BaseNodeClient {
+    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
-}
-
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+    async fn get_current_checkpoint(
+        &mut self,
+        height: u64,
+        asset_public_key: PublicKey,
+        checkpoint_unique_id: Vec<u8>,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
 }

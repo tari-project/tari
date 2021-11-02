@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,53 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use crate::{
+    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
+};
+use async_trait::async_trait;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+pub struct SqliteStorageService {}
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
+#[async_trait]
+impl ChainStorageService<TariDanPayload> for SqliteStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        todo!()
+    }
+
+    async fn save_node<TUnitOfWork: UnitOfWork>(
         &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+        node: &HotStuffTreeNode<TariDanPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError> {
+        let mut db = db;
+        for instruction in node.payload().instructions() {
+            db.add_instruction(node.hash().clone(), instruction.clone())?;
+        }
+        db.add_node(node.hash().clone(), node.parent().clone())?;
+        Ok(())
+    }
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+#[derive(Clone)]
+pub struct SqliteBackendAdapter {}
+
+pub struct SqliteTransaction {}
+
+impl BackendAdapter for SqliteBackendAdapter {
+    type BackendTransaction = SqliteTransaction;
+
+    fn create_transaction(&self) -> Self::BackendTransaction {
+        SqliteTransaction {}
+    }
+
+    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
+        todo!()
+    }
+
+    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
+        todo!()
+    }
 }

@@ -19,10 +19,57 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::models::ViewId;
+
+// #[async_trait]
+// pub trait State {
+//     async fn next_event(
+//         &mut self,
+//         current_view: &View,
+//         shutdown: &ShutdownSignal,
+//     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>;
+// }
+
+mod commit_state;
+mod decide_state;
+mod idle_state;
+mod next_view;
+mod pre_commit_state;
+mod prepare;
+mod starting;
+
+pub use commit_state::CommitState;
+pub use decide_state::DecideState;
+pub use idle_state::IdleState;
+pub use next_view::NextViewState;
+pub use pre_commit_state::PreCommitState;
+pub use prepare::Prepare;
+pub use starting::Starting;
+
+#[derive(Debug, PartialEq)]
+pub enum ConsensusWorkerStateEvent {
+    Initialized,
+    BaseLayerCheckpointNotFound,
+    NotPartOfCommittee,
+    Errored { reason: String },
+    Prepared,
+    PreCommitted,
+    Committed,
+    Decided,
+    TimedOut,
+    NewView { new_view: ViewId },
+}
+
+impl ConsensusWorkerStateEvent {
+    pub fn must_shutdown(&self) -> bool {
+        matches!(self, ConsensusWorkerStateEvent::Errored { .. })
+    }
+
+    pub fn shutdown_reason(&self) -> Option<&str> {
+        match self {
+            ConsensusWorkerStateEvent::Errored { reason } => Some(reason.as_str()),
+            _ => None,
+        }
+    }
 }

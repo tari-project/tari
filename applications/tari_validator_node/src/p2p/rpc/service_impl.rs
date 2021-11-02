@@ -19,17 +19,14 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use crate::{
-    dan_layer::{
-        models::{Instruction, TokenId},
-        services::MempoolService,
-    },
-    p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService},
-    types::{ComSig, PublicKey},
-};
+use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    models::{Instruction, TokenId},
+    services::MempoolService,
+    types::{ComSig, PublicKey},
+};
 
 pub struct ValidatorNodeRpcServiceImpl<TMempoolService> {
     mempool_service: TMempoolService,

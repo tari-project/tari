@@ -1676,6 +1676,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
 name = "dtoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6352,6 +6358,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "blake2",
+ "bytecodec",
+ "clap",
+ "digest",
+ "futures 0.3.17",
+ "lmdb-zero",
+ "log 0.4.14",
+ "patricia_tree",
+ "prost",
+ "prost-types",
+ "serde 1.0.130",
+ "serde_json",
+ "tari_common",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_comms_rpc_macros",
+ "tari_core",
+ "tari_crypto",
+ "tari_mmr",
+ "tari_p2p",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_storage",
+ "tari_test_utils 0.8.1",
+ "thiserror",
+ "tokio 1.12.0",
+ "tokio-stream",
+ "tonic",
+]
+
+[[package]]
 name = "tari_infra_derive"
 version = "0.11.0"
 dependencies = [
@@ -6671,6 +6713,7 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_core",
  "tari_crypto",
+ "tari_dan_core",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -7843,6 +7886,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
+]
+
+[[package]]
+name = "validator_node_sqlite"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "dotenv",
 ]
 
 [[package]]

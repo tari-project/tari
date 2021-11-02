@@ -19,10 +19,45 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::{models::ViewId, services::infrastructure_services::NodeAddressable};
+
+#[derive(Clone)]
+pub struct Committee<TAddr: NodeAddressable> {
+    // TODO: encapsulate
+    pub members: Vec<TAddr>,
+}
+
+impl<TAddr: NodeAddressable> Committee<TAddr> {
+    pub fn new(members: Vec<TAddr>) -> Self {
+        Self { members }
+    }
+
+    pub fn leader_for_view(&self, view_id: ViewId) -> &TAddr {
+        let pos = view_id.current_leader(self.members.len());
+        &self.members[pos]
+    }
+
+    pub fn consensus_threshold(&self) -> usize {
+        let len = self.members.len();
+        let max_failures = (len - 1) / 3;
+        len - max_failures
+    }
+
+    pub fn len(&self) -> usize {
+        self.members.len()
+    }
+
+    pub fn contains(&self, member: &TAddr) -> bool {
+        self.members.contains(member)
+    }
+}
+
+impl<TAddr: NodeAddressable> IntoIterator for Committee<TAddr> {
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type Item = TAddr;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.members.into_iter()
+    }
 }

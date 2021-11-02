@@ -20,32 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use crate::{digital_assets_error::DigitalAssetError, models::TokenId};
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+// const PATRICIA_MAP_KEY: u64 = 1u64;
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+pub trait AssetStore {
+    fn get_metadata(&mut self, token_id: &TokenId) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+
+    fn replace_metadata(&mut self, token_id: &TokenId, value: &[u8]) -> Result<(), DigitalAssetError>;
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+pub struct AssetDataStore<TBackend> {
+    backend: TBackend,
+}
+
+impl<TBackend> AssetDataStore<TBackend>
+where TBackend: AssetStore
+{
+    pub fn new(backend: TBackend) -> Self {
+        Self { backend }
+    }
+}
+
+impl<TBackend> AssetStore for AssetDataStore<TBackend>
+where TBackend: AssetStore
+{
+    fn get_metadata(&mut self, token_id: &TokenId) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        let val = self.backend.get_metadata(token_id)?;
+        Ok(val)
+    }
+
+    fn replace_metadata(&mut self, token_id: &TokenId, value: &[u8]) -> Result<(), DigitalAssetError> {
+        self.backend.replace_metadata(token_id, value)?;
+        Ok(())
+    }
 }

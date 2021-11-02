@@ -19,10 +19,44 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    models::{Committee, HotStuffMessage, Payload, QuorumCertificate, View},
+    services::infrastructure_services::{NodeAddressable, OutboundService},
+    workers::states::ConsensusWorkerStateEvent,
+};
+use log::*;
+use tari_shutdown::ShutdownSignal;
+
+const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
+
+pub struct NextViewState {}
+
+impl NextViewState {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub async fn next_event<
+        TPayload: Payload,
+        TOutboundService: OutboundService<TAddr, TPayload>,
+        TAddr: NodeAddressable + Clone + Send,
+    >(
+        &mut self,
+        current_view: &View,
+        prepare_qc: QuorumCertificate<TPayload>,
+        broadcast: &mut TOutboundService,
+        committee: &Committee<TAddr>,
+        node_id: TAddr,
+        _shutdown: &ShutdownSignal,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
+        let next_view = current_view.view_id.next();
+        let leader = committee.leader_for_view(next_view);
+        broadcast.send(node_id, leader.clone(), message).await?;
+        debug!(target: LOG_TARGET, "End of view: {}", current_view.view_id.0);
+        debug!(target: LOG_TARGET, "--------------------------------");
+        Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
+    }
 }

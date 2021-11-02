@@ -19,22 +19,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    dan_layer::{
-        models::{Instruction, TokenId},
-        services::MempoolService,
-    },
-    grpc::validator_node_rpc as rpc,
+use crate::grpc::validator_node_rpc as rpc;
+use std::marker::PhantomData;
+use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    models::{Instruction, TemplateId, TokenId},
+    services::MempoolService,
+    storage::{BackendAdapter, ChainStorageService, DbFactory},
     types::{ComSig, PublicKey},
 };
-
-use tari_crypto::tari_utilities::ByteArray;
-
-use crate::dan_layer::{
-    models::TemplateId,
-    storage::{BackendAdapter, ChainStorageService, DbFactory},
-};
-use std::marker::PhantomData;
 use tonic::{Request, Response, Status};
 
 pub struct ValidatorNodeGrpcServer<

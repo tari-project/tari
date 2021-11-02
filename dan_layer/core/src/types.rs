@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use tari_crypto::{
+    ristretto::{RistrettoPublicKey, RistrettoSecretKey},
+    signatures::CommitmentSignature,
+    tari_utilities::{ByteArray, ByteArrayError},
+};
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+/// Define the explicit Public key implementation for the Tari base layer
+pub type PublicKey = RistrettoPublicKey;
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+pub type ComSig = CommitmentSignature<RistrettoPublicKey, RistrettoSecretKey>;
+
+pub fn create_com_sig_from_bytes(_bytes: &[u8]) -> Result<ComSig, ByteArrayError> {
+    Ok(ComSig::default())
+    // Ok(ComSig::new(
+    //  HomomorphicCommitment::from_bytes(&bytes[0..32])?,
+    // RistrettoSecretKey::from_bytes(&bytes[33..64])?,
+    // RistrettoSecretKey::from_bytes(&bytes[64..96])?,
+    // ))
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+pub fn com_sig_to_bytes(comsig: &ComSig) -> Vec<u8> {
+    let mut v = Vec::from(comsig.public_nonce().as_bytes());
+    v.extend_from_slice(comsig.u().as_bytes());
+    v.extend_from_slice(comsig.v().as_bytes());
+    v
 }

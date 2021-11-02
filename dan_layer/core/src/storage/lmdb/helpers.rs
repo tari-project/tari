@@ -20,32 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use crate::storage::StorageError;
+use lmdb_zero::db;
+use std::path::Path;
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig, LMDBStore};
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+const DATABASES: &[(&str, db::Flags)] = &[("metadata", db::INTEGERKEY)];
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
-}
+pub fn create_lmdb_store<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBStore, StorageError> {
+    const CREATE_FLAG: db::Flags = db::CREATE;
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+    let mut lmdb_store = LMDBBuilder::new()
+        .set_path(path)
+        .set_env_config(config)
+        .set_max_number_of_databases(10);
+
+    for (db_name, flags) in DATABASES {
+        lmdb_store = lmdb_store.add_database(db_name, CREATE_FLAG | *flags);
+    }
+
+    let lmdb_store = lmdb_store.build()?;
+    Ok(lmdb_store)
 }

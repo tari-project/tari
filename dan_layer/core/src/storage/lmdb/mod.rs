@@ -20,32 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
+use std::{fs, fs::File, path::Path, sync::Arc};
+
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    models::TokenId,
+    storage::{error::StorageError, AssetStore},
+};
+use bytecodec::{
+    bincode_codec::{BincodeDecoder, BincodeEncoder},
+    DecodeExt,
+    EncodeExt,
+};
+use lmdb_zero as lmdb;
+use lmdb_zero::{put, ConstAccessor, LmdbResultExt, ReadTransaction, WriteAccessor, WriteTransaction};
+use patricia_tree::{
+    node::{Node, NodeDecoder, NodeEncoder},
+    PatriciaMap,
+};
+
+use helpers::create_lmdb_store;
+use tari_common::file_lock;
+use tari_storage::lmdb_store::{DatabaseRef, LMDBConfig};
+
 #[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+mod test;
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+mod asset_db;
+mod helpers;
+mod lmdb_asset_backend;
+mod lmdb_asset_store;
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
-}
+pub use asset_db::AssetDb;
+pub use lmdb_asset_backend::LmdbAssetBackend;
+pub use lmdb_asset_store::LmdbAssetStore;
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
-}
+const PATRICIA_MAP_KEY: u64 = 1u64;

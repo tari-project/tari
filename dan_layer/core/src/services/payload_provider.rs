@@ -19,10 +19,44 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    models::{AssetDefinition, InstructionSet, Payload, TariDanPayload},
+    services::MempoolService,
+};
+use async_trait::async_trait;
+
+#[async_trait]
+pub trait PayloadProvider<TPayload: Payload> {
+    async fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
+    fn create_genesis_payload(&self) -> TPayload;
+    async fn get_payload_queue(&self) -> usize;
+}
+
+pub struct TariDanPayloadProvider<TMempoolService: MempoolService> {
+    mempool: TMempoolService,
+}
+
+impl<TMempoolService: MempoolService> TariDanPayloadProvider<TMempoolService> {
+    pub fn new(mempool: TMempoolService) -> Self {
+        Self { mempool }
+    }
+}
+
+#[async_trait]
+impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDanPayloadProvider<TMempoolService> {
+    async fn create_payload(&self) -> Result<TariDanPayload, DigitalAssetError> {
+        let instructions = self.mempool.read_block(100).await?;
+        let instruction_set = InstructionSet::from_slice(&instructions);
+        Ok(TariDanPayload::new(instruction_set, None))
+    }
+
+    fn create_genesis_payload(&self) -> TariDanPayload {
+        TariDanPayload::new(InstructionSet::empty(), None)
+    }
+
+    async fn get_payload_queue(&self) -> usize {
+        self.mempool.size().await
+    }
 }

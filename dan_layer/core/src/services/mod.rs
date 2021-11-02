@@ -19,10 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
-}
+mod asset_processor;
+mod base_node_client;
+mod committee_manager;
+mod events_publisher;
+pub mod infrastructure_services;
+mod mempool_service;
+mod payload_processor;
+mod payload_provider;
+mod signing_service;
+
+pub use asset_processor::{AssetProcessor, ConcreteAssetProcessor, MemoryInstructionLog};
+pub use base_node_client::BaseNodeClient;
+pub use committee_manager::{CommitteeManager, ConcreteCommitteeManager};
+pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
+pub use mempool_service::{ConcreteMempoolService, MempoolService, MempoolServiceHandle};
+pub use payload_processor::{PayloadProcessor, TariDanPayloadProcessor};
+pub use payload_provider::{PayloadProvider, TariDanPayloadProvider};
+pub use signing_service::{NodeIdentitySigningService, SigningService};
+
+#[cfg(test)]
+pub mod mocks;

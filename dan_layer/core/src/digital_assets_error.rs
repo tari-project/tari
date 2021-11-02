@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,33 +19,29 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::storage::StorageError;
+use thiserror::Error;
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
-
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
-
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+#[derive(Debug, Error)]
+pub enum DigitalAssetError {
+    #[error("Unknown method: {method_name}")]
+    _UnknownMethod { method_name: String },
+    #[error("Missing argument at position {position} (name: {argument_name}")]
+    _MissingArgument { argument_name: String, position: usize },
+    #[error("Invalid sig, TODO: fill in deets")]
+    InvalidSignature,
+    #[error("Peer sent an invalid message: {0}")]
+    InvalidPeerMessage(String),
+    #[error("Storage error: {0}")]
+    StorageError(#[from] StorageError),
+    #[error("Metadata was malformed: {0}")]
+    MalformedMetadata(String),
+    #[error("Could not convert between types:{0}")]
+    ConversionError(String),
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+impl From<lmdb_zero::Error> for DigitalAssetError {
+    fn from(err: lmdb_zero::Error) -> Self {
+        Self::StorageError(err.into())
+    }
 }

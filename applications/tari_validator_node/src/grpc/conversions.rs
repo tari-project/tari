@@ -19,8 +19,9 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{dan_layer::models::SidechainMetadata, grpc::validator_node_rpc as rpc};
+use crate::grpc::validator_node_rpc as rpc;
 use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::models::SidechainMetadata;
 
 impl From<SidechainMetadata> for rpc::SidechainMetadata {
     fn from(source: SidechainMetadata) -> Self {

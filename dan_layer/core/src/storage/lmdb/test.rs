@@ -20,32 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service_impl;
-pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
-use super::proto::validator_node as proto;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use std::fs;
 
-#[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
-pub trait ValidatorNodeRpcService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn get_token_data(
-        &self,
-        request: Request<proto::GetTokenDataRequest>,
-    ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
+use tari_test_utils::paths;
 
-    #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+use crate::{
+    models::TokenId,
+    storage::{lmdb::lmdb_asset_store::LmdbAssetStore, AssetStore},
+};
+
+fn with_store<F: FnOnce(LmdbAssetStore)>(f: F) {
+    let path = paths::create_temporary_data_path();
+    let store = LmdbAssetStore::initialize(&path, Default::default()).unwrap();
+    f(store);
+    // TODO: This will not happen on panic
+    fs::remove_dir_all(path).unwrap();
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
-    mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+#[test]
+fn it_replaces_the_metadata() {
+    with_store(|mut store| {
+        store.replace_metadata(&TokenId(b"123".to_vec()), &[4, 5, 6]).unwrap();
+        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
+        assert_eq!(metadata, vec![4, 5, 6]);
+
+        store.replace_metadata(&TokenId(b"123".to_vec()), &[5, 6, 7]).unwrap();
+        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap().unwrap();
+        assert_eq!(metadata, vec![5, 6, 7]);
+    });
+}
+
+#[test]
+fn it_returns_none_if_key_does_not_exist() {
+    with_store(|mut store| {
+        let metadata = store.get_metadata(&TokenId(b"123".to_vec())).unwrap();
+        assert!(metadata.is_none());
+    });
 }

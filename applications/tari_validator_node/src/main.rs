@@ -22,18 +22,11 @@
 
 #![allow(clippy::too_many_arguments)]
 mod cmd_args;
-mod dan_layer;
-mod digital_assets_error;
+mod dan_node;
 mod grpc;
 mod p2p;
-mod types;
-
 use crate::{
-    dan_layer::{
-        dan_node::DanNode,
-        services::{MempoolService, MempoolServiceHandle},
-        storage::{BackendAdapter, ChainStorageService, DbFactory, SqliteDbFactory},
-    },
+    dan_node::DanNode,
     grpc::{
         validator_node_grpc_server::ValidatorNodeGrpcServer,
         validator_node_rpc::validator_node_server::ValidatorNodeServer,
@@ -47,6 +40,10 @@ use std::{
 };
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
+use tari_dan_core::{
+    services::{MempoolService, MempoolServiceHandle},
+    storage::{BackendAdapter, ChainStorageService, DbFactory, SqliteDbFactory},
+};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;

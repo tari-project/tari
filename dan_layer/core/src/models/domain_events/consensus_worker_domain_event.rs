@@ -19,10 +19,26 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub(crate) mod conversions;
-pub mod services;
-pub(crate) mod validator_node_grpc_server;
 
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
+use crate::models::{ConsensusWorkerState, Event};
+use std::{fmt, fmt::Formatter};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConsensusWorkerDomainEvent {
+    StateChanged {
+        old: ConsensusWorkerState,
+        new: ConsensusWorkerState,
+    },
+}
+
+impl Event for ConsensusWorkerDomainEvent {}
+
+impl fmt::Display for ConsensusWorkerDomainEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ConsensusWorkerDomainEvent::StateChanged { old, new } => {
+                write!(f, "State changed from {:?} to {:?}", old, new)
+            },
+        }
+    }
 }
