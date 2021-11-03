@@ -22,7 +22,7 @@
 //
 use std::time::Duration;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SolutionStatistics {
     /// Total found
     pub found: u32,
@@ -30,13 +30,7 @@ pub struct SolutionStatistics {
     pub rejected: u32,
 }
 
-impl Default for SolutionStatistics {
-    fn default() -> SolutionStatistics {
-        SolutionStatistics { found: 0, rejected: 0 }
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MiningStatistics {
     /// Solutions per second
     sols: Vec<f64>,
@@ -46,17 +40,6 @@ pub struct MiningStatistics {
     pub solvers: usize,
     /// Solution statistics
     pub solution_stats: SolutionStatistics,
-}
-
-impl Default for MiningStatistics {
-    fn default() -> MiningStatistics {
-        MiningStatistics {
-            solvers: 0,
-            sols: vec![],
-            hashes: 0,
-            solution_stats: SolutionStatistics::default(),
-        }
-    }
 }
 
 impl MiningStatistics {
@@ -86,15 +69,7 @@ impl MiningStatistics {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Statistics {
     pub mining_stats: MiningStatistics,
-}
-
-impl Default for Statistics {
-    fn default() -> Statistics {
-        Statistics {
-            mining_stats: MiningStatistics::default(),
-        }
-    }
 }
