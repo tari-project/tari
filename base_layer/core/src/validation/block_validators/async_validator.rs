@@ -27,7 +27,14 @@ use crate::{
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelSum,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -93,6 +100,22 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         if !helpers::is_all_unique_and_sorted(&outputs) {
             return Err(ValidationError::UnsortedOrDuplicateOutput);
         }
+
+        // Check that unique_ids are unique in this block
+        let mut unique_ids = Vec::new();
+        for output in &outputs {
+            if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) {
+                if let Some(unique_id) = output.features.unique_asset_id() {
+                    let parent_public_key = output.features.parent_public_key.as_ref();
+                    let asset_tuple = (parent_public_key, unique_id);
+                    if unique_ids.contains(&asset_tuple) {
+                        return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                    }
+                    unique_ids.push(asset_tuple);
+                }
+            }
+        }
+
         let outputs_task = self.start_output_validation(&valid_header, outputs);
 
         // Wait for them to complete
