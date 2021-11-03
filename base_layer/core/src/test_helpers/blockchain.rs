@@ -314,6 +314,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_last_header()
     }
 
+    fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_last_chain_header()
+    }
+
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_tip_header()
     }
