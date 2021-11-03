@@ -40,6 +40,10 @@ impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
             .find_highest_prepared_qc()
             .map_err(TBackendAdapter::Error::into)
     }
+
+    pub fn get_locked_qc(&self) -> Result<QuorumCertificate, StorageError> {
+        self.adapter.get_locked_qc().map_err(TBackendAdapter::Error::into)
+    }
 }
 
 impl<TBackendAdapter: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {

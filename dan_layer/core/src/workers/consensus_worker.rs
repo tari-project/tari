@@ -249,7 +249,10 @@ where
                     .await
             },
             Prepare => {
-                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
+                let db = self.db_factory.create()?;
+                let locked_qc = db.get_locked_qc()?;
+
+                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone(), locked_qc);
                 p.next_event(
                     &self.get_current_view()?,
                     self.timeout,

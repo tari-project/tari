@@ -90,6 +90,7 @@ pub trait BackendAdapter: Send + Sync + Clone {
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn locked_qc_id(&self) -> Self::Id;
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
+    fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error>;
 }
 
 pub trait UnitOfWork: Clone + Send + Sync {

@@ -56,6 +56,7 @@ impl NextViewState {
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let db = db_factory.create()?;
         let prepare_qc = db.find_highest_prepared_qc()?;
+        dbg!(&prepare_qc);
         let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
         let next_view = current_view.view_id.next();
         let leader = committee.leader_for_view(next_view);

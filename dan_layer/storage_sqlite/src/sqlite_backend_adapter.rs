@@ -171,4 +171,15 @@ impl BackendAdapter for SqliteBackendAdapter {
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
         ))
     }
+
+    fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let qc: LockedQc = dsl::locked_qc.find(self.locked_qc_id()).first(&connection)?;
+        Ok(QuorumCertificate::new(
+            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+            ViewId::from(qc.view_number as u64),
+            TreeNodeHash(qc.node_hash.clone()),
+            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+        ))
+    }
 }

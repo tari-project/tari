@@ -73,7 +73,7 @@ pub struct Prepare<
     TDbFactory: DbFactory<TBackendAdapter>,
 {
     node_id: TAddr,
-    locked_qc: Arc<QuorumCertificate>,
+    locked_qc: QuorumCertificate,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
@@ -119,8 +119,7 @@ where
     TBackendAdapter: BackendAdapter + Send + Sync,
     TDbFactory: DbFactory<TBackendAdapter> + Clone,
 {
-    pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
-        let locked_qc = todo!();
+    pub fn new(node_id: TAddr, db_factory: TDbFactory, locked_qc: QuorumCertificate) -> Self {
         Self {
             node_id,
             locked_qc,
