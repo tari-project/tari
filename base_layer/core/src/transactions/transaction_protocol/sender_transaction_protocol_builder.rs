@@ -70,10 +70,9 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// SenderTransactionProtocol::new(1);
 /// ```
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
-/// methods, you can call `build()` which will return a
+/// methods, you can call `build()` which will return a [SenderTransactionProtocol]
 #[derive(Debug, Clone)]
 pub struct SenderTransactionProtocolBuilder {
-    consensus_constants: ConsensusConstants,
     num_recipients: usize,
     amounts: FixedSet<MicroTari>,
     lock_height: Option<u64>,
@@ -116,7 +115,6 @@ impl SenderTransactionProtocolBuilder {
     pub fn new(num_recipients: usize, consensus_constants: ConsensusConstants) -> Self {
         Self {
             fee: Fee::new(*consensus_constants.transaction_weight()),
-            consensus_constants,
             num_recipients,
             amounts: FixedSet::new(num_recipients),
             lock_height: None,

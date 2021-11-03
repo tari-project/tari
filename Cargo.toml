@@ -13,6 +13,8 @@ members = [
     "comms",
     "comms/dht",
     "comms/rpc_macros",
+    "dan_layer/core",
+    "dan_layer/validator_node_sqlite",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",

@@ -29,6 +29,7 @@ use crate::{
         BaseNodeConfig,
         Network,
         ValidatorNodeConfig,
+        WalletConfig,
     },
     ConfigurationError,
 };
@@ -80,7 +81,7 @@ pub struct GlobalConfig {
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub base_node_config: Option<BaseNodeConfig>,
-    pub grpc_console_wallet_address: SocketAddr,
+    pub wallet_config: Option<WalletConfig>,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: SocketAddr,
@@ -336,14 +337,27 @@ fn convert_node_config(
         base_node_config = Some(bn_config);
     }
 
-    let key = "wallet.grpc_address";
-    let grpc_console_wallet_address = cfg
-        .get_str(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
-        })?;
+    let mut wallet_config = None;
+    if application == ApplicationType::ConsoleWallet {
+        let mut config = WalletConfig::default();
+        // GPRC enabled
+        let key = "wallet.grpc_enabled";
+        let grpc_enabled = cfg.get_bool(key).unwrap_or_default();
+
+        config.grpc_address = if grpc_enabled {
+            let key = "wallet.grpc_address";
+            let addr = cfg.get_str(key).unwrap_or_else(|_| "127.0.0.1:18143".to_string());
+
+            let grpc_address = addr
+                .parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+
+            Some(grpc_address)
+        } else {
+            None
+        };
+        wallet_config = Some(config);
+    }
 
     // Peer and DNS seeds
     let key = "common.peer_seeds";
@@ -743,7 +757,7 @@ fn convert_node_config(
         base_node_identity_file,
         public_address,
         base_node_config,
-        grpc_console_wallet_address,
+        wallet_config,
         peer_seeds,
         dns_seeds,
         dns_seeds_name_server,

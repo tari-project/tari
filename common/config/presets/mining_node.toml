@@ -1,3 +1,9 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                             Mining Node Configuration Options                                        #
+#                                                                                                                      #
+########################################################################################################################
+
 [mining_node]
 # Number of mining threads
 # Default: number of logical CPU cores
@@ -26,3 +32,4 @@
 # mining_pool_address = "miningcore.tari.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
+

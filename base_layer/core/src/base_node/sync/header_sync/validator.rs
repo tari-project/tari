@@ -111,7 +111,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         self.valid_headers().last()
     }
 
-    pub fn validate(&mut self, header: BlockHeader) -> Result<(), BlockHeaderSyncError> {
+    pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let expected_height = state.current_height + 1;
         if header.height != expected_height {
@@ -163,13 +163,14 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
 
-        // NOTE: accumulated_data constructed from header
+        let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
+        // NOTE: accumulated_data constructed from header so they are guaranteed to correspond
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
 
         state.previous_accum = chain_header.accumulated_data().clone();
         state.valid_headers.push(chain_header);
 
-        Ok(())
+        Ok(total_accumulated_difficulty)
     }
 
     /// Drains and returns all the headers that were validated.
@@ -190,11 +191,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         &self.state().valid_headers
     }
 
-    pub fn check_stronger_chain(
-        &self,
-        our_header: &ChainHeader,
-        their_header: &ChainHeader,
-    ) -> Result<(), BlockHeaderSyncError> {
+    pub fn compare_chains(&self, our_header: &ChainHeader, their_header: &ChainHeader) -> Ordering {
         debug!(
             target: LOG_TARGET,
             "Comparing PoW on remote header #{} and local header #{}",
@@ -202,14 +199,9 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             our_header.height()
         );
 
-        match self
-            .consensus_rules
+        self.consensus_rules
             .chain_strength_comparer()
             .compare(our_header, their_header)
-        {
-            Ordering::Less => Ok(()),
-            Ordering::Greater | Ordering::Equal => Err(BlockHeaderSyncError::WeakerChain),
-        }
     }
 
     fn state_mut(&mut self) -> &mut State {

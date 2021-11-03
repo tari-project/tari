@@ -24,8 +24,23 @@ syntax = "proto3";
 package tari.validator_node.rpc;
 
 service ValidatorNode {
+    rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
     rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
     rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
+}
+
+message GetMetadataRequest {
+    // empty
+}
+
+message GetMetadataResponse {
+    repeated SidechainMetadata sidechains = 1;
+}
+
+message SidechainMetadata {
+    bytes asset_public_key =1;
+    uint64 committed_height = 2;
+    bytes committed_hash = 3;
 }
 
 message GetTokenDataRequest {
@@ -38,12 +53,12 @@ message GetTokenDataResponse {
 }
 
 message ExecuteInstructionRequest{
-    bytes asset_public_key =1;
-    string method =2;
-    repeated bytes args = 3;
-    bytes token_id = 4;
-    bytes signature = 5;
-    uint64 id = 6;
+    bytes asset_public_key = 1;
+    uint32 template_id = 2;
+    string method = 3;
+    repeated bytes args = 4;
+//    bytes token_id = 5;
+//    bytes signature = 6;
 }
 
 message ExecuteInstructionResponse {

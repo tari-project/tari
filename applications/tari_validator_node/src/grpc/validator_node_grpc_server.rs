@@ -19,32 +19,47 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    dan_layer::{
-        models::{Instruction, TokenId},
-        services::MempoolService,
-    },
-    grpc::validator_node_rpc as rpc,
+use crate::grpc::validator_node_rpc as rpc;
+use std::marker::PhantomData;
+use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    models::{Instruction, TemplateId, TokenId},
+    services::MempoolService,
+    storage::{BackendAdapter, ChainStorageService, DbFactory},
     types::{ComSig, PublicKey},
 };
-
-use tari_crypto::tari_utilities::ByteArray;
-
 use tonic::{Request, Response, Status};
 
-pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService> {
-    mempool_service: TMempoolService,
+pub struct ValidatorNodeGrpcServer<
+    TMempoolService: MempoolService,
+    TBackendAdapter: BackendAdapter,
+    TDbFactory: DbFactory<TBackendAdapter>,
+> {
+    mempool: TMempoolService,
+    db_factory: TDbFactory,
+    // TODO: Can probably remove
+    pd: PhantomData<TBackendAdapter>,
 }
 
-impl<TMempoolService: MempoolService> ValidatorNodeGrpcServer<TMempoolService> {
-    pub fn new(mempool_service: TMempoolService) -> Self {
-        Self { mempool_service }
+impl<TMempoolService: MempoolService, TBackendAdapter: BackendAdapter, TDbFactory: DbFactory<TBackendAdapter>>
+    ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
+{
+    pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
+        Self {
+            mempool,
+            db_factory,
+            pd: PhantomData,
+        }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::validator_node_server::ValidatorNode
-    for ValidatorNodeGrpcServer<TMempoolService>
+impl<TMempoolService, TBackendAdapter, TDbFactory> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
+where
+    TMempoolService: MempoolService + Clone + Sync + Send + 'static,
+    TBackendAdapter: BackendAdapter + Sync + Send + 'static,
+    TDbFactory: DbFactory<TBackendAdapter> + Sync + Send + 'static,
 {
     async fn get_token_data(
         &self,
@@ -63,17 +78,18 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
         let instruction = Instruction::new(
             PublicKey::from_bytes(&request.asset_public_key)
                 .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?,
+            request.template_id.into(),
             request.method.clone(),
             request.args.clone(),
-            TokenId(request.token_id.clone()),
-            // TODO: put signature in here
-            ComSig::default()
-            // create_com_sig_from_bytes(&request.signature)
-            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            /* TokenId(request.token_id.clone()),
+             * TODO: put signature in here
+             * ComSig::default()
+             * create_com_sig_from_bytes(&request.signature)
+             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
 
-        let mut mempool_service = self.mempool_service.clone();
-        match mempool_service.submit_instruction(instruction).await {
+        let mut mempool = self.mempool.clone();
+        match mempool.submit_instruction(instruction).await {
             Ok(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),
@@ -85,5 +101,20 @@ impl<TMempoolService: MempoolService + Clone + Sync + Send + 'static> rpc::valid
                 }))
             },
         }
+    }
+
+    async fn get_metadata(
+        &self,
+        request: Request<rpc::GetMetadataRequest>,
+    ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
+        dbg!(&request);
+        let db = self.db_factory.create();
+        todo!()
+        // let mut tx = db.new_unit_of_work();
+        // let metadata = db.metadata.read(&mut tx);
+        // // .map_err(|e| Status::internal(format!("Could not read metadata from storage:{}", e)))?;
+        // Ok(Response::new(rpc::GetMetadataResponse {
+        //     sidechains: vec![metadata.into()],
+        // }))
     }
 }

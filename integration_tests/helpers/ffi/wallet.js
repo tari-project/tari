@@ -7,6 +7,7 @@ const PendingInboundTransactions = require("./pendingInboundTransactions");
 const PendingOutboundTransactions = require("./pendingOutboundTransactions");
 const Contact = require("./contact");
 const Contacts = require("./contacts");
+const Balance = require("./balance");
 
 const utf8 = require("utf8");
 
@@ -31,6 +32,7 @@ class Wallet {
   callback_direct_send_result;
   callback_store_and_forward_send_result;
   callback_transaction_cancellation;
+  callback_balance_updated;
   callback_transaction_validation_complete;
   callback_saf_message_received;
   recoveryProgressCallback;
@@ -119,6 +121,9 @@ class Wallet {
       InterfaceFFI.createCallbackTxoValidationComplete(
         this.onTxoValidationComplete
       );
+    this.callback_balance_updated = InterfaceFFI.createCallbackBalanceUpdated(
+      this.onBalanceUpdated
+    );
     this.callback_transaction_validation_complete =
       InterfaceFFI.createCallbackTransactionValidationComplete(
         this.onTransactionValidationComplete
@@ -165,6 +170,7 @@ class Wallet {
       this.callback_store_and_forward_send_result,
       this.callback_transaction_cancellation,
       this.callback_txo_validation_complete,
+      this.callback_balance_updated,
       this.callback_transaction_validation_complete,
       this.callback_saf_message_received
     );
@@ -259,6 +265,15 @@ class Wallet {
     );
     this.txo_validation_complete = true;
     this.txo_validation_result = validation_results;
+  };
+
+  onBalanceUpdated = (ptr) => {
+    let b = new Balance();
+    b.pointerAssign(ptr);
+    console.log(
+      `${new Date().toISOString()} callbackBalanceUpdated: available = ${b.getAvailable()},  time locked = ${b.getTimeLocked()}  pending incoming = ${b.getPendingIncoming()} pending outgoing = ${b.getPendingOutgoing()}`
+    );
+    b.destroy();
   };
 
   onTransactionValidationComplete = (request_key, validation_results) => {
@@ -422,6 +437,7 @@ class Wallet {
         this.callback_store_and_forward_send_result =
         this.callback_transaction_cancellation =
         this.callback_txo_validation_complete =
+        this.callback_balance_updated =
         this.callback_transaction_validation_complete =
         this.callback_saf_message_received =
         this.recoveryProgressCallback =

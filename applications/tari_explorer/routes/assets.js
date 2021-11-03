@@ -20,18 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient } = require('../baseNodeClient')
+var { createClient: createBaseNodeClient } = require('../baseNodeClient')
 
 var express = require('express')
 var router = express.Router()
 
 /* GET home page. */
 router.get('/:asset_public_key', async function (req, res, next) {
-  let client = createClient()
+  let baseNodeClient = createBaseNodeClient()
+  // let validatorNodeClient = createValidatorNodeClient()
   let asset_public_key = req.params.asset_public_key
 
   try {
-    let tokens = await client.getTokens({ asset_public_key:  Buffer.from(asset_public_key, "hex") })
+    let tokens = await baseNodeClient.getTokens({ asset_public_key:  Buffer.from(asset_public_key, "hex") })
     console.log(tokens)
 
     if (!tokens || tokens.length === 0) {
@@ -40,9 +41,12 @@ router.get('/:asset_public_key', async function (req, res, next) {
       return;
     }
 
+    // let headers = validatorNodeClient.listHeaders({ from_height: 0, num_headers: 101 })
+
     res.render('assets', {
       title: `Asset with pub key: ${asset_public_key}`,
-      tokens: tokens
+      tokens: tokens,
+      // headers
     })
 
 

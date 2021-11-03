@@ -59,7 +59,7 @@ use tari_crypto::{
     script::TariScript,
 };
 use tari_p2p::Network;
-use tari_service_framework::reply_channel;
+use tari_service_framework::{reply_channel, reply_channel::SenderService};
 use tari_shutdown::Shutdown;
 use tari_utilities::Hashable;
 use tari_wallet::{
@@ -156,7 +156,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             peer_dial_retry_timeout: Duration::from_secs(5),
             ..Default::default()
         },
-        ts_handle.clone(),
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
@@ -223,7 +222,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
             peer_dial_retry_timeout: Duration::from_secs(5),
             ..Default::default()
         },
-        ts_handle.clone(),
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
@@ -1395,6 +1393,23 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
+    // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next step
+    let mut event_stream = oms.get_event_stream();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
+    loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                 if let OutputManagerEvent::TxoValidationSuccess(_) = &*event.unwrap(){
+                    break;
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(
         balance.available_balance,
@@ -1630,9 +1645,6 @@ async fn test_oms_key_manager_discrepancy() {
     let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (oms_event_publisher, _) = broadcast::channel(200);
-    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-    let (event_publisher, _) = channel(100);
-    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
@@ -1651,7 +1663,6 @@ async fn test_oms_key_manager_discrepancy() {
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle.clone(),
         oms_request_receiver,
         db.clone(),
         oms_event_publisher.clone(),
@@ -1670,7 +1681,6 @@ async fn test_oms_key_manager_discrepancy() {
     let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
     let output_manager_service2 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle.clone(),
         oms_request_receiver2,
         db.clone(),
         oms_event_publisher.clone(),
@@ -1689,7 +1699,6 @@ async fn test_oms_key_manager_discrepancy() {
     let master_key2 = CommsSecretKey::random(&mut OsRng);
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle,
         oms_request_receiver3,
         db,
         oms_event_publisher,

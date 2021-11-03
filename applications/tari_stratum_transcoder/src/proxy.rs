@@ -84,8 +84,8 @@ impl StratumTranscoderProxyService {
     ) -> Self {
         Self {
             inner: InnerService {
-                config,
-                http_client,
+                _config: config,
+                _http_client: http_client,
                 base_node_client,
                 wallet_client,
             },
@@ -130,8 +130,8 @@ impl Service<Request<Body>> for StratumTranscoderProxyService {
 
 #[derive(Debug, Clone)]
 struct InnerService {
-    config: StratumTranscoderProxyConfig,
-    http_client: reqwest::Client,
+    _config: StratumTranscoderProxyConfig,
+    _http_client: reqwest::Client,
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
     wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
 }

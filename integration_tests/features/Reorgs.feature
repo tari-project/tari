@@ -63,7 +63,7 @@ Feature: Reorgs
     When I start base node NODE1
     Then all nodes are at height 20
 
-  @critical @reorg
+  @critical @reorg @flaky
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1

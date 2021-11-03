@@ -19,17 +19,14 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use crate::{
-    dan_layer::{
-        models::{Instruction, TokenId},
-        services::MempoolService,
-    },
-    p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService},
-    types::{ComSig, PublicKey},
-};
+use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    models::{Instruction, TokenId},
+    services::MempoolService,
+    types::{ComSig, PublicKey},
+};
 
 pub struct ValidatorNodeRpcServiceImpl<TMempoolService> {
     mempool_service: TMempoolService,
@@ -60,13 +57,14 @@ impl<TMempoolService: MempoolService + Clone> ValidatorNodeRpcService for Valida
         let instruction = Instruction::new(
             PublicKey::from_bytes(&request.asset_public_key)
                 .map_err(|_err| RpcStatus::bad_request("asset_public_key was not a valid public key"))?,
+            request.template_id.into(),
             request.method.clone(),
             request.args.clone(),
-            TokenId(request.token_id.clone()),
-            // TODO: put signature in here
-            ComSig::default()
-            // create_com_sig_from_bytes(&request.signature)
-            //     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?,
+            /* TokenId(request.token_id.clone()),
+             * TODO: put signature in here
+             * ComSig::default()
+             * create_com_sig_from_bytes(&request.signature)
+             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
 
         let mut mempool_service = self.mempool_service.clone();

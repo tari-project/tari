@@ -54,7 +54,10 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::handle::{OutputManagerEvent, OutputManagerEventReceiver},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
+        service::Balance,
+    },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
         storage::{
@@ -88,14 +91,17 @@ where TBackend: TransactionBackend + 'static
     callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
+    output_manager_service: OutputManagerHandle,
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
+    balance_cache: Balance,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -106,6 +112,7 @@ where TBackend: TransactionBackend + 'static
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: TransactionEventReceiver,
         output_manager_service_event_stream: OutputManagerEventReceiver,
+        output_manager_service: OutputManagerHandle,
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
@@ -119,6 +126,7 @@ where TBackend: TransactionBackend + 'static
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+        callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
@@ -164,6 +172,10 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "BalanceUpdatedCallback -> Assigning Fn:  {:?}", callback_balance_updated
+        );
+        info!(
+            target: LOG_TARGET,
             "TransactionValidationCompleteCallback -> Assigning Fn:  {:?}", callback_transaction_validation_complete
         );
         info!(
@@ -182,14 +194,17 @@ where TBackend: TransactionBackend + 'static
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
+            callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
+            output_manager_service,
             dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
+            balance_cache: Balance::zero(),
         }
     }
 
@@ -210,33 +225,43 @@ where TBackend: TransactionBackend + 'static
                             match (*msg).clone() {
                                 TransactionEvent::ReceivedTransaction(tx_id) => {
                                     self.receive_transaction_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedTransactionReply(tx_id) => {
                                     self.receive_transaction_reply_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                     self.receive_finalized_transaction_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
                                     self.receive_direct_send_result(tx_id, result);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
                                     self.receive_store_and_forward_send_result(tx_id, result);
+                                    self.trigger_balance_refresh().await;
                                 },
-                                 TransactionEvent::TransactionCancelled(tx_id) => {
+                                TransactionEvent::TransactionCancelled(tx_id) => {
                                     self.receive_transaction_cancellation(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
                                     self.receive_transaction_broadcast_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
                                     self.receive_transaction_mined_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationSuccess(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationFailure(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Failure);
@@ -246,6 +271,12 @@ where TBackend: TransactionBackend + 'static
                                 },
                                 TransactionEvent::TransactionValidationDelayed(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::BaseNodeNotInSync);
+                                },
+                                TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
+                                TransactionEvent::TransactionImported(_tx_id) |
+                                TransactionEvent::TransactionCompletedImmediately(_tx_id)
+                                => {
+                                    self.trigger_balance_refresh().await;
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -261,6 +292,7 @@ where TBackend: TransactionBackend + 'static
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.output_validation_complete_event(request_key,  CallbackValidationResults::Success);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 OutputManagerEvent::TxoValidationFailure(request_key) => {
                                     self.output_validation_complete_event(request_key,  CallbackValidationResults::Failure);
@@ -345,6 +377,32 @@ where TBackend: TransactionBackend + 'static
                 }
             },
             Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn trigger_balance_refresh(&mut self) {
+        match self.output_manager_service.get_balance().await {
+            Ok(balance) => {
+                if balance != self.balance_cache {
+                    self.balance_cache = balance.clone();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Calling Update Balance callback function: available {}, time locked {:?}, incoming {}, \
+                         outgoing {}",
+                        balance.available_balance,
+                        balance.time_locked_balance,
+                        balance.pending_incoming_balance,
+                        balance.pending_outgoing_balance
+                    );
+                    let boxing = Box::into_raw(Box::new(balance));
+                    unsafe {
+                        (self.callback_balance_updated)(boxing);
+                    }
+                }
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not obtain balance ({:?})", e);
+            },
         }
     }
 
@@ -515,412 +573,5 @@ where TBackend: TransactionBackend + 'static
         unsafe {
             (self.callback_saf_messages_received)();
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::callback_handler::CallbackHandler;
-    use chrono::Utc;
-    use rand::rngs::OsRng;
-    use std::{
-        sync::{Arc, Mutex},
-        thread,
-        time::Duration,
-    };
-    use tari_common_types::{
-        transaction::{TransactionDirection, TransactionStatus},
-        types::{BlindingFactor, PrivateKey, PublicKey},
-    };
-    use tari_comms_dht::event::DhtEvent;
-    use tari_core::transactions::{
-        tari_amount::{uT, MicroTari},
-        transaction::Transaction,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-    use tari_shutdown::Shutdown;
-    use tari_wallet::{
-        output_manager_service::handle::OutputManagerEvent,
-        test_utils::make_wallet_database_connection,
-        transaction_service::{
-            handle::TransactionEvent,
-            storage::{
-                database::TransactionDatabase,
-                models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
-                sqlite_db::TransactionServiceSqliteDatabase,
-            },
-        },
-    };
-    use tokio::{runtime::Runtime, sync::broadcast};
-
-    struct CallbackState {
-        pub received_tx_callback_called: bool,
-        pub received_tx_reply_callback_called: bool,
-        pub received_finalized_tx_callback_called: bool,
-        pub broadcast_tx_callback_called: bool,
-        pub mined_tx_callback_called: bool,
-        pub mined_tx_unconfirmed_callback_called: u64,
-        pub direct_send_callback_called: bool,
-        pub store_and_forward_send_callback_called: bool,
-        pub tx_cancellation_callback_called_completed: bool,
-        pub tx_cancellation_callback_called_inbound: bool,
-        pub tx_cancellation_callback_called_outbound: bool,
-        pub callback_txo_validation_complete: u32,
-        pub callback_transaction_validation_complete: u32,
-        pub saf_messages_received: bool,
-    }
-
-    impl CallbackState {
-        fn new() -> Self {
-            Self {
-                received_tx_callback_called: false,
-                received_tx_reply_callback_called: false,
-                received_finalized_tx_callback_called: false,
-                broadcast_tx_callback_called: false,
-                mined_tx_callback_called: false,
-                mined_tx_unconfirmed_callback_called: 0,
-                direct_send_callback_called: false,
-                store_and_forward_send_callback_called: false,
-                callback_txo_validation_complete: 0,
-                callback_transaction_validation_complete: 0,
-                tx_cancellation_callback_called_completed: false,
-                tx_cancellation_callback_called_inbound: false,
-                tx_cancellation_callback_called_outbound: false,
-                saf_messages_received: false,
-            }
-        }
-    }
-
-    lazy_static! {
-        static ref CALLBACK_STATE: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
-
-    unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.received_tx_callback_called = true;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn received_tx_reply_callback(tx: *mut CompletedTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.received_tx_reply_callback_called = true;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut CompletedTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.received_finalized_tx_callback_called = true;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn broadcast_callback(tx: *mut CompletedTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.broadcast_tx_callback_called = true;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn mined_callback(tx: *mut CompletedTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.mined_tx_callback_called = true;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.mined_tx_unconfirmed_callback_called = confirmations;
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn direct_send_callback(_tx_id: u64, _result: bool) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.direct_send_callback_called = true;
-        drop(lock);
-    }
-
-    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: u64, _result: bool) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.store_and_forward_send_callback_called = true;
-        drop(lock);
-    }
-
-    unsafe extern "C" fn saf_messages_received_callback() {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.saf_messages_received = true;
-        drop(lock);
-    }
-
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        match (*tx).tx_id.as_u64() {
-            3 => lock.tx_cancellation_callback_called_inbound = true,
-            4 => lock.tx_cancellation_callback_called_completed = true,
-            5 => lock.tx_cancellation_callback_called_outbound = true,
-            _ => (),
-        }
-
-        drop(lock);
-        Box::from_raw(tx);
-    }
-
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: u8) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-
-        lock.callback_txo_validation_complete += result as u32;
-
-        drop(lock);
-    }
-
-    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: u64, result: u8) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-
-        lock.callback_transaction_validation_complete += result as u32;
-
-        drop(lock);
-    }
-
-    #[test]
-    fn test_callback_handler() {
-        let runtime = Runtime::new().unwrap();
-
-        let (connection, _tempdir) = make_wallet_database_connection(None);
-        let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, None));
-        let rtp = ReceiverTransactionProtocol::new_placeholder();
-        let inbound_tx = InboundTransaction::new(
-            1.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            22 * uT,
-            rtp,
-            TransactionStatus::Pending,
-            "1".to_string(),
-            Utc::now().naive_utc(),
-        );
-        let completed_tx = CompletedTransaction::new(
-            2.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            MicroTari::from(100),
-            MicroTari::from(2000),
-            Transaction::new(
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                BlindingFactor::default(),
-                BlindingFactor::default(),
-            ),
-            TransactionStatus::Completed,
-            "2".to_string(),
-            Utc::now().naive_utc(),
-            TransactionDirection::Inbound,
-            None,
-        );
-        let stp = SenderTransactionProtocol::new_placeholder();
-        let outbound_tx = OutboundTransaction::new(
-            3.into(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            22 * uT,
-            23 * uT,
-            stp,
-            TransactionStatus::Pending,
-            "3".to_string(),
-            Utc::now().naive_utc(),
-            false,
-        );
-        let inbound_tx_cancelled = InboundTransaction {
-            tx_id: 4.into(),
-            ..inbound_tx.clone()
-        };
-        let completed_tx_cancelled = CompletedTransaction {
-            tx_id: 5.into(),
-            ..completed_tx.clone()
-        };
-
-        runtime
-            .block_on(db.add_pending_inbound_transaction(1.into(), inbound_tx))
-            .unwrap();
-        runtime
-            .block_on(db.insert_completed_transaction(2.into(), completed_tx))
-            .unwrap();
-        runtime
-            .block_on(db.add_pending_inbound_transaction(4.into(), inbound_tx_cancelled))
-            .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(4.into())).unwrap();
-        runtime
-            .block_on(db.insert_completed_transaction(5.into(), completed_tx_cancelled))
-            .unwrap();
-        runtime.block_on(db.cancel_completed_transaction(5.into())).unwrap();
-        runtime
-            .block_on(db.add_pending_outbound_transaction(3.into(), outbound_tx))
-            .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(3.into())).unwrap();
-
-        let (tx_sender, tx_receiver) = broadcast::channel(20);
-        let (oms_sender, oms_receiver) = broadcast::channel(20);
-        let (dht_sender, dht_receiver) = broadcast::channel(20);
-
-        let shutdown_signal = Shutdown::new();
-        let callback_handler = CallbackHandler::new(
-            db,
-            tx_receiver,
-            oms_receiver,
-            dht_receiver,
-            shutdown_signal.to_signal(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            received_tx_callback,
-            received_tx_reply_callback,
-            received_tx_finalized_callback,
-            broadcast_callback,
-            mined_callback,
-            mined_unconfirmed_callback,
-            direct_send_callback,
-            store_and_forward_send_callback,
-            tx_cancellation_callback,
-            txo_validation_complete_callback,
-            transaction_validation_complete_callback,
-            saf_messages_received_callback,
-        );
-
-        runtime.spawn(callback_handler.start());
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransaction(1.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionBroadcast(2.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionMined {
-                tx_id: 2.into(),
-                is_valid: true,
-            }))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed {
-                tx_id: 2.into(),
-                num_confirmations: 22u64,
-                is_valid: true,
-            }))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2.into(), true)))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
-                2.into(),
-                true,
-            )))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(3.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(4.into())))
-            .unwrap();
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(5.into())))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1.into())))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(1u64)))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationFailure(1.into())))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(1u64)))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationAborted(1.into())))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
-            .unwrap();
-
-        oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(1u64)))
-            .unwrap();
-
-        tx_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1.into())))
-            .unwrap();
-
-        dht_sender
-            .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
-            .unwrap();
-
-        thread::sleep(Duration::from_secs(10));
-
-        let lock = CALLBACK_STATE.lock().unwrap();
-        assert!(lock.received_tx_callback_called);
-        assert!(lock.received_tx_reply_callback_called);
-        assert!(lock.received_finalized_tx_callback_called);
-        assert!(lock.broadcast_tx_callback_called);
-        assert!(lock.mined_tx_callback_called);
-        assert_eq!(lock.mined_tx_unconfirmed_callback_called, 22u64);
-        assert!(lock.direct_send_callback_called);
-        assert!(lock.store_and_forward_send_callback_called);
-        assert!(lock.tx_cancellation_callback_called_inbound);
-        assert!(lock.tx_cancellation_callback_called_completed);
-        assert!(lock.tx_cancellation_callback_called_outbound);
-        assert!(lock.saf_messages_received);
-        assert_eq!(lock.callback_txo_validation_complete, 18);
-        assert_eq!(lock.callback_transaction_validation_complete, 6);
-
-        drop(lock);
     }
 }

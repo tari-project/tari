@@ -1,3 +1,25 @@
+//  Copyright 2021. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -48,7 +70,7 @@ fn main() {
             eprintln!("{:?}", exit_code);
             error!(
                 target: LOG_TARGET,
-                "Exiting with code ({}): {:?}",
+                "Exiting with code ({:?}): {:?}",
                 exit_code.as_i32(),
                 exit_code
             );
@@ -64,6 +86,10 @@ fn main_inner() -> Result<(), ExitCodes> {
         .expect("Failed to build a runtime!");
 
     let (bootstrap, global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+
+    if bootstrap.tracing_enabled {
+        enable_tracing();
+    }
 
     info!(
         target: LOG_TARGET,
@@ -91,7 +117,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
     }
 
-    enable_tracing_if_specified(&bootstrap);
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
     let seed_words_file_name = bootstrap.seed_words_file_name.clone();
@@ -185,21 +210,21 @@ fn get_recovery_master_key(
     }
 }
 
-fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
-    if bootstrap.tracing_enabled {
-        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
-        // jaegertracing/all-in-one:latest
-        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-        let tracer = opentelemetry_jaeger::new_pipeline()
-            .with_service_name("tari::console_wallet")
-            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
-            // TODO: uncomment when using tokio 1
-            // .install_batch(opentelemetry::runtime::Tokio)
-            .install_simple()
-            .unwrap();
-        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-        let subscriber = Registry::default().with(telemetry);
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
-    }
+fn enable_tracing() {
+    // To run:
+    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    // To view the UI after starting the container (default):
+    // http://localhost:16686
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tari::console_wallet")
+        .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
+        // TODO: uncomment when using tokio 1
+        // .install_batch(opentelemetry::runtime::Tokio)
+        .install_simple()
+        .unwrap();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }

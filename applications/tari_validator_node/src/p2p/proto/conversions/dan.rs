@@ -20,8 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dan_layer::models::{
+use crate::p2p::proto::dan as dan_proto;
+use std::convert::{TryFrom, TryInto};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_core::{
+    models::{
         CheckpointData,
         HotStuffMessage,
         HotStuffMessageType,
@@ -35,11 +38,8 @@ use crate::{
         TreeNodeHash,
         ViewId,
     },
-    p2p::proto::dan as dan_proto,
     types::{create_com_sig_from_bytes, PublicKey},
 };
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::ByteArray;
 
 impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
     fn from(source: HotStuffMessage<TariDanPayload>) -> Self {
@@ -105,11 +105,10 @@ impl From<InstructionSet> for dan_proto::InstructionSet {
 impl From<&Instruction> for dan_proto::Instruction {
     fn from(source: &Instruction) -> Self {
         Self {
-            asset_id: Vec::from(source.asset_id().as_bytes()),
+            asset_public_key: Vec::from(source.asset_id().as_bytes()),
+            template_id: source.template_id() as u32,
             method: source.method().to_string(),
             args: Vec::from(source.args()),
-            from: Vec::from(source.from_owner().as_bytes()),
-            signature: vec![], // com_sig_to_bytes(source.signature()),
         }
     }
 }
@@ -189,13 +188,11 @@ impl TryFrom<dan_proto::Instruction> for Instruction {
 
     fn try_from(value: dan_proto::Instruction) -> Result<Self, Self::Error> {
         Ok(Self::new(
-            PublicKey::from_bytes(&value.asset_id)
+            PublicKey::from_bytes(&value.asset_public_key)
                 .map_err(|e| format!("asset_id was not a valid public key: {}", e))?,
+            value.template_id.into(),
             value.method,
             value.args,
-            TokenId(value.from),
-            create_com_sig_from_bytes(&value.signature)
-                .map_err(|e| format!("Could not convert signature bytes to comsig: {}", e))?,
         ))
     }
 }

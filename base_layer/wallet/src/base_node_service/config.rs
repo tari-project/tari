@@ -36,7 +36,7 @@ pub struct BaseNodeServiceConfig {
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_monitor_refresh_interval: Duration::from_secs(30),
+            base_node_monitor_refresh_interval: Duration::from_secs(3),
             base_node_rpc_pool_size: 10,
             request_max_age: Duration::from_secs(60),
             event_channel_size: 250,
