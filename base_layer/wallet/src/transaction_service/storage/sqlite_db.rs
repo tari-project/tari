@@ -1145,7 +1145,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
 #[derive(Debug, PartialEq)]
 pub struct InboundTransactionSenderInfo {
-    pub(crate) tx_id: TxId,
+    pub(crate) tx_id: u64,
     pub(crate) source_public_key: CommsPublicKey,
 }
 
@@ -1154,7 +1154,7 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
 
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
-            tx_id: TxId::from(i.tx_id as u64),
+            tx_id: i.tx_id as u64,
             source_public_key: CommsPublicKey::from_bytes(&*i.source_public_key)
                 .map_err(TransactionStorageError::ByteArrayError)?,
         })
