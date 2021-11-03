@@ -37,11 +37,17 @@ impl WalletClient {
   }
 
   pub async fn connect(&mut self) -> Result<(), String> {
-    self.inner = Some(
-      grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint))
-        .await
-        .unwrap(),
-    );
+    let dst = format!("http://{}", self.endpoint);
+    let client = grpc::wallet_client::WalletClient::connect(dst)
+      .await
+      .map_err(|err| {
+        format!(
+          "No connection to wallet. Is it running with grpc on '{}' ? Error: {}",
+          self.endpoint, err
+        )
+      })?;
+
+    self.inner = Some(client);
     Ok(())
   }
 

@@ -392,7 +392,7 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
-            blockchain_version: 1,
+            blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
