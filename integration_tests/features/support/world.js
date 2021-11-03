@@ -1,4 +1,9 @@
-const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
+const {
+  setWorldConstructor,
+  After,
+  BeforeAll,
+  Before,
+} = require("@cucumber/cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");

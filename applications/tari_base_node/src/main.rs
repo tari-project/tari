@@ -388,7 +388,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
             res = &mut read_command_fut => {
                 match res {
                     Ok((line, mut rustyline)) => {
-                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                        if let Some(p) = rustyline.helper_mut() {
                             p.handle_command(line.as_str(), &mut shutdown);
                         }
                         if !shutdown.is_triggered() {
