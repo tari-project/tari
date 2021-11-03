@@ -758,11 +758,11 @@ mod test {
 
         let (mut a, mut b) = perform_handshake(dialer, listener).await?;
 
-        let buf_send = [1; MAX_PAYLOAD_LENGTH + 1];
-        a.write_all(&buf_send).await?;
+        let buf_send = &[1; MAX_PAYLOAD_LENGTH + 1];
+        a.write_all(buf_send).await?;
         a.flush().await?;
 
-        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH + 1];
+        let mut buf_receive = vec![0; MAX_PAYLOAD_LENGTH + 1];
         b.read_exact(&mut buf_receive).await?;
         assert_eq!(&buf_receive[..], &buf_send[..]);
 
@@ -776,11 +776,11 @@ mod test {
 
         let (mut a, mut b) = perform_handshake(dialer, listener).await?;
 
-        let buf_send = [1; MAX_PAYLOAD_LENGTH * 2 + 1024];
-        a.write_all(&buf_send).await?;
+        let buf_send = &[1; MAX_PAYLOAD_LENGTH * 2 + 1024];
+        a.write_all(buf_send).await?;
         a.flush().await?;
 
-        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH * 2 + 1024];
+        let mut buf_receive = vec![0; MAX_PAYLOAD_LENGTH * 2 + 1024];
         b.read_exact(&mut buf_receive).await?;
         assert_eq!(&buf_receive[..], &buf_send[..]);
 
@@ -793,14 +793,14 @@ mod test {
 
         let (mut a, mut b) = perform_handshake(dialer, listener).await?;
 
-        let buf_send = [1; MAX_PAYLOAD_LENGTH];
-        a.write_all(&buf_send).await?;
+        let buf_send = &[1; MAX_PAYLOAD_LENGTH];
+        a.write_all(buf_send).await?;
         a.flush().await?;
 
         a.socket.shutdown().await.unwrap();
         drop(a);
 
-        let mut buf_receive = [0; MAX_PAYLOAD_LENGTH];
+        let mut buf_receive = vec![0; MAX_PAYLOAD_LENGTH];
         b.read_exact(&mut buf_receive).await.unwrap();
         assert_eq!(&buf_receive[..], &buf_send[..]);
 

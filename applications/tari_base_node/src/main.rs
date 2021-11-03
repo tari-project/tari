@@ -265,6 +265,8 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 fn enable_tracing() {
     // To run:
     // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    // To view the UI after starting the container (default):
+    // http://localhost:16686
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("tari::base_node")

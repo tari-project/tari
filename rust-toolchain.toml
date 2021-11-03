@@ -1,0 +1,5 @@
+# Please update all references in the codebase!
+# and increment this number:
+# Hours spent updating the Rust Toolchain = 1
+[toolchain]
+channel = "nightly-2021-09-18"

@@ -89,7 +89,6 @@ pub enum ConnectivityRequest {
     DialPeer {
         node_id: NodeId,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
-        tracing_id: Option<tracing::span::Id>,
     },
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
     SelectConnections(
@@ -131,7 +130,6 @@ impl ConnectivityRequester {
                 .send(ConnectivityRequest::DialPeer {
                     node_id: peer.clone(),
                     reply_tx: Some(reply_tx),
-                    tracing_id: tracing::Span::current().id(),
                 })
                 .await
                 .map_err(|_| ConnectivityError::ActorDisconnected)?;
@@ -171,7 +169,6 @@ impl ConnectivityRequester {
             self.sender.send(ConnectivityRequest::DialPeer {
                 node_id: peer,
                 reply_tx: None,
-                tracing_id: tracing::Span::current().id(),
             })
         }))
         .await

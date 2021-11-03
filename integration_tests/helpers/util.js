@@ -110,9 +110,9 @@ async function waitFor(
 
 async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
   let count = 0;
-  let val = testFn();
-  while (!(val === toBe)) {
-    val = testFn();
+  let val = await Promise.resolve(testFn());
+  while (val !== toBe) {
+    val = await Promise.resolve(testFn());
     if (count >= maxIterations) {
       break;
     }
@@ -120,19 +120,21 @@ async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
     await sleep(sleepMs);
     process.stdout.write(".");
   }
+  return val;
 }
 
 async function waitForPredicate(predicate, timeOut, sleepMs = 500) {
-  const now = new Date();
-  while (new Date() - now < timeOut) {
+  let elapsed = 0;
+  while (elapsed < timeOut) {
     const val = await predicate();
     if (val) {
       return val;
     }
     await sleep(sleepMs);
+    elapsed += sleepMs;
     process.stdout.write(".");
   }
-  throw new Error(`Predicate was not true after ${timeOut} ms`);
+  throw new Error(`Predicate was not truthy after ${timeOut} ms`);
 }
 
 function dec2hex(n) {

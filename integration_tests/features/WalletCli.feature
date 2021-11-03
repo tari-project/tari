@@ -81,7 +81,7 @@ Feature: Wallet CLI
         # TODO: base node connection.
         And I wait 30 seconds
         And I stop wallet SENDER
-        And I make it rain from wallet SENDER 1 tx / sec 10 sec 8000 uT 100 increment to RECEIVER via command line
+        And I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
         Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
         Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
         And mining node MINE mines 5 blocks

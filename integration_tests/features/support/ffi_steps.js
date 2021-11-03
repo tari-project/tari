@@ -13,26 +13,21 @@ When(
   }
 );
 
-Then(
-  "I want to get emoji id of ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  async function (name) {
-    let wallet = this.getWallet(name);
-    let emoji_id = wallet.identifyEmoji();
-    console.log(emoji_id);
-    expect(emoji_id.length).to.be.equal(
-      22 * 3, // 22 emojis, 3 bytes per one emoji
-      `Emoji id has wrong length : ${emoji_id}`
-    );
-  }
-);
+Then("I want to get emoji id of ffi wallet {word}", async function (name) {
+  let wallet = this.getWallet(name);
+  let emoji_id = wallet.identifyEmoji();
+  console.log(emoji_id);
+  expect(emoji_id.length).to.be.equal(
+    22 * 3, // 22 emojis, 3 bytes per one emoji
+    `Emoji id has wrong length : ${emoji_id}`
+  );
+});
 
 When(
   "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}",
-  { timeout: 20 * 1000 },
   function (amount, sender, receiver, feePerGram) {
-    let ffi_wallet = this.getWallet(sender);
-    let result = ffi_wallet.sendTransaction(
+    let ffiWallet = this.getWallet(sender);
+    let result = ffiWallet.sendTransaction(
       this.getWalletPubkey(receiver),
       amount,
       feePerGram,
@@ -44,7 +39,6 @@ When(
 
 When(
   "I set passphrase {word} of ffi wallet {word}",
-  { timeout: 20 * 1000 },
   function (passphrase, name) {
     let wallet = this.getWallet(name);
     wallet.applyEncryption(passphrase);
@@ -84,41 +78,20 @@ Then(
   }
 );
 
-Then(
-  "ffi wallet {word} has {int} broadcast transaction",
-  { timeout: 120 * 1000 },
-  async function (name, count) {
-    let wallet = this.getWallet(name);
-    let broadcast = await wallet.getBroadcastTransactionsCount();
-    let retries = 1;
-    const retries_limit = 24;
-    while (broadcast != count && retries <= retries_limit) {
-      await sleep(5000);
-      broadcast = await wallet.getBroadcastTransactionsCount();
-      ++retries;
-    }
-    expect(broadcast, "Number of broadcasted messages mismatch").to.be.equal(
-      count
-    );
-  }
-);
-
 When(
   "I add contact with alias {word} and pubkey {word} to ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (alias, wallet_name, ffi_wallet_name) {
-    let ffi_wallet = this.getWallet(ffi_wallet_name);
-    ffi_wallet.addContact(alias, this.getWalletPubkey(wallet_name));
+  function (alias, walletName, ffiWalletName) {
+    let ffiWallet = this.getWallet(ffiWalletName);
+    ffiWallet.addContact(alias, this.getWalletPubkey(walletName));
   }
 );
 
 Then(
   "I have contact with alias {word} and pubkey {word} in ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (alias, wallet_name, ffi_wallet_name) {
-    let wallet = this.getWalletPubkey(wallet_name);
-    let ffi_wallet = this.getWallet(ffi_wallet_name);
-    let contacts = ffi_wallet.getContactList();
+  function (alias, walletName, ffiWalletName) {
+    let wallet = this.getWalletPubkey(walletName);
+    let ffiWallet = this.getWallet(ffiWalletName);
+    let contacts = ffiWallet.getContactList();
     let length = contacts.getLength();
     let found = false;
     for (let i = 0; i < length; i++) {
@@ -138,17 +111,16 @@ Then(
 
 When(
   "I remove contact with alias {word} from ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (alias, wallet_name) {
-    let ffi_wallet = this.getWallet(wallet_name);
-    let contacts = ffi_wallet.getContactList();
+  function (alias, walletName) {
+    let ffiWallet = this.getWallet(walletName);
+    let contacts = ffiWallet.getContactList();
     let length = contacts.getLength();
     for (let i = 0; i < length; i++) {
       {
         let contact = contacts.getAt(i);
         let calias = contact.getAlias();
         if (alias === calias) {
-          ffi_wallet.removeContact(contact);
+          ffiWallet.removeContact(contact);
         }
         contact.destroy();
       }
@@ -159,10 +131,9 @@ When(
 
 Then(
   "I don't have contact with alias {word} in ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (alias, wallet_name) {
-    let ffi_wallet = this.getWallet(wallet_name);
-    let contacts = ffi_wallet.getContactList();
+  function (alias, walletName) {
+    let ffiWallet = this.getWallet(walletName);
+    let contacts = ffiWallet.getContactList();
     let length = contacts.getLength();
     let found = false;
     for (let i = 0; i < length; i++) {
@@ -182,8 +153,8 @@ Then(
 
 When(
   "I set base node {word} for ffi wallet {word}",
-  function (node, wallet_name) {
-    let wallet = this.getWallet(wallet_name);
+  function (node, walletName) {
+    let wallet = this.getWallet(walletName);
     let peer = this.nodes[node].peerAddress().split("::");
     wallet.addBaseNodePeer(peer[0], peer[1]);
   }
@@ -191,16 +162,16 @@ When(
 
 Then(
   "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)",
-  { timeout: 180 * 1000 },
-  async function (wallet_name, count) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, count) {
+    let wallet = this.getWallet(walletName);
     let broadcast = wallet.getOutboundTransactions();
     let length = broadcast.getLength();
     broadcast.destroy();
     let retries = 1;
-    const retries_limit = 24;
+    const retries_limit = 120;
     while (length != count && retries <= retries_limit) {
-      await sleep(5000);
+      await sleep(1000);
       broadcast = wallet.getOutboundTransactions();
       length = broadcast.getLength();
       broadcast.destroy();
@@ -212,8 +183,8 @@ Then(
 
 Then(
   "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction",
-  async function (wallet_name, count) {
-    const wallet = this.getWallet(wallet_name);
+  function (walletName, count) {
+    const wallet = this.getWallet(walletName);
     let txs = wallet.getOutboundTransactions();
     let cancelled = 0;
     for (let i = 0; i < txs.getLength(); i++) {
@@ -231,36 +202,34 @@ Then(
 
 Given(
   "I have a ffi wallet {word} connected to base node {word}",
-  { timeout: 20 * 1000 },
   async function (walletName, nodeName) {
-    let ffi_wallet = await this.createAndAddFFIWallet(walletName, null);
+    let ffiWallet = await this.createAndAddFFIWallet(walletName, null);
     let peer = this.nodes[nodeName].peerAddress().split("::");
-    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
+    ffiWallet.addBaseNodePeer(peer[0], peer[1]);
   }
 );
 
 Then(
   "I recover wallet {word} into ffi wallet {word} from seed words on node {word}",
-  { timeout: 20 * 1000 },
-  async function (wallet_name, ffi_wallet_name, node) {
-    let wallet = this.getWallet(wallet_name);
+  async function (walletName, ffiWalletName, node) {
+    let wallet = this.getWallet(walletName);
     const seed_words_text = wallet.getSeedWords();
-    await wallet.stop();
+    wallet.stop();
     await sleep(1000);
-    let ffi_wallet = await this.createAndAddFFIWallet(
-      ffi_wallet_name,
+    let ffiWallet = await this.createAndAddFFIWallet(
+      ffiWalletName,
       seed_words_text
     );
     let peer = this.nodes[node].peerAddress().split("::");
-    ffi_wallet.addBaseNodePeer(peer[0], peer[1]);
-    ffi_wallet.startRecovery(peer[0]);
+    ffiWallet.addBaseNodePeer(peer[0], peer[1]);
+    ffiWallet.startRecovery(peer[0]);
   }
 );
 
 Then(
   "Check callbacks for finished inbound tx on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
     expect(wallet.receivedTransaction).to.be.greaterThanOrEqual(1);
     expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
     wallet.clearCallbackCounters();
@@ -269,8 +238,8 @@ Then(
 
 Then(
   "Check callbacks for finished outbound tx on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
     expect(wallet.receivedTransactionReply).to.be.greaterThanOrEqual(1);
     expect(wallet.transactionBroadcast).to.be.greaterThanOrEqual(1);
     wallet.clearCallbackCounters();
@@ -279,13 +248,13 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} transaction",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
 
     console.log("\n");
     console.log(
-      "Waiting for " + wallet_name + " to receive " + amount + " transaction(s)"
+      "Waiting for " + walletName + " to receive " + amount + " transaction(s)"
     );
 
     await waitForIterate(
@@ -294,7 +263,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().received >= amount)) {
@@ -308,14 +277,14 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} finalization",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
 
     console.log("\n");
     console.log(
       "Waiting for " +
-        wallet_name +
+        walletName +
         " to receive " +
         amount +
         " transaction finalization(s)"
@@ -327,7 +296,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().finalized >= amount)) {
@@ -341,14 +310,14 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} broadcast",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
 
     console.log("\n");
     console.log(
       "Waiting for " +
-        wallet_name +
+        walletName +
         " to receive " +
         amount +
         " transaction broadcast(s)"
@@ -360,7 +329,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().broadcast >= amount)) {
@@ -374,17 +343,17 @@ Then(
 
 Then(
   "I wait for ffi wallet {word} to receive {int} mined",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
 
     console.log("\n");
     console.log(
       "Waiting for " +
-        wallet_name +
+        walletName +
         " to receive " +
         amount +
-        " transaction mined"
+        " transaction(s) mined"
     );
 
     await waitForIterate(
@@ -393,7 +362,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().mined >= amount)) {
@@ -406,16 +375,19 @@ Then(
 );
 
 Then(
-  "I wait for ffi wallet {word} to receive at least {int} SAF message",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
-
-    console.log("\n");
+  "I wait for ffi wallet {word} to receive {word} {int} SAF message",
+  { timeout: 125 * 1000 },
+  async function (walletName, comparison, amount) {
+    const atLeast = "AT_LEAST";
+    const exactly = "EXACTLY";
+    expect(comparison === atLeast || comparison === exactly).to.equal(true);
+    let wallet = this.getWallet(walletName);
     console.log(
-      "Waiting for " +
-        wallet_name +
-        " to receive at least " +
+      "\nWaiting for " +
+        walletName +
+        " to receive " +
+        comparison +
+        " " +
         amount +
         " SAF messages(s)"
     );
@@ -426,7 +398,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     if (!(wallet.getCounters().saf >= amount)) {
@@ -434,19 +406,23 @@ Then(
     } else {
       console.log(wallet.getCounters());
     }
-    expect(wallet.getCounters().saf >= amount).to.equal(true);
+    if (comparison === atLeast) {
+      expect(wallet.getCounters().saf >= amount).to.equal(true);
+    } else {
+      expect(wallet.getCounters().saf === amount).to.equal(true);
+    }
   }
 );
 
 Then(
   "I wait for ffi wallet {word} to have at least {int} uT",
-  { timeout: 710 * 1000 },
-  async function (wallet_name, amount) {
-    let wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
 
     console.log("\n");
     console.log(
-      "Waiting for " + wallet_name + " balance to be at least " + amount + " uT"
+      "Waiting for " + walletName + " balance to be at least " + amount + " uT"
     );
 
     await waitForIterate(
@@ -455,7 +431,7 @@ Then(
       },
       true,
       1000,
-      700
+      120
     );
 
     let balance = wallet.getBalance().available;
@@ -469,10 +445,53 @@ Then(
 );
 
 Then(
+  "ffi wallet {word} detects {word} {int} ffi transactions to be Broadcast",
+  { timeout: 125 * 1000 },
+  async function (walletName, comparison, amount) {
+    // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
+    const atLeast = "AT_LEAST";
+    const exactly = "EXACTLY";
+    expect(comparison === atLeast || comparison === exactly).to.equal(true);
+    const wallet = this.getWallet(walletName);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        walletName +
+        " to have detected " +
+        comparison +
+        " " +
+        amount +
+        " broadcast transaction(s)"
+    );
+
+    await waitForIterate(
+      () => {
+        return wallet.getCounters().broadcast >= amount;
+      },
+      true,
+      1000,
+      120
+    );
+
+    if (!(wallet.getCounters().broadcast >= amount)) {
+      console.log("Counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    if (comparison === atLeast) {
+      expect(wallet.getCounters().broadcast >= amount).to.equal(true);
+    } else {
+      expect(wallet.getCounters().broadcast === amount).to.equal(true);
+    }
+  }
+);
+
+Then(
   "I wait for recovery of ffi wallet {word} to finish",
   { timeout: 600 * 1000 },
-  function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
+  function (walletName) {
+    const wallet = this.getWallet(walletName);
     while (!wallet.recoveryFinished) {
       sleep(1000).then();
     }
@@ -494,25 +513,21 @@ When(
   }
 );
 
-Then(
-  "I want to get public key of ffi wallet {word}",
-  { timeout: 20 * 1000 },
-  function (name) {
-    let wallet = this.getWallet(name);
-    let public_key = wallet.identify();
-    expect(public_key.length).to.be.equal(
-      64,
-      `Public key has wrong length : ${public_key}`
-    );
-  }
-);
+Then("I want to get public key of ffi wallet {word}", function (name) {
+  let wallet = this.getWallet(name);
+  let public_key = wallet.identify();
+  expect(public_key.length).to.be.equal(
+    64,
+    `Public key has wrong length : ${public_key}`
+  );
+});
 
 Then(
   "I want to view the transaction kernels for completed transactions in ffi wallet {word}",
   { timeout: 20 * 1000 },
   function (name) {
-    let ffi_wallet = this.getWallet(name);
-    let transactions = ffi_wallet.getCompletedTxs();
+    let ffiWallet = this.getWallet(name);
+    let transactions = ffiWallet.getCompletedTxs();
     let length = transactions.getLength();
     expect(length > 0).to.equal(true);
     for (let i = 0; i < length; i++) {
@@ -531,16 +546,21 @@ Then(
   }
 );
 
-When("I stop ffi wallet {word}", function (walletName) {
-  let wallet = this.getWallet(walletName);
-  wallet.stop();
-  wallet.resetCounters();
-});
+When(
+  "I stop ffi wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (walletName) {
+    let wallet = this.getWallet(walletName);
+    await wallet.stop();
+    wallet.resetCounters();
+  }
+);
 
 Then(
   "I start TXO validation on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
     await wallet.startTxoValidation();
     while (!wallet.getTxoValidationStatus().txo_validation_complete) {
       await sleep(1000);
@@ -550,8 +570,9 @@ Then(
 
 Then(
   "I start TX validation on ffi wallet {word}",
-  async function (wallet_name) {
-    const wallet = this.getWallet(wallet_name);
+  { timeout: 125 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
     await wallet.startTxValidation();
     while (!wallet.getTxValidationStatus().tx_validation_complete) {
       await sleep(1000);

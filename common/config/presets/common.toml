@@ -1,3 +1,9 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                          Common Configuration Options                                                #
+#                                                                                                                      #
+########################################################################################################################
+
 [common]
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
@@ -95,3 +101,4 @@ rpc_max_simultaneous_sessions = 10000
 # Customize the location of the update SHA hashes and maintainer-signed signature.
 # auto_update.hashes_url = "https://<address>/hashes.txt"
 # auto_update.hashes_sig_url = "https://<address>/hashes.txt.sig"
+

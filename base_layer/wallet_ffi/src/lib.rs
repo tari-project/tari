@@ -22,7 +22,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![warn(dead_code)]
 #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
@@ -193,8 +193,12 @@ use tari_wallet::{
 };
 
 mod callback_handler;
+#[cfg(test)]
+mod callback_handler_tests;
 mod enums;
 mod error;
+#[cfg(test)]
+mod output_manager_service_mock;
 mod tasks;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -209,6 +213,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
@@ -2729,6 +2734,8 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
+/// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
@@ -2764,6 +2771,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     recovery_in_progress: *mut bool,
@@ -2898,6 +2906,7 @@ pub unsafe extern "C" fn wallet_create(
                 TransactionDatabase::new(transaction_backend),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
+                w.output_manager_service.clone(),
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
@@ -2911,6 +2920,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
+                callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
             );
@@ -3222,6 +3232,128 @@ pub unsafe extern "C" fn wallet_remove_contact(
             ptr::swap(error_out, &mut error as *mut c_int);
             false
         },
+    }
+}
+
+/// Gets the available balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The available balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).available_balance)
+}
+
+/// Gets the time locked balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The time locked balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    let b = if let Some(bal) = (*balance).time_locked_balance {
+        bal
+    } else {
+        MicroTari::from(0)
+    };
+    c_ulonglong::from(b)
+}
+
+/// Gets the pending incoming balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending incoming, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_incoming_balance)
+}
+
+/// Gets the pending outgoing balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending outgoing balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_outgoing_balance)
+}
+
+/// Frees memory for a TariBalance
+///
+/// ## Arguments
+/// `balance` - The pointer to a TariBalance
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
+    if !balance.is_null() {
+        Box::from_raw(balance);
     }
 }
 
@@ -5177,6 +5309,7 @@ mod test {
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
+        pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
     }
 
@@ -5193,6 +5326,7 @@ mod test {
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
+                callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
             }
         }
@@ -5313,6 +5447,10 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn balance_updated_callback(_balance: *mut TariBalance) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -5651,6 +5789,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5689,6 +5828,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5793,6 +5933,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5839,6 +5980,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5868,6 +6010,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5892,6 +6035,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5937,6 +6081,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6011,6 +6156,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6160,6 +6306,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6213,6 +6360,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,

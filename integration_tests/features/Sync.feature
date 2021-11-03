@@ -115,7 +115,6 @@ Feature: Block Sync
       | 1000 | 50 |
       | 1001 | 50 |
 
-
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
