@@ -5292,6 +5292,7 @@ mod test {
         std::any::type_name::<T>().to_string()
     }
 
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
