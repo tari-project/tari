@@ -12,34 +12,29 @@
 #
 
 # Export these variables to the environment
-START_TOR=1
-START_BASE_NODE=1
-START_WALLET=1
-START_MINER=1
-USE_OWN_MODEROD=0
-START_MONERO_MM=1
+START_TOR=${START_TOR:-1}
+START_BASE_NODE=${START_BASE_NODE:-1}
+START_WALLET=${START_WALLET:-1}
+START_MINER=${START_MINER:-1}
+USE_OWN_MODEROD=${USE_OWN_MODEROD:-0}
+START_MONERO_MM=${START_MONERO_MM:-1}
 
-export DATA_FOLDER=/tmp/tari1
-
-APP_NAME=${APP_NAME:-base_node}
-APP_EXEC=${APP_EXEC:-tari_base_node}
 CREATE_CONFIG=${CREATE_CONFIG:-0}
 CREATE_ID=${CREATE_ID:-0}
 NETWORK=${TARI_NETWORK:-weatherwax}
-TARI_BASE=/var/tari/$APP_NAME
 CONFIG=$DATA_FOLDER/config
 
 check_data_folder() {
   if [[ ! -d "$DATA_FOLDER" ]]; then
     echo "Creating data folder $DATA_FOLDER.."
-    mkdir -p "$DATA_FOLDER"
+    mkdir -p "$DATA_FOLDER/config"
+    mkdir -p "$DATA_FOLDER/base_node"
     mkdir -p "$DATA_FOLDER/tor"
     mkdir -p "$DATA_FOLDER/xmrig"
     mkdir -p "$DATA_FOLDER/monerod"
     mkdir -p "$DATA_FOLDER/mm_proxy"
-    cp torrc "$DATA_FOLDER/tor"
-    CREATE_CONFIG=1
-    CREATE_ID=1
+    cp log4rs.yml config.toml "$DATA_FOLDER/config/"
+    SETUP=1
     echo "Done."
   else
     echo "Using existing data folder $DATA_FOLDER"
@@ -49,23 +44,15 @@ check_data_folder() {
 check_data_folder
 
 echo "network: $NETWORK"
-echo "CREATE_CONFIG: $CREATE_CONFIG"
-echo "CREATE_ID: $CREATE_ID"
-echo "base folder (in container): $TARI_BASE"
-echo "config folder (in container): $CONFIG"
+echo "Setup: $SETUP"
 
 export DATA_FOLDER=$DATA_FOLDER
 export WAIT_FOR_TOR=$WAIT_FOR_TOR
 export TARI_NETWORK=$NETWORK
 
-if [[ $CREATE_ID == 1 ]]; then
-  echo "Creating identity files"
-  docker compose run --rm base_node --create-id
-fi
-
-if [[ $CREATE_CONFIG == 1 ]]; then
-  echo "Creating configuration file"
-  docker compose run --rm base_node --init
+if [[ $SETUP == 1 ]]; then
+  echo "Creating identity files and default config file"
+  docker compose run --rm base_node --create-id --init
 fi
 
 if [[ $START_TOR == 1 ]]; then

@@ -1,5 +1,7 @@
 FROM alpine:latest as build
 
+ARG VERSION="v6.15.3"
+
 RUN apk add \
     git \
     make \
@@ -11,8 +13,8 @@ RUN apk add \
     libtool \
     autoconf \
     linux-headers
-# TODO - pull specific tag
-RUN git clone https://github.com/xmrig/xmrig.git
+
+RUN git clone --branch ${VERSION} https://github.com/xmrig/xmrig.git
 RUN mkdir xmrig/build
 WORKDIR /xmrig/scripts
 RUN ./build_deps.sh
@@ -24,11 +26,10 @@ FROM alpine:latest as base
 COPY --from=build /xmrig/build/xmrig /usr/bin/
 
 # Create a user & group
-RUN addgroup -S xmrig
-RUN adduser -S -D -h /home/xmrig xmrig xmrig
+RUN groupadd -g 1000 tari && useradd -ms /bin/bash -u 1000 -g 1000 tari
+
 # Chown all the files to the app user.
-RUN chown xmrig:xmrig /usr/bin/xmrig
-USER xmrig
+USER tari
 
 RUN echo -e "\
 {\

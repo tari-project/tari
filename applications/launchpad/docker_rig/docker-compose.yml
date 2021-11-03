@@ -5,20 +5,21 @@ services:
     build:
       context: .
       dockerfile: tor.Dockerfile
-    volumes:
-      - ${DATA_FOLDER}/tor:/etc/tor/
-    ports:
-      - 9050:9050
-      - 9051:9051
+#    volumes:
+#      - ${DATA_FOLDER}/tor:/etc/tor/
+#    ports:
+#      - 9050:9050
+#      - 9051:9051
 
 
   wallet:
     image: quay.io/tarilabs/tari_console_wallet:latest
     build:
-      context: ./../..
-      dockerfile: buildtools/docker_rig/console_wallet.Dockerfile
+      context: ./../../..
+      dockerfile: applications/launchpad/docker_rig/console_wallet.Dockerfile
       args:
-        ARG WALLET_ARCH: x86-64
+        ARCH: native
+        FEATURES: avx2
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: wallet
@@ -34,7 +35,7 @@ services:
       TARI_WALLET__WEATHERWAX__TOR_FORWARD_ADDRESS: "/dns4/wallet/tcp/18188"
       TARI_WALLET__WEATHERWAX__TCP_LISTENER_ADDRESS: "/dns4/wallet/tcp/18188"
       TARI_BASE_NODE__WEATHERWAX__GRPC_CONSOLE_WALLET_ADDRESS: "0.0.0.0:18143"
-    command: ["--non-interactive", "--password=$TARI_WALLET_PASSWORD"]
+    command: ["--non-interactive"]
     ports:
       - 18188:18188
       - 18143:18143
@@ -49,11 +50,11 @@ services:
   base_node:
     image: quay.io/tarilabs/tari_base_node:latest
     build:
-      context: ./../..
-      dockerfile: buildtools/docker_rig/base_node.Dockerfile
+      context: ./../../..
+      dockerfile: applications/launchpad/docker_rig/base_node.Dockerfile
       args:
-        WALLET_ARCH: native
-        TBN_FEATURES: avx2
+        ARCH: native
+        FEATURES: avx2
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: base_node
@@ -61,20 +62,24 @@ services:
       WAIT_FOR_TOR: ${WAIT_FOR_TOR:-0}
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_AUTH: "password=${TOR_CONTROL_AUTH:-tari}"
+      TARI_BASE_NODE__WEATHERWAX__DATA_DIR: "/blockchain/weatherwax"
+      TARI_BASE_NODE__IGOR__DATA_DIR: "/blockchain/igor"
+      TARI_BASE_NODE__MAINNET__DATA_DIR: "/blockchain/mainnet"
       TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"
       TARI_BASE_NODE__WEATHERWAX__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"
       TARI_BASE_NODE__WEATHERWAX__TOR_FORWARD_ADDRESS: "/dns4/base_node/tcp/18189"
       TARI_BASE_NODE__WEATHERWAX__TCP_LISTENER_ADDRESS: "/dns4/base_node/tcp/18189"
       TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "0.0.0.0:18142"
+      TARI_BASE_NODE__WEATHERWAX__GRPC_ENABLED: "1"
     ports:
       - 18189:18189
       - 18142:18142
-    command: []
+    command: ["--non-interactive"]
     depends_on:
       - tor
     volumes:
       - ${DATA_FOLDER}:/var/tari/
-      - blockchain:/var/tari/base_node/${TARI_NETWORK}
+      - blockchain:/blockchain/${TARI_NETWORK}
     stdin_open: true
     tty: true
 
@@ -82,10 +87,11 @@ services:
   sha3_miner:
     image: quay.io/tarilabs/tari_sha3_miner:latest
     build:
-      context: ./../..
-      dockerfile: buildtools/docker_rig/sha3_miner.Dockerfile
+      context: ./../../..
+      dockerfile: applications/launchpad/docker_rig/sha3_miner.Dockerfile
       args:
-        ARG WALLET_ARCH: x86-64
+        ARCH: native
+        FEATURES: avx2
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: sha3_miner
@@ -94,8 +100,8 @@ services:
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_MINING_NODE__NUM_MINING_THREADS: 2
       TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1
-      TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "172.18.0.3:18142"
-      TARI_BASE_NODE__WEATHERWAX__GRPC_CONSOLE_WALLET_ADDRESS: "172.18.0.4:18143"
+      TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
+      TARI_BASE_NODE__WEATHERWAX__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
     command: [ ]
     depends_on:
       - base_node
@@ -139,10 +145,11 @@ services:
   mm_proxy:
     image: quay.io/tarilabs/tari_mm_proxy:latest
     build:
-      context: ./../..
-      dockerfile: buildtools/docker_rig/mm_proxy.Dockerfile
+      context: ./../../..
+      dockerfile: applications/launchpad/docker_rig/mm_proxy.Dockerfile
       args:
-        ARG WALLET_ARCH: native
+        ARCH: native
+        FEATURES: avx2
     environment:
       RUST_LOG: debug
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
@@ -150,8 +157,8 @@ services:
       APP_EXEC: tari_merge_mining_proxy
       WAIT_FOR_TOR: 0
       TARI_NETWORK: ${TARI_NETWORK}
-      TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "172.18.0.3:18142"
-      TARI_BASE_NODE__WEATHERWAX__GRPC_CONSOLE_WALLET_ADDRESS: "172.18.0.4:18143"
+      TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
+      TARI_BASE_NODE__WEATHERWAX__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_URL: ${TARI_MONEROD_URL:-http://monero-stagenet.exan.tech:38081}
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_USERNAME: ${TARI_MONEROD_USERNAME}
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_PASSWORD: ${TARI_MONEROD_PASSWORD}
@@ -172,4 +179,6 @@ volumes:
   # `docker run --rm -v $(pwd):/backup -v blockchain:/blockchain ubuntu tar czvf /backup/backup.tar.gz /blockchain`
   blockchain:
   monero-blockchain:
+
+
 

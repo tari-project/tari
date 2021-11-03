@@ -39,10 +39,13 @@ RUN apt update && apt -y install \
 
 # Now create a new image with only the essentials and throw everything else away
 FROM base
+RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
+USER tari
+
 ENV APP_NAME=mm_proxy APP_EXEC=tari_merge_mining_proxy
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
-COPY buildtools/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
+COPY applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
 
 ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/mm_proxy" ]
 # CMD [ "--non-interactive-mode" ]

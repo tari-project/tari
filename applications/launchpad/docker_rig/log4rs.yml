@@ -74,6 +74,11 @@ loggers:
     appenders:
       - core
     additive: false
+  base_node::app:
+    level: debug
+    appenders:
+      - core
+    additive: false
   c:
     level: debug
     appenders:
@@ -100,9 +105,20 @@ loggers:
       - core
     additive: false
 
+  tracing:
+    level: info
+    appenders:
+      - other
+    additive: core
+
 
   # Comms messages get logged to the 'network' log
   comms:
+    level: info
+    appenders:
+      - network
+    additive: false
+  tari_comms:
     level: info
     appenders:
       - network

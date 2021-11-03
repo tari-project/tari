@@ -12,6 +12,8 @@ APP_EXEC=${APP_EXEC:-tari_base_node}
 WAIT_FOR_TOR=${WAIT_FOR_TOR:-0}
 TARI_BASE=/var/tari/$APP_NAME
 CONFIG=/var/tari/config
+USER_ID=${USER_ID:-1000}
+GROUP_ID=${GROUP_ID:-1000}
 
 echo "Starting $APP_NAME with following docker environment:"
 echo "executable: $APP_EXEC"

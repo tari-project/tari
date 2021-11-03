@@ -17,14 +17,16 @@ RUN curl https://dlsrc.getmonero.org/cli/monero-linux-x64-v$MONERO_VERSION.tar.b
 
 FROM quay.io/bitnami/minideb:bullseye
 
-RUN useradd -ms /bin/bash monero && mkdir -p /home/monero/.bitmonero && chown -R monero:monero /home/monero/.bitmonero
-USER monero
-WORKDIR /home/monero
+RUN groupadd -g 1000 tari && useradd -ms /bin/bash -u 1000 -g 1000 tari \
+    && mkdir -p /home/tari/.bitmonero  \
+    && chown -R tari:tari /home/tari/.bitmonero
+USER tari
+WORKDIR /home/tari
 
-COPY --chown=monero:monero --from=build /root/monerod /home/monero/monerod
+COPY --chown=tari:tari --from=build /root/monerod /home/tari/monerod
 
 # blockchain location
-VOLUME /home/monero/.bitmonero
+VOLUME /home/tari/.bitmonero
 
 EXPOSE 18080 18081
 

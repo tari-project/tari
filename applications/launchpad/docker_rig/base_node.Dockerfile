@@ -23,7 +23,7 @@ ENV CARGO_HTTP_MULTIPLEXING=false
 # Caches downloads across docker builds
 RUN cargo build --bin deps_only --release
 
-RUN cargo build --bin tari_base_node --release --features $TBN_FEATURES --locked
+RUN cargo build --bin tari_base_node --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
 FROM quay.io/bitnami/minideb:bullseye as base
@@ -43,12 +43,19 @@ RUN apt update && apt -y install \
   openssl \
   telnet
 
-# Now create a new image with only the essentials and throw everything else away
-FROM base
+RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
+
+RUN mkdir -p "/var/tari/base_node/weatherwax" \
+    && mkdir -p "/var/tari/base_node/igor" \
+    && mkdir -p "/var/tari/base_node/mainnet" \
+    && chown -R tari.tari "/var/tari/base_node"
+
+USER tari
+
 ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
-COPY buildtools/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
+COPY applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
 
 ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
 # CMD [ "--non-interactive-mode" ]
