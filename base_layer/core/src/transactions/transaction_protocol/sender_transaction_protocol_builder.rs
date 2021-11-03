@@ -63,7 +63,7 @@ use tari_crypto::{
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
-/// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
+/// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
 /// # use crate::SenderTransactionProtocol;
@@ -72,7 +72,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
 /// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
-pub struct SenderTransactionInitializer {
+pub struct SenderTransactionProtocolBuilder {
     num_recipients: usize,
     amounts: FixedSet<MicroTari>,
     lock_height: Option<u64>,
