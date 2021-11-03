@@ -206,6 +206,10 @@ impl Signature {
     pub fn combine(&self, other: &Signature) -> Signature {
         other.clone()
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        vec![]
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

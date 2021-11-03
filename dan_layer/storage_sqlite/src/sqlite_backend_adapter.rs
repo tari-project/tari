@@ -20,10 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::SqliteStorageError, models::node::NewNode, schema::*, SqliteTransaction};
+use crate::{
+    error::SqliteStorageError,
+    models::{
+        locked_qc::LockedQc,
+        node::{NewNode, Node},
+    },
+    schema::{locked_qc::dsl, *},
+    SqliteTransaction,
+};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
-use tari_dan_core::storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError};
+use tari_dan_core::storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWorkTracker};
 
 #[derive(Clone)]
 pub struct SqliteBackendAdapter {
@@ -39,6 +47,13 @@ impl SqliteBackendAdapter {
 impl BackendAdapter for SqliteBackendAdapter {
     type BackendTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
+    type Id = i32;
+
+    fn is_empty(&self) -> Result<bool, Self::Error> {
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let n: Option<Node> = nodes::table.first(&connection).optional()?;
+        Ok(n.is_none())
+    }
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
@@ -66,8 +81,59 @@ impl BackendAdapter for SqliteBackendAdapter {
         Ok(())
     }
 
+    fn update(
+        &self,
+        id: &Self::Id,
+        item: &UnitOfWorkTracker,
+        transaction: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        match item {
+            UnitOfWorkTracker::SidechainMetadata => {
+                todo!()
+            },
+            UnitOfWorkTracker::LockedQc {
+                message_type,
+                view_number,
+                node_hash,
+                signature,
+            } => {
+                use crate::schema::locked_qc::dsl;
+                let message_type = message_type.as_u8() as i32;
+                let existing: Result<LockedQc, _> = dsl::locked_qc.find(id).first(transaction.connection());
+                match existing {
+                    Ok(x) => {
+                        diesel::update(dsl::locked_qc.find(id))
+                            .set((
+                                dsl::message_type.eq(message_type),
+                                dsl::view_number.eq(view_number.0 as i64),
+                                dsl::node_hash.eq(node_hash.as_bytes()),
+                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
+                            ))
+                            .execute(transaction.connection())?;
+                    },
+                    Err(_) => {
+                        diesel::insert_into(locked_qc::table)
+                            .values((
+                                dsl::id.eq(id),
+                                dsl::message_type.eq(message_type),
+                                dsl::view_number.eq(view_number.0 as i64),
+                                dsl::node_hash.eq(node_hash.as_bytes()),
+                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
+                            ))
+                            .execute(transaction.connection())?;
+                    },
+                }
+            },
+        }
+        Ok(())
+    }
+
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         transaction.connection().execute("COMMIT TRANSACTION;")?;
         Ok(())
+    }
+
+    fn locked_qc_id(&self) -> Self::Id {
+        1
     }
 }

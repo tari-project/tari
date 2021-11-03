@@ -66,10 +66,10 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{sqlite::SqliteStorageService, AssetDataStore, BackendAdapter, DbFactory, LmdbAssetStore},
+    storage::{AssetDataStore, BackendAdapter, DbFactory, LmdbAssetStore},
     workers::ConsensusWorker,
 };
-use tari_dan_storage_sqlite::SqliteDbFactory;
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},

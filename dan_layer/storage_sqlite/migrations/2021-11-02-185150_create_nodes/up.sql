@@ -13,3 +13,11 @@ create table instructions (
     method text not null,
     args blob not null
 );
+
+create table locked_qc (
+    id integer primary key not null, -- should always be 1 row
+    message_type integer not null,
+    view_number bigint not null,
+    node_hash blob not null,
+    signature blob null
+)

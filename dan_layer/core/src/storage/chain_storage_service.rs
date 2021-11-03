@@ -38,6 +38,12 @@ pub trait ChainStorageService<TPayload: Payload> {
         node: &HotStuffTreeNode<TPayload>,
         db: TUnitOfWork,
     ) -> Result<(), StorageError>;
+
+    async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
+        &self,
+        qc: QuorumCertificate<TPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError>;
 }
 // #[derive(Clone)]
 // pub struct ChainStorageServiceHandle {

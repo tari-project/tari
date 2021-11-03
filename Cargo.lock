@@ -6399,12 +6399,15 @@ dependencies = [
 name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "diesel",
  "diesel_migrations",
  "dotenv",
  "tari_common",
  "tari_dan_core",
  "thiserror",
+ "tokio 1.13.0",
+ "tokio-stream",
 ]
 
 [[package]]

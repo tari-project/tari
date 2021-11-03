@@ -20,7 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{ChainHeight, HotStuffTreeNode, Instruction, SidechainMetadata, TreeNodeHash};
+use crate::models::{
+    ChainHeight,
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    Instruction,
+    SidechainMetadata,
+    Signature,
+    TreeNodeHash,
+    ViewId,
+};
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
@@ -34,7 +43,6 @@ pub mod lmdb;
 mod store;
 
 // feature sql
-pub mod sqlite;
 
 pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create(&self) -> Result<ChainDb<TBackendAdapter>, StorageError>;
@@ -50,21 +58,27 @@ impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
     }
 }
 
-impl<TBackendAdaper: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdaper> {
-    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdaper> {
+impl<TBackendAdapter: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
+    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdapter> {
         ChainDbUnitOfWork {
             inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(self.adapter.clone()))),
         }
     }
 }
-impl<TBackendAdaper: BackendAdapter> ChainDb<TBackendAdaper> {
-    pub fn is_empty(&self) -> bool {
-        return true;
+impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
+    pub fn is_empty(&self) -> Result<bool, StorageError> {
+        self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
     }
 }
 
 pub enum UnitOfWorkTracker {
     SidechainMetadata,
+    LockedQc {
+        message_type: HotStuffMessageType,
+        view_number: ViewId,
+        node_hash: TreeNodeHash,
+        signature: Option<Signature>,
+    },
 }
 
 pub enum NewUnitOfWorkTracker {
@@ -81,15 +95,25 @@ pub enum NewUnitOfWorkTracker {
 pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
+    type Id: Send + Sync;
+
+    fn is_empty(&self) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
     fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn update(
+        &self,
+        id: &Self::Id,
+        item: &UnitOfWorkTracker,
+        transaction: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error>;
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn locked_qc_id(&self) -> Self::Id;
 }
 
 pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
     backend_adapter: TBackendAdapter,
-    clean_items: Vec<UnitOfWorkTracker>,
-    dirty_items: Vec<UnitOfWorkTracker>,
+    clean_items: Vec<(TBackendAdapter::Id, UnitOfWorkTracker)>,
+    dirty_items: Vec<(TBackendAdapter::Id, UnitOfWorkTracker)>,
     new_items: Vec<NewUnitOfWorkTracker>,
 }
 
@@ -108,6 +132,13 @@ pub trait UnitOfWork: Clone + Send + Sync {
     fn commit(&mut self) -> Result<(), StorageError>;
     fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError>;
     fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
+    fn set_locked_qc(
+        &mut self,
+        message_type: HotStuffMessageType,
+        view_number: ViewId,
+        node_hash: TreeNodeHash,
+        signature: Option<Signature>,
+    ) -> Result<(), StorageError>;
 }
 
 // Cloneable, Send, Sync wrapper
@@ -141,6 +172,13 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
                 .map_err(TBackendAdapter::Error::into)?;
         }
 
+        for (id, item) in inner.dirty_items.iter() {
+            inner
+                .backend_adapter
+                .update(id, item, &tx)
+                .map_err(TBackendAdapter::Error::into)?;
+        }
+
         inner
             .backend_adapter
             .commit(&tx)
@@ -163,6 +201,24 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
             .unwrap()
             .new_items
             .push(NewUnitOfWorkTracker::Instruction { node_hash, instruction });
+        Ok(())
+    }
+
+    fn set_locked_qc(
+        &mut self,
+        message_type: HotStuffMessageType,
+        view_number: ViewId,
+        node_hash: TreeNodeHash,
+        signature: Option<Signature>,
+    ) -> Result<(), StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        let id = inner.backend_adapter.locked_qc_id();
+        inner.dirty_items.push((id, UnitOfWorkTracker::LockedQc {
+            message_type,
+            view_number,
+            node_hash,
+            signature,
+        }));
         Ok(())
     }
 }

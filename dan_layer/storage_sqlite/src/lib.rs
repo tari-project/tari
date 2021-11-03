@@ -34,3 +34,5 @@ pub use sqlite_transaction::SqliteTransaction;
 mod sqlite_db_factory;
 pub use sqlite_db_factory::SqliteDbFactory;
 mod models;
+mod sqlite_storage_service;
+pub use sqlite_storage_service::SqliteStorageService;

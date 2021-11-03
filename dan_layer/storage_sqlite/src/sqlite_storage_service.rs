@@ -20,5 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod locked_qc;
-pub mod node;
+use async_trait::async_trait;
+use std::sync::Arc;
+use tari_dan_core::{
+    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    storage::{ChainStorageService, StorageError, UnitOfWork},
+};
+use tokio::sync::RwLock;
+
+pub struct SqliteStorageService {}
+
+// TODO: this has no references to Sqlite, so may be worth moving to dan_layer.core
+
+#[async_trait]
+impl ChainStorageService<TariDanPayload> for SqliteStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        todo!()
+    }
+
+    async fn save_node<TUnitOfWork: UnitOfWork>(
+        &self,
+        node: &HotStuffTreeNode<TariDanPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError> {
+        let mut db = db;
+        for instruction in node.payload().instructions() {
+            db.add_instruction(node.hash().clone(), instruction.clone())?;
+        }
+        db.add_node(node.hash().clone(), node.parent().clone())?;
+        Ok(())
+    }
+
+    async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
+        &self,
+        qc: QuorumCertificate<TariDanPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError> {
+        let mut db = db;
+        db.set_locked_qc(
+            qc.message_type(),
+            qc.view_number(),
+            qc.node().hash().clone(),
+            qc.signature().map(|s| s.clone()),
+        )?;
+        Ok(())
+    }
+}

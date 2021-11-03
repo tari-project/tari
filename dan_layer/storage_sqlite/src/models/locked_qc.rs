@@ -20,32 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
-};
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-pub struct SqliteStorageService {}
-
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
-    }
-
-    async fn save_node<TUnitOfWork: UnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
-        }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
-        Ok(())
-    }
+#[derive(Queryable)]
+pub struct LockedQc {
+    pub id: i32,
+    pub message_type: i32,
+    pub view_number: i64,
+    pub node_hash: Vec<u8>,
+    pub signature: Option<Vec<u8>>,
 }

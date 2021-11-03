@@ -99,7 +99,7 @@ where TBaseNodeClient: BaseNodeClient
 
         // read and create the genesis block
         let chain_db = db_factory.create()?;
-        if chain_db.is_empty() {
+        if chain_db.is_empty()? {
             let mut tx = chain_db.new_unit_of_work();
 
             let tx2 = tx.clone();
@@ -109,6 +109,7 @@ where TBaseNodeClient: BaseNodeClient
             payload_processor.process_payload(&payload, tx2).await?;
             let genesis_qc = QuorumCertificate::genesis(payload);
             chain_storage_service.save_node(genesis_qc.node(), tx.clone()).await?;
+            chain_storage_service.set_locked_qc(genesis_qc, tx.clone()).await?;
             tx.commit()?;
         }
 
