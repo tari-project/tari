@@ -1942,6 +1942,31 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
+    /// Finds and returns the last stored header.
+    fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let header = self.fetch_last_header_in_txn(&txn)?.ok_or_else(|| {
+            ChainStorageError::InvalidOperation("Cannot fetch last header because database is empty".to_string())
+        })?;
+        let height = header.height;
+        let accumulated_data = self
+            .fetch_header_accumulated_data_by_height(&txn, height)?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "BlockHeaderAccumulatedData",
+                field: "height",
+                value: height.to_string(),
+            })?;
+
+        let chain_header = ChainHeader::try_construct(header, accumulated_data).ok_or_else(|| {
+            ChainStorageError::DataInconsistencyDetected {
+                function: "fetch_tip_header",
+                details: format!("Accumulated data mismatch at height #{}", height),
+            }
+        })?;
+
+        Ok(chain_header)
+    }
+
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
 

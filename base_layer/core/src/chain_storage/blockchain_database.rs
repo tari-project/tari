@@ -566,6 +566,11 @@ where B: BlockchainBackend
         db.fetch_last_header()
     }
 
+    pub fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_last_chain_header()
+    }
+
     /// Returns the sum of all kernels
     pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum)
