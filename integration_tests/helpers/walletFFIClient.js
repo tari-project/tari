@@ -74,6 +74,10 @@ class WalletFFIClient {
     return this.wallet.getBalance();
   }
 
+  pollBalance() {
+    return this.wallet.pollBalance();
+  }
+
   addBaseNodePeer(public_key_hex, address) {
     return this.wallet.addBaseNodePeer(public_key_hex, address);
   }

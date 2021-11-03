@@ -3050,6 +3050,39 @@ pub unsafe extern "C" fn wallet_create(
     }
 }
 
+/// Retrieves the balance from a wallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `*mut Balance` - Returns the pointer to the TariBalance or null if error occurs
+///
+/// # Safety
+/// The ```balance_destroy``` method must be called when finished with a TariBalance to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariBalance {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let balance = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.get_balance());
+    match balance {
+        Ok(balance) => Box::into_raw(Box::new(balance)),
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::BalanceError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
 /// Signs a message using the public key of the TariWallet
 ///
 /// ## Arguments
@@ -3454,119 +3487,6 @@ pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance,
 pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
     if !balance.is_null() {
         Box::from_raw(balance);
-    }
-}
-
-/// Gets the available balance from a TariWallet. This is the balance the user can spend.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The available balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.available_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// Gets the incoming balance from a `TariWallet`. This is the uncleared balance of Tari that is
-/// expected to come into the `TariWallet` but is not yet spendable.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The incoming balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.pending_incoming_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// Gets the outgoing balance from a `TariWallet`. This is the uncleared balance of Tari that has
-/// been spent
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The outgoing balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.pending_outgoing_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
     }
 }
 
