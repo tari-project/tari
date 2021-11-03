@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{ChainHeight, HotStuffTreeNode, Instruction, SidechainMetadata, TreeNodeHash},
-    storage::sqlite::SqliteBackendAdapter,
-};
+use crate::models::{ChainHeight, HotStuffTreeNode, Instruction, SidechainMetadata, TreeNodeHash};
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
@@ -40,32 +37,17 @@ mod store;
 pub mod sqlite;
 
 pub trait DbFactory<TBackendAdapter: BackendAdapter> {
-    fn create(&self) -> ChainDb<TBackendAdapter>;
-}
-
-#[derive(Clone)]
-pub struct SqliteDbFactory {}
-
-impl SqliteDbFactory {
-    pub fn new(config: &GlobalConfig) -> Self {
-        Self {}
-    }
-
-    fn create_adapter(&self) -> SqliteBackendAdapter {
-        SqliteBackendAdapter {}
-    }
-}
-
-impl DbFactory<SqliteBackendAdapter> for SqliteDbFactory {
-    fn create(&self) -> ChainDb<SqliteBackendAdapter> {
-        ChainDb {
-            adapter: self.create_adapter(),
-        }
-    }
+    fn create(&self) -> Result<ChainDb<TBackendAdapter>, StorageError>;
 }
 
 pub struct ChainDb<TBackendAdapter: BackendAdapter> {
     adapter: TBackendAdapter,
+}
+
+impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
+    pub fn new(adapter: TBackendAdapter) -> ChainDb<TBackendAdapter> {
+        ChainDb { adapter }
+    }
 }
 
 impl<TBackendAdaper: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdaper> {
@@ -98,9 +80,10 @@ pub enum NewUnitOfWorkTracker {
 
 pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
-    fn create_transaction(&self) -> Self::BackendTransaction;
-    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), StorageError>;
-    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), StorageError>;
+    type Error: Into<StorageError>;
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
+    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }
 
 pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
@@ -147,12 +130,21 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
 
     fn commit(&mut self) -> Result<(), StorageError> {
         let mut inner = self.inner.write().unwrap();
-        let tx = inner.backend_adapter.create_transaction();
+        let tx = inner
+            .backend_adapter
+            .create_transaction()
+            .map_err(TBackendAdapter::Error::into)?;
         for item in inner.new_items.iter() {
-            inner.backend_adapter.insert(item, &tx)?;
+            inner
+                .backend_adapter
+                .insert(item, &tx)
+                .map_err(TBackendAdapter::Error::into)?;
         }
 
-        inner.backend_adapter.commit(&tx)?;
+        inner
+            .backend_adapter
+            .commit(&tx)
+            .map_err(TBackendAdapter::Error::into)?;
         Ok(())
     }
 

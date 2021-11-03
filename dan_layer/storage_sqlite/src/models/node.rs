@@ -20,7 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[macro_use]
-extern crate diesel;
+use crate::schema::*;
 
-mod schema;
+#[derive(Queryable)]
+pub struct Node {
+    hash: Vec<u8>,
+    parent: Vec<u8>,
+}
+
+#[derive(Insertable)]
+#[table_name = "nodes"]
+pub struct NewNode {
+    pub hash: Vec<u8>,
+    pub parent: Vec<u8>,
+}

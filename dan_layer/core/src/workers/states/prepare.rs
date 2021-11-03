@@ -268,7 +268,7 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                let db = self.db_factory.create();
+                let db = self.db_factory.create()?;
                 let unit_of_work = db.new_unit_of_work();
 
                 let res = payload_processor

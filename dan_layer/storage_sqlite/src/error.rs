@@ -19,33 +19,41 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use diesel;
+use tari_dan_core::storage::StorageError;
+use thiserror::Error;
 
-use crate::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
-};
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+#[derive(Debug, Error)]
+pub enum SqliteStorageError {
+    #[error("Could not connect to database: {source}")]
+    ConnectionError {
+        #[from]
+        source: diesel::ConnectionError,
+    },
+    #[error("General diesel error: {source}")]
+    DieselError {
+        #[from]
+        source: diesel::result::Error,
+    },
+    #[error("Could not migrate the database")]
+    MigrationError {
+        #[from]
+        source: diesel_migrations::RunMigrationsError,
+    },
+}
 
-pub struct SqliteStorageService {}
-
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
-    }
-
-    async fn save_node<TUnitOfWork: UnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
+impl From<SqliteStorageError> for StorageError {
+    fn from(source: SqliteStorageError) -> Self {
+        match source {
+            SqliteStorageError::ConnectionError { .. } => StorageError::ConnectionError {
+                reason: source.to_string(),
+            },
+            SqliteStorageError::DieselError { .. } => StorageError::QueryError {
+                reason: source.to_string(),
+            },
+            SqliteStorageError::MigrationError { .. } => StorageError::MigrationError {
+                reason: source.to_string(),
+            },
         }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
-        Ok(())
     }
 }

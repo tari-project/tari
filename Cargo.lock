@@ -6396,6 +6396,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_storage_sqlite"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "diesel_migrations",
+ "dotenv",
+ "tari_common",
+ "tari_dan_core",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_infra_derive"
 version = "0.12.0"
 dependencies = [
@@ -6716,6 +6728,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_dan_core",
+ "tari_dan_storage_sqlite",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -7889,14 +7902,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
-]
-
-[[package]]
-name = "validator_node_sqlite"
-version = "0.1.0"
-dependencies = [
- "diesel",
- "dotenv",
 ]
 
 [[package]]

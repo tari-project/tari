@@ -1,10 +1,14 @@
 [package]
-name = "validator_node_sqlite"
+name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tari_dan_core = {path="../core"}
+tari_common = { path = "../../common"}
 diesel = { version = "1.4.8", features = ["sqlite"] }
+diesel_migrations = "1.4.0"
 dotenv = "0.15.0"
+thiserror = "1.0.30"

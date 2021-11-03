@@ -20,32 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
-};
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use crate::{error::SqliteStorageError, SqliteBackendAdapter};
+use diesel::{prelude::*, Connection, SqliteConnection};
+use diesel_migrations::embed_migrations;
+use tari_common::GlobalConfig;
+use tari_dan_core::storage::{ChainDb, DbFactory, StorageError};
 
-pub struct SqliteStorageService {}
+#[derive(Clone)]
+pub struct SqliteDbFactory {
+    database_url: String,
+}
 
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
+impl SqliteDbFactory {
+    pub fn new(config: &GlobalConfig) -> Self {
+        let database_url = config
+            .data_dir
+            .join("dan_storage.sqlite")
+            .into_os_string()
+            .into_string()
+            .unwrap();
+
+        Self { database_url }
     }
 
-    async fn save_node<TUnitOfWork: UnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
-        }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
-        Ok(())
+    fn create_adapter(&self) -> SqliteBackendAdapter {
+        SqliteBackendAdapter::new(self.database_url.clone())
+    }
+}
+
+impl DbFactory<SqliteBackendAdapter> for SqliteDbFactory {
+    fn create(&self) -> Result<ChainDb<SqliteBackendAdapter>, StorageError> {
+        let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
+        connection.execute("PRAGMA foreign_keys = ON;");
+        // Create the db
+        embed_migrations!("./migrations");
+        embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
+        Ok(ChainDb::new(self.create_adapter()))
     }
 }

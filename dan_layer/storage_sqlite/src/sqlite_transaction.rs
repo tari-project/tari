@@ -20,32 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
-};
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use diesel::SqliteConnection;
 
-pub struct SqliteStorageService {}
+pub struct SqliteTransaction {
+    connection: SqliteConnection,
+}
 
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
+impl SqliteTransaction {
+    pub fn new(connection: SqliteConnection) -> Self {
+        Self { connection }
     }
 
-    async fn save_node<TUnitOfWork: UnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
-        }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
-        Ok(())
+    pub fn connection(&self) -> &SqliteConnection {
+        &self.connection
     }
 }

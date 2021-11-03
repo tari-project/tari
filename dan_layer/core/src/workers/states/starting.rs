@@ -98,7 +98,7 @@ where TBaseNodeClient: BaseNodeClient
         }
 
         // read and create the genesis block
-        let chain_db = db_factory.create();
+        let chain_db = db_factory.create()?;
         if chain_db.is_empty() {
             let mut tx = chain_db.new_unit_of_work();
 

@@ -22,6 +22,7 @@ tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_storage = { path = "../../infrastructure/storage" }
 tari_core = {path = "../../base_layer/core"}
 tari_dan_core = {path = "../../dan_layer/core"}
+tari_dan_storage_sqlite = {path = "../../dan_layer/storage_sqlite"}
 
 anyhow = "1.0.32"
 async-trait = "0.1.50"

@@ -42,8 +42,9 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_dan_core::{
     services::{MempoolService, MempoolServiceHandle},
-    storage::{BackendAdapter, ChainStorageService, DbFactory, SqliteDbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory},
 };
+use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
