@@ -22,13 +22,14 @@
 
 use crate::transaction_service::{
     error::TransactionStorageError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+    storage::{
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        sqlite_db::InboundTransactionSenderInfo,
+    },
 };
 use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
-
-use crate::transaction_service::storage::{models::WalletTransaction, sqlite_db::InboundTransactionSenderInfo};
 use std::{
     collections::HashMap,
     fmt,
