@@ -117,7 +117,7 @@ pub struct SideChainCheckpointFeatures {
 }
 
 /// Options for UTXO's
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
 pub struct OutputFeatures {
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
     pub flags: OutputFlags,

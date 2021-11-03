@@ -19,41 +19,31 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::transaction::TransactionOutput;
-use tari_common_types::types::HashOutput;
-use tari_crypto::tari_utilities::Hashable;
 
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq)]
-pub enum PrunedOutput {
-    Pruned {
-        output_hash: HashOutput,
-        witness_hash: HashOutput,
-    },
-    NotPruned {
-        output: TransactionOutput,
-    },
+use crate::chain_storage::ChainStorageError;
+use lmdb_zero::error;
+use log::*;
+use serde::{de::DeserializeOwned, Serialize};
+
+pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
+
+pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
+where T: Serialize {
+    let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    let mut buf = Vec::with_capacity(size as usize);
+    bincode::serialize_into(&mut buf, data).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+    Ok(buf)
 }
 
-impl PrunedOutput {
-    pub fn is_pruned(&self) -> bool {
-        matches!(self, PrunedOutput::Pruned { .. })
-    }
-
-    pub fn hash(&self) -> Vec<u8> {
-        match self {
-            PrunedOutput::Pruned {
-                output_hash,
-                witness_hash: _,
-            } => output_hash.clone(),
-            PrunedOutput::NotPruned { output } => output.hash(),
-        }
-    }
-
-    pub fn as_transaction_output(&self) -> Option<&TransactionOutput> {
-        match self {
-            PrunedOutput::Pruned { .. } => None,
-            PrunedOutput::NotPruned { output } => Some(output),
-        }
-    }
+pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
+where T: DeserializeOwned {
+    bincode::deserialize(buf_bytes)
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
+            e
+        })
+        .map_err(|e| error::Error::ValRejected(e.to_string()))
 }

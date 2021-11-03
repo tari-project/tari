@@ -294,11 +294,12 @@ impl BlockchainBackend for TempDatabase {
         &self,
         parent_public_key: Option<&PublicKey>,
         unique_id: &[u8],
+        deleted_at: Option<u64>,
     ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .fetch_utxo_by_unique_id(parent_public_key, unique_id)
+            .fetch_utxo_by_unique_id(parent_public_key, unique_id, deleted_at)
     }
 
     fn fetch_all_unspent_by_parent_public_key(

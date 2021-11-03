@@ -20,7 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::{error::ChainStorageError, OrNotFound};
+use crate::chain_storage::{
+    error::ChainStorageError,
+    lmdb_db::{
+        helpers::{deserialize, serialize},
+        key_prefix_cursor::KeyPrefixCursor,
+    },
+    OrNotFound,
+};
 use lmdb_zero::{
     del,
     error::{self, LmdbResultExt},
@@ -37,33 +44,9 @@ use lmdb_zero::{
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
-use tari_crypto::tari_utilities::hex::{to_hex, Hex};
+use tari_crypto::tari_utilities::hex::to_hex;
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
-
-// TODO: Calling `access` for every lmdb operation has some overhead (an atomic read and set). Check if is possible to
-// pass an Accessor instead of the WriteTransaction?
-
-pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
-where T: Serialize {
-    let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-    let mut buf = Vec::with_capacity(size as usize);
-    bincode::serialize_into(&mut buf, data).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
-        ChainStorageError::AccessError(e.to_string())
-    })?;
-    Ok(buf)
-}
-
-pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
-where T: DeserializeOwned {
-    bincode::deserialize(buf_bytes)
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
-            e
-        })
-        .map_err(|e| error::Error::ValRejected(e.to_string()))
-}
 
 pub fn lmdb_insert<K, V>(
     txn: &WriteTransaction<'_>,
@@ -128,7 +111,7 @@ where
     })
 }
 
-/// Inserts or replaces the item at the given key
+/// Inserts or replaces the item at the given key. If the key does not exist, a new entry is created
 pub fn lmdb_replace<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized,
@@ -182,7 +165,7 @@ where
 pub fn lmdb_delete_keys_starting_with<V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
-    key: &str,
+    key: &[u8],
 ) -> Result<Vec<V>, ChainStorageError>
 where
     V: DeserializeOwned,
@@ -193,22 +176,20 @@ where
         ChainStorageError::AccessError(e.to_string())
     })?;
 
-    debug!(target: LOG_TARGET, "Deleting rows matching pattern: {}", key);
-
     let mut row = match cursor.seek_range_k(&access, key) {
         Ok(r) => r,
         Err(_) => return Ok(vec![]),
     };
-    trace!(target: LOG_TARGET, "Key: {}", row.0);
+    trace!(target: LOG_TARGET, "Key: {}", to_hex(row.0));
     let mut result = vec![];
-    while row.0.starts_with(key) {
+    while row.0[..key.len()] == *key {
         let val = deserialize::<V>(row.1)?;
         result.push(val);
         cursor.del(&mut access, del::NODUPDATA)?;
-        row = match cursor.next(&access) {
-            Ok(r) => r,
-            Err(_) => break,
-        }
+        row = match cursor.next(&access).to_opt()? {
+            Some(r) => r,
+            None => break,
+        };
     }
     Ok(result)
 }
@@ -308,67 +289,37 @@ pub fn lmdb_len(txn: &ConstTransaction<'_>, db: &Database) -> Result<usize, Chai
     Ok(stats.entries)
 }
 
-pub fn lmdb_fetch_keys_starting_with<V>(
-    key: &str,
-    txn: &ConstTransaction<'_>,
-    db: &Database,
-) -> Result<Vec<V>, ChainStorageError>
+/// Return a cursor that iterates, either backwards or forwards through keys matching the given prefix
+pub fn lmdb_get_prefix_cursor<'a, V>(
+    txn: &'a ConstTransaction<'a>,
+    db: &'a Database,
+    prefix_key: &'a [u8],
+) -> Result<KeyPrefixCursor<'a, V>, ChainStorageError>
 where
     V: DeserializeOwned,
 {
     let access = txn.access();
-    let mut cursor = txn.cursor(db).map_err(|e| {
+
+    let cursor = txn.cursor(&*db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;
 
-    trace!(target: LOG_TARGET, "Getting rows matching pattern: {}", key);
-
-    let mut row = match cursor.seek_range_k(&access, key) {
-        Ok(r) => r,
-        Err(_) => return Ok(vec![]),
-    };
-    trace!(target: LOG_TARGET, "Key: {}", row.0);
-    let mut result = vec![];
-    while row.0.starts_with(key) {
-        let val = deserialize::<V>(row.1)?;
-        result.push(val);
-        row = match cursor.next(&access) {
-            Ok(r) => r,
-            Err(_) => break,
-        }
-    }
-    Ok(result)
+    Ok(KeyPrefixCursor::new(cursor, access, prefix_key))
 }
 
-pub fn lmdb_fetch_keys_starting_with_bytes<V>(
-    key: &[u8],
+pub fn lmdb_fetch_matching_after<V>(
     txn: &ConstTransaction<'_>,
     db: &Database,
+    key_prefix: &[u8],
 ) -> Result<Vec<V>, ChainStorageError>
 where
     V: DeserializeOwned,
 {
-    let access = txn.access();
-    let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
-        ChainStorageError::AccessError(e.to_string())
-    })?;
-
-    let mut row = match cursor.seek_range_k(&access, key) {
-        Ok(r) => r,
-        Err(_) => return Ok(vec![]),
-    };
-    debug!(target: LOG_TARGET, "Row found: {}", row.0.to_vec().to_hex());
+    let mut cursor = lmdb_get_prefix_cursor(txn, db, key_prefix)?;
     let mut result = vec![];
-    while &row.0[0..key.len()] == key {
-        let val = deserialize::<V>(row.1)?;
+    while let Some((_, val)) = cursor.next()? {
         result.push(val);
-        row = match cursor.next(&access) {
-            Ok(r) => r,
-            Err(_) => break,
-        };
-        debug!(target: LOG_TARGET, "Row found: {}", row.0.to_vec().to_hex());
     }
     Ok(result)
 }

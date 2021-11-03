@@ -282,7 +282,7 @@ macro_rules! txn_schema {
             to_outputs: vec![],
             fee: $fee,
             lock_height: $lock,
-            features: $features,
+            features: $features.clone(),
             script: tari_crypto::script![Nop],
             input_data: None,
         }
@@ -294,7 +294,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
-            features: $features
+            features: $features.clone()
         )
     }};
    (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
