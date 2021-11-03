@@ -107,7 +107,7 @@ to claim the XTR transaction.
 
 Here is the required BTC script that Bob publishes:
 
-```
+``` btc_script,ignore
 	OP_IF
 	   OP_SHA256 <HASH256{pre_image}> OP_EQUALVERIFY
 		<Alice BTC address> OP_CHECKSIG
@@ -124,7 +124,7 @@ _relative locktime_ is a time sequence that Alice chooses to lock up the funds i
 
 Here is the required XTR script that Alice publishes:
 
-```
+``` TariScript,ignore
    HashSha256 PushHash(HASH256{pre_image}) Equal
    IFTHEN
       PushPubkey(K_{Sb})
