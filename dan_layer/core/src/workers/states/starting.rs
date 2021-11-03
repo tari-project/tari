@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Payload, QuorumCertificate, TariDanPayload},
+    models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate, TariDanPayload},
     services::{
         infrastructure_services::NodeAddressable,
         BaseNodeClient,
@@ -107,8 +107,9 @@ where TBaseNodeClient: BaseNodeClient
             let payload = payload_provider.create_genesis_payload();
 
             payload_processor.process_payload(&payload, tx2).await?;
-            let genesis_qc = QuorumCertificate::genesis(payload);
-            chain_storage_service.save_node(genesis_qc.node(), tx.clone()).await?;
+            let node = HotStuffTreeNode::genesis(payload);
+            let genesis_qc = QuorumCertificate::genesis(node.hash().clone());
+            chain_storage_service.save_node(&node, tx.clone()).await?;
             chain_storage_service.set_locked_qc(genesis_qc, tx.clone()).await?;
             tx.commit()?;
         }

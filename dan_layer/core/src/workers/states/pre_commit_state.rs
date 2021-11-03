@@ -57,7 +57,7 @@ where
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    prepare_qc: Option<QuorumCertificate<TPayload>>,
+    prepare_qc: Option<QuorumCertificate>,
 }
 
 impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
@@ -90,7 +90,7 @@ where
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         signing_service: &TSigningService,
-    ) -> Result<(ConsensusWorkerStateEvent, Option<QuorumCertificate<TPayload>>), DigitalAssetError> {
+    ) -> Result<(ConsensusWorkerStateEvent, Option<QuorumCertificate>), DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
@@ -186,7 +186,7 @@ where
         &self,
         outbound: &mut TOutboundService,
         committee: &Committee<TAddr>,
-        prepare_qc: QuorumCertificate<TPayload>,
+        prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
@@ -195,7 +195,7 @@ where
             .await
     }
 
-    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {
+    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {
@@ -213,12 +213,13 @@ where
             };
         }
 
-        let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
-        for message in self.received_new_view_messages.values() {
-            qc.combine_sig(message.partial_sig().unwrap())
-        }
-        Some(qc)
+        todo!("Fix this")
+        // let node = node.unwrap();
+        // let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
+        // for message in self.received_new_view_messages.values() {
+        //     qc.combine_sig(message.partial_sig().unwrap())
+        // }
+        // Some(qc)
     }
 
     async fn process_replica_message(
@@ -249,15 +250,16 @@ where
                 return Ok(None);
             }
 
-            self.prepare_qc = Some(justify.clone());
-            self.send_vote_to_leader(
-                justify.node(),
-                outbound,
-                view_leader,
-                current_view.view_id,
-                signing_service,
-            )
-            .await?;
+            todo!("Fix this");
+            // self.prepare_qc = Some(justify.clone());
+            // self.send_vote_to_leader(
+            //     justify.node(),
+            //     outbound,
+            //     view_leader,
+            //     current_view.view_id,
+            //     signing_service,
+            // )
+            // .await?;
             Ok(Some(ConsensusWorkerStateEvent::PreCommitted))
         } else {
             // dbg!("received non justify message");

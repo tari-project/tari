@@ -58,8 +58,8 @@ where
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    commit_qc: Option<QuorumCertificate<TPayload>>,
-    _locked_qc: Option<QuorumCertificate<TPayload>>,
+    commit_qc: Option<QuorumCertificate>,
+    _locked_qc: Option<QuorumCertificate>,
 }
 
 impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
@@ -180,7 +180,7 @@ where
     async fn broadcast(
         &self,
         outbound: &mut TOutboundService,
-        commit_qc: QuorumCertificate<TPayload>,
+        commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
@@ -189,7 +189,7 @@ where
             .await
     }
 
-    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {
+    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {
@@ -207,12 +207,13 @@ where
             };
         }
 
-        let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Commit, current_view.view_id, node, None);
-        for message in self.received_new_view_messages.values() {
-            qc.combine_sig(message.partial_sig().unwrap())
-        }
-        Some(qc)
+        todo!("Fix this");
+        // let node = node.unwrap();
+        // let mut qc = QuorumCertificate::new(HotStuffMessageType::Commit, current_view.view_id, node, None);
+        // for message in self.received_new_view_messages.values() {
+        //     qc.combine_sig(message.partial_sig().unwrap())
+        // }
+        // Some(qc)
     }
 
     async fn process_replica_message(

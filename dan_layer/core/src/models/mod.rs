@@ -202,6 +202,10 @@ pub enum ConsensusWorkerState {
 pub struct Signature {}
 
 impl Signature {
+    pub fn from_bytes(source: &[u8]) -> Self {
+        Self {}
+    }
+
     pub fn combine(&self, other: &Signature) -> Signature {
         other.clone()
     }

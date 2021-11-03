@@ -32,8 +32,9 @@ use crate::{
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
+use std::convert::TryFrom;
 use tari_dan_core::{
-    models::{Payload, QuorumCertificate, TariDanPayload},
+    models::{HotStuffMessageType, Payload, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
     storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWorkTracker},
 };
 
@@ -142,19 +143,17 @@ impl BackendAdapter for SqliteBackendAdapter {
         1
     }
 
-    fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate<Self::Payload>, Self::Error> {
+    fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::*;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
         let result: Option<PrepareQc> = prepare_qcs::table
             .order_by(prepare_qcs::view_number.desc())
-            .first(connection)
+            .first(&connection)
             .optional()?;
         let qc = match result {
             Some(r) => r,
             None => {
-                let l: LockedQc = dsl::locked_qc
-                    .find(self.locked_qc_id())
-                    .first(transaction.connection())?;
+                let l: LockedQc = dsl::locked_qc.find(self.locked_qc_id()).first(&connection)?;
                 PrepareQc {
                     id: 1,
                     message_type: l.message_type,
@@ -166,8 +165,10 @@ impl BackendAdapter for SqliteBackendAdapter {
         };
 
         Ok(QuorumCertificate::new(
-            MessageType::from(qc.message_type as u8),
+            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
             ViewId::from(qc.view_number as u64),
+            TreeNodeHash(qc.node_hash.clone()),
+            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
         ))
     }
 }

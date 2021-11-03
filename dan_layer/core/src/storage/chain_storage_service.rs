@@ -41,7 +41,7 @@ pub trait ChainStorageService<TPayload: Payload> {
 
     async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
         &self,
-        qc: QuorumCertificate<TPayload>,
+        qc: QuorumCertificate,
         db: TUnitOfWork,
     ) -> Result<(), StorageError>;
 }

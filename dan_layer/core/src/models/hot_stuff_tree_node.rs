@@ -52,8 +52,8 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
         s
     }
 
-    pub fn from_parent(parent: &HotStuffTreeNode<TPayload>, payload: TPayload) -> HotStuffTreeNode<TPayload> {
-        Self::new(parent.calculate_hash(), payload)
+    pub fn from_parent(parent: TreeNodeHash, payload: TPayload) -> HotStuffTreeNode<TPayload> {
+        Self::new(parent, payload)
     }
 
     pub fn calculate_hash(&self) -> TreeNodeHash {

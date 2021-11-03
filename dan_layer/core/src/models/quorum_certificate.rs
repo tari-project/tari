@@ -25,7 +25,7 @@ use crate::models::{HotStuffMessageType, HotStuffTreeNode, Payload, Signature, T
 #[derive(Debug, Clone)]
 pub struct QuorumCertificate {
     message_type: HotStuffMessageType,
-    node: TreeNodeHash,
+    node_hash: TreeNodeHash,
     view_number: ViewId,
     signature: Option<Signature>,
 }
@@ -34,28 +34,28 @@ impl QuorumCertificate {
     pub fn new(
         message_type: HotStuffMessageType,
         view_number: ViewId,
-        node: TreeNodeHash,
+        node_hash: TreeNodeHash,
         signature: Option<Signature>,
     ) -> Self {
         Self {
             message_type,
-            node,
+            node_hash,
             view_number,
             signature,
         }
     }
 
-    pub fn genesis(payload: TPayload) -> Self {
+    pub fn genesis(node_hash: TreeNodeHash) -> Self {
         Self {
             message_type: HotStuffMessageType::Genesis,
-            node: HotStuffTreeNode::genesis(payload).hash().clone(),
+            node_hash,
             view_number: 0.into(),
             signature: None,
         }
     }
 
-    pub fn node(&self) -> &TreeNodeHash {
-        &self.node
+    pub fn node_hash(&self) -> &TreeNodeHash {
+        &self.node_hash
     }
 
     pub fn view_number(&self) -> ViewId {

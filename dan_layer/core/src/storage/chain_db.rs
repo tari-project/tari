@@ -35,7 +35,7 @@ impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
         ChainDb { adapter }
     }
 
-    pub fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate<TBackendAdapter::Payload>, StorageError> {
+    pub fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, StorageError> {
         self.adapter
             .find_highest_prepared_qc()
             .map_err(TBackendAdapter::Error::into)

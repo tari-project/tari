@@ -87,9 +87,7 @@ pub struct ConsensusWorker<
     timeout: Duration,
     node_id: TAddr,
     payload_provider: TPayloadProvider,
-    prepare_qc: Arc<QuorumCertificate<TPayload>>,
     events_publisher: TEventsPublisher,
-    locked_qc: Arc<QuorumCertificate<TPayload>>,
     signing_service: TSigningService,
     payload_processor: TPayloadProcessor,
     asset_definition: AssetDefinition,
@@ -97,6 +95,7 @@ pub struct ConsensusWorker<
     db_factory: TDbFactory,
     chain_storage_service: TChainStorageService,
     pd: PhantomData<TBackendAdapter>,
+    pd2: PhantomData<TPayload>,
 }
 
 impl<
@@ -142,7 +141,7 @@ where
 
     TBaseNodeClient: BaseNodeClient,
     // TODO: REmove this Send
-    TBackendAdapter: BackendAdapter + Send + Sync,
+    TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
     TDbFactory: DbFactory<TBackendAdapter> + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
@@ -162,7 +161,7 @@ where
         db_factory: TDbFactory,
         chain_storage_service: TChainStorageService,
     ) -> Self {
-        let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
+        // let prepare_qc = Arc::new(QuorumCertificate::genesis(ash()));
 
         Self {
             inbound_connections,
@@ -172,8 +171,6 @@ where
             outbound_service,
             committee_manager,
             node_id,
-            locked_qc: prepare_qc.clone(),
-            prepare_qc,
             payload_provider,
             events_publisher,
             signing_service,
@@ -183,6 +180,7 @@ where
             db_factory,
             chain_storage_service,
             pd: PhantomData,
+            pd2: PhantomData,
         }
     }
 
@@ -251,7 +249,7 @@ where
                     .await
             },
             Prepare => {
-                let mut p = states::Prepare::new(self.node_id.clone(), self.locked_qc.clone(), self.db_factory.clone());
+                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
                 p.next_event(
                     &self.get_current_view()?,
                     self.timeout,
@@ -279,7 +277,8 @@ where
                     )
                     .await?;
                 if let Some(prepare_qc) = prepare_qc {
-                    self.prepare_qc = Arc::new(prepare_qc);
+                    todo!("Fix this? save to db?");
+                    // self.prepare_qc = Arc::new(prepare_qc);
                 }
                 Ok(res)
             },
@@ -299,7 +298,8 @@ where
                     )
                     .await?;
                 if let Some(locked_qc) = locked_qc {
-                    self.locked_qc = Arc::new(locked_qc);
+                    todo!("Save to db?");
+                    // self.locked_qc = Arc::new(locked_qc);
                 }
                 Ok(res)
             },

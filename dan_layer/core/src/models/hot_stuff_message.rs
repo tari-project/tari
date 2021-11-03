@@ -29,7 +29,7 @@ use tari_crypto::common::Blake256;
 pub struct HotStuffMessage<TPayload: Payload> {
     view_number: ViewId,
     message_type: HotStuffMessageType,
-    justify: Option<QuorumCertificate<TPayload>>,
+    justify: Option<QuorumCertificate>,
     node: Option<HotStuffTreeNode<TPayload>>,
     partial_sig: Option<Signature>,
 }
@@ -38,7 +38,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
     pub fn new(
         view_number: ViewId,
         message_type: HotStuffMessageType,
-        justify: Option<QuorumCertificate<TPayload>>,
+        justify: Option<QuorumCertificate>,
         node: Option<HotStuffTreeNode<TPayload>>,
         partial_sig: Option<Signature>,
     ) -> Self {
@@ -51,7 +51,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         }
     }
 
-    pub fn new_view(prepare_qc: QuorumCertificate<TPayload>, view_number: ViewId) -> Self {
+    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId) -> Self {
         Self {
             message_type: HotStuffMessageType::NewView,
             view_number,
@@ -63,7 +63,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn prepare(
         proposal: HotStuffTreeNode<TPayload>,
-        high_qc: Option<QuorumCertificate<TPayload>>,
+        high_qc: Option<QuorumCertificate>,
         view_number: ViewId,
     ) -> Self {
         Self {
@@ -77,7 +77,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn pre_commit(
         node: Option<HotStuffTreeNode<TPayload>>,
-        prepare_qc: Option<QuorumCertificate<TPayload>>,
+        prepare_qc: Option<QuorumCertificate>,
         view_number: ViewId,
     ) -> Self {
         Self {
@@ -91,7 +91,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn commit(
         node: Option<HotStuffTreeNode<TPayload>>,
-        pre_commit_qc: Option<QuorumCertificate<TPayload>>,
+        pre_commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
     ) -> Self {
         Self {
@@ -105,7 +105,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn decide(
         node: Option<HotStuffTreeNode<TPayload>>,
-        commit_qc: Option<QuorumCertificate<TPayload>>,
+        commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
     ) -> Self {
         Self {
@@ -139,7 +139,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         &self.message_type
     }
 
-    pub fn justify(&self) -> Option<&QuorumCertificate<TPayload>> {
+    pub fn justify(&self) -> Option<&QuorumCertificate> {
         self.justify.as_ref()
     }
 

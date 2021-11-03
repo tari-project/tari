@@ -22,7 +22,7 @@ message HotStuffMessage {
 
 message QuorumCertificate {
     HotStuffMessageType message_type = 1;
-    HotStuffTreeNode node = 2;
+    bytes node_hash = 2;
     uint64 view_number = 3;
     Signature signature = 4;
 }

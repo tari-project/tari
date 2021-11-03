@@ -53,14 +53,14 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
 
     async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
         &self,
-        qc: QuorumCertificate<TariDanPayload>,
+        qc: QuorumCertificate,
         db: TUnitOfWork,
     ) -> Result<(), StorageError> {
         let mut db = db;
         db.set_locked_qc(
             qc.message_type(),
             qc.view_number(),
-            qc.node().hash().clone(),
+            qc.node_hash().clone(),
             qc.signature().map(|s| s.clone()),
         )?;
         Ok(())

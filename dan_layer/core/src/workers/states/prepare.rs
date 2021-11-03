@@ -43,6 +43,7 @@ use log::*;
 use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
 
 use crate::{
+    models::TreeNodeHash,
     services::PayloadProcessor,
     storage::{BackendAdapter, DbFactory},
 };
@@ -72,7 +73,7 @@ pub struct Prepare<
     TDbFactory: DbFactory<TBackendAdapter>,
 {
     node_id: TAddr,
-    locked_qc: Arc<QuorumCertificate<TPayload>>,
+    locked_qc: Arc<QuorumCertificate>,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
@@ -118,7 +119,8 @@ where
     TBackendAdapter: BackendAdapter + Send + Sync,
     TDbFactory: DbFactory<TBackendAdapter> + Clone,
 {
-    pub fn new(node_id: TAddr, locked_qc: Arc<QuorumCertificate<TPayload>>, db_factory: TDbFactory) -> Self {
+    pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
+        let locked_qc = todo!();
         Self {
             node_id,
             locked_qc,
@@ -238,7 +240,9 @@ where
             );
             let high_qc = self.find_highest_qc();
             dbg!(&high_qc);
-            let proposal = self.create_proposal(high_qc.node(), payload_provider).await?;
+            let proposal = self
+                .create_proposal(high_qc.node_hash().clone(), payload_provider)
+                .await?;
             self.broadcast_proposal(outbound, committee, proposal, high_qc, current_view.view_id)
                 .await?;
             // Ok(Some(ConsensusWorkerStateEvent::Prepared))
@@ -281,7 +285,7 @@ where
         }
         let node = message.node().unwrap();
         if let Some(justify) = message.justify() {
-            if self.does_extend(node, justify.node()) {
+            if self.does_extend(node, justify.node_hash()) {
                 if !self.is_safe_node(node, justify) {
                     unimplemented!("Node is not safe")
                 }
@@ -289,9 +293,7 @@ where
                 let db = self.db_factory.create()?;
                 let unit_of_work = db.new_unit_of_work();
 
-                let res = payload_processor
-                    .process_payload(justify.node().payload(), unit_of_work)
-                    .await?;
+                let res = payload_processor.process_payload(node.payload(), unit_of_work).await?;
 
                 // TODO: Check result equals qc result
 
@@ -306,7 +308,7 @@ where
         }
     }
 
-    fn find_highest_qc(&self) -> QuorumCertificate<TPayload> {
+    fn find_highest_qc(&self) -> QuorumCertificate {
         let mut max_qc = None;
         for message in self.received_new_view_messages.values() {
             match &max_qc {
@@ -326,7 +328,7 @@ where
 
     async fn create_proposal(
         &self,
-        parent: &HotStuffTreeNode<TPayload>,
+        parent: TreeNodeHash,
         payload_provider: &TPayloadProvider,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         info!(target: LOG_TARGET, "Creating new proposal");
@@ -343,7 +345,7 @@ where
         outbound: &mut TOutboundService,
         committee: &Committee<TAddr>,
         proposal: HotStuffTreeNode<TPayload>,
-        high_qc: QuorumCertificate<TPayload>,
+        high_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number);
@@ -352,16 +354,13 @@ where
             .await
     }
 
-    fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &HotStuffTreeNode<TPayload>) -> bool {
-        &from.calculate_hash() == node.parent()
+    fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &TreeNodeHash) -> bool {
+        &from == &node.parent()
     }
 
-    fn is_safe_node(
-        &self,
-        node: &HotStuffTreeNode<TPayload>,
-        quorum_certificate: &QuorumCertificate<TPayload>,
-    ) -> bool {
-        self.does_extend(node, self.locked_qc.node()) || quorum_certificate.view_number() > self.locked_qc.view_number()
+    fn is_safe_node(&self, node: &HotStuffTreeNode<TPayload>, quorum_certificate: &QuorumCertificate) -> bool {
+        self.does_extend(node, self.locked_qc.node_hash()) ||
+            quorum_certificate.view_number() > self.locked_qc.view_number()
     }
 
     async fn send_vote_to_leader(

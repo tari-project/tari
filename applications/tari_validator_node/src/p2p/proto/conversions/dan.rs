@@ -62,11 +62,11 @@ impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
     }
 }
 
-impl From<QuorumCertificate<TariDanPayload>> for dan_proto::QuorumCertificate {
-    fn from(source: QuorumCertificate<TariDanPayload>) -> Self {
+impl From<QuorumCertificate> for dan_proto::QuorumCertificate {
+    fn from(source: QuorumCertificate) -> Self {
         Self {
             message_type: source.message_type().as_u8() as i32,
-            node: Some(source.node().clone().into()),
+            node_hash: Vec::from(source.node_hash().as_bytes()),
             view_number: source.view_number().as_u64(),
             signature: source.signature().map(|s| s.clone().into()),
         }
@@ -127,18 +127,14 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
     }
 }
 
-impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate<TariDanPayload> {
+impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate {
     type Error = String;
 
     fn try_from(value: dan_proto::QuorumCertificate) -> Result<Self, Self::Error> {
         Ok(Self::new(
             HotStuffMessageType::try_from(value.message_type as u8)?,
             ViewId(value.view_number),
-            value
-                .node
-                .map(|n| n.try_into())
-                .transpose()?
-                .ok_or_else(|| "node not provided on Quorum Certificate".to_string())?,
+            TreeNodeHash(value.node_hash),
             value.signature.map(|s| s.try_into()).transpose()?,
         ))
     }
