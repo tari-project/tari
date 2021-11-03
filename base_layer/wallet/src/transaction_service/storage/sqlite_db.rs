@@ -620,13 +620,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn reject_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
         let acquire_lock = start.elapsed();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
-                v.cancel(&(*conn))?;
+                v.reject(&(*conn))?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -637,7 +637,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         };
         trace!(
             target: LOG_TARGET,
-            "sqlite profile - cancel_completed_transaction: lock {} + db_op {} = {} ms",
+            "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
             acquire_lock.as_millis(),
             (start.elapsed() - acquire_lock).as_millis(),
             start.elapsed().as_millis()
@@ -1627,6 +1627,19 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
+    pub fn reject(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateCompletedTransactionSql {
+                cancelled: Some(1i32),
+                status: Some(TransactionStatus::Rejected as i32),
+                ..Default::default()
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
     pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateCompletedTransactionSql {
@@ -2171,7 +2184,7 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_err());
         CompletedTransactionSql::try_from(completed_tx1.clone())
             .unwrap()
-            .cancel(&conn)
+            .reject(&conn)
             .unwrap();
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &conn).is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_ok());

@@ -54,7 +54,7 @@ pub enum MerkleProofError {
 }
 
 /// A Merkle proof that proves a particular element at a particular position exists in an MMR.
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, PartialOrd, Ord, Default)]
 pub struct MerkleProof {
     /// The size of the MMR at the time the proof was created.
     mmr_size: usize,
@@ -64,16 +64,6 @@ pub struct MerkleProof {
     /// The set of MMR peaks, not including the local peak for the candidate node
     #[serde(with = "serde_support::hash")]
     peaks: Vec<Hash>,
-}
-
-impl Default for MerkleProof {
-    fn default() -> MerkleProof {
-        MerkleProof {
-            mmr_size: 0,
-            path: Vec::default(),
-            peaks: Vec::default(),
-        }
-    }
 }
 
 impl MerkleProof {

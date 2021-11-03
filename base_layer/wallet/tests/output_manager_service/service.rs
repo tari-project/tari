@@ -60,7 +60,7 @@ use tari_crypto::{
     script::TariScript,
 };
 use tari_p2p::Network;
-use tari_service_framework::{reply_channel, reply_channel::SenderService};
+use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     base_node_service::{

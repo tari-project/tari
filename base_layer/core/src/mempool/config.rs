@@ -26,19 +26,10 @@ use std::time::Duration;
 use tari_common::{configuration::seconds, NetworkConfigPath};
 
 /// Configuration for the Mempool.
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, Serialize, Default)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
-}
-
-impl Default for MempoolConfig {
-    fn default() -> Self {
-        Self {
-            unconfirmed_pool: UnconfirmedPoolConfig::default(),
-            reorg_pool: ReorgPoolConfig::default(),
-        }
-    }
 }
 
 impl NetworkConfigPath for MempoolConfig {

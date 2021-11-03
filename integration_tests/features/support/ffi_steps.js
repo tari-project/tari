@@ -1,4 +1,4 @@
-const { Given, When, Then } = require("cucumber");
+const { Given, When, Then } = require("@cucumber/cucumber");
 const expect = require("chai").expect;
 
 const { sleep, waitForIterate } = require("../../helpers/util");

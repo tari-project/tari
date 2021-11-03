@@ -1,6 +1,6 @@
 // features/support/steps.js
 const assert = require("assert");
-const { Given, When, Then } = require("cucumber");
+const { Given, When, Then } = require("@cucumber/cucumber");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
