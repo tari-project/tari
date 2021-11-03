@@ -68,10 +68,7 @@ use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
-    output_manager_service::{
-        handle::{OutputManagerEventReceiver, OutputManagerHandle},
-        service::Balance,
-    },
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     tokens::Token,
     transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
