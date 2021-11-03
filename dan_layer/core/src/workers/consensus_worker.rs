@@ -328,7 +328,7 @@ where
                 state
                     .next_event(
                         &self.get_current_view()?,
-                        self.prepare_qc.as_ref().clone(),
+                        &self.db_factory,
                         &mut self.outbound_service,
                         self.committee_manager.current_committee()?,
                         self.node_id.clone(),
@@ -352,7 +352,7 @@ where
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
-            (Starting, Initialized) => Prepare,
+            (Starting, Initialized) => NextView,
             (_, NotPartOfCommittee) => Idle,
             (Idle, TimedOut) => Starting,
             (_, TimedOut) => NextView,

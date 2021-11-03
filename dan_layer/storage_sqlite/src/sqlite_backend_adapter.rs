@@ -25,13 +25,17 @@ use crate::{
     models::{
         locked_qc::LockedQc,
         node::{NewNode, Node},
+        prepare_qc::PrepareQc,
     },
     schema::{locked_qc::dsl, *},
     SqliteTransaction,
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
-use tari_dan_core::storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWorkTracker};
+use tari_dan_core::{
+    models::{Payload, QuorumCertificate, TariDanPayload},
+    storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWorkTracker},
+};
 
 #[derive(Clone)]
 pub struct SqliteBackendAdapter {
@@ -48,6 +52,7 @@ impl BackendAdapter for SqliteBackendAdapter {
     type BackendTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
     type Id = i32;
+    type Payload = TariDanPayload;
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
@@ -135,5 +140,34 @@ impl BackendAdapter for SqliteBackendAdapter {
 
     fn locked_qc_id(&self) -> Self::Id {
         1
+    }
+
+    fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate<Self::Payload>, Self::Error> {
+        use crate::schema::*;
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let result: Option<PrepareQc> = prepare_qcs::table
+            .order_by(prepare_qcs::view_number.desc())
+            .first(connection)
+            .optional()?;
+        let qc = match result {
+            Some(r) => r,
+            None => {
+                let l: LockedQc = dsl::locked_qc
+                    .find(self.locked_qc_id())
+                    .first(transaction.connection())?;
+                PrepareQc {
+                    id: 1,
+                    message_type: l.message_type,
+                    view_number: l.view_number,
+                    node_hash: l.node_hash.clone(),
+                    signature: l.signature.clone(),
+                }
+            },
+        };
+
+        Ok(QuorumCertificate::new(
+            MessageType::from(qc.message_type as u8),
+            ViewId::from(qc.view_number as u64),
+        ))
     }
 }

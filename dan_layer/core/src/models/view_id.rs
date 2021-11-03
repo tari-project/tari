@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    fmt::{self, Display},
+    ops::Sub,
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ViewId(pub u64);
@@ -48,5 +52,19 @@ impl PartialOrd for ViewId {
 impl From<u64> for ViewId {
     fn from(v: u64) -> Self {
         Self(v)
+    }
+}
+
+impl Display for ViewId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "View({})", self.0)
+    }
+}
+
+impl Sub for ViewId {
+    type Output = ViewId;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        ViewId(self.0 - rhs.0)
     }
 }

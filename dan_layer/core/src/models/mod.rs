@@ -50,7 +50,6 @@ pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
 use blake2::Digest;
-use digest::Update;
 pub use sidechain_metadata::SidechainMetadata;
 use tari_crypto::common::Blake256;
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};

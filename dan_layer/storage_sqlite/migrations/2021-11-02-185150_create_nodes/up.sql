@@ -20,4 +20,12 @@ create table locked_qc (
     view_number bigint not null,
     node_hash blob not null,
     signature blob null
+);
+
+create table prepare_qcs (
+                           id integer primary key autoincrement not null,
+                           message_type integer not null,
+                           view_number bigint not null,
+                           node_hash blob not null,
+                           signature blob null
 )

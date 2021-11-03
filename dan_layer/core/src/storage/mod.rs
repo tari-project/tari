@@ -25,6 +25,8 @@ use crate::models::{
     HotStuffMessageType,
     HotStuffTreeNode,
     Instruction,
+    Payload,
+    QuorumCertificate,
     SidechainMetadata,
     Signature,
     TreeNodeHash,
@@ -35,8 +37,9 @@ pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
 use std::sync::{Arc, RwLock};
 pub use store::{AssetDataStore, AssetStore};
-use tari_common::GlobalConfig;
 
+mod chain_db;
+pub use chain_db::{ChainDb, ChainDbUnitOfWork};
 mod chain_storage_service;
 mod error;
 pub mod lmdb;
@@ -46,29 +49,6 @@ mod store;
 
 pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create(&self) -> Result<ChainDb<TBackendAdapter>, StorageError>;
-}
-
-pub struct ChainDb<TBackendAdapter: BackendAdapter> {
-    adapter: TBackendAdapter,
-}
-
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
-    pub fn new(adapter: TBackendAdapter) -> ChainDb<TBackendAdapter> {
-        ChainDb { adapter }
-    }
-}
-
-impl<TBackendAdapter: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
-    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdapter> {
-        ChainDbUnitOfWork {
-            inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(self.adapter.clone()))),
-        }
-    }
-}
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
-    pub fn is_empty(&self) -> Result<bool, StorageError> {
-        self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
-    }
 }
 
 pub enum UnitOfWorkTracker {
@@ -96,6 +76,7 @@ pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
     type Id: Send + Sync;
+    type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
@@ -108,24 +89,7 @@ pub trait BackendAdapter: Send + Sync + Clone {
     ) -> Result<(), Self::Error>;
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn locked_qc_id(&self) -> Self::Id;
-}
-
-pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
-    backend_adapter: TBackendAdapter,
-    clean_items: Vec<(TBackendAdapter::Id, UnitOfWorkTracker)>,
-    dirty_items: Vec<(TBackendAdapter::Id, UnitOfWorkTracker)>,
-    new_items: Vec<NewUnitOfWorkTracker>,
-}
-
-impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
-    pub fn new(backend_adapter: TBackendAdapter) -> Self {
-        Self {
-            backend_adapter,
-            clean_items: vec![],
-            dirty_items: vec![],
-            new_items: vec![],
-        }
-    }
+    fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate<Self::Payload>, Self::Error>;
 }
 
 pub trait UnitOfWork: Clone + Send + Sync {
@@ -139,88 +103,6 @@ pub trait UnitOfWork: Clone + Send + Sync {
         node_hash: TreeNodeHash,
         signature: Option<Signature>,
     ) -> Result<(), StorageError>;
-}
-
-// Cloneable, Send, Sync wrapper
-pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
-    inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
-}
-
-impl<TBackendAdapter: BackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapter> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendAdapter> {
-    // pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
-    //     self.clean.push(item);
-    // }
-
-    fn commit(&mut self) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
-        let tx = inner
-            .backend_adapter
-            .create_transaction()
-            .map_err(TBackendAdapter::Error::into)?;
-        for item in inner.new_items.iter() {
-            inner
-                .backend_adapter
-                .insert(item, &tx)
-                .map_err(TBackendAdapter::Error::into)?;
-        }
-
-        for (id, item) in inner.dirty_items.iter() {
-            inner
-                .backend_adapter
-                .update(id, item, &tx)
-                .map_err(TBackendAdapter::Error::into)?;
-        }
-
-        inner
-            .backend_adapter
-            .commit(&tx)
-            .map_err(TBackendAdapter::Error::into)?;
-        Ok(())
-    }
-
-    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError> {
-        self.inner
-            .write()
-            .unwrap()
-            .new_items
-            .push(NewUnitOfWorkTracker::Node { hash, parent });
-        Ok(())
-    }
-
-    fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError> {
-        self.inner
-            .write()
-            .unwrap()
-            .new_items
-            .push(NewUnitOfWorkTracker::Instruction { node_hash, instruction });
-        Ok(())
-    }
-
-    fn set_locked_qc(
-        &mut self,
-        message_type: HotStuffMessageType,
-        view_number: ViewId,
-        node_hash: TreeNodeHash,
-        signature: Option<Signature>,
-    ) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
-        let id = inner.backend_adapter.locked_qc_id();
-        inner.dirty_items.push((id, UnitOfWorkTracker::LockedQc {
-            message_type,
-            view_number,
-            node_hash,
-            signature,
-        }));
-        Ok(())
-    }
 }
 
 pub struct StateDb {

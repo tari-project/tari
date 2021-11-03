@@ -202,6 +202,23 @@ where
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if message.message_type() != &HotStuffMessageType::NewView {
+            warn!(
+                target: LOG_TARGET,
+                "{} sent wrong message of type {:?}. Expecting NEW_VIEW",
+                sender,
+                message.message_type()
+            );
+            return Ok(None);
+        }
+
+        if message.view_number() != current_view.view_id - 1.into() {
+            warn!(
+                target: LOG_TARGET,
+                "{} sent wrong view number for NEW_VIEW message. Expecting {}, got {}",
+                sender,
+                current_view.view_id - 1.into(),
+                message.view_number()
+            );
             return Ok(None);
         }
 
@@ -220,6 +237,7 @@ where
                 committee.len()
             );
             let high_qc = self.find_highest_qc();
+            dbg!(&high_qc);
             let proposal = self.create_proposal(high_qc.node(), payload_provider).await?;
             self.broadcast_proposal(outbound, committee, proposal, high_qc, current_view.view_id)
                 .await?;
@@ -311,6 +329,8 @@ where
         parent: &HotStuffTreeNode<TPayload>,
         payload_provider: &TPayloadProvider,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
+        info!(target: LOG_TARGET, "Creating new proposal");
+
         // TODO: Artificial delay here to set the block time
         sleep(Duration::from_secs(3)).await;
 
