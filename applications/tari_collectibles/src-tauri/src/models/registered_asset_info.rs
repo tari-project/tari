@@ -20,36 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_client::BaseNodeClient, settings::Settings, wallet_client::WalletClient};
-use std::sync::Arc;
-use tauri::async_runtime::RwLock;
+use serde::Serialize;
+use tari_common_types::types::{BlockHash, Commitment, PublicKey};
 
-pub struct AppState {
-  config: Settings,
-}
-
-#[derive(Clone)]
-pub struct ConcurrentAppState {
-  inner: Arc<RwLock<AppState>>,
-}
-
-impl ConcurrentAppState {
-  pub fn new() -> Self {
-    Self {
-      inner: Arc::new(RwLock::new(AppState {
-        config: Settings::new(),
-      })),
-    }
-  }
-
-  pub async fn create_wallet_client(&self) -> WalletClient {
-    WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
-  }
-
-  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, String> {
-    let lock = self.inner.read().await;
-    let client =
-      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
-    Ok(client)
-  }
+#[derive(Serialize)]
+pub struct RegisteredAssetInfo {
+  pub owner_commitment: Option<Commitment>,
+  pub asset_public_key: Option<PublicKey>,
+  pub unique_id: Vec<u8>,
+  pub mined_height: u64,
+  pub mined_in_block: BlockHash,
 }

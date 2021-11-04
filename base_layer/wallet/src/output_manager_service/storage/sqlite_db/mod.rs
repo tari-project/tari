@@ -1186,7 +1186,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     .unwrap_or_default()
                     .as_str()
                     .split(',')
-                    .map(|s| s.parse().map_err(|_| OutputManagerStorageError::ConversionError))
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.trim().parse().map_err(|_| OutputManagerStorageError::ConversionError))
                     .collect::<Result<_, _>>()?;
                 Some(AssetOutputFeatures {
                     public_key: PublicKey::from_bytes(public_key)?,

@@ -20,36 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_client::BaseNodeClient, settings::Settings, wallet_client::WalletClient};
-use std::sync::Arc;
-use tauri::async_runtime::RwLock;
+import { CircularProgress, Box } from "@mui/material";
 
-pub struct AppState {
-  config: Settings,
-}
-
-#[derive(Clone)]
-pub struct ConcurrentAppState {
-  inner: Arc<RwLock<AppState>>,
-}
-
-impl ConcurrentAppState {
-  pub fn new() -> Self {
-    Self {
-      inner: Arc::new(RwLock::new(AppState {
-        config: Settings::new(),
-      })),
-    }
-  }
-
-  pub async fn create_wallet_client(&self) -> WalletClient {
-    WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
-  }
-
-  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, String> {
-    let lock = self.inner.read().await;
-    let client =
-      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
-    Ok(client)
-  }
+export default function CircularIndeterminate() {
+  return (
+    <Box sx={{ display: "flex" }}>
+      <CircularProgress />
+    </Box>
+  );
 }

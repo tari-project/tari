@@ -59,6 +59,9 @@ pub enum NodeCommsRequest {
         asset_public_key: PublicKey,
         unique_ids: Vec<Vec<u8>>,
     },
+    FetchAssetRegistrations {
+        range: RangeInclusive<usize>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -97,6 +100,9 @@ impl Display for NodeCommsRequest {
             ),
             FetchTokens { .. } => {
                 write!(f, "FetchTokens")
+            },
+            FetchAssetRegistrations { .. } => {
+                write!(f, "FetchAllNonFungibleTokens")
             },
         }
     }

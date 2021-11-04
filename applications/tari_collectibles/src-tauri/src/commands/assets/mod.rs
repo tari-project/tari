@@ -20,11 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{app_state::ConcurrentAppState, models::AssetInfo};
+use crate::{
+  app_state::ConcurrentAppState,
+  models::{AssetInfo, RegisteredAssetInfo},
+};
 use rand::rngs::OsRng;
+use tari_common_types::types::Commitment;
 use tari_crypto::{hash::blake2::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 #[tauri::command]
 pub(crate) async fn assets_create(
@@ -42,7 +46,7 @@ pub(crate) async fn assets_create(
 }
 
 #[tauri::command]
-pub(crate) async fn assets_list(
+pub(crate) async fn assets_list_owned(
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<AssetInfo>, String> {
   println!("Hello list owned assets");
@@ -61,6 +65,28 @@ pub(crate) async fn assets_list(
       })
       .collect(),
   )
+}
+
+#[tauri::command]
+pub(crate) async fn assets_list_registered_assets(
+  offset: u64,
+  count: u64,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<RegisteredAssetInfo>, String> {
+  let mut client = state.connect_base_node_client().await?;
+  let assets = client.list_registered_assets(offset, count).await?;
+  assets
+    .into_iter()
+    .map(|asset| {
+      Ok(RegisteredAssetInfo {
+        owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
+        asset_public_key: RistrettoPublicKey::from_bytes(&asset.asset_public_key).ok(),
+        unique_id: asset.unique_id,
+        mined_height: asset.mined_height,
+        mined_in_block: asset.mined_in_block,
+      })
+    })
+    .collect()
 }
 
 #[tauri::command]

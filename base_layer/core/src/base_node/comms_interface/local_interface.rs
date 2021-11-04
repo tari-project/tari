@@ -22,29 +22,28 @@
 
 use crate::{
     base_node::comms_interface::{
+        comms_request::GetNewBlockTemplateRequest,
         error::CommsInterfaceError,
         BlockEvent,
         Broadcast,
         NodeCommsRequest,
         NodeCommsResponse,
     },
-    blocks::{Block, HistoricalBlock, NewBlockTemplate},
+    blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::UtxoMinedInfo,
     proof_of_work::PowAlgorithm,
-    transactions::transaction::TransactionKernel,
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 use std::{ops::RangeInclusive, sync::Arc};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
-use crate::{
-    base_node::comms_interface::comms_request::GetNewBlockTemplateRequest,
-    blocks::ChainHeader,
-    transactions::transaction::TransactionOutput,
-};
-use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.
@@ -117,24 +116,6 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::BlockHeaders(headers) => Ok(headers),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_tokens(
-        &mut self,
-        asset_public_key: PublicKey,
-        unique_ids: Vec<Vec<u8>>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchTokens {
-                asset_public_key,
-                unique_ids,
-            })
-            .await??
-        {
-            NodeCommsResponse::FetchTokensResponse { outputs } => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
@@ -287,6 +268,38 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_tokens(
+        &mut self,
+        asset_public_key: PublicKey,
+        unique_ids: Vec<Vec<u8>>,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchTokensResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_asset_registrations(
+        &mut self,
+        range: RangeInclusive<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetRegistrations { range })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetRegistrationsResponse { outputs } => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
