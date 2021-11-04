@@ -47,7 +47,11 @@ pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), st
         StratumTranscoder => include_str!("../../config/presets/stratum_transcoder.toml"),
         ValidatorNode => include_str!("../../config/presets/validator_node.toml"),
     };
-    let source = [common, app].join("\n");
+    let add = match app_type {
+        MiningNode => include_str!("../../config/presets/validator_node.toml"),
+        _ => "",
+    };
+    let source = [common, app, add].join("\n");
 
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
@@ -103,7 +107,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
-    cfg.set_default("wallet.grpc_address", "127.0.0.1:18040").unwrap();
+    cfg.set_default("wallet.grpc_address", "127.0.0.1:18043").unwrap();
     cfg.set_default(
         "wallet.wallet_db_file",
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),

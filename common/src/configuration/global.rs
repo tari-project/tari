@@ -316,7 +316,8 @@ fn convert_node_config(
         })?;
 
     let mut base_node_config = None;
-    if application == ApplicationType::BaseNode {
+    // TODO: Create Mining node config, do the same for below
+    if application == ApplicationType::BaseNode || application == ApplicationType::MiningNode {
         let mut bn_config = BaseNodeConfig::default();
         // GPRC enabled
         let key = "base_node.grpc_enabled";
@@ -338,7 +339,8 @@ fn convert_node_config(
     }
 
     let mut wallet_config = None;
-    if application == ApplicationType::ConsoleWallet {
+    // TODO: Create Mining node config, do the same for above
+    if application == ApplicationType::ConsoleWallet || application == ApplicationType::MiningNode {
         let mut config = WalletConfig::default();
         // GPRC enabled
         let key = "wallet.grpc_enabled";
