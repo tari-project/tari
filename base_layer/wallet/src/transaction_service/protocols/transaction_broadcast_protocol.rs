@@ -407,7 +407,7 @@ where
                 "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.cancel_completed_transaction(self.tx_id).await {
+        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id).await {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e

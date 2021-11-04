@@ -61,19 +61,10 @@ impl TestFactory for NetAddressesFactory {
 
 //---------------------------------- NetAddressFactory --------------------------------------------//
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct NetAddressFactory {
     port: Option<u16>,
     is_use_os_port: bool,
-}
-
-impl Default for NetAddressFactory {
-    fn default() -> Self {
-        Self {
-            port: None,
-            is_use_os_port: false,
-        }
-    }
 }
 
 impl NetAddressFactory {
