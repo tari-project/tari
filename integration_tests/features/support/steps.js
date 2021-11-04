@@ -1,6 +1,6 @@
 // features/support/steps.js
 const assert = require("assert");
-const { Given, When, Then } = require("cucumber");
+const { Given, When, Then } = require("@cucumber/cucumber");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const MiningNodeProcess = require("../../helpers/miningNodeProcess");
@@ -15,6 +15,7 @@ const {
   consoleLogBalance,
   consoleLogTransactionDetails,
   withTimeout,
+  waitForIterate,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -266,11 +267,11 @@ Given(
 Given(
   /I have a pruned node (.*) connected to node (.*) with pruning horizon set to (.*)/,
   { timeout: 20 * 1000 },
-  async function (name, node, horizon) {
-    const miner = this.createNode(name, { pruningHorizon: horizon });
-    miner.setPeerSeeds([this.nodes[node].peerAddress()]);
-    await miner.startNew();
-    await this.addNode(name, miner);
+  async function (name, connected_to, horizon) {
+    const node = this.createNode(name, { pruningHorizon: horizon });
+    node.setPeerSeeds([this.nodes[connected_to].peerAddress()]);
+    await node.startNew();
+    await this.addNode(name, node);
   }
 );
 
@@ -816,11 +817,15 @@ When(/I stop node (.*)/, async function (name) {
 
 Then(
   /node (.*) is at height (\d+)/,
-  { timeout: 15 * 1000 },
+  { timeout: 600 * 1000 },
   async function (name, height) {
     const client = this.getClient(name);
-    await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
-    const currentHeight = await client.getTipHeight();
+    const currentHeight = await waitForIterate(
+      () => client.getTipHeight(),
+      height,
+      1000,
+      5 * height // 5 seconds per block
+    );
     console.log(
       `Node ${name} is at tip: ${currentHeight} (should be`,
       height,
@@ -832,7 +837,7 @@ Then(
 
 Then(/node (.*) has a pruned height of (\d+)/, async function (name, height) {
   const client = this.getClient(name);
-  await waitFor(async () => client.getPrunedHeight(), height, 115 * 1000);
+  await waitFor(async () => await client.getPrunedHeight(), height, 115 * 1000);
   const currentHeight = await client.getPrunedHeight();
   console.log(
     `Node ${name} has a pruned height: ${currentHeight} (should be`,
@@ -871,11 +876,16 @@ Then(
 
 Then(
   "all nodes are on the same chain at height {int}",
-  { timeout: 15 * 1000 },
+  { timeout: 600 * 1000 },
   async function (height) {
     let tipHash = null;
     await this.forEachClientAsync(async (client, name) => {
-      await waitFor(async () => client.getTipHeight(), height, 115 * 1000);
+      await waitForIterate(
+        () => client.getTipHeight(),
+        height,
+        1000,
+        5 * height /* 5 seconds per block */
+      );
       const currTip = await client.getTipHeader();
       console.log(
         `${client.name} is at tip ${currTip.height} (${currTip.hash.toString(
@@ -939,7 +949,11 @@ Then(
       async () => {
         let result = true;
         await this.forEachClientAsync(async (client, name) => {
-          await waitFor(async () => client.getTipHeight(), height, 60 * 1000);
+          await waitFor(
+            async () => await client.getTipHeight(),
+            height,
+            5 * height * 1000 /* 5 seconds per block */
+          );
           const currTip = await client.getTipHeight();
           console.log(
             `Node ${name} is at tip: ${currTip} (should be ${height})`
@@ -962,7 +976,7 @@ Then(
   async function (node) {
     const client = this.getClient(node);
     await waitForPredicate(
-      async () => (await client.initial_sync_achieved()) === true,
+      async () => await client.initial_sync_achieved(),
       20 * 60 * 1000,
       1000
     );
@@ -1036,7 +1050,7 @@ Then(
       let currentHeight;
       for (let i = 1; i <= 12; i++) {
         await waitFor(
-          async () => client.getTipHeight(),
+          async () => await client.getTipHeight(),
           expectedHeight,
           10 * 1000
         );

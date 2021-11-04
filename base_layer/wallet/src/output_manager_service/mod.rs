@@ -29,7 +29,6 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
-    transaction_service::handle::TransactionServiceHandle,
 };
 use futures::future;
 use log::*;
@@ -114,13 +113,11 @@ where T: OutputManagerBackend + 'static
         let constants = self.network.create_consensus_constants().pop().unwrap();
         let master_seed = self.master_seed.clone();
         context.spawn_when_ready(move |handles| async move {
-            let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
             let service = OutputManagerService::new(
                 config,
-                transaction_service,
                 receiver,
                 OutputManagerDatabase::new(backend),
                 publisher,

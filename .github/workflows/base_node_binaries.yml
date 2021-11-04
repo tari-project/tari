@@ -5,7 +5,7 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     branches:
-      - ci-*
+      - build-*
   schedule:
     - cron: "05 00 * * *"
   workflow_dispatch:
@@ -61,7 +61,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: nightly-2021-09-18
           components: rustfmt
           override: true
 
@@ -141,13 +141,13 @@ jobs:
           #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
           cargo build --release
 
-      #    - name: Prepare Archives
-      #      shell: bash
-      #      run: |
-      #        ls -la "$GITHUB_WORKSPACE"
-      #        mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}/archives"
-      #        export distDir="$GITHUB_WORKSPACE${TBN_DIST}/archives"
-      #        "$GITHUB_WORKSPACE/scripts/build_dists_tarball.sh" noBuild
+        #  - name: Prepare Archives
+        #    shell: bash
+        #    run: |
+        #      ls -la "$GITHUB_WORKSPACE"
+        #      mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}/archives"
+        #      export distDir="$GITHUB_WORKSPACE${TBN_DIST}/archives"
+        #      "$GITHUB_WORKSPACE/scripts/build_dists_tarball.sh" noBuild
 
       - name: Prepare binaries
         shell: bash
@@ -208,11 +208,13 @@ jobs:
           name: tari-${{ env.VERSION }}.pkg
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari-${{ env.VERSION }}.pkg"
 
+      # unlike inno script studio, iscc.exe doesn't run the [precompile] step generate_config.bat
       - name: Build the windows installer
         shell: cmd
         if: startsWith(runner.os,'Windows')
         run: |
           cd buildtools
+          call generate_config.bat
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-release" "windows_inno_installer.iss"
 
       - name: Upload artifact for Windows installer

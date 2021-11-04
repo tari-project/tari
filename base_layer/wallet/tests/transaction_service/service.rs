@@ -331,7 +331,6 @@ pub fn setup_transaction_service_no_comms(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
-            ts_handle.clone(),
             oms_request_receiver,
             oms_db,
             oms_event_publisher.clone(),

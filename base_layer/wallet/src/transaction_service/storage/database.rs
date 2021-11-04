@@ -28,7 +28,7 @@ use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
 
-use crate::transaction_service::storage::models::WalletTransaction;
+use crate::transaction_service::storage::{models::WalletTransaction, sqlite_db::InboundTransactionSenderInfo};
 use std::{
     collections::HashMap,
     fmt,
@@ -81,7 +81,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
-    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
     fn set_pending_transaction_cancellation_status(
         &self,
@@ -123,11 +123,14 @@ pub trait TransactionBackend: Send + Sync + Clone {
         num_confirmations: u64,
         is_confirmed: bool,
     ) -> Result<(), TransactionStorageError>;
-
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-
+    /// Mark all transactions as unvalidated
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
+    /// Get transaction sender info for all pending inbound transactions
+    fn get_pending_inbound_transaction_sender_info(
+        &self,
+    ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -621,9 +624,9 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.reject_completed_transaction(tx_id))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
@@ -792,6 +795,20 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
+    }
+
+    pub async fn get_pending_inbound_transaction_sender_info(
+        &self,
+    ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        let t = tokio::task::spawn_blocking(move || match db_clone.get_pending_inbound_transaction_sender_info() {
+            Ok(v) => Ok(v),
+            Err(e) => log_error(DbKey::PendingInboundTransactions, e),
+        })
+        .await
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
     }
 }
 

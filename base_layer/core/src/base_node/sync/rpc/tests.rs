@@ -22,81 +22,43 @@
 
 use super::BaseNodeSyncRpcService;
 use crate::{
-    blocks::{Block, BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabase, ChainMetadata},
+    base_node::BaseNodeSyncService,
+    chain_storage::BlockchainDatabase,
+    proto::base_node::SyncBlocksRequest,
     test_helpers::{
-        blockchain::{create_mock_blockchain_database, MockBlockchainBackend},
+        blockchain::{create_main_chain, create_new_blockchain, TempDatabase},
         create_peer_manager,
     },
 };
-use std::iter;
-use tari_comms::protocol::rpc::mock::RpcRequestMock;
+use futures::StreamExt;
+use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tempfile::{tempdir, TempDir};
 
-fn setup(
-    backend: MockBlockchainBackend,
-) -> (
-    BaseNodeSyncRpcService<MockBlockchainBackend>,
-    BlockchainDatabase<MockBlockchainBackend>,
+fn setup() -> (
+    BaseNodeSyncRpcService<TempDatabase>,
+    BlockchainDatabase<TempDatabase>,
     RpcRequestMock,
     TempDir,
 ) {
     let tmp = tempdir().unwrap();
     let peer_manager = create_peer_manager(&tmp);
-    let request_mock = RpcRequestMock::new(peer_manager.clone());
+    let request_mock = RpcRequestMock::new(peer_manager);
 
-    let db = create_mock_blockchain_database(backend);
+    let db = create_new_blockchain();
     let service = BaseNodeSyncRpcService::new(db.clone().into());
     (service, db, request_mock, tmp)
 }
 
-fn create_mock_backend() -> MockBlockchainBackend {
-    let mut backend = MockBlockchainBackend::new();
-    // Expectations for BlockchainDatabase::new
-    backend.expect_is_empty().times(1).returning(|| Ok(false));
-    backend
-        .expect_fetch_chain_metadata()
-        .times(1)
-        .returning(|| Ok(ChainMetadata::new(0, Vec::new(), 0, 0, 0)));
-    backend
-}
-
-fn create_chained_blocks(n: usize) -> Vec<Block> {
-    iter::repeat(())
-        .take(n)
-        .fold(Vec::with_capacity(n), |mut acc, _| match acc.last() {
-            Some(prev) => {
-                let header = BlockHeader::from_previous(&prev.header).unwrap();
-                let block = BlockBuilder::new(0).with_header(header).build();
-                acc.push(block);
-                acc
-            },
-            None => vec![BlockBuilder::new(0).build()],
-        })
-}
-
 mod sync_blocks {
     use super::*;
-    use crate::{
-        base_node::BaseNodeSyncService,
-        blocks::BlockBuilder,
-        chain_storage::{ChainMetadata, DbValue},
-        proto::base_node::SyncBlocksRequest,
-        tari_utilities::Hashable,
-    };
-    use futures::StreamExt;
-    use std::ops::Bound;
-    use tari_comms::protocol::rpc::RpcStatusCode;
-    use tari_test_utils::unpack_enum;
 
     #[tokio::test]
     async fn it_returns_not_found_if_unknown_hash() {
-        let mut backend = create_mock_backend();
-        backend.expect_fetch().times(1).returning(|_| Ok(None));
-        let (service, _, rpc_request_mock, _tmp) = setup(backend);
+        let (service, _, rpc_request_mock, _tmp) = setup();
         let msg = SyncBlocksRequest {
-            start_hash: vec![],
-            end_hash: vec![],
+            start_hash: vec![0; 32],
+            end_hash: vec![0; 32],
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let err = service.sync_blocks(req).await.unwrap_err();
@@ -105,31 +67,14 @@ mod sync_blocks {
 
     #[tokio::test]
     async fn it_sends_an_empty_response() {
-        let mut backend = create_mock_backend();
+        let (service, db, rpc_request_mock, _tmp) = setup();
 
-        backend.expect_fetch_chain_metadata().times(1).returning(|| {
-            Ok(ChainMetadata::new(
-                1,
-                Default::default(),
-                Default::default(),
-                Default::default(),
-                Default::default(),
-            ))
-        });
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
 
-        let mut block = BlockBuilder::new(0).build();
-        block.header.height = 1;
-        // Set both responses to return the same header, the sync rpc handler doesnt care
-        let header = block.header.clone();
-        backend
-            .expect_fetch()
-            .times(1)
-            .returning(move |_| Ok(Some(DbValue::BlockHash(Box::new(header.clone())))));
-
-        let (service, _, rpc_request_mock, _tmp) = setup(backend);
+        let block = chain.get("A").unwrap();
         let msg = SyncBlocksRequest {
-            start_hash: block.hash(),
-            end_hash: block.hash(),
+            start_hash: block.hash().clone(),
+            end_hash: block.hash().clone(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let mut streaming = service.sync_blocks(req).await.unwrap();
@@ -138,109 +83,27 @@ mod sync_blocks {
 
     #[tokio::test]
     async fn it_streams_blocks_until_end() {
-        let mut backend = create_mock_backend();
+        let (service, db, rpc_request_mock, _tmp) = setup();
 
-        let blocks = create_chained_blocks(16);
-        let first_block = blocks.first().unwrap();
-        let first_hash = first_block.hash();
-        let last_block = blocks.last().unwrap();
-        let last_hash = last_block.hash();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
 
-        let first_header = first_block.header.clone();
-        backend
-            .expect_fetch()
-            .times(1)
-            .returning(move |_| Ok(Some(DbValue::BlockHash(Box::new(first_header.clone())))));
-
-        let metadata = ChainMetadata::new(
-            20,
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        );
-        backend
-            .expect_fetch_chain_metadata()
-            .times(1)
-            .returning({    let metadata =metadata.clone(); move || Ok(metadata.clone()));
-
-        let last_header = last_block.header.clone();
-        backend
-            .expect_fetch()
-            .times(1)
-            .returning(move |_| Ok(Some(DbValue::BlockHash(Box::new(last_header.clone())))));
-
-        backend
-            .expect_fetch_chain_metadata()
-            .times(3)
-            .returning(move || Ok(metadata.clone()));
-
-        fn expect_fetch_block(backend: &mut MockBlockchainBackend, block: &Block) {
-            let header = block.header.clone();
-            backend
-                .expect_fetch()
-                .times(4)
-                .returning(move |_| Ok(Some(DbValue::BlockHeader(Box::new(header.clone())))));
-
-            let kernels = block.body.kernels().clone();
-            backend
-                .expect_fetch_kernels_in_block()
-                .times(4)
-                .returning(move |_| Ok(kernels.clone()));
-
-            let outputs = block.body.outputs().clone();
-            backend
-                .expect_fetch_outputs_in_block()
-                .times(4)
-                .returning(move |_| Ok(outputs.clone()));
-
-            let inputs = block.body.inputs().clone();
-            backend
-                .expect_fetch_inputs_in_block()
-                .times(4)
-                .returning(move |_| Ok(inputs.clone()));
-        }
-
-        // Now expect 4 blocks to be fetched
-        expect_fetch_block(&mut backend, &first_block);
-        // expect_fetch_block(&mut backend, &first_block);
-        // expect_fetch_block(&mut backend, &first_block);
-        // expect_fetch_block(&mut backend, &first_block);
-
-        let (service, _, rpc_request_mock, _tmp) = setup(backend);
+        let first_block = chain.get("A").unwrap();
+        let last_block = chain.get("E").unwrap();
 
         let msg = SyncBlocksRequest {
-            start_hash: first_hash,
-            end_hash: last_hash,
+            start_hash: first_block.hash().clone(),
+            end_hash: last_block.hash().clone(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
-        let streaming = service.sync_blocks(req).await.unwrap();
-        let _ = streaming.map(Result::unwrap).collect::<Vec<_>>().await;
+        let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
+        let blocks = convert_mpsc_to_stream(&mut streaming)
+            .map(|block| block.unwrap())
+            .collect::<Vec<_>>()
+            .await;
 
-        // assert_eq!(mock.get_call_count("get_blocks").await, 4);
-        // let (start, end) = mock
-        //     .pop_front_call::<(Bound<u64>, Bound<u64>)>("get_blocks")
-        //     .await
-        //     .unwrap();
-        // unpack_enum!(Bound::Included(start) = start);
-        // // Exclude block @ start hash
-        // assert_eq!(start, 1);
-        // unpack_enum!(Bound::Included(end) = end);
-        // assert_eq!(end, 4);
-        //
-        // let (start, end) = mock
-        //     .pop_front_call::<(Bound<u64>, Bound<u64>)>("get_blocks")
-        //     .await
-        //     .unwrap();
-        // unpack_enum!(Bound::Included(start) = start);
-        // assert_eq!(start, 5);
-        // unpack_enum!(Bound::Included(end) = end);
-        // assert_eq!(end, 8);
-        //
-        // let (start, end) = mock.pop_call::<(Bound<u64>, Bound<u64>)>("get_blocks").await.unwrap();
-        // unpack_enum!(Bound::Included(start) = start);
-        // assert_eq!(start, 13);
-        // unpack_enum!(Bound::Included(end) = end);
-        // assert_eq!(end, 15);
+        assert_eq!(blocks.len(), 4);
+        blocks.iter().zip(["B", "C", "D", "E"]).for_each(|(block, name)| {
+            assert_eq!(*chain.get(name).unwrap().hash(), block.hash);
+        });
     }
 }

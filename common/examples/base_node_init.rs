@@ -7,7 +7,7 @@ use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, De
 struct Arguments {
     /// Custom application parameters might eb specified as usual
     #[structopt(long, default_value = "any structopt options allowed")]
-    my_param: String,
+    _my_param: String,
     #[structopt(flatten)]
     bootstrap: ConfigBootstrap,
 }

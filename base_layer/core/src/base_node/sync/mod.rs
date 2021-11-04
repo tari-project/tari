@@ -42,9 +42,9 @@ mod hooks;
 pub mod rpc;
 
 #[cfg(feature = "base_node")]
-mod sync_peers;
+mod sync_peer;
 #[cfg(feature = "base_node")]
-pub use sync_peers::{SyncPeer, SyncPeers};
+pub use sync_peer::SyncPeer;
 
 #[cfg(feature = "base_node")]
 mod validators;
