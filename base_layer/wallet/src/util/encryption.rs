@@ -30,24 +30,26 @@ pub const AES_NONCE_BYTES: usize = 12;
 pub const AES_KEY_BYTES: usize = 32;
 
 pub trait Encryptable<C> {
-    fn encrypt(&mut self, cipher: &C) -> Result<(), AeadError>;
-    fn decrypt(&mut self, cipher: &C) -> Result<(), AeadError>;
+    fn encrypt(&mut self, cipher: &C) -> Result<(), String>;
+    fn decrypt(&mut self, cipher: &C) -> Result<(), String>;
 }
 
-pub fn decrypt_bytes_integral_nonce(cipher: &Aes256Gcm, ciphertext: Vec<u8>) -> Result<Vec<u8>, AeadError> {
+pub fn decrypt_bytes_integral_nonce(cipher: &Aes256Gcm, ciphertext: Vec<u8>) -> Result<Vec<u8>, String> {
     if ciphertext.len() < AES_NONCE_BYTES {
-        return Err(AeadError);
+        return Err(AeadError.to_string());
     }
     let (nonce, cipher_text) = ciphertext.split_at(AES_NONCE_BYTES);
     let nonce = GenericArray::from_slice(nonce);
-    cipher.decrypt(nonce, cipher_text.as_ref())
+    cipher.decrypt(nonce, cipher_text.as_ref()).map_err(|e| e.to_string())
 }
 
-pub fn encrypt_bytes_integral_nonce(cipher: &Aes256Gcm, plaintext: Vec<u8>) -> Result<Vec<u8>, AeadError> {
+pub fn encrypt_bytes_integral_nonce(cipher: &Aes256Gcm, plaintext: Vec<u8>) -> Result<Vec<u8>, String> {
     let mut nonce = [0u8; AES_NONCE_BYTES];
     OsRng.fill_bytes(&mut nonce);
     let nonce_ga = GenericArray::from_slice(&nonce);
-    let mut ciphertext = cipher.encrypt(nonce_ga, plaintext.as_ref())?;
+    let mut ciphertext = cipher
+        .encrypt(nonce_ga, plaintext.as_ref())
+        .map_err(|e| e.to_string())?;
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut ciphertext);
     Ok(ciphertext_integral_nonce)
@@ -60,6 +62,7 @@ mod test {
         aead::{generic_array::GenericArray, NewAead},
         Aes256Gcm,
     };
+
     #[test]
     fn test_encrypt_decrypt() {
         let plaintext = b"The quick brown fox was annoying".to_vec();
