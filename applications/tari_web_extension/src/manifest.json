@@ -1,0 +1,31 @@
+{
+  "name": "Tari ext",
+  "description": "Tari ext desc",
+  "version": "0.1.0",
+  "manifest_version": 2,
+  "icons": {
+    "16": "./icons/icon-16x16.png",
+    "32": "./icons/icon-32x32.png",
+    "48": "./icons/icon-48x48.png",
+    "128": "./icons/icon-128x128.png"
+  },
+  "background": {
+    "scripts": ["./background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["file://*/*", "http://*/*", "https://*/*"],
+      "run_at": "document_start",
+      "js": ["content.js"]
+    }
+  ],
+  "options_page": "./options.html",
+  "browser_action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": ["https://*/*"],
+  "externally_connectable": {
+    "ids": ["*"],
+    "accepts_tls_channel_id": false
+  }
+}

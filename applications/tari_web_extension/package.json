@@ -1,0 +1,22 @@
+{
+  "name": "tari_web_extension",
+  "version": "0.1.0",
+  "description": "Tari Web Extension",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tari-project/tari.git"
+  },
+  "keywords": [
+    "tari"
+  ],
+  "author": "The Tari Development Community",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tari-project/tari/issues"
+  },
+  "homepage": "https://github.com/tari-project/tari#readme"
+}
