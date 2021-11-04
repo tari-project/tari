@@ -28,12 +28,8 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::PeerFeatures,
-    tor::TorIdentity,
-    types::{CommsPublicKey, CommsSecretKey},
-};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
+use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -44,7 +40,7 @@ pub trait WalletBackend: Send + Sync + Clone {
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
     /// Apply encryption to the backend.
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError>;
+    fn apply_encryption(&self, passphrase: String) -> Result<Aes256Gcm, WalletStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), WalletStorageError>;
 }
@@ -56,8 +52,9 @@ pub enum DbKey {
     TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
-    MasterSecretKey,
-    MasterPublicKey,
+    MasterSeed,
+    PassphraseHash,
+    EncryptionSalt,
 }
 
 pub enum DbValue {
@@ -67,8 +64,9 @@ pub enum DbValue {
     ClientValue(String),
     ValueCleared,
     BaseNodeChainMetadata(ChainMetadata),
-    MasterSecretKey(CommsSecretKey),
-    MasterPublicKey(CommsPublicKey),
+    MasterSeed(CipherSeed),
+    PassphraseHash(String),
+    EncryptionSalt(String),
 }
 
 #[derive(Clone)]
@@ -76,7 +74,7 @@ pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
     TorId(TorIdentity),
     BaseNodeChainMetadata(ChainMetadata),
-    MasterSecretKey(CommsSecretKey),
+    MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
 }
@@ -98,34 +96,32 @@ where T: WalletBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub async fn get_master_secret_key(&self) -> Result<Option<CommsSecretKey>, WalletStorageError> {
+    pub async fn get_master_seed(&self) -> Result<Option<CipherSeed>, WalletStorageError> {
         let db_clone = self.db.clone();
 
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::MasterSecretKey) {
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::MasterSeed) {
             Ok(None) => Ok(None),
-            Ok(Some(DbValue::MasterSecretKey(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::MasterSecretKey, other),
-            Err(e) => log_error(DbKey::MasterSecretKey, e),
+            Ok(Some(DbValue::MasterSeed(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::MasterSeed, other),
+            Err(e) => log_error(DbKey::MasterSeed, e),
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(c)
     }
 
-    pub async fn set_master_secret_key(&self, key: CommsSecretKey) -> Result<(), WalletStorageError> {
+    pub async fn set_master_seed(&self, seed: CipherSeed) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::MasterSecretKey(key)))
-        })
-        .await
-        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Insert(DbKeyValuePair::MasterSeed(seed))))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
-    pub async fn clear_master_secret_key(&self) -> Result<(), WalletStorageError> {
+    pub async fn clear_master_seed(&self) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::MasterSecretKey)))
+        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::MasterSeed)))
             .await
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
@@ -229,9 +225,9 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
+    pub async fn apply_encryption(&self, passphrase: String) -> Result<Aes256Gcm, WalletStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
+        tokio::task::spawn_blocking(move || db_clone.apply_encryption(passphrase))
             .await
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
@@ -315,13 +311,14 @@ where T: WalletBackend + 'static
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::MasterSecretKey => f.write_str(&"MasterSecretKey".to_string()),
-            DbKey::MasterPublicKey => f.write_str(&"MasterPublicKey".to_string()),
+            DbKey::MasterSeed => f.write_str(&"MasterSeed".to_string()),
             DbKey::CommsAddress => f.write_str(&"CommsAddress".to_string()),
             DbKey::CommsFeatures => f.write_str(&"Node features".to_string()),
             DbKey::TorId => f.write_str(&"TorId".to_string()),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
             DbKey::BaseNodeChainMetadata => f.write_str(&"Last seen Chain metadata from base node".to_string()),
+            DbKey::PassphraseHash => f.write_str(&"PassphraseHash".to_string()),
+            DbKey::EncryptionSalt => f.write_str(&"EncryptionSalt".to_string()),
         }
     }
 }
@@ -329,14 +326,15 @@ impl Display for DbKey {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::MasterSecretKey(k) => f.write_str(&format!("MasterSecretKey: {:?}", k)),
-            DbValue::MasterPublicKey(k) => f.write_str(&format!("MasterPublicKey: {:?}", k)),
+            DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {:?}", k)),
             DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
             DbValue::ValueCleared => f.write_str(&"ValueCleared".to_string()),
             DbValue::CommsFeatures(_) => f.write_str(&"Node features".to_string()),
             DbValue::CommsAddress(_) => f.write_str(&"Comms Address".to_string()),
             DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
+            DbValue::PassphraseHash(h) => f.write_str(&format!("PassphraseHash: {}", h)),
+            DbValue::EncryptionSalt(s) => f.write_str(&format!("EncryptionSalt: {}", s)),
         }
     }
 }
@@ -364,9 +362,7 @@ mod test {
         sqlite_db::WalletSqliteDatabase,
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-    use rand::rngs::OsRng;
-    use tari_comms::types::CommsSecretKey;
-    use tari_crypto::keys::SecretKey;
+    use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tempfile::tempdir;
     use tokio::runtime::Runtime;
@@ -382,13 +378,13 @@ mod test {
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
         // Test wallet settings
-        assert!(runtime.block_on(db.get_master_secret_key()).unwrap().is_none());
-        let secret_key = CommsSecretKey::random(&mut OsRng);
-        runtime.block_on(db.set_master_secret_key(secret_key.clone())).unwrap();
-        let stored_key = runtime.block_on(db.get_master_secret_key()).unwrap().unwrap();
-        assert_eq!(secret_key, stored_key);
-        runtime.block_on(db.clear_master_secret_key()).unwrap();
-        assert!(runtime.block_on(db.get_master_secret_key()).unwrap().is_none());
+        assert!(runtime.block_on(db.get_master_seed()).unwrap().is_none());
+        let seed = CipherSeed::new();
+        runtime.block_on(db.set_master_seed(seed.clone())).unwrap();
+        let stored_seed = runtime.block_on(db.get_master_seed()).unwrap().unwrap();
+        assert_eq!(seed, stored_seed);
+        runtime.block_on(db.clear_master_seed()).unwrap();
+        assert!(runtime.block_on(db.get_master_seed()).unwrap().is_none());
 
         let client_key_values = vec![
             ("key1".to_string(), "value1".to_string()),

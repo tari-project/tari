@@ -5,8 +5,9 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+pub mod cipher_seed;
 pub mod diacritics;
-pub mod file_backup;
+pub mod error;
 pub mod key_manager;
 pub mod mnemonic;
 pub mod mnemonic_wordlists;
