@@ -1,10 +1,10 @@
 {
-  "name": "tari_web_extension",
+  "name": "@tari/web-extension",
   "version": "0.1.0",
   "description": "Tari Web Extension",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -18,5 +18,11 @@
   "bugs": {
     "url": "https://github.com/tari-project/tari/issues"
   },
-  "homepage": "https://github.com/tari-project/tari#readme"
+  "homepage": "https://github.com/tari-project/tari#readme",
+  "dependencies": {
+    "wallet-grpc-client": "file:../../clients/wallet_grpc_client"
+  },
+  "devDependencies": {
+    "jest": "^27.3.1"
+  }
 }
