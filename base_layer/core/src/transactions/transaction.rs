@@ -306,7 +306,7 @@ pub struct UnblindedOutput {
     pub script: TariScript,
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     pub metadata_signature: ComSignature,
 }
 
@@ -320,7 +320,7 @@ impl UnblindedOutput {
         script: TariScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComSignature,
     ) -> UnblindedOutput {
         UnblindedOutput {
@@ -343,11 +343,11 @@ impl UnblindedOutput {
         let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
 
         let challenge = TransactionInput::build_script_challenge(
-            &nonce_commitment,
+            &nonce_commitment.as_public_key().compress(),
             &self.script,
             &self.input_data,
-            &PublicKey::from_secret_key(&self.script_private_key),
-            &commitment,
+            &PublicKey::from_secret_key(&self.script_private_key).compress(),
+            &commitment.as_public_key().compress(),
         );
         let script_signature = ComSignature::sign(
             self.value.into(),
@@ -362,7 +362,8 @@ impl UnblindedOutput {
         Ok(TransactionInput {
             spent_output: SpentOutput::OutputData {
                 features: self.features.clone(),
-                commitment,
+                // TODO: remove duplicate compress
+                commitment: commitment.as_public_key().compress(),
                 script: self.script.clone(),
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
             },
@@ -395,7 +396,7 @@ impl UnblindedOutput {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
-            commitment,
+            commitment: commitment.as_public_key().compress(),
             proof: RangeProof::from_bytes(
                 &factories
                     .range_proof
@@ -436,7 +437,7 @@ impl UnblindedOutput {
 
         let output = TransactionOutput {
             features: self.features.clone(),
-            commitment,
+            commitment: commitment.as_public_key().compress(),
             proof,
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
@@ -633,14 +634,14 @@ impl TransactionInput {
             } => {
                 let challenge = TransactionInput::build_script_challenge(
                     // TODO: Add a compressed comsig
-                    self.script_signature.public_nonce().compress(),
+                    &self.script_signature.public_nonce().as_public_key().compress(),
                     script,
                     &self.input_data,
                     &public_script_key.compress(),
                     commitment,
                 );
                 if self.script_signature.verify_challenge(
-                    &Commitment::from_public_key(uncompressed_commitment + public_script_key),
+                    &Commitment::from_public_key(&(uncompressed_commitment + public_script_key)),
                     &challenge,
                     factory,
                 ) {
@@ -714,7 +715,13 @@ impl TransactionInput {
                 .chain(sender_offset_public_key.as_bytes())
                 .chain(self.script_signature.u().as_bytes())
                 .chain(self.script_signature.v().as_bytes())
-                .chain(self.script_signature.public_nonce().as_bytes())
+                .chain(
+                    self.script_signature
+                        .public_nonce()
+                        .as_public_key()
+                        .compress()
+                        .as_bytes(),
+                )
                 .chain(self.input_data.as_bytes())
                 .finalize()
                 .to_vec()),
@@ -861,11 +868,14 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            self.metadata_signature.public_nonce(),
+            &self.metadata_signature.public_nonce().as_public_key().compress(),
             &self.commitment,
         );
         if !self.metadata_signature.verify_challenge(
-            &(&self.commitment + &self.sender_offset_public_key),
+            &Commitment::from_public_key(
+                &(&self.commitment.decompress().expect("fix me") +
+                    &self.sender_offset_public_key.decompress().expect("fix me")),
+            ),
             &challenge,
             &PedersenCommitmentFactory::default(),
         ) {
@@ -927,7 +937,7 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &nonce_commitment,
+            &nonce_commitment.as_public_key().compress(),
             &self.commitment,
         )
     }
@@ -973,9 +983,9 @@ impl TransactionOutput {
         let e = TransactionOutput::build_metadata_signature_challenge(
             script,
             output_features,
-            sender_offset_public_key,
-            &nonce_commitment,
-            &commitment,
+            &sender_offset_public_key.compress(),
+            &nonce_commitment.as_public_key().compress(),
+            &commitment.as_public_key().compress(),
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
@@ -1036,7 +1046,13 @@ impl TransactionOutput {
             .chain(self.proof.as_bytes())
             .chain(self.metadata_signature.u().as_bytes())
             .chain(self.metadata_signature.v().as_bytes())
-            .chain(self.metadata_signature.public_nonce().as_bytes())
+            .chain(
+                self.metadata_signature
+                    .public_nonce()
+                    .as_public_key()
+                    .compress()
+                    .as_bytes(),
+            )
             .finalize()
             .to_vec()
     }
@@ -1065,10 +1081,10 @@ impl Default for TransactionOutput {
     fn default() -> Self {
         TransactionOutput::new(
             OutputFeatures::default(),
-            CommitmentFactory::default().zero(),
+            CompressedCommitment::from_bytes(&vec![0u8; 32]).unwrap(),
             RangeProof::default(),
             TariScript::default(),
-            PublicKey::default(),
+            PublicKey::default().compress(),
             ComSignature::default(),
         )
     }
@@ -1095,7 +1111,11 @@ impl Display for TransactionOutput {
             self.sender_offset_public_key.to_hex(),
             self.metadata_signature.u().to_hex(),
             self.metadata_signature.v().to_hex(),
-            self.metadata_signature.public_nonce().to_hex(),
+            self.metadata_signature
+                .public_nonce()
+                .as_public_key()
+                .compress()
+                .to_hex(),
             proof
         )
     }
@@ -1202,14 +1222,19 @@ impl TransactionKernel {
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        let excess = self.excess.as_public_key();
+        let excess = &self.excess.decompress().expect("fix me");
         let r = self.excess_sig.get_public_nonce();
         let m = TransactionMetadata {
             lock_height: self.lock_height,
             fee: self.fee,
         };
         let c = build_challenge(r, &m);
-        if self.excess_sig.verify_challenge(excess, &c) {
+        if self
+            .excess_sig
+            .decompress()
+            .expect("fix me")
+            .verify_challenge(excess, &c)
+        {
             Ok(())
         } else {
             Err(TransactionError::InvalidSignatureError(
@@ -1278,8 +1303,8 @@ pub struct KernelBuilder {
     features: KernelFeatures,
     fee: MicroTari,
     lock_height: u64,
-    excess: Option<Commitment>,
-    excess_sig: Option<Signature>,
+    excess: Option<CompressedCommitment>,
+    excess_sig: Option<CompressedSignature>,
 }
 
 /// Implementation of the transaction kernel
@@ -1308,13 +1333,13 @@ impl KernelBuilder {
     }
 
     /// Add the excess (sum of public spend keys minus the offset)
-    pub fn with_excess(mut self, excess: &Commitment) -> KernelBuilder {
+    pub fn with_excess(mut self, excess: &CompressedCommitment) -> KernelBuilder {
         self.excess = Some(excess.clone());
         self
     }
 
     /// Add the excess signature
-    pub fn with_signature(mut self, signature: &Signature) -> KernelBuilder {
+    pub fn with_signature(mut self, signature: &CompressedSignature) -> KernelBuilder {
         self.excess_sig = Some(signature.clone());
         self
     }

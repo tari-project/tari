@@ -23,7 +23,7 @@
 use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig, transactions::transaction::Transaction};
 use log::*;
 use std::sync::Arc;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
 
@@ -80,7 +80,7 @@ impl ReorgPoolStorage {
     /// block. Check if any of the transactions in the ReorgPool has inputs that was spent by the provided
     /// published block.
     fn discard_double_spends(&mut self, published_block: &Block) {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        let mut removed_tx_keys: Vec<CompressedSignature> = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.body.inputs() {
                 if published_block.body.inputs().contains(input) {

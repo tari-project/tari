@@ -26,7 +26,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     ops::RangeInclusive,
 };
-use tari_common_types::types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature};
+use tari_common_types::types::{CompressedCommitment, CompressedSignature, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.

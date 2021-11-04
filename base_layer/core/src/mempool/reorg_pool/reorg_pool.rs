@@ -31,7 +31,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tari_common::configuration::seconds;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy, Deserialize, Serialize)]

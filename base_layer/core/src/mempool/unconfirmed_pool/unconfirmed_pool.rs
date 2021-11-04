@@ -240,7 +240,7 @@ impl UnconfirmedPool {
         transaction: &PrioritizedTransaction,
         required_transactions: &mut HashMap<CompressedSignature, PrioritizedTransaction>,
         transactions_to_delete: &mut Vec<Arc<Transaction>>,
-        already_selected_txs: &HashMap<Signature, Arc<Transaction>>,
+        already_selected_txs: &HashMap<CompressedSignature, Arc<Transaction>>,
         total_weight: &mut u64,
     ) -> Result<(), UnconfirmedPoolError> {
         for dependant_output in &transaction.depended_output_hashes {
@@ -287,7 +287,10 @@ impl UnconfirmedPool {
         Ok(())
     }
 
-    fn find_highest_priority_transaction(&self, signatures: &[Signature]) -> Result<Signature, UnconfirmedPoolError> {
+    fn find_highest_priority_transaction(
+        &self,
+        signatures: &[CompressedSignature],
+    ) -> Result<CompressedSignature, UnconfirmedPoolError> {
         let mut highest_signature = signatures[0].clone();
         for signature in signatures.iter().skip(1) {
             let transaction = self
@@ -307,8 +310,8 @@ impl UnconfirmedPool {
 
     // This will search a Vec<Arc<Transaction>> for duplicate inputs of a tx
     fn find_duplicate_input(
-        current_transactions: &HashMap<Signature, Arc<Transaction>>,
-        transactions_to_insert: &HashMap<Signature, PrioritizedTransaction>,
+        current_transactions: &HashMap<CompressedSignature, Arc<Transaction>>,
+        transactions_to_insert: &HashMap<CompressedSignature, PrioritizedTransaction>,
     ) -> bool {
         for (_, transaction_to_insert) in transactions_to_insert.iter() {
             for (_, transaction) in current_transactions.iter() {
@@ -435,7 +438,7 @@ impl UnconfirmedPool {
     /// Remove all unconfirmed transactions that have become time locked. This can happen when the chain height was
     /// reduced on some reorgs.
     pub fn remove_timelocked(&mut self, tip_height: u64) -> Vec<Arc<Transaction>> {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        let mut removed_tx_keys: Vec<CompressedSignature> = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             if ptx.transaction.min_spendable_height() > tip_height + 1 {
                 removed_tx_keys.push(tx_key.clone());

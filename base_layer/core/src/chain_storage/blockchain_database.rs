@@ -80,7 +80,7 @@ use std::{
 };
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, CompressedCommitment, CompressedSignature, HashDigest, HashOutput, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedSignature, HashDigest, HashOutput},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};

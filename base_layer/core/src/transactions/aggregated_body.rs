@@ -53,7 +53,7 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
+    keys::{CompressedPublicKey, PublicKey as PublicKeyTrait},
     ristretto::pedersen::PedersenCommitment,
     tari_utilities::hex::Hex,
 };
@@ -311,9 +311,12 @@ impl AggregateBody {
         // Unwrap used here are fine as they should have an amount in them by here. If the coinbase's are missing the
         // counters should be 0 and the fn should have returned an error by now.
         let utxo = coinbase_utxo.unwrap();
-        let rhs =
-            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&BlindingFactor::default(), reward.0);
-        if rhs != utxo.commitment {
+        let rhs = &coinbase_kernel.unwrap().excess.decompress().expect("fix me") +
+            factories
+                .commitment
+                .commit_value(&BlindingFactor::default(), reward.0)
+                .as_public_key();
+        if rhs != utxo.commitment.decompress().expect("fix me") {
             warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
             return Err(TransactionError::InvalidCoinbase);
         }
@@ -370,15 +373,22 @@ impl AggregateBody {
 
     /// Calculate the sum of the outputs - inputs
     fn sum_commitments(&self) -> Result<Commitment, TransactionError> {
-        let sum_inputs = &self
+        let sum_inputs: PublicKey = self
             .inputs
             .iter()
-            .map(|i| i.commitment())
-            .collect::<Result<Vec<&Commitment>, _>>()?
+            .map(|i| i.commitment().expect("fix me too").decompress().expect("fix me"))
+            .collect::<Vec<PublicKey>>()
             .into_iter()
-            .sum::<Commitment>();
-        let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
-        Ok(sum_outputs - sum_inputs)
+            .fold(PublicKey::default(), |a, b| &a + &b);
+        let sum_outputs: PublicKey = self
+            .outputs
+            .iter()
+            .map(|o| o.commitment.decompress().expect("fix me"))
+            .collect::<Vec<PublicKey>>()
+            .into_iter()
+            .fold(PublicKey::default(), |a, b| &a + &b);
+        let pk = &sum_outputs - &sum_inputs;
+        Ok(Commitment::from_public_key(&pk))
     }
 
     /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
@@ -391,7 +401,7 @@ impl AggregateBody {
             },
             |acc, val| KernelSum {
                 fees: acc.fees + val.fee,
-                sum: &acc.sum + &val.excess,
+                sum: &acc.sum + &val.excess.decompress().expect("fix me"),
             },
         )
     }
@@ -408,15 +418,8 @@ impl AggregateBody {
         trace!(target: LOG_TARGET, "Checking kernel total");
         let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
         let sum_io = self.sum_commitments()?;
-        trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
         let fees = factory.commit_value(&PrivateKey::default(), fees.into());
-        trace!(
-            target: LOG_TARGET,
-            "Comparing sum.  excess:{} == sum {} + fees {}",
-            excess.to_hex(),
-            sum_io.to_hex(),
-            fees.to_hex()
-        );
+
         if excess != &sum_io + &fees {
             return Err(TransactionError::ValidationError(
                 "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
@@ -436,7 +439,8 @@ impl AggregateBody {
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
         for input in &self.inputs {
-            input_keys = input_keys + input.run_and_verify_script(factory)?;
+            let commitment = input.commitment().expect("fix me").decompress().expect("fix me");
+            input_keys = input_keys + input.run_and_verify_script(&commitment, factory)?;
         }
 
         // Now lets gather the output public keys and hashes.
@@ -444,7 +448,7 @@ impl AggregateBody {
         for output in &self.outputs {
             // We should not count the coinbase tx here
             if !output.is_coinbase() {
-                output_keys = output_keys + output.sender_offset_public_key.clone();
+                output_keys = output_keys + output.sender_offset_public_key.decompress().expect("fix me");
             }
         }
         let lhs = input_keys - output_keys;

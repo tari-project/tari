@@ -28,10 +28,7 @@ use crate::{
     validation::{error::ValidationError, DifficultyCalculator},
 };
 use async_trait::async_trait;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, PublicKey},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated

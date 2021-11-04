@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, CompressedCommitment};
+use tari_common_types::types::CompressedCommitment;
 use tari_crypto::tari_utilities::ByteArray;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

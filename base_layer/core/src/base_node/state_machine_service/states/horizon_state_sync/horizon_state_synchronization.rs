@@ -51,7 +51,6 @@ use std::{
 use tari_common_types::types::{HashDigest, PublicKey, RangeProofService};
 use tari_comms::PeerConnection;
 use tari_crypto::{
-    commitment::HomomorphicCommitment,
     keys::CompressedPublicKey,
     tari_utilities::{hex::Hex, Hashable},
 };

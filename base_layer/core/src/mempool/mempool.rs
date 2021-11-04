@@ -35,7 +35,7 @@ use crate::{
     validation::MempoolTransactionValidation,
 };
 use std::sync::{Arc, RwLock};
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions

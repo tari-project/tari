@@ -28,24 +28,24 @@ use crate::{
     proto::{mempool::Signature as SignatureProto, types::Transaction},
 };
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- Signature --------------------------------------------//
 // TODO: Remove duplicate Signature, transaction also has a Signature.
-impl TryFrom<ProtoSignature> for Signature {
+impl TryFrom<ProtoSignature> for CompressedSignature {
     type Error = ByteArrayError;
 
     fn try_from(sig: ProtoSignature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_bytes(&sig.public_nonce)?;
+        let public_nonce = CompressedPublicKey::from_bytes(&sig.public_nonce)?;
         let signature = PrivateKey::from_bytes(&sig.signature)?;
 
         Ok(Self::new(public_nonce, signature))
     }
 }
 
-impl From<Signature> for ProtoSignature {
-    fn from(sig: Signature) -> Self {
+impl From<CompressedSignature> for ProtoSignature {
+    fn from(sig: CompressedSignature) -> Self {
         Self {
             public_nonce: sig.get_public_nonce().to_vec(),
             signature: sig.get_signature().to_vec(),

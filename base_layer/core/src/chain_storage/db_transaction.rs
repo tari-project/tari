@@ -30,7 +30,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlockHash, Commitment, CompressedCommitment, CompressedPublicKey, HashOutput};
+use tari_common_types::types::{BlockHash, CompressedCommitment, CompressedPublicKey, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,

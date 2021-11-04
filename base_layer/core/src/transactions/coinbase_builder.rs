@@ -183,7 +183,7 @@ impl CoinbaseBuilder {
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
-        let challenge = build_challenge(&public_nonce, &metadata);
+        let challenge = build_challenge(&public_nonce.compress(), &metadata);
         let sig = Signature::sign(spending_key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
 
@@ -204,9 +204,9 @@ impl CoinbaseBuilder {
             spending_key,
             output_features,
             script,
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
             script_private_key,
-            sender_offset_public_key,
+            sender_offset_public_key.compress(),
             metadata_sig,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {

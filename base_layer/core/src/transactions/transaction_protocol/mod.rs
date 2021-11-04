@@ -91,7 +91,7 @@ pub mod transaction_initializer;
 use crate::transactions::{tari_amount::*, transaction::TransactionError};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, MessageHash, PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},
@@ -147,7 +147,7 @@ pub struct RewindData {
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
-pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> MessageHash {
+pub fn build_challenge(sum_public_nonces: &CompressedPublicKey, metadata: &TransactionMetadata) -> MessageHash {
     Challenge::new()
         .chain(sum_public_nonces.as_bytes())
         .chain(&u64::from(metadata.fee).to_le_bytes())

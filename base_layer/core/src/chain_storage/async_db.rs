@@ -59,7 +59,7 @@ use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
+    types::{BlockHash, CompressedCommitment, CompressedSignature, HashOutput},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 

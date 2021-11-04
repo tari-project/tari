@@ -44,7 +44,7 @@ use crate::{
     blocks::ChainHeader,
     transactions::transaction::TransactionOutput,
 };
-use tari_common_types::types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature};
+use tari_common_types::types::{CompressedCommitment, CompressedSignature, HashOutput};
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.

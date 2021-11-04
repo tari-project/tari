@@ -75,7 +75,7 @@ use std::{
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
+    types::{CompressedCommitment, CompressedSignature, HashOutput},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;

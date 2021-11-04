@@ -41,10 +41,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, PublicKey},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::PublicKey};
 
 #[derive(Clone)]
 pub struct MockValidator {

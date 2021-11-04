@@ -43,7 +43,6 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{
     BlindingFactor,
     BulletRangeProof,
-    Commitment,
     CompressedCommitment,
     CompressedPublicKey,
     PublicKey,
@@ -110,7 +109,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
 
         // Check if the received Transaction input is in compact form or not
         if let Some(commitment) = input.commitment {
-            let commitment = Commitment::from_bytes(&commitment.data).map_err(|e| e.to_string())?;
+            let commitment = CompressedCommitment::from_bytes(&commitment.data).map_err(|e| e.to_string())?;
             let features = input
                 .features
                 .map(TryInto::try_into)

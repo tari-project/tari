@@ -30,7 +30,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
-use tari_common_types::types::{BlockHash, Signature};
+use tari_common_types::types::{BlockHash, CompressedSignature};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
@@ -129,7 +129,7 @@ pub struct TxQueryResponse {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxQueryBatchResponse {
-    pub signature: Signature,
+    pub signature: CompressedSignature,
     pub location: TxLocation,
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
@@ -213,7 +213,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
         Ok(Self {
-            signature: Signature::try_from(
+            signature: CompressedSignature::try_from(
                 proto_response
                     .signature
                     .ok_or_else(|| "Signature not present".to_string())?,

@@ -89,7 +89,6 @@ use tari_common_types::{
         CompressedSignature,
         HashDigest,
         HashOutput,
-        Signature,
         BLOCK_HASH_LENGTH,
     },
 };

@@ -43,7 +43,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, CompressedCommitment, HashOutput};
+use tari_common_types::types::{BlindingFactor, CompressedCommitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 

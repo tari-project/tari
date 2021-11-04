@@ -25,7 +25,7 @@ use crate::{
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
+    types::{CompressedCommitment, CompressedSignature, HashOutput},
 };
 use tari_mmr::Hash;
 

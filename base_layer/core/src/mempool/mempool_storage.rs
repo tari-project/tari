@@ -37,7 +37,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
