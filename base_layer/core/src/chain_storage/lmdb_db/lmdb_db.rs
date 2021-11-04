@@ -93,7 +93,10 @@ use tari_common_types::{
         BLOCK_HASH_LENGTH,
     },
 };
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
+use tari_crypto::{
+    keys::CompressedPublicKey,
+    tari_utilities::{hash::Hashable, hex::Hex, ByteArray},
+};
 use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
@@ -1082,7 +1085,7 @@ impl LMDBDatabase {
         };
 
         let mut total_kernel_sum = Commitment::default();
-        let mut total_utxo_sum = Commitment::default();
+        // let mut total_utxo_sum = Commitment::default();
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             outputs: pruned_output_set,
@@ -1093,7 +1096,7 @@ impl LMDBDatabase {
         let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_kernel_set);
 
         for kernel in kernels {
-            total_kernel_sum = &total_kernel_sum + &kernel.excess;
+            total_kernel_sum = &total_kernel_sum + &kernel.excess.decompress().expect("Need to fix this error");
             let pos = kernel_mmr.push(kernel.hash())?;
             trace!(
                 target: LOG_TARGET,
@@ -1106,7 +1109,7 @@ impl LMDBDatabase {
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
         for output in outputs {
-            total_utxo_sum = &total_utxo_sum + &output.commitment;
+            // total_utxo_sum = &total_utxo_sum + &output.commitment.decompress().expect("Need to fix this error");
             output_mmr.push(output.hash())?;
             witness_mmr.push(output.witness_hash())?;
             debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
@@ -1119,8 +1122,9 @@ impl LMDBDatabase {
             )?;
         }
 
+        // let mut total_utxo_sum = *total_utxo_sum.as_public_key();
         for input in inputs {
-            total_utxo_sum = &total_utxo_sum - input.commitment()?;
+            // total_utxo_sum = &total_utxo_sum - input.commitment()?.decompress().expect("Fix me");
             let index = self
                 .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
                 .ok_or(ChainStorageError::UnspendableInput)?;
@@ -1155,7 +1159,7 @@ impl LMDBDatabase {
                 output_mmr.mmr().get_pruned_hash_set()?,
                 witness_mmr.get_pruned_hash_set()?,
                 deleted_at_current_height,
-                total_kernel_sum,
+                total_kernel_sum.as_public_key().compress(),
             ),
         )?;
 
@@ -1182,7 +1186,7 @@ impl LMDBDatabase {
         &self,
         write_txn: &WriteTransaction<'_>,
         header_hash: &HashOutput,
-        kernel_sum: Commitment,
+        kernel_sum: CompressedCommitment,
     ) -> Result<(), ChainStorageError> {
         let height = self.fetch_height_from_hash(write_txn, header_hash).or_not_found(
             "BlockHash",

@@ -74,7 +74,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         );
         let input = &(&emission_h + total_kernel_sum) + &total_offset;
 
-        if total_utxo_sum != &input {
+        if total_utxo_sum != input.as_public_key() {
             return Err(ValidationError::ChainBalanceValidationFailed(height));
         }
 

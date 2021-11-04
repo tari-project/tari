@@ -506,16 +506,13 @@ pub fn check_coinbase_reward(
     rules: &ConsensusManager,
     header: &BlockHeader,
     total_fees: MicroTari,
-    coinbase_kernel: &TransactionKernel,
-    coinbase_output: &TransactionOutput,
+    coinbase_kernel_excess: &PublicKey,
+    coinbase_output_commitment: &PublicKey,
 ) -> Result<(), ValidationError> {
     let reward = rules.emission_schedule().block_reward(header.height) + total_fees;
-    let rhs = &coinbase_kernel.excess + &factory.commit_value(&Default::default(), reward.into());
-    if rhs != coinbase_output.commitment {
-        warn!(
-            target: LOG_TARGET,
-            "Coinbase {} amount validation failed", coinbase_output
-        );
+    let rhs = coinbase_kernel_excess + factory.commit_value(&Default::default(), reward.into()).as_public_key();
+    if &rhs != coinbase_output_commitment {
+        warn!(target: LOG_TARGET, "Coinbase amount validation failed");
         return Err(ValidationError::TransactionError(TransactionError::InvalidCoinbase));
     }
     Ok(())

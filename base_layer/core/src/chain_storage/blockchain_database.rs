@@ -1414,7 +1414,7 @@ fn fetch_blocks<T: BlockchainBackend>(
 
 fn fetch_block_with_kernel<T: BlockchainBackend>(
     db: &T,
-    excess_sig: Signature,
+    excess_sig: CompressedSignature,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     match db.fetch_kernel_by_excess_sig(&excess_sig) {
         Ok(kernel) => match kernel {

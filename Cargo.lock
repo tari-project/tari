@@ -220,6 +220,15 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "base58-monero"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4b40d07a9459c8d0d60cf7e7935748fae3f401263c38a8a120be6c0a2be566d"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
+name = "base58-monero"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1df741a56140a4d26932fde3bd69ce8abec7f50d238f8c16351caa789a6d8fe9"
@@ -2435,7 +2444,7 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a7038b6ba92588189248fbb4f8b2744d4918a9732f826e414814a50c168dca3"
 dependencies = [
- "base58-monero",
+ "base58-monero 0.3.1",
  "curve25519-dalek",
  "fixed-hash",
  "hex",
@@ -4244,7 +4253,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tonic",
  "tonic-build",
 ]
@@ -4267,7 +4276,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_p2p",
  "thiserror",
  "tokio 1.13.0",
@@ -4300,7 +4309,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -4371,7 +4380,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "rand 0.8.4",
  "serde 1.0.130",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "thiserror",
  "tokio 1.13.0",
 ]
@@ -4409,7 +4418,7 @@ dependencies = [
  "snow",
  "tari_common",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
@@ -4457,11 +4466,11 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
- "tari_utilities",
+ "tari_utilities 0.3.0 (git+http://github.com/tari-project/tari_utilities?branch=main)",
  "tempfile",
  "thiserror",
  "tokio 1.13.0",
@@ -4513,7 +4522,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_key_manager",
  "tari_p2p",
  "tari_shutdown",
@@ -4569,7 +4578,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_comms_rpc_macros",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -4606,7 +4615,31 @@ dependencies = [
  "sha2",
  "sha3",
  "tari_bulletproofs",
- "tari_utilities",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror",
+]
+
+[[package]]
+name = "tari_crypto"
+version = "0.11.2"
+source = "git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk#e0c30e4e0bf2db60bf4adc20791e67f83a643af2"
+dependencies = [
+ "base64 0.10.1",
+ "blake2",
+ "cbindgen",
+ "clear_on_drop",
+ "curve25519-dalek-ng",
+ "digest",
+ "lazy_static 1.4.0",
+ "merlin",
+ "rand 0.8.4",
+ "rmp-serde",
+ "serde 1.0.130",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "tari_bulletproofs",
+ "tari_utilities 0.3.0 (git+http://github.com/tari-project/tari_utilities?branch=main)",
  "thiserror",
 ]
 
@@ -4630,7 +4663,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "sha2",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "thiserror",
 ]
 
@@ -4660,8 +4693,8 @@ dependencies = [
  "tari_app_utilities",
  "tari_common",
  "tari_core",
- "tari_crypto",
- "tari_utilities",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tokio 1.13.0",
  "tonic",
@@ -4694,7 +4727,7 @@ dependencies = [
  "tari_app_utilities",
  "tari_common",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "thiserror",
  "time",
  "tokio 1.13.0",
@@ -4714,9 +4747,9 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_infra_derive",
- "tari_utilities",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4747,12 +4780,12 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
- "tari_utilities",
+ "tari_utilities 0.3.0 (git+http://github.com/tari-project/tari_utilities?branch=main)",
  "tempfile",
  "thiserror",
  "tokio 1.13.0",
@@ -4801,7 +4834,7 @@ dependencies = [
  "rmp-serde",
  "serde 1.0.130",
  "serde_derive",
- "tari_utilities",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4817,8 +4850,8 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_core",
- "tari_crypto",
- "tari_utilities",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -4846,8 +4879,8 @@ dependencies = [
  "tari_app_grpc",
  "tari_common",
  "tari_core",
- "tari_crypto",
- "tari_utilities",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "tokio 1.13.0",
  "tonic",
@@ -4890,6 +4923,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_utilities"
+version = "0.3.0"
+source = "git+http://github.com/tari-project/tari_utilities?branch=main#d0bdd0622233225934cb757bafb991e23fa01e68"
+dependencies = [
+ "base58-monero 0.2.1",
+ "base64 0.10.1",
+ "bincode",
+ "bitflags 1.3.2",
+ "chrono",
+ "clear_on_drop",
+ "newtype-ops",
+ "rand 0.7.3",
+ "serde 1.0.130",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_wallet"
 version = "0.12.0"
 dependencies = [
@@ -4918,7 +4969,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/tari-project/tari-crypto.git?branch=main)",
  "tari_key_manager",
  "tari_p2p",
  "tari_service_framework",
@@ -4949,13 +5000,13 @@ dependencies = [
  "tari_comms",
  "tari_comms_dht",
  "tari_core",
- "tari_crypto",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
  "tari_key_manager",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
  "tari_test_utils",
- "tari_utilities",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tari_wallet",
  "tempfile",
  "thiserror",
@@ -4994,8 +5045,8 @@ dependencies = [
  "serde_json",
  "tari_common_types",
  "tari_core",
- "tari_crypto",
- "tari_utilities",
+ "tari_crypto 0.11.2 (git+https://github.com/mikethetike/tari-crypto.git?branch=mb-compressed-pk)",
+ "tari_utilities 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 1.13.0",
 ]
 

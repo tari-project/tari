@@ -36,6 +36,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{
     BulletRangeProof,
     Commitment,
+    CompressedCommitment,
     CompressedPublicKey,
     CompressedSignature,
     PrivateKey,

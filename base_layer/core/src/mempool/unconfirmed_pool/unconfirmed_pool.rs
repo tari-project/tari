@@ -69,9 +69,9 @@ impl Default for UnconfirmedPoolConfig {
 /// these containers.
 pub struct UnconfirmedPool {
     config: UnconfirmedPoolConfig,
-    txs_by_signature: HashMap<Signature, PrioritizedTransaction>,
-    txs_by_priority: BTreeMap<FeePriority, Signature>,
-    txs_by_output: HashMap<HashOutput, Vec<Signature>>,
+    txs_by_signature: HashMap<CompressedSignature, PrioritizedTransaction>,
+    txs_by_priority: BTreeMap<FeePriority, CompressedSignature>,
+    txs_by_output: HashMap<HashOutput, Vec<CompressedSignature>>,
 }
 
 // helper class to reduce type complexity
@@ -238,7 +238,7 @@ impl UnconfirmedPool {
     fn get_all_dependant_transactions(
         &self,
         transaction: &PrioritizedTransaction,
-        required_transactions: &mut HashMap<Signature, PrioritizedTransaction>,
+        required_transactions: &mut HashMap<CompressedSignature, PrioritizedTransaction>,
         transactions_to_delete: &mut Vec<Arc<Transaction>>,
         already_selected_txs: &HashMap<Signature, Arc<Transaction>>,
         total_weight: &mut u64,
@@ -394,7 +394,7 @@ impl UnconfirmedPool {
         false
     }
 
-    fn delete_transactions(&mut self, signature: &[Signature]) -> Vec<Arc<Transaction>> {
+    fn delete_transactions(&mut self, signature: &[CompressedSignature]) -> Vec<Arc<Transaction>> {
         let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
         for tx_key in signature {
             debug!(
@@ -410,7 +410,7 @@ impl UnconfirmedPool {
     }
 
     // Helper function to ensure that all transactions are safely deleted in order and from all storage
-    fn delete_transaction(&mut self, signature: &Signature) -> Option<Arc<Transaction>> {
+    fn delete_transaction(&mut self, signature: &CompressedSignature) -> Option<Arc<Transaction>> {
         if let Some(prioritized_transaction) = self.txs_by_signature.remove(signature) {
             self.txs_by_priority.remove(&prioritized_transaction.priority);
             for output in prioritized_transaction.transaction.as_ref().body.outputs() {

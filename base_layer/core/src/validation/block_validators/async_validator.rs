@@ -43,7 +43,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use std::{cmp, cmp::Ordering, thread, time::Instant};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::CompressedPublicKey};
 use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.
@@ -107,8 +107,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             &self.rules,
             &valid_header,
             kernels_result.kernel_sum.fees,
-            kernels_result.coinbase(),
-            outputs_result.coinbase(),
+            &kernels_result.coinbase_excess,
+            &outputs_result.coinbase_commitment,
         )?;
 
         helpers::check_script_offset(
@@ -163,6 +163,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             };
 
             let mut coinbase_index = None;
+            let mut coinbase_kernel_excess = None;
             let mut max_kernel_timelock = 0;
             for (i, kernel) in kernels.iter().enumerate() {
                 if i > 0 &&
@@ -173,6 +174,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 {
                     return Err(ValidationError::UnsortedOrDuplicateKernel);
                 }
+                let excess = kernel.excess.decompress().expect("fix me");
 
                 kernel.verify_signature()?;
 
@@ -185,11 +187,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
                     }
                     coinbase_index = Some(i);
+                    coinbase_kernel_excess = Some(excess.clone());
                 }
 
                 max_kernel_timelock = cmp::max(max_kernel_timelock, kernel.lock_height);
                 kernel_sum.fees += kernel.fee;
-                kernel_sum.sum = &kernel_sum.sum + &kernel.excess;
+                kernel_sum.sum = &kernel_sum.sum + &excess;
             }
 
             if max_kernel_timelock > height {
@@ -205,6 +208,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             }
 
             let coinbase_index = coinbase_index.unwrap();
+            let coinbase_excess = coinbase_kernel_excess.unwrap();
 
             debug!(
                 target: LOG_TARGET,
@@ -216,6 +220,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 kernels,
                 kernel_sum,
                 coinbase_index,
+                coinbase_excess,
             })
         })
         .into()
@@ -265,6 +270,22 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             );
                         },
                     }
+                } else {
+                    match helpers::check_input_is_utxo(&*db, input) {
+                        Err(ValidationError::UnknownInput) => {
+                            // Check if the input spends from the current block
+                            let output_hash = input.output_hash();
+                            if output_hashes.iter().all(|hash| hash != &output_hash) {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Validation failed due to input: {} which does not exist yet", input
+                                );
+                                not_found_inputs.push(output_hash.clone());
+                            }
+                        },
+                        Err(err) => return Err(err),
+                        _ => {},
+                    }
                 }
 
                 if !input.is_mature_at(block_height)? {
@@ -275,28 +296,14 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     return Err(TransactionError::InputMaturity.into());
                 }
 
-                match helpers::check_input_is_utxo(&*db, input) {
-                    Err(ValidationError::UnknownInput) => {
-                        // Check if the input spends from the current block
-                        let output_hash = input.output_hash();
-                        if output_hashes.iter().all(|hash| hash != &output_hash) {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Validation failed due to input: {} which does not exist yet", input
-                            );
-                            not_found_inputs.push(output_hash.clone());
-                        }
-                    },
-                    Err(err) => return Err(err),
-                    _ => {},
-                }
-
                 // Once we've found unknown inputs, the aggregate data will be discarded and there is no reason to run
                 // the tari script
                 if not_found_inputs.is_empty() {
+                    let commitment = input.commitment()?.decompress().expect("fix me");
                     // lets count up the input script public keys
-                    aggregate_input_key = aggregate_input_key + input.run_and_verify_script(&commitment_factory)?;
-                    commitment_sum = &commitment_sum + input.commitment()?;
+                    aggregate_input_key =
+                        aggregate_input_key + input.run_and_verify_script(&commitment, &commitment_factory)?;
+                    commitment_sum = &commitment_sum + &commitment;
                 }
             }
 
@@ -350,6 +357,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     let mut aggregate_sender_offset = PublicKey::default();
                     let mut commitment_sum = Commitment::default();
                     let mut coinbase_index = None;
+                    let mut coinbase_commitment = None;
                     debug!(
                         target: LOG_TARGET,
                         "{} output(s) queued for validation in {:?}",
@@ -357,6 +365,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         thread::current().id()
                     );
                     for (orig_idx, output) in &outputs {
+                        let output_commitment = output.commitment.decompress().expect("fix me");
                         if output.is_coinbase() {
                             if coinbase_index.is_some() {
                                 warn!(
@@ -366,10 +375,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
                             }
                             coinbase_index = Some(*orig_idx);
+                            coinbase_commitment = Some(output_commitment.clone());
                         } else {
                             // Lets gather the output public keys and hashes.
                             // We should not count the coinbase tx here
-                            aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
+                            aggregate_sender_offset = aggregate_sender_offset +
+                                &output.sender_offset_public_key.decompress().expect("fix me");
                         }
 
                         output.verify_metadata_signature()?;
@@ -378,10 +389,16 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         }
 
                         helpers::check_not_duplicate_txo(&*db, output)?;
-                        commitment_sum = &commitment_sum + &output.commitment;
+                        commitment_sum = &commitment_sum + &output_commitment;
                     }
 
-                    Ok((outputs, aggregate_sender_offset, commitment_sum, coinbase_index))
+                    Ok((
+                        outputs,
+                        aggregate_sender_offset,
+                        commitment_sum,
+                        coinbase_index,
+                        coinbase_commitment,
+                    ))
                 })
             })
             .collect::<FuturesUnordered<_>>();
@@ -391,9 +408,10 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut aggregate_offset_pubkey = PublicKey::default();
             let mut output_commitment_sum = Commitment::default();
             let mut coinbase_index = None;
+            let mut coinbase_commitment = None;
             let timer = Instant::now();
             while let Some(output_validation_result) = output_tasks.next().await {
-                let (outputs, agg_sender_offset, commitment_sum, cb_index) = output_validation_result??;
+                let (outputs, agg_sender_offset, commitment_sum, cb_index, cb_commitment) = output_validation_result??;
                 aggregate_offset_pubkey = aggregate_offset_pubkey + agg_sender_offset;
                 output_commitment_sum = &output_commitment_sum + &commitment_sum;
                 if cb_index.is_some() {
@@ -401,6 +419,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                         return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
                     }
                     coinbase_index = cb_index;
+                    coinbase_commitment = cb_commitment;
                 }
                 valid_outputs.extend(outputs);
             }
@@ -419,6 +438,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 return Err(ValidationError::TransactionError(TransactionError::NoCoinbase));
             }
             let coinbase_index = coinbase_index.unwrap();
+            let coinbase_commitment = coinbase_commitment.unwrap();
 
             // Return result in original order
             valid_outputs.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -429,6 +449,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 commitment_sum: output_commitment_sum,
                 aggregate_offset_pubkey,
                 coinbase_index,
+                coinbase_commitment,
             })
         })
         .into()
@@ -474,6 +495,7 @@ struct KernelValidationData {
     pub kernels: Vec<TransactionKernel>,
     pub kernel_sum: KernelSum,
     pub coinbase_index: usize,
+    pub coinbase_excess: PublicKey,
 }
 
 impl KernelValidationData {
@@ -487,6 +509,7 @@ struct OutputValidationData {
     pub commitment_sum: Commitment,
     pub aggregate_offset_pubkey: PublicKey,
     pub coinbase_index: usize,
+    pub coinbase_commitment: PublicKey,
 }
 
 impl OutputValidationData {

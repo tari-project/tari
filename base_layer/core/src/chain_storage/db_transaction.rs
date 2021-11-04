@@ -30,7 +30,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlockHash, Commitment, CompressedCommitment, HashOutput};
+use tari_common_types::types::{BlockHash, Commitment, CompressedCommitment, CompressedPublicKey, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
@@ -321,7 +321,7 @@ pub enum WriteOperation {
     },
     UpdateKernelSum {
         header_hash: HashOutput,
-        kernel_sum: Commitment,
+        kernel_sum: CompressedCommitment,
     },
     SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
     SetBestBlock {
@@ -333,8 +333,8 @@ pub enum WriteOperation {
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
         height: u64,
-        kernel_sum: Commitment,
-        utxo_sum: Commitment,
+        kernel_sum: CompressedPublicKey,
+        utxo_sum: CompressedPublicKey,
     },
 }
 

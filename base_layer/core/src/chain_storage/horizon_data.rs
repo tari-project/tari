@@ -20,32 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::Commitment;
+use tari_common_types::types::{Commitment, CompressedCommitment};
 use tari_crypto::tari_utilities::ByteArray;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HorizonData {
-    kernel_sum: Commitment,
-    utxo_sum: Commitment,
+    kernel_sum: CompressedCommitment,
+    utxo_sum: CompressedCommitment,
 }
 
 impl HorizonData {
-    pub fn new(kernel_sum: Commitment, utxo_sum: Commitment) -> Self {
+    pub fn new(kernel_sum: CompressedCommitment, utxo_sum: CompressedCommitment) -> Self {
         HorizonData { kernel_sum, utxo_sum }
     }
 
     pub fn zero() -> Self {
         HorizonData {
-            kernel_sum: Commitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
-            utxo_sum: Commitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
+            kernel_sum: CompressedCommitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
+            utxo_sum: CompressedCommitment::from_bytes(&[0u8; 32]).expect("Could not create commitment"),
         }
     }
 
-    pub fn kernel_sum(&self) -> &Commitment {
+    pub fn kernel_sum(&self) -> &CompressedCommitment {
         &self.kernel_sum
     }
 
-    pub fn utxo_sum(&self) -> &Commitment {
+    pub fn utxo_sum(&self) -> &CompressedCommitment {
         &self.utxo_sum
     }
 }

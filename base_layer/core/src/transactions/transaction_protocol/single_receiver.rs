@@ -122,7 +122,7 @@ impl SingleReceiverTransactionProtocol {
 
         let output = TransactionOutput::new(
             features,
-            commitment,
+            commitment.compress(),
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),

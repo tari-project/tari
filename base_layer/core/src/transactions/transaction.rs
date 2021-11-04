@@ -66,7 +66,7 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    keys::{CompressedPublicKey as CompressedPublicKeyTrait, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{
         FullRewindResult as CryptoFullRewindResult,
         RangeProofError,
@@ -534,9 +534,9 @@ impl TransactionInput {
     pub fn add_output_data(
         &mut self,
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
     ) {
         self.spent_output = SpentOutput::OutputData {
             features,
@@ -547,11 +547,11 @@ impl TransactionInput {
     }
 
     pub fn build_script_challenge(
-        nonce_commitment: &Commitment,
+        nonce_commitment: &CompressedCommitment,
         script: &TariScript,
         input_data: &ExecutionStack,
-        script_public_key: &PublicKey,
-        commitment: &Commitment,
+        script_public_key: &CompressedPublicKey,
+        commitment: &CompressedCommitment,
     ) -> Vec<u8> {
         Challenge::new()
             .chain(nonce_commitment.as_bytes())
@@ -564,7 +564,7 @@ impl TransactionInput {
     }
 
     /// Accessor method for the commitment contained in an input
-    pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
+    pub fn commitment(&self) -> Result<&CompressedCommitment, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData { ref commitment, .. } => Ok(commitment),
@@ -588,7 +588,7 @@ impl TransactionInput {
     }
 
     /// Accessor method for the commitment contained in an input
-    pub fn sender_offset_public_key(&self) -> Result<&PublicKey, TransactionError> {
+    pub fn sender_offset_public_key(&self) -> Result<&CompressedPublicKey, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
@@ -610,7 +610,7 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData { ref script, .. } => match script.execute(&self.input_data)? {
-                StackItem::PublicKey(pubkey) => Ok(pubkey),
+                StackItem::PublicKey(pubkey) => Ok(pubkey.decompress().expect("fix me")),
                 _ => Err(TransactionError::ScriptExecutionError(
                     "The script executed successfully but it did not leave a public key on the stack".to_string(),
                 )),
@@ -621,6 +621,7 @@ impl TransactionInput {
     pub fn validate_script_signature(
         &self,
         public_script_key: &PublicKey,
+        uncompressed_commitment: &PublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         match self.spent_output {
@@ -631,16 +632,18 @@ impl TransactionInput {
                 ..
             } => {
                 let challenge = TransactionInput::build_script_challenge(
-                    self.script_signature.public_nonce(),
+                    // TODO: Add a compressed comsig
+                    self.script_signature.public_nonce().compress(),
                     script,
                     &self.input_data,
-                    public_script_key,
+                    &public_script_key.compress(),
                     commitment,
                 );
-                if self
-                    .script_signature
-                    .verify_challenge(&(commitment + public_script_key), &challenge, factory)
-                {
+                if self.script_signature.verify_challenge(
+                    &Commitment::from_public_key(uncompressed_commitment + public_script_key),
+                    &challenge,
+                    factory,
+                ) {
                     Ok(())
                 } else {
                     Err(TransactionError::InvalidSignatureError(
@@ -653,9 +656,14 @@ impl TransactionInput {
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
     /// from the script.
-    pub fn run_and_verify_script(&self, factory: &CommitmentFactory) -> Result<PublicKey, TransactionError> {
+    // TODO: Move to private perhaps? This method takes advantage of a previously decompressed commitment
+    pub fn run_and_verify_script(
+        &self,
+        commitment: &PublicKey,
+        factory: &CommitmentFactory,
+    ) -> Result<PublicKey, TransactionError> {
         let key = self.run_script()?;
-        self.validate_script_signature(&key, factory)?;
+        self.validate_script_signature(&key, commitment, factory)?;
         Ok(key)
     }
 
@@ -784,9 +792,9 @@ pub enum SpentOutput {
     OutputHash(HashOutput),
     OutputData {
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
     },
 }
 
@@ -928,9 +936,9 @@ impl TransactionOutput {
     pub fn build_metadata_signature_challenge(
         script: &TariScript,
         features: &OutputFeatures,
-        sender_offset_public_key: &PublicKey,
-        public_commitment_nonce: &Commitment,
-        commitment: &Commitment,
+        sender_offset_public_key: &CompressedPublicKey,
+        public_commitment_nonce: &CompressedCommitment,
+        commitment: &CompressedCommitment,
     ) -> MessageHash {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())

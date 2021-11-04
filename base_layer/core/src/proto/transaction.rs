@@ -40,7 +40,14 @@ use crate::{
     },
 };
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{
+    BlindingFactor,
+    BulletRangeProof,
+    Commitment,
+    CompressedCommitment,
+    CompressedPublicKey,
+    PublicKey,
+};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
@@ -52,7 +59,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: proto::types::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(
+        let excess = CompressedCommitment::from_bytes(
             &kernel
                 .excess
                 .ok_or_else(|| "Excess not provided in kernel".to_string())?
@@ -109,8 +116,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 .map(TryInto::try_into)
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key =
-                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+            let sender_offset_public_key = CompressedPublicKey::from_bytes(input.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("{:?}", err))?;
 
             Ok(TransactionInput::new_with_output_data(
                 features,
@@ -194,12 +201,12 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let commitment = output
             .commitment
-            .map(|commit| Commitment::from_bytes(&commit.data))
+            .map(|commit| CompressedCommitment::from_bytes(&commit.data))
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        let sender_offset_public_key =
-            PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key = CompressedPublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+            .map_err(|err| format!("{:?}", err))?;
 
         let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
 
