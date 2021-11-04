@@ -25,7 +25,7 @@ use crate::{
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
 };
 use tari_mmr::Hash;
 
@@ -95,7 +95,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// is in
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
     /// Fetch kernels by MMR position
@@ -115,7 +115,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// set, otherwise None is returned.
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;

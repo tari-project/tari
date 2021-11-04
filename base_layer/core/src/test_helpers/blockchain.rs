@@ -75,7 +75,7 @@ use std::{
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
@@ -255,7 +255,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
@@ -282,7 +282,7 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         self.db
             .as_ref()

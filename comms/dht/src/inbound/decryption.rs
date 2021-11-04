@@ -39,6 +39,7 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
+use tari_crypto::keys::CompressedPublicKey;
 use tari_utilities::ByteArray;
 use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceExt};
@@ -59,6 +60,9 @@ enum DecryptionError {
     OriginMacClearTextDecodeFailed,
     #[error("Ephemeral public key not provided for encrypted message")]
     EphemeralKeyNotProvided,
+
+    #[error("Ephemeral public key not valid for encrypted message")]
+    EphemeralKeyNoValid,
     #[error("Message rejected because this node could not decrypt a message that was addressed to it")]
     MessageRejectDecryptionFailed,
     #[error("Failed to decode envelope body")]
@@ -220,9 +224,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ephemeral_public_key
             .as_ref()
             // No ephemeral key with ENCRYPTED flag set
-            .ok_or( DecryptionError::EphemeralKeyNotProvided)?;
+            .ok_or( DecryptionError::EphemeralKeyNotProvided)?.decompress().ok_or(DecryptionError::EphemeralKeyNoValid)?;
 
-        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
+        let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), &e_pk).compress();
 
         // Decrypt and verify the origin
         let authenticated_origin = match Self::attempt_decrypt_origin_mac(&shared_secret, dht_header) {

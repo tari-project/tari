@@ -12,8 +12,8 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.12", path = "../", features = ["rpc"] }
 tari_comms_rpc_macros = { version = "^0.12", path = "../rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_utilities = { version = "^0.3" }
+tari_crypto = { git = "https://github.com/mikethetike/tari-crypto.git", branch = "mb-compressed-pk" }
+tari_utilities = { git = "http://github.com/tari-project/tari_utilities", branch = "main"}
 tari_shutdown = { version = "^0.12", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.12", path = "../../infrastructure/storage" }
 

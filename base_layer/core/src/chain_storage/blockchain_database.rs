@@ -80,7 +80,7 @@ use std::{
 };
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+    types::{BlockHash, Commitment, CompressedCommitment, CompressedSignature, HashDigest, HashOutput, Signature},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
@@ -306,7 +306,7 @@ where B: BlockchainBackend
 
     pub fn fetch_unspent_output_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_unspent_output_hash_by_commitment(commitment)
@@ -352,7 +352,7 @@ where B: BlockchainBackend
 
     pub fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernel_by_excess_sig(&excess_sig)
@@ -572,7 +572,7 @@ where B: BlockchainBackend
     }
 
     /// Returns the sum of all kernels
-    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
+    pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<CompressedCommitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum)
     }
 
@@ -928,14 +928,20 @@ where B: BlockchainBackend
 
     /// Attempt to fetch the block corresponding to the provided kernel hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_kernel(&self, excess_sig: Signature) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_kernel(
+        &self,
+        excess_sig: CompressedSignature,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_with_kernel(&*db, excess_sig)
     }
 
     /// Attempt to fetch the block corresponding to the provided utxo hash from the main chain, if the block is past
     /// pruning horizon, it will return Ok<None>
-    pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+    pub fn fetch_block_with_utxo(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_block_with_utxo(&*db, commitment)
     }
@@ -1425,7 +1431,7 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
 
 fn fetch_block_with_utxo<T: BlockchainBackend>(
     db: &T,
-    commitment: Commitment,
+    commitment: CompressedCommitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
     let output = db.fetch_output(&commitment.to_vec())?;
     match output {

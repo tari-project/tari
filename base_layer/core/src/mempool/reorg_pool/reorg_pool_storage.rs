@@ -23,7 +23,7 @@
 use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig, transactions::transaction::Transaction};
 use log::*;
 use std::sync::Arc;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
 
@@ -37,7 +37,7 @@ pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 /// oldest transactions will be removed to make space for incoming transactions.
 pub struct ReorgPoolStorage {
     config: ReorgPoolConfig,
-    txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
+    txs_by_signature: TtlCache<CompressedSignature, Arc<Transaction>>,
 }
 
 impl ReorgPoolStorage {
@@ -72,7 +72,7 @@ impl ReorgPoolStorage {
     }
 
     /// Check if a transaction is stored in the ReorgPoolStorage
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig)
     }
 

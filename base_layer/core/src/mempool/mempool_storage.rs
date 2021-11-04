@@ -37,7 +37,7 @@ use crate::{
 };
 use log::*;
 use std::sync::Arc;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
@@ -217,7 +217,7 @@ impl MempoolStorage {
     }
 
     /// Check if the specified transaction is stored in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: CompressedSignature) -> Result<TxStorageResponse, MempoolError> {
         if self.unconfirmed_pool.has_tx_with_excess_sig(&excess_sig) {
             Ok(TxStorageResponse::UnconfirmedPool)
         } else if self.reorg_pool.has_tx_with_excess_sig(&excess_sig)? {

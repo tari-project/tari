@@ -289,15 +289,15 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
+            NodeCommsRequest::FetchBlocksWithUtxos(commitments) => {
+                let mut blocks = Vec::with_capacity(commitments.len());
+                for commitment in commitments {
+                    let hash_hex = commitment.to_hex();
                     debug!(
                         target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex,
+                        "A peer has requested a block with commitment {}", hash_hex,
                     );
-                    match self.blockchain_db.fetch_block_with_utxo(hash).await {
+                    match self.blockchain_db.fetch_block_with_utxo(commitment).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,

@@ -48,10 +48,11 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
-use tari_common_types::types::{HashDigest, RangeProofService};
+use tari_common_types::types::{HashDigest, PublicKey, RangeProofService};
 use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
+    keys::CompressedPublicKey,
     tari_utilities::{hex::Hex, Hashable},
 };
 use tari_mmr::{MerkleMountainRange, MutableMmr};
@@ -525,8 +526,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         self.shared.set_state_info(StateInfo::HorizonSync(info));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
-        let mut pruned_utxo_sum = HomomorphicCommitment::default();
-        let mut pruned_kernel_sum = HomomorphicCommitment::default();
+        let mut pruned_utxo_sum = PublicKey::default();
+        let mut pruned_kernel_sum = PublicKey::default();
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
@@ -565,14 +566,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .fetch_kernels_by_mmr_position(prev_kernel_mmr, curr_header.header().kernel_mmr_size - 1)
                 .await?;
 
-            let mut utxo_sum = HomomorphicCommitment::default();
+            let mut utxo_sum = PublicKey::default();
             debug!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
             debug!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
             let mut prune_counter = 0;
             for u in utxos {
                 match u {
                     PrunedOutput::NotPruned { output } => {
-                        utxo_sum = &output.commitment + &utxo_sum;
+                        utxo_sum = &output
+                            .commitment
+                            .decompress()
+                            .expect("TODO: should have been validated aleady but maybe let's propagate the error") +
+                            &utxo_sum;
                     },
                     _ => {
                         prune_counter += 1;
@@ -587,7 +592,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             pruned_utxo_sum = &utxo_sum + &pruned_utxo_sum;
 
             for k in kernels {
-                pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
+                pruned_kernel_sum =
+                    &k.excess.decompress().expect("Should have been pre-validated") + &pruned_kernel_sum;
             }
             prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
@@ -623,7 +629,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.accumulated_data().total_accumulated_difficulty,
                 expected_prev_best_block,
             )
-            .set_pruned_height(header.height(), pruned_kernel_sum, pruned_utxo_sum)
+            .set_pruned_height(
+                header.height(),
+                pruned_kernel_sum.compress(),
+                pruned_utxo_sum.compress(),
+            )
             .commit()
             .await?;
 

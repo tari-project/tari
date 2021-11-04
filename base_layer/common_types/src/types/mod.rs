@@ -24,6 +24,7 @@ use tari_crypto::{
     common::Blake256,
     ristretto::{
         pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+        ristretto_keys::CompressedRistrettoPublicKey,
         RistrettoComSig,
         RistrettoPublicKey,
         RistrettoSchnorr,
@@ -36,6 +37,7 @@ use tari_crypto::ristretto::dalek_range_proof::DalekRangeProofService;
 mod bullet_rangeproofs;
 
 pub use bullet_rangeproofs::BulletRangeProof;
+use tari_crypto::ristretto::ristretto_sig::CompressedRistrettoSchnorr;
 
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
@@ -43,15 +45,18 @@ pub type BlockHash = Vec<u8>;
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
+pub type CompressedSignature = CompressedRistrettoSchnorr;
 /// Define the explicit Commitment Signature implementation for the Tari base layer.
 pub type ComSignature = RistrettoComSig;
 
 /// Define the explicit Commitment implementation for the Tari base layer.
 pub type Commitment = PedersenCommitment;
+pub type CompressedCommitment = CompressedPublicKey;
 pub type CommitmentFactory = PedersenCommitmentFactory;
 
 /// Define the explicit Public key implementation for the Tari base layer
 pub type PublicKey = RistrettoPublicKey;
+pub type CompressedPublicKey = CompressedRistrettoPublicKey;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type PrivateKey = RistrettoSecretKey;

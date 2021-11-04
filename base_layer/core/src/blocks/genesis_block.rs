@@ -33,7 +33,16 @@ use crate::{
 use chrono::DateTime;
 use std::sync::Arc;
 use tari_common::configuration::Network;
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{
+    BulletRangeProof,
+    Commitment,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    PublicKey,
+    Signature,
+    BLOCK_HASH_LENGTH,
+};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
@@ -135,8 +144,8 @@ pub fn get_weatherwax_genesis_block() -> ChainBlock {
 
 #[allow(deprecated)]
 pub fn get_stibbons_genesis_block_raw() -> Block {
-    let sig = Signature::new(
-        PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
+    let sig = CompressedSignature::new(
+        CompressedPublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
         PrivateKey::from_hex("3ff7522d9a744ebf99c7b6664c0e2c8c64d2a7b902a98b78964766f9f7f2b107").unwrap(),
     );
     let mut body = AggregateBody::new(
@@ -146,7 +155,7 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
             },
-            commitment: Commitment::from_hex(
+            commitment: CompressedCommitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
@@ -162,7 +171,7 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            excess: Commitment::from_hex(
+            excess: CompressedCommitment::from_hex(
                 "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
                 .unwrap(),
@@ -202,8 +211,8 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
 
 #[allow(deprecated)]
 pub fn get_weatherwax_genesis_block_raw() -> Block {
-    let sig = Signature::new(
-        PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
+    let sig = CompressedSignature::new(
+        CompressedPublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
         PrivateKey::from_hex("3ff7522d9a744ebf99c7b6664c0e2c8c64d2a7b902a98b78964766f9f7f2b107").unwrap(),
     );
     let mut body = AggregateBody::new(
@@ -213,7 +222,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
             },
-            commitment: Commitment::from_hex(
+            commitment: CompressedCommitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
@@ -229,7 +238,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            excess: Commitment::from_hex(
+            excess: CompressedCommitment::from_hex(
                 "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
                 .unwrap(),
@@ -312,8 +321,8 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
 
 #[allow(deprecated)]
 pub fn get_ridcully_genesis_block_raw() -> Block {
-    let sig = Signature::new(
-        PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
+    let sig = CompressedSignature::new(
+        CompressedPublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
         PrivateKey::from_hex("3ff7522d9a744ebf99c7b6664c0e2c8c64d2a7b902a98b78964766f9f7f2b107").unwrap(),
     );
     let mut body = AggregateBody::new(
@@ -323,7 +332,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
             },
-            commitment: Commitment::from_hex(
+            commitment: CompressedCommitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
@@ -339,7 +348,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            excess: Commitment::from_hex(
+            excess: CompressedCommitment::from_hex(
                 "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
                 .unwrap(),
@@ -395,8 +404,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 #[allow(deprecated)]
 pub fn get_igor_genesis_block_raw() -> Block {
-    let sig = Signature::new(
-        PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
+    let sig = CompressedSignature::new(
+        CompressedPublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
         PrivateKey::from_hex("3ff7522d9a744ebf99c7b6664c0e2c8c64d2a7b902a98b78964766f9f7f2b107").unwrap(),
     );
     let mut body = AggregateBody::new(
@@ -406,7 +415,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
             },
-            commitment: Commitment::from_hex(
+            commitment: CompressedCommitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
@@ -422,7 +431,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            excess: Commitment::from_hex(
+            excess: CompressedCommitment::from_hex(
                 "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
                 .unwrap(),

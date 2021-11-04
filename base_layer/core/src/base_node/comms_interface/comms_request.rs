@@ -26,7 +26,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     ops::RangeInclusive,
 };
-use tari_common_types::types::{Commitment, HashOutput, Signature};
+use tari_common_types::types::{Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.
@@ -48,13 +48,13 @@ pub enum NodeCommsRequest {
     FetchMatchingTxos(Vec<HashOutput>),
     FetchMatchingBlocks(RangeInclusive<u64>),
     FetchBlocksByHash(Vec<HashOutput>),
-    FetchBlocksWithKernels(Vec<Signature>),
-    FetchBlocksWithUtxos(Vec<Commitment>),
+    FetchBlocksWithKernels(Vec<CompressedSignature>),
+    FetchBlocksWithUtxos(Vec<CompressedCommitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
-    FetchKernelByExcessSig(Signature),
+    FetchKernelByExcessSig(CompressedSignature),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

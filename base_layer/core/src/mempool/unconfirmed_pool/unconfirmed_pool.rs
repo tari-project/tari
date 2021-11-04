@@ -35,7 +35,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use tari_common_types::types::{HashOutput, Signature};
+use tari_common_types::types::{CompressedSignature, HashOutput, Signature};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -169,7 +169,7 @@ impl UnconfirmedPool {
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig)
     }
 

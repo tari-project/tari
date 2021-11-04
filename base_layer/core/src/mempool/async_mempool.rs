@@ -26,7 +26,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use std::sync::Arc;
-use tari_common_types::types::Signature;
+use tari_common_types::types::CompressedSignature;
 
 macro_rules! make_async {
     ($fn:ident($($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty),+) -> $rtype:ty) => {
@@ -64,6 +64,6 @@ make_async!(process_published_block(published_block: Arc<Block>) -> ());
 make_async!(process_reorg(removed_blocks: Vec<Arc<Block>>, new_blocks: Vec<Arc<Block>>) -> ());
 make_async!(snapshot() -> Vec<Arc<Transaction>>);
 make_async!(retrieve(total_weight: u64) -> Vec<Arc<Transaction>>);
-make_async!(has_tx_with_excess_sig(excess_sig: Signature) -> TxStorageResponse);
+make_async!(has_tx_with_excess_sig(excess_sig: CompressedSignature) -> TxStorageResponse);
 make_async!(stats() -> StatsResponse);
 make_async!(state() -> StateResponse);

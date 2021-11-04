@@ -28,7 +28,8 @@ use snow::{
     types::{Cipher, Dh, Hash, Random},
 };
 use tari_crypto::{
-    keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
+    keys::{CompressedPublicKey, DiffieHellmanSharedSecret, PublicKey, SecretKey},
+    ristretto::RistrettoPublicKey,
     tari_utilities::ByteArray,
 };
 
@@ -85,14 +86,14 @@ impl Dh for CommsDiffieHellman {
     fn set(&mut self, privkey: &[u8]) {
         // `set` is used in the Builder, so this will panic if given an invalid secret key.
         self.secret_key = CommsSecretKey::from_bytes(privkey).expect("invalid secret key");
-        self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
+        self.public_key = RistrettoPublicKey::from_secret_key(&self.secret_key).compress();
     }
 
     fn generate(&mut self, _: &mut dyn Random) {
         // `&mut dyn Random` is unsized and cannot be used with `CommsSecretKey::random`
         // COMMS_RNG fulfills the RNG requirements anyhow
         self.secret_key = CommsSecretKey::random(&mut OsRng);
-        self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
+        self.public_key = RistrettoPublicKey::from_secret_key(&self.secret_key).compress();
     }
 
     fn pubkey(&self) -> &[u8] {
@@ -105,8 +106,9 @@ impl Dh for CommsDiffieHellman {
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), ()> {
         let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| ())?;
-        let shared = CommsPublicKey::shared_secret(&self.secret_key, &pk);
-        let shared_bytes = shared.as_bytes();
+        let shared = RistrettoPublicKey::shared_secret(&self.secret_key, &pk.decompress().unwrap());
+        let compressed = shared.compress();
+        let shared_bytes = compressed.as_bytes();
         copy_slice!(shared_bytes, out);
         Ok(())
     }

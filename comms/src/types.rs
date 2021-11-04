@@ -21,7 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::peer_manager::{Peer, PeerId};
-use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_crypto::{
+    common::Blake256,
+    keys::PublicKey,
+    ristretto::{ristretto_keys::CompressedRistrettoPublicKey, RistrettoPublicKey, RistrettoSecretKey},
+};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
 use tari_storage::HashmapDatabase;
@@ -32,8 +36,8 @@ use tari_storage::LMDBWrapper;
 pub type Challenge = Blake256;
 
 /// Public key type
-pub type CommsPublicKey = RistrettoPublicKey;
-pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+pub type CommsPublicKey = CompressedRistrettoPublicKey;
+pub type CommsSecretKey = RistrettoSecretKey;
 
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::rngs::OsRng;

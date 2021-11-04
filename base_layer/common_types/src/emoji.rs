@@ -22,7 +22,7 @@
 
 use crate::{
     luhn::{checksum, is_valid},
-    types::PublicKey,
+    types::{CompressedPublicKey, PublicKey},
 };
 use std::{
     collections::HashMap,
@@ -88,21 +88,21 @@ pub const fn emoji_set() -> [char; 256] {
 
 impl EmojiId {
     /// Construct an Emoji ID from the given pubkey.
-    pub fn from_pubkey(key: &PublicKey) -> Self {
+    pub fn from_pubkey(key: &CompressedPublicKey) -> Self {
         EmojiId::from_bytes(key.as_bytes())
     }
 
     /// Try and construct an emoji ID from the given hex string. The method will fail if the hex is not a valid
     /// representation of a public key.
     pub fn from_hex(hex_key: &str) -> Result<Self, HexError> {
-        let key = PublicKey::from_hex(hex_key)?;
+        let key = CompressedPublicKey::from_hex(hex_key)?;
         Ok(EmojiId::from_pubkey(&key))
     }
 
     /// Return the public key that this emoji ID represents
-    pub fn to_pubkey(&self) -> PublicKey {
+    pub fn to_pubkey(&self) -> CompressedPublicKey {
         let bytes = self.to_bytes();
-        PublicKey::from_bytes(&bytes).unwrap()
+        CompressedPublicKey::from_bytes(&bytes).unwrap()
     }
 
     /// Checks whether a given string would be a valid emoji ID using the assertion that
@@ -112,7 +112,7 @@ impl EmojiId {
         EmojiId::str_to_pubkey(s).is_ok()
     }
 
-    pub fn str_to_pubkey(s: &str) -> Result<PublicKey, EmojiIdError> {
+    pub fn str_to_pubkey(s: &str) -> Result<CompressedPublicKey, EmojiIdError> {
         let mut indices = Vec::with_capacity(33);
         for c in s.chars() {
             if let Some(i) = REVERSE_EMOJI.get(&c) {
@@ -125,7 +125,7 @@ impl EmojiId {
             return Err(EmojiIdError);
         }
         let bytes = EmojiId::byte_vec(s)?;
-        PublicKey::from_bytes(&bytes).map_err(|_| EmojiIdError)
+        CompressedPublicKey::from_bytes(&bytes).map_err(|_| EmojiIdError)
     }
 
     /// Return the 33 character emoji string for this emoji ID

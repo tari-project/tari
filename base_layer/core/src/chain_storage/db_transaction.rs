@@ -30,7 +30,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
+use tari_common_types::types::{BlockHash, Commitment, CompressedCommitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
@@ -242,7 +242,12 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_pruned_height(
+        &mut self,
+        height: u64,
+        kernel_sum: CompressedCommitment,
+        utxo_sum: CompressedCommitment,
+    ) -> &mut Self {
         self.operations.push(WriteOperation::SetPrunedHeight {
             height,
             kernel_sum,

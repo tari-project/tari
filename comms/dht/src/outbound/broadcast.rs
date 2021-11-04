@@ -57,7 +57,8 @@ use tari_comms::{
     utils::signature,
 };
 use tari_crypto::{
-    keys::PublicKey,
+    keys::{CompressedPublicKey, PublicKey},
+    ristretto::RistrettoPublicKey,
     tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
 };
 use tari_utilities::hex::Hex;
@@ -511,10 +512,13 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             OutboundEncryption::EncryptFor(public_key) => {
                 trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 // Generate ephemeral public/private key pair and ECDH shared secret
-                let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
-                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
+                let (e_sk, e_pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+                let shared_ephemeral_secret =
+                    crypt::generate_ecdh_secret(&e_sk, &(&**public_key).decompress().expect("TODO")).compress();
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
+
+                let e_pk = e_pk.compress();
 
                 let mac_challenge = crypt::create_origin_mac_challenge_parts(
                     self.protocol_version,

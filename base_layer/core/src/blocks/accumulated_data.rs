@@ -43,7 +43,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
+use tari_common_types::types::{BlindingFactor, Commitment, CompressedCommitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
@@ -55,7 +55,7 @@ pub struct BlockAccumulatedData {
     pub(crate) outputs: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
     pub(crate) range_proofs: PrunedHashSet,
-    pub(crate) kernel_sum: Commitment,
+    pub(crate) kernel_sum: CompressedCommitment,
 }
 
 impl BlockAccumulatedData {
@@ -64,7 +64,7 @@ impl BlockAccumulatedData {
         outputs: PrunedHashSet,
         range_proofs: PrunedHashSet,
         deleted: Bitmap,
-        total_kernel_sum: Commitment,
+        total_kernel_sum: CompressedCommitment,
     ) -> Self {
         Self {
             kernels,
@@ -83,7 +83,7 @@ impl BlockAccumulatedData {
         (self.kernels, self.outputs, self.range_proofs, self.deleted.deleted)
     }
 
-    pub fn kernel_sum(&self) -> &Commitment {
+    pub fn kernel_sum(&self) -> &CompressedCommitment {
         &self.kernel_sum
     }
 }

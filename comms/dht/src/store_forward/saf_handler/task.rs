@@ -56,6 +56,7 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
+use tari_crypto::keys::CompressedPublicKey;
 use tari_utilities::{convert::try_convert_all, ByteArray};
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
@@ -546,7 +547,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Attempting to decrypt origin mac ({} byte(s))",
                 header.origin_mac.len()
             );
-            let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
+            let shared_secret = crypt::generate_ecdh_secret(
+                node_identity.secret_key(),
+                &ephemeral_public_key.decompress().expect("TODO: fix"),
+            )
+            .compress();
             let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
             let mac_challenge = crypt::create_origin_mac_challenge(header, body);
             let authenticated_pk = Self::authenticate_message(&decrypted, mac_challenge)?;

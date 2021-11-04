@@ -35,7 +35,7 @@ use crate::{
     validation::MempoolTransactionValidation,
 };
 use std::sync::{Arc, RwLock};
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
@@ -106,7 +106,7 @@ impl Mempool {
     }
 
     /// Check if the specified transaction is stored in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: CompressedSignature) -> Result<TxStorageResponse, MempoolError> {
         self.pool_storage
             .read()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?

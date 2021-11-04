@@ -59,7 +59,7 @@ use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, CompressedCommitment, CompressedSignature, HashOutput, Signature},
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
@@ -157,7 +157,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
     //---------------------------------- Kernel --------------------------------------------//
-    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: CompressedSignature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
     make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
 
@@ -218,9 +218,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_by_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_by_hash");
 
-    make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+    make_async_fn!(fetch_block_with_kernel(excess_sig: CompressedSignature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 
-    make_async_fn!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+    make_async_fn!(fetch_block_with_utxo(commitment: CompressedCommitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 
     make_async_fn!(fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData, "fetch_block_accumulated_data");
 
@@ -288,7 +288,12 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+    pub fn set_pruned_height(
+        &mut self,
+        height: u64,
+        kernel_sum: CompressedCommitment,
+        utxo_sum: CompressedCommitment,
+    ) -> &mut Self {
         self.transaction.set_pruned_height(height, kernel_sum, utxo_sum);
         self
     }

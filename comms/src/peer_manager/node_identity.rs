@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, sync::RwLock};
 use tari_crypto::{
     keys::{PublicKey, SecretKey},
+    ristretto::RistrettoPublicKey,
     tari_utilities::hex::serialize_to_hex,
 };
 
@@ -49,7 +50,7 @@ pub struct NodeIdentity {
 impl NodeIdentity {
     /// Create a new NodeIdentity from the provided key pair and control service address
     pub fn new(secret_key: CommsSecretKey, public_address: Multiaddr, features: PeerFeatures) -> Self {
-        let public_key = CommsPublicKey::from_secret_key(&secret_key);
+        let public_key = RistrettoPublicKey::from_secret_key(&secret_key).compress();
         let node_id = NodeId::from_key(&public_key);
 
         NodeIdentity {
@@ -65,7 +66,7 @@ impl NodeIdentity {
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
         let secret_key = CommsSecretKey::random(rng);
-        let public_key = CommsPublicKey::from_secret_key(&secret_key);
+        let public_key = RistrettoPublicKey::from_secret_key(&secret_key).compress();
         let node_id = NodeId::from_key(&public_key);
 
         NodeIdentity {

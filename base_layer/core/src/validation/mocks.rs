@@ -41,7 +41,10 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, PublicKey},
+};
 
 #[derive(Clone)]
 pub struct MockValidator {
@@ -145,8 +148,8 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         &self,
         _backend: &B,
         _height: u64,
-        _total_utxo_sum: &Commitment,
-        _total_kernel_sum: &Commitment,
+        _total_utxo_sum: &PublicKey,
+        _total_kernel_sum: &PublicKey,
     ) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())

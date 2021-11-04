@@ -52,6 +52,9 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
+    CompressedCommitment,
+    CompressedPublicKey,
+    CompressedSignature,
     HashDigest,
     HashOutput,
     MessageHash,
@@ -509,11 +512,11 @@ impl TransactionInput {
     /// Create a new Transaction Input with just a reference hash of the spent output
     pub fn new_with_output_data(
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         script: TariScript,
         input_data: ExecutionStack,
         script_signature: ComSignature,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
     ) -> TransactionInput {
         TransactionInput {
             spent_output: SpentOutput::OutputData {
@@ -592,16 +595,6 @@ impl TransactionInput {
                 ref sender_offset_public_key,
                 ..
             } => Ok(sender_offset_public_key),
-        }
-    }
-
-    /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
-    pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> Result<bool, TransactionError> {
-        match self.spent_output {
-            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
-            SpentOutput::OutputData { ref commitment, .. } => {
-                Ok(factory.open(&input.spending_key, &input.value.into(), commitment))
-            },
         }
     }
 
@@ -807,13 +800,13 @@ pub struct TransactionOutput {
     /// Options for an output's structure or use
     pub features: OutputFeatures,
     /// The homomorphic commitment representing the output amount
-    pub commitment: Commitment,
+    pub commitment: CompressedCommitment,
     /// A proof that the commitment is in the right range
     pub proof: RangeProof,
     /// The script that will be executed when spending this output
     pub script: TariScript,
     /// Tari script offset pubkey, K_O
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
 }
@@ -823,10 +816,10 @@ impl TransactionOutput {
     /// Create new Transaction Output
     pub fn new(
         features: OutputFeatures,
-        commitment: Commitment,
+        commitment: CompressedCommitment,
         proof: RangeProof,
         script: TariScript,
-        sender_offset_public_key: PublicKey,
+        sender_offset_public_key: CompressedPublicKey,
         metadata_signature: ComSignature,
     ) -> TransactionOutput {
         TransactionOutput {
@@ -840,7 +833,7 @@ impl TransactionOutput {
     }
 
     /// Accessor method for the commitment contained in an output
-    pub fn commitment(&self) -> &Commitment {
+    pub fn commitment(&self) -> &CompressedCommitment {
         &self.commitment
     }
 
@@ -879,8 +872,8 @@ impl TransactionOutput {
     pub fn rewind_range_proof_value_only(
         &self,
         prover: &RangeProofService,
-        rewind_public_key: &PublicKey,
-        rewind_blinding_public_key: &PublicKey,
+        rewind_public_key: &CompressedPublicKey,
+        rewind_blinding_public_key: &CompressedPublicKey,
     ) -> Result<RewindResult, TransactionError> {
         Ok(prover
             .rewind_proof_value_only(
@@ -1189,10 +1182,10 @@ pub struct TransactionKernel {
     pub lock_height: u64,
     /// Remainder of the sum of all transaction commitments (minus an offset). If the transaction is well-formed,
     /// amounts plus fee will sum to zero, and the excess is hence a valid public key.
-    pub excess: Commitment,
+    pub excess: CompressedCommitment,
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
-    pub excess_sig: Signature,
+    pub excess_sig: CompressedSignature,
 }
 
 impl TransactionKernel {
@@ -1465,7 +1458,7 @@ impl Transaction {
         self
     }
 
-    pub fn first_kernel_excess_sig(&self) -> Option<&Signature> {
+    pub fn first_kernel_excess_sig(&self) -> Option<&CompressedSignature> {
         Some(&self.body.kernels().first()?.excess_sig)
     }
 }

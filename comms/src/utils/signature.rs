@@ -20,31 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::{Challenge, CommsPublicKey};
+use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
+    keys::{CompressedPublicKey, PublicKey, SecretKey},
+    ristretto::{ristretto_sig::CompressedRistrettoSchnorr, RistrettoPublicKey},
+    signatures::{CompressedSchnorrSignature, SchnorrSignature, SchnorrSignatureError},
     tari_utilities::message_format::MessageFormat,
 };
 
 pub fn sign_challenge<R>(
     rng: &mut R,
-    secret_key: <CommsPublicKey as PublicKey>::K,
+    secret_key: CommsSecretKey,
     challenge: Challenge,
-) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+) -> Result<CompressedRistrettoSchnorr, SchnorrSignatureError>
 where
     R: CryptoRng + Rng,
 {
-    let nonce = <CommsPublicKey as PublicKey>::K::random(rng);
-    SchnorrSignature::sign(secret_key, nonce, &challenge.finalize())
+    let nonce = CommsSecretKey::random(rng);
+    Ok(SchnorrSignature::sign(secret_key, nonce, &challenge.finalize())?.compress())
 }
 
 /// Verify that the signature is valid for the challenge
 pub fn verify_challenge(public_key: &CommsPublicKey, signature: &[u8], challenge: Challenge) -> bool {
-    match SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature) {
-        Ok(signature) => signature.verify_challenge(public_key, &challenge.finalize()),
+    match CompressedSchnorrSignature::<CommsPublicKey, RistrettoPublicKey, CommsSecretKey>::from_binary(signature) {
+        Ok(signature) => signature
+            .decompress()
+            .unwrap()
+            .verify_challenge(&public_key.decompress().unwrap(), &challenge.finalize()),
         Err(_) => false,
     }
 }

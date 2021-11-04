@@ -22,9 +22,9 @@
 
 use crate::{peer_manager::NodeId, types::CommsPublicKey};
 use rand::rngs::OsRng;
-use tari_crypto::keys::PublicKey;
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
 pub fn random() -> NodeId {
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-    NodeId::from_key(&pk)
+    let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    NodeId::from_key(&pk.compress())
 }

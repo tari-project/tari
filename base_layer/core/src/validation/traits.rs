@@ -28,7 +28,10 @@ use crate::{
     validation::{error::ValidationError, DifficultyCalculator},
 };
 use async_trait::async_trait;
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, PublicKey},
+};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
@@ -69,7 +72,7 @@ pub trait FinalHorizonStateValidation<B>: Send + Sync {
         &self,
         backend: &B,
         height: u64,
-        total_utxo_sum: &Commitment,
-        total_kernel_sum: &Commitment,
+        total_utxo_sum: &PublicKey,
+        total_kernel_sum: &PublicKey,
     ) -> Result<(), ValidationError>;
 }

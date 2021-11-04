@@ -10,7 +10,7 @@ edition = "2018"
 tari_comms = { version = "^0.12", path = "../../comms", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.12", path = "../../comms/dht", default-features = false }
 tari_common_types = {path="../common_types"}
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = { git = "https://github.com/mikethetike/tari-crypto.git", branch = "mb-compressed-pk" }
 tari_key_manager = { version = "^0.12", path = "../key_manager" }
 tari_p2p = { version = "^0.12", path = "../p2p" }
 tari_wallet = { version = "^0.12", path = "../wallet", features = ["c_integration"]}

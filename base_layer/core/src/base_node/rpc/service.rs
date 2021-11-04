@@ -47,7 +47,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use std::convert::TryFrom;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -82,7 +82,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         self.state_machine.clone()
     }
 
-    async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
+    async fn fetch_kernel(&self, signature: CompressedSignature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
         let chain_metadata = db
             .get_chain_metadata()

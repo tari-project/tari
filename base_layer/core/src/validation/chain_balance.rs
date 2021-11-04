@@ -31,7 +31,7 @@ use crate::{
     transactions::{tari_amount::MicroTari, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::{Commitment, PrivateKey, PublicKey};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";
 
@@ -57,8 +57,8 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         &self,
         backend: &B,
         height: u64,
-        total_utxo_sum: &Commitment,
-        total_kernel_sum: &Commitment,
+        total_utxo_sum: &PublicKey,
+        total_kernel_sum: &PublicKey,
     ) -> Result<(), ValidationError> {
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;

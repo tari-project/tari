@@ -82,7 +82,16 @@ use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
+    types::{
+        BlockHash,
+        Commitment,
+        CompressedCommitment,
+        CompressedSignature,
+        HashDigest,
+        HashOutput,
+        Signature,
+        BLOCK_HASH_LENGTH,
+    },
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
@@ -1729,7 +1738,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernel_by_excess_sig(
         &self,
-        excess_sig: &Signature,
+        excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let mut key = Vec::<u8>::new();
@@ -1913,7 +1922,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_unspent_output_hash_by_commitment(
         &self,
-        commitment: &Commitment,
+        commitment: &CompressedCommitment,
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
         lmdb_get::<_, HashOutput>(&*txn, &*self.utxo_commitment_index, commitment.as_bytes())

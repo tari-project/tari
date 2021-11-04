@@ -31,7 +31,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 use tari_common::configuration::seconds;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -84,7 +84,7 @@ impl ReorgPool {
     }
 
     /// Check if a transaction is stored in the ReorgPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, ReorgPoolError> {
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> Result<bool, ReorgPoolError> {
         Ok(self.pool_storage.has_tx_with_excess_sig(excess_sig))
     }
 

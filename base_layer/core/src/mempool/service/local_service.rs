@@ -30,7 +30,7 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 
@@ -101,7 +101,7 @@ impl LocalMempoolService {
 
     pub async fn get_transaction_state_by_excess_sig(
         &mut self,
-        sig: Signature,
+        sig: CompressedSignature,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self
             .request_sender

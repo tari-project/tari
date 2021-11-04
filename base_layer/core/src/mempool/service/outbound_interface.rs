@@ -29,7 +29,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use log::*;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;
@@ -84,7 +84,7 @@ impl OutboundMempoolServiceInterface {
     /// Check if the specified transaction is stored in the mempool of a remote base node.
     pub async fn get_tx_state_by_excess_sig(
         &mut self,
-        excess_sig: Signature,
+        excess_sig: CompressedSignature,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         if let MempoolResponse::TxStorage(tx_storage_response) = self
             .request_sender
