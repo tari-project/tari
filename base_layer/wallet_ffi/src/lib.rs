@@ -216,6 +216,7 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
+pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
@@ -858,6 +859,49 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
     Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+}
+
+/// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+///
+/// ## Arguments
+/// `language` - The pointer to a TariMnemonicLanguage
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariSeedWords` - Returns the TariSeedWords instance containing the entire mnemonic wordlist for the requested
+/// language.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn get_mnemonic_wordlist_for_language(
+    language: *const TariMnemonicLanguage,
+    error_out: *mut c_int,
+) -> *mut TariSeedWords {
+    use tari_key_manager::mnemonic_wordlists;
+
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut seed_words_vec = Vec::new();
+    if language.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("mnemonic wordlist".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        let seed_words = match *(language) {
+            TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+            TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+            TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+            TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+            TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+            TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+            TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+        };
+        seed_words_vec = seed_words.to_vec().iter().map(|s| s.to_string()).collect();
+    }
+
+    Box::into_raw(Box::new(TariSeedWords(seed_words_vec)))
 }
 
 /// Gets the length of TariSeedWords
@@ -5287,6 +5331,7 @@ mod test {
     use tempfile::tempdir;
 
     use tari_common_types::{emoji, transaction::TransactionStatus};
+    use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
 
@@ -6256,6 +6301,31 @@ mod test {
                         SeedWordPushResult::SeedPhraseComplete as u8
                     );
                 }
+            }
+
+            for language in MnemonicLanguage::iterator() {
+                let mnemonic_wordlist_ffi = get_mnemonic_wordlist_for_language(language, error_ptr);
+                let mnemonic_wordlist = match *(language) {
+                    TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                    TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                    TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                    TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                    TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                    TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                    TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+                };
+                assert_eq!(
+                    seed_words_get_length(mnemonic_wordlist_ffi, error_ptr),
+                    mnemonic_wordlist.len() as u32
+                );
+                assert_eq!(
+                    (*mnemonic_wordlist_ffi).0,
+                    mnemonic_wordlist
+                        .to_vec()
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                );
             }
 
             // create a new wallet
