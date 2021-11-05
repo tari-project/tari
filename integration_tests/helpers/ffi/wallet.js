@@ -10,6 +10,31 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
+const { expect } = require("chai");
+
+function mnemonicLanguageStepId() {
+  return [
+    "CHINESE_SIMPLIFIED",
+    "ENGLISH",
+    "FRENCH",
+    "ITALIAN",
+    "JAPANESE",
+    "KOREAN",
+    "SPANISH",
+  ];
+}
+
+function mnemonicLanguageText() {
+  return [
+    "ChineseSimplified",
+    "English",
+    "French",
+    "Italian",
+    "Japanese",
+    "Korean",
+    "Spanish",
+  ];
+}
 
 class Wallet {
   ptr;
@@ -371,6 +396,29 @@ class Wallet {
 
   applyEncryption(passphrase) {
     InterfaceFFI.walletApplyEncryption(this.ptr, utf8.encode(passphrase));
+  }
+
+  getMnemonicWordListForLanguage(language) {
+    const index = mnemonicLanguageStepId().indexOf(language);
+    if (index < 0) {
+      console.log(
+        "Mnemonic Language",
+        language,
+        "not recognized. Select from:\n",
+        mnemonicLanguageStepId()
+      );
+      expect(index < 0).to.equal(false);
+    }
+    const mnemonicWordsResult =
+      InterfaceFFI.mnemonicWordListForLanguageRetrieve(
+        utf8.encode(mnemonicLanguageText()[index])
+      );
+    const mnemonicWords = [];
+    for (const word of mnemonicWordsResult) {
+      mnemonicWords.push(word);
+    }
+    InterfaceFFI.mnemonicWordLlistDestroy(mnemonicWordsResult);
+    return mnemonicWords;
   }
 
   getCompletedTransactions() {

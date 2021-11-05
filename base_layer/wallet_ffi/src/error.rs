@@ -93,7 +93,7 @@ impl From<InterfaceError> for LibWalletError {
                 message: format!("{:?}", v),
             },
             InterfaceError::InvalidArgument(_) => Self {
-                code: 1,
+                code: 7,
                 message: format!("{:?}", v),
             },
         }
