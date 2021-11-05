@@ -61,6 +61,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -73,6 +74,7 @@ use crate::{
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
@@ -81,7 +83,10 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-use tari_common_types::transaction::TxId;
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";

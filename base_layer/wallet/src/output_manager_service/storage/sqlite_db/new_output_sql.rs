@@ -22,10 +22,7 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{
-            models::{DbUnblindedOutput, OutputStatus},
-            sqlite_db::OutputSql,
-        },
+        storage::{models::DbUnblindedOutput, sqlite_db::OutputSql},
     },
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
@@ -34,6 +31,7 @@ use aes_gcm::Aes256Gcm;
 
 use diesel::{prelude::*, SqliteConnection};
 
+use crate::output_manager_service::storage::OutputStatus;
 use tari_common_types::transaction::TxId;
 use tari_crypto::tari_utilities::ByteArray;
 
@@ -81,7 +79,7 @@ impl NewOutputSql {
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
-            received_in_tx_id: received_in_tx_id.map(|i| i as i64),
+            received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
@@ -155,12 +153,19 @@ impl From<OutputSql> for NewOutputSql {
             script: o.script,
             input_data: o.input_data,
             script_private_key: o.script_private_key,
+            metadata: o.metadata,
+            features_asset_public_key: o.features_asset_public_key,
+            features_mint_asset_public_key: o.features_mint_asset_public_key,
+            features_mint_asset_owner_commitment: o.features_mint_asset_owner_commitment,
+            features_parent_public_key: o.features_parent_public_key,
+            features_unique_id: o.features_unique_id,
             sender_offset_public_key: o.sender_offset_public_key,
             metadata_signature_nonce: o.metadata_signature_nonce,
             metadata_signature_u_key: o.metadata_signature_u_key,
             metadata_signature_v_key: o.metadata_signature_v_key,
             received_in_tx_id: o.received_in_tx_id,
             coinbase_block_height: o.coinbase_block_height,
+            features_asset_template_ids_implemented: o.features_asset_template_ids_implemented,
         }
     }
 }

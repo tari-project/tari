@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use self::{new_output_sql::NewOutputSql, output_sql::OutputSql};
 use super::OutputStatus;
 use crate::{
     output_manager_service::{
@@ -51,7 +50,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey},
 };
-use tari_core::transactions::transaction::TransactionOutput;
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{
@@ -66,11 +65,9 @@ mod new_output_sql;
 pub use new_output_sql::NewOutputSql;
 mod output_sql;
 pub use output_sql::OutputSql;
+use tari_common_types::types::PublicKey;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
-
-mod new_output_sql;
-mod output_sql;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -111,7 +108,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None);
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None)?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -119,7 +116,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None);
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None)?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -132,7 +129,7 @@ impl OutputManagerSqliteDatabase {
                     OutputStatus::EncumberedToBeReceived,
                     Some(tx_id),
                     coinbase_block_height,
-                );
+                )?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -659,7 +656,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 Some(tx_id),
                 None,
-            );
+            )?;
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -1163,26 +1160,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .iter()
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
-    }
-}
-
-impl TryFrom<i32> for OutputStatus {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(OutputStatus::Unspent),
-            1 => Ok(OutputStatus::Spent),
-            2 => Ok(OutputStatus::EncumberedToBeReceived),
-            3 => Ok(OutputStatus::EncumberedToBeSpent),
-            4 => Ok(OutputStatus::Invalid),
-            5 => Ok(OutputStatus::CancelledInbound),
-            6 => Ok(OutputStatus::UnspentMinedUnconfirmed),
-            7 => Ok(OutputStatus::SpentMinedUnconfirmed),
-            8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
-            9 => Ok(OutputStatus::ShortTermEncumberedToBeReceived),
-            _ => Err(OutputManagerStorageError::ConversionError),
-        }
     }
 }
 

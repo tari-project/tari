@@ -25,8 +25,9 @@ use crate::{
         error::OutputManagerStorageError,
         service::Balance,
         storage::{
-            models::{DbUnblindedOutput, OutputStatus},
+            models::DbUnblindedOutput,
             sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
+            OutputStatus,
         },
     },
     schema::outputs,
@@ -39,28 +40,33 @@ use aes_gcm::Aes256Gcm;
 
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_common_types::{
     transaction::TxId,
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        CryptoFactories,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        UnblindedOutput,
     },
+    CryptoFactories,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
+use tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
-#[derive(Clone, Debug, Queryable, Identifiable, PartialEq)]
+#[derive(Clone, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[table_name = "outputs"]
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
@@ -312,8 +318,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(tx_id.as_u64() as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
             )
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
@@ -327,8 +333,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(tx_id.as_u64() as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
             )
             .filter(
                 outputs::status
@@ -533,6 +539,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             commitment,
             unblinded_output,
             hash,
+            status: o.status.try_into()?,
             mined_height: o.mined_height.map(|mh| mh as u64),
             mined_in_block: o.mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
