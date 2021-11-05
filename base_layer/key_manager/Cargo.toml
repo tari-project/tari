@@ -20,6 +20,8 @@ crc32fast = "1.2.1"
 rand = "0.8"
 digest = "0.9.0"
 thiserror = "1.0.26"
+strum_macros = "0.22"
+strum = { version = "0.22", features = ["derive"] }
 
 [dev-dependencies]
 sha2 = "0.9.8"

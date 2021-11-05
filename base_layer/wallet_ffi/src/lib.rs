@@ -864,7 +864,7 @@ pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
 /// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
 ///
 /// ## Arguments
-/// `language` - The pointer to a TariMnemonicLanguage
+/// `language` - The required language as a string
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -876,7 +876,7 @@ pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn get_mnemonic_wordlist_for_language(
-    language: *const TariMnemonicLanguage,
+    language: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariSeedWords {
     use tari_key_manager::mnemonic_wordlists;
@@ -889,14 +889,26 @@ pub unsafe extern "C" fn get_mnemonic_wordlist_for_language(
         error = LibWalletError::from(InterfaceError::NullError("mnemonic wordlist".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
-        let seed_words = match *(language) {
-            TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
-            TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
-            TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
-            TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
-            TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
-            TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
-            TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+        let language_string = CStr::from_ptr(language).to_str().unwrap();
+        let seed_words = match TariMnemonicLanguage::from_str(language_string) {
+            Ok(language) => match language {
+                TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+            },
+            Err(_) => {
+                error = LibWalletError::from(InterfaceError::InvalidArgument(format!(
+                    "mnemonic wordlist - '{}' language not supported",
+                    language_string
+                )))
+                .code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                [""; 2048]
+            },
         };
         seed_words_vec = seed_words.to_vec().iter().map(|s| s.to_string()).collect();
     }
@@ -6304,7 +6316,9 @@ mod test {
             }
 
             for language in MnemonicLanguage::iterator() {
-                let mnemonic_wordlist_ffi = get_mnemonic_wordlist_for_language(language, error_ptr);
+                let language_str: *const c_char =
+                    CString::into_raw(CString::new(language.to_string()).unwrap()) as *const c_char;
+                let mnemonic_wordlist_ffi = get_mnemonic_wordlist_for_language(language_str, error_ptr);
                 let mnemonic_wordlist = match *(language) {
                     TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
                     TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,

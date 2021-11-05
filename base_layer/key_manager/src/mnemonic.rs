@@ -26,13 +26,14 @@ use crate::{
     mnemonic_wordlists::*,
 };
 use std::slice::Iter;
+use strum_macros::{Display, EnumString};
 use tari_crypto::tari_utilities::bit::*;
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, EnumString, Display)]
 pub enum MnemonicLanguage {
     ChineseSimplified,
     English,
@@ -193,6 +194,7 @@ mod test {
     use super::*;
     use crate::mnemonic;
     use rand::{self, rngs::OsRng};
+    use std::str::FromStr;
     use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
 
     #[test]
@@ -208,6 +210,29 @@ mod test {
             {
                 panic!();
             }
+        }
+    }
+
+    #[test]
+    fn test_string_to_enum_conversion() {
+        let my_enum = MnemonicLanguage::from_str("ChineseSimplified").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::ChineseSimplified);
+        let my_enum = MnemonicLanguage::from_str("English").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::English);
+        let my_enum = MnemonicLanguage::from_str("French").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::French);
+        let my_enum = MnemonicLanguage::from_str("Italian").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::Italian);
+        let my_enum = MnemonicLanguage::from_str("Japanese").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::Japanese);
+        let my_enum = MnemonicLanguage::from_str("Korean").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::Korean);
+        let my_enum = MnemonicLanguage::from_str("Spanish").unwrap();
+        assert_eq!(my_enum, MnemonicLanguage::Spanish);
+        let my_language = "TariVerse";
+        match MnemonicLanguage::from_str(my_language) {
+            Ok(_) => panic!("Language '{}' is not a member of 'MnemonicLanguage'!", my_language),
+            Err(e) => assert_eq!(e, strum::ParseError::VariantNotFound),
         }
     }
 

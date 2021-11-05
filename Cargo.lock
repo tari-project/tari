@@ -4176,6 +4176,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b89a286a7e3b5720b9a477b23253bc50debac207c8d21505f8e70b36792f11b5"
 
 [[package]]
+name = "strum"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7ac893c7d471c8a21f31cfe213ec4f6d9afeed25537c772e08ef3f005f8729e"
+dependencies = [
+ "strum_macros 0.22.0",
+]
+
+[[package]]
 name = "strum_macros"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4204,6 +4213,18 @@ name = "strum_macros"
 version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e61bb0be289045cb80bfce000512e32d09f8337e54c186725da381377ad1f8d5"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.32",
+ "quote 1.0.10",
+ "syn 1.0.81",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "339f799d8b549e3744c7ac7feb216383e4005d94bdb22561b3ab8f3b808ae9fb"
 dependencies = [
  "heck",
  "proc-macro2 1.0.32",
@@ -4310,7 +4331,7 @@ dependencies = [
  "rand 0.8.4",
  "serde_json",
  "structopt",
- "strum",
+ "strum 0.19.5",
  "strum_macros 0.19.4",
  "tari_common",
  "tari_common_types",
@@ -4340,7 +4361,7 @@ dependencies = [
  "regex",
  "rustyline",
  "rustyline-derive",
- "strum",
+ "strum 0.19.5",
  "strum_macros 0.18.0",
  "tari_app_grpc",
  "tari_app_utilities",
@@ -4553,7 +4574,7 @@ dependencies = [
  "regex",
  "rpassword",
  "rustyline",
- "strum",
+ "strum 0.19.5",
  "strum_macros 0.19.4",
  "tari_app_grpc",
  "tari_app_utilities",
@@ -4683,6 +4704,8 @@ dependencies = [
  "digest",
  "rand 0.8.4",
  "sha2",
+ "strum 0.22.0",
+ "strum_macros 0.22.0",
  "tari_crypto",
  "thiserror",
 ]
