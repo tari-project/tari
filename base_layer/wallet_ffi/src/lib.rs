@@ -165,6 +165,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
@@ -971,9 +972,12 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     (*seed_words).0.push(word_string);
     if (*seed_words).0.len() >= 24 {
-        return if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
-            error = LibWalletError::from(e).code;
+        return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            log::error!(
+                target: LOG_TARGET,
+                "Problem building valid private seed from seed phrase"
+            );
+            error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             SeedWordPushResult::InvalidSeedPhrase as u8
         } else {
@@ -2801,14 +2805,14 @@ pub unsafe extern "C" fn wallet_create(
         None
     };
 
-    let recovery_master_key = if seed_words.is_null() {
+    let recovery_seed = if seed_words.is_null() {
         None
     } else {
-        match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            Ok(private_key) => Some(private_key),
+        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                error = LibWalletError::from(e).code;
+                error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
@@ -2890,7 +2894,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        recovery_master_key,
+        recovery_seed,
     ));
 
     match w {
@@ -5297,6 +5301,7 @@ mod test {
         std::any::type_name::<T>().to_string()
     }
 
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
@@ -5768,9 +5773,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
             drop(wallet_backend);
-            assert!(stored_key.is_none(), "No key should be stored yet");
+            assert!(stored_seed.is_none(), "No key should be stored yet");
 
             let alice_wallet = wallet_create(
                 alice_config,
@@ -5803,10 +5808,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key1 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed1 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
             drop(wallet_backend);
 
@@ -5843,12 +5845,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key2 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed2 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
-            assert_eq!(stored_key1, stored_key2);
+            assert_eq!(stored_seed1, stored_seed2);
 
             drop(wallet_backend);
 
@@ -5865,9 +5864,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
 
-            assert!(stored_key.is_none(), "key should be cleared");
+            assert!(stored_seed.is_none(), "key should be cleared");
             drop(wallet_backend);
 
             string_destroy(alice_network_str as *mut c_char);
@@ -6232,9 +6231,9 @@ mod test {
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
-                "clever", "jaguar", "bus", "engage", "oil", "august", "media", "high", "trick", "remove", "tiny",
-                "join", "item", "tobacco", "orange", "pony", "tomorrow", "also", "dignity", "giraffe", "little",
-                "board", "army", "scale",
+                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
+                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
+                "gauge", "fossil", "orphan",
             ];
 
             let seed_words = seed_words_create();

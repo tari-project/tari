@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use self::{new_output_sql::NewOutputSql, output_sql::OutputSql};
 use super::OutputStatus;
 use crate::{
     output_manager_service::{
@@ -38,7 +37,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
-use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
+use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
@@ -49,36 +48,26 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{
-        AssetOutputFeatures,
-        MintNonFungibleFeatures,
-        OutputFeatures,
-        OutputFlags,
-        SideChainCheckpointFeatures,
-        TransactionOutput,
-        UnblindedOutput,
-    },
-    CryptoFactories,
-};
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,
     },
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::hash::Hashable;
 use tokio::time::Instant;
+mod new_output_sql;
+pub use new_output_sql::NewOutputSql;
+mod output_sql;
+pub use output_sql::OutputSql;
+use tari_common_types::types::PublicKey;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
-
-mod new_output_sql;
-mod output_sql;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -119,7 +108,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None);
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None)?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -127,7 +116,7 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, &(*conn)).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None);
+                let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None)?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -140,7 +129,7 @@ impl OutputManagerSqliteDatabase {
                     OutputStatus::EncumberedToBeReceived,
                     Some(tx_id),
                     coinbase_block_height,
-                );
+                )?;
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(&(*conn))?
             },
@@ -667,7 +656,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 OutputStatus::ShortTermEncumberedToBeReceived,
                 Some(tx_id),
                 None,
-            );
+            )?;
             self.encrypt_if_necessary(&mut new_output)?;
             new_output.commit(&(*conn))?;
         }
@@ -976,10 +965,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
 
-        let _ = PrivateKey::from_vec(&key_manager_state.master_key).map_err(|_| {
+        let _ = CipherSeed::from_enciphered_bytes(&key_manager_state.seed, None).map_err(|_| {
             error!(
                 target: LOG_TARGET,
-                "Could not create PrivateKey from stored bytes, They might already be encrypted"
+                "Could not create Cipher Seed from stored bytes, They might already be encrypted"
             );
             OutputManagerStorageError::AlreadyEncrypted
         })?;
@@ -1174,147 +1163,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 }
 
-/// Conversion from an DbUnblindedOutput to the Sql datatype form
-impl TryFrom<OutputSql> for DbUnblindedOutput {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let asset_features = match o.features_asset_public_key {
-            Some(ref public_key) => {
-                let template_ids_implemented: Vec<u32> = o
-                    .features_asset_template_ids_implemented
-                    .unwrap_or_default()
-                    .as_str()
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.trim().parse().map_err(|_| OutputManagerStorageError::ConversionError))
-                    .collect::<Result<_, _>>()?;
-                Some(AssetOutputFeatures {
-                    public_key: PublicKey::from_bytes(public_key)?,
-                    template_ids_implemented,
-                })
-            },
-            None => None,
-        };
-        let mint_non_fungible = match o.features_mint_asset_public_key {
-            Some(ref public_key) => Some(MintNonFungibleFeatures {
-                asset_public_key: PublicKey::from_bytes(public_key)?,
-                asset_owner_commitment: o
-                    .features_mint_asset_owner_commitment
-                    .map(|ao| Commitment::from_bytes(&ao))
-                    .unwrap()?,
-            }),
-            None => None,
-        };
-        let sidechain_checkpoint = if let Some(ref merkle_root) = o.features_sidechain_checkpoint_merkle_root {
-            let merkle_root = merkle_root.to_owned();
-
-            let committee = o
-                .features_sidechain_committee
-                .unwrap_or_default()
-                .split(',')
-                .map(|c| PublicKey::from_hex(c))
-                .collect::<Result<_, _>>()?;
-            Some(SideChainCheckpointFeatures { merkle_root, committee })
-        } else {
-            None
-        };
-
-        let features = OutputFeatures {
-            flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
-            maturity: o.maturity as u64,
-            metadata: o.metadata.unwrap_or_default(),
-            unique_id: o.features_unique_id.clone(),
-            parent_public_key: o
-                .features_parent_public_key
-                .map(|p| PublicKey::from_bytes(&p))
-                .transpose()?,
-            asset: asset_features,
-            mint_non_fungible,
-            sidechain_checkpoint,
-        };
-        let unblinded_output = UnblindedOutput::new(
-            MicroTari::from(o.value as u64),
-            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
-            features,
-            TariScript::from_bytes(o.script.as_slice())?,
-            ExecutionStack::from_bytes(o.input_data.as_slice())?,
-            PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
-            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create PublicKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
-            ComSignature::new(
-                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not create PublicKey from stored bytes, They might be encrypted"
-                    );
-                    OutputManagerStorageError::ConversionError
-                })?,
-                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not create PrivateKey from stored bytes, They might be encrypted"
-                    );
-                    OutputManagerStorageError::ConversionError
-                })?,
-                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Could not create PrivateKey from stored bytes, They might be encrypted"
-                    );
-                    OutputManagerStorageError::ConversionError
-                })?,
-            ),
-        );
-
-        let hash = match o.hash {
-            None => {
-                let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories)?.hash()
-            },
-            Some(v) => v,
-        };
-        let commitment = match o.commitment {
-            None => {
-                let factories = CryptoFactories::default();
-                factories
-                    .commitment
-                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
-            },
-            Some(c) => Commitment::from_vec(&c)?,
-        };
-
-        Ok(Self {
-            commitment,
-            unblinded_output,
-            hash,
-            status: o.status.try_into()?,
-            mined_height: o.mined_height.map(|mh| mh as u64),
-            mined_in_block: o.mined_in_block,
-            mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
-            marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
-            marked_deleted_in_block: o.marked_deleted_in_block,
-        })
-    }
-}
-
 /// These are the fields that can be updated for an Output
 #[derive(Default)]
 pub struct UpdateOutput {
@@ -1367,7 +1215,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
 #[table_name = "key_manager_states"]
 struct KeyManagerStateSql {
     id: i32,
-    master_key: Vec<u8>,
+    seed: Vec<u8>,
     branch_seed: String,
     primary_key_index: i64,
     timestamp: NaiveDateTime,
@@ -1376,7 +1224,7 @@ struct KeyManagerStateSql {
 #[derive(Clone, Debug, Insertable)]
 #[table_name = "key_manager_states"]
 struct NewKeyManagerStateSql {
-    master_key: Vec<u8>,
+    seed: Vec<u8>,
     branch_seed: String,
     primary_key_index: i64,
     timestamp: NaiveDateTime,
@@ -1385,7 +1233,10 @@ struct NewKeyManagerStateSql {
 impl From<KeyManagerState> for NewKeyManagerStateSql {
     fn from(km: KeyManagerState) -> Self {
         Self {
-            master_key: km.master_key.to_vec(),
+            seed: km
+                .seed
+                .encipher(None)
+                .expect("The only way for enciphering to fail is that the Crypto libraries are broken"),
             branch_seed: km.branch_seed,
             primary_key_index: km.primary_key_index as i64,
             timestamp: Utc::now().naive_utc(),
@@ -1397,7 +1248,7 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 
     fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
         Ok(Self {
-            master_key: PrivateKey::from_vec(&km.master_key).map_err(|_| OutputManagerStorageError::ConversionError)?,
+            seed: CipherSeed::from_enciphered_bytes(&km.seed, None)?,
             branch_seed: km.branch_seed,
             primary_key_index: km.primary_key_index as u64,
         })
@@ -1424,7 +1275,7 @@ impl KeyManagerStateSql {
         match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
                 let update = KeyManagerStateUpdateSql {
-                    master_key: Some(self.master_key.clone()),
+                    seed: Some(self.seed.clone()),
                     branch_seed: Some(self.branch_seed.clone()),
                     primary_key_index: Some(self.primary_key_index),
                 };
@@ -1436,7 +1287,7 @@ impl KeyManagerStateSql {
             },
             Err(_) => {
                 let inserter = NewKeyManagerStateSql {
-                    master_key: self.master_key.clone(),
+                    seed: self.seed.clone(),
                     branch_seed: self.branch_seed.clone(),
                     primary_key_index: self.primary_key_index,
                     timestamp: self.timestamp,
@@ -1452,7 +1303,7 @@ impl KeyManagerStateSql {
             Ok(km) => {
                 let current_index = km.primary_key_index + 1;
                 let update = KeyManagerStateUpdateSql {
-                    master_key: None,
+                    seed: None,
                     branch_seed: None,
                     primary_key_index: Some(current_index),
                 };
@@ -1470,7 +1321,7 @@ impl KeyManagerStateSql {
         match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
                 let update = KeyManagerStateUpdateSql {
-                    master_key: None,
+                    seed: None,
                     branch_seed: None,
                     primary_key_index: Some(index as i64),
                 };
@@ -1488,42 +1339,42 @@ impl KeyManagerStateSql {
 #[derive(AsChangeset)]
 #[table_name = "key_manager_states"]
 struct KeyManagerStateUpdateSql {
-    master_key: Option<Vec<u8>>,
+    seed: Option<Vec<u8>>,
     branch_seed: Option<String>,
     primary_key_index: Option<i64>,
 }
 
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let encrypted_master_key = encrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        let encrypted_seed = encrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
         let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().into_bytes())?;
-        self.master_key = encrypted_master_key;
+        self.seed = encrypted_seed;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let decrypted_master_key = decrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        let decrypted_seed = decrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
         let decrypted_branch_seed =
-            decrypt_bytes_integral_nonce(cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
-        self.master_key = decrypted_master_key;
+            decrypt_bytes_integral_nonce(cipher, from_hex(self.branch_seed.as_str()).map_err(|e| e.to_string())?)?;
+        self.seed = decrypted_seed;
         self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
-            .map_err(|_| Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
 }
 
 impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let encrypted_master_key = encrypt_bytes_integral_nonce(cipher, self.master_key.clone())?;
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        let encrypted_seed = encrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
         let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().as_bytes().to_vec())?;
-        self.master_key = encrypted_master_key;
+        self.seed = encrypted_seed;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, _cipher: &Aes256Gcm) -> Result<(), Error> {
+    fn decrypt(&mut self, _cipher: &Aes256Gcm) -> Result<(), String> {
         unimplemented!("Not supported")
         // let decrypted_master_key = decrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
         // let decrypted_branch_seed =
@@ -1671,12 +1522,12 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
 }
 
 impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         self.private_key = encrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         self.private_key = decrypt_bytes_integral_nonce(cipher, self.private_key.clone())?;
         Ok(())
     }
@@ -1692,16 +1543,17 @@ mod test {
     };
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
-    use tari_crypto::{keys::SecretKey, script};
+    use tari_crypto::script;
     use tempfile::tempdir;
 
-    use tari_common_types::types::{CommitmentFactory, PrivateKey};
+    use tari_common_types::types::CommitmentFactory;
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
+    use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random;
 
     use crate::{
@@ -1845,7 +1697,7 @@ mod test {
         assert!(KeyManagerStateSql::get_state(&conn).is_err());
 
         let state1 = KeyManagerState {
-            master_key: PrivateKey::random(&mut OsRng),
+            seed: CipherSeed::new(),
             branch_seed: random::string(8),
             primary_key_index: 0,
         };
@@ -1938,7 +1790,7 @@ mod test {
         let cipher = Aes256Gcm::new(key);
 
         let starting_state = KeyManagerState {
-            master_key: PrivateKey::random(&mut OsRng),
+            seed: CipherSeed::new(),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };
@@ -1962,7 +1814,7 @@ mod test {
         db_state.decrypt(&cipher).unwrap();
         let decrypted_data = KeyManagerState::try_from(db_state).unwrap();
 
-        assert_eq!(decrypted_data.master_key, starting_state.master_key);
+        assert_eq!(decrypted_data.seed, starting_state.seed);
         assert_eq!(decrypted_data.branch_seed, starting_state.branch_seed);
         assert_eq!(decrypted_data.primary_key_index, 2);
     }
@@ -1981,7 +1833,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let starting_state = KeyManagerState {
-            master_key: PrivateKey::random(&mut OsRng),
+            seed: CipherSeed::new(),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };

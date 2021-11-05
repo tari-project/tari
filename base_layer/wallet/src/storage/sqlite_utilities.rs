@@ -27,12 +27,7 @@ use crate::{
     storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
 use diesel::{Connection, SqliteConnection};
-use digest::Digest;
 use fs2::FileExt;
 use log::*;
 use std::{
@@ -40,7 +35,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
-use tari_crypto::common::Blake256;
 
 const LOG_TARGET: &str = "wallet::storage:sqlite_utilities";
 
@@ -100,7 +94,7 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     // open a connection and clear the Master Secret Key
     let connection = run_migration_and_create_sqlite_connection(backup_path)?;
     let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
-    db.clear_master_secret_key().await?;
+    db.clear_master_seed().await?;
 
     Ok(())
 }
@@ -149,12 +143,6 @@ pub fn initialize_sqlite_database_backends(
     ),
     WalletStorageError,
 > {
-    let cipher = passphrase.map(|passphrase_str| {
-        let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).finalize();
-        let key = GenericArray::from_slice(passphrase_hash.as_slice());
-        Aes256Gcm::new(key)
-    });
-
     let connection = run_migration_and_create_sqlite_connection(&db_path).map_err(|e| {
         error!(
             target: LOG_TARGET,
@@ -163,9 +151,9 @@ pub fn initialize_sqlite_database_backends(
         e
     })?;
 
-    let wallet_backend = WalletSqliteDatabase::new(connection.clone(), cipher.clone())?;
-    let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher);
+    let wallet_backend = WalletSqliteDatabase::new(connection.clone(), passphrase)?;
+    let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
 
     Ok((

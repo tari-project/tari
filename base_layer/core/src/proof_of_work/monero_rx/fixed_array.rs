@@ -80,6 +80,7 @@ impl Deref for FixedByteArray {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for FixedByteArray {
     fn default() -> Self {
         Self {

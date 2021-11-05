@@ -31,7 +31,7 @@ use tari_core::transactions::{
     CoinbaseBuildError,
 };
 use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
-use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -110,7 +110,7 @@ pub enum OutputManagerError {
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
-    MasterSecretKeyMismatch,
+    MasterSeedMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
     #[error("Token with unique id not found")]
@@ -174,6 +174,8 @@ pub enum OutputManagerStorageError {
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(#[from] HexError),
+    #[error("Key Manager Error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
 }
 
 impl From<OutputManagerError> for ExitCodes {

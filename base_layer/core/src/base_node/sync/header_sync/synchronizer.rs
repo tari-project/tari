@@ -245,22 +245,37 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         );
 
         // Fetch the local tip header at the beginning of the sync process
-        let local_tip_header = self.db.fetch_tip_header().await?;
+        let local_tip_header = self.db.fetch_last_chain_header().await?;
         let local_total_accumulated_difficulty = local_tip_header.accumulated_data().total_accumulated_difficulty;
+        let header_tip_height = local_tip_header.height();
         let sync_status = self
             .determine_sync_status(sync_peer, local_tip_header, &mut client)
             .await?;
         match sync_status {
-            SyncStatus::InSync => Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: None,
-                local: local_total_accumulated_difficulty,
-            }),
-            SyncStatus::WereAhead => Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: None,
-                local: local_total_accumulated_difficulty,
-            }),
+            SyncStatus::InSync | SyncStatus::WereAhead => {
+                let metadata = self.db.get_chain_metadata().await?;
+                if metadata.height_of_longest_chain() < header_tip_height {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Headers are in sync at height {} but tip is {}. Proceeding to archival/pruned block sync",
+                        header_tip_height,
+                        metadata.height_of_longest_chain()
+                    );
+                    Ok(())
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {})",
+                        header_tip_height,
+                        metadata.height_of_longest_chain()
+                    );
+                    Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                        claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                        actual: None,
+                        local: local_total_accumulated_difficulty,
+                    })
+                }
+            },
             SyncStatus::Lagging(split_info) => {
                 self.hooks.call_on_progress_header_hooks(
                     split_info.local_tip_header.height(),
