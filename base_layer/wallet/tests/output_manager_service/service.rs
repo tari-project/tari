@@ -34,7 +34,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsSecretKey,
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
@@ -58,8 +57,9 @@ use tari_crypto::{
     script,
     script::TariScript,
 };
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::Network;
-use tari_service_framework::{reply_channel, reply_channel::SenderService};
+use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_utilities::Hashable;
 use tari_wallet::{
@@ -149,6 +149,38 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
+
+    let cipher_seed = CipherSeed::from_mnemonic(
+        &[
+            "parade".to_string(),
+            "genius".to_string(),
+            "cradle".to_string(),
+            "milk".to_string(),
+            "perfect".to_string(),
+            "ride".to_string(),
+            "online".to_string(),
+            "world".to_string(),
+            "lady".to_string(),
+            "apple".to_string(),
+            "rent".to_string(),
+            "business".to_string(),
+            "oppose".to_string(),
+            "force".to_string(),
+            "tumble".to_string(),
+            "escape".to_string(),
+            "tongue".to_string(),
+            "camera".to_string(),
+            "ceiling".to_string(),
+            "edge".to_string(),
+            "shine".to_string(),
+            "gauge".to_string(),
+            "fossil".to_string(),
+            "orphan".to_string(),
+        ],
+        None,
+    )
+    .unwrap();
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
             base_node_query_timeout: Duration::from_secs(10),
@@ -164,7 +196,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
-        CommsSecretKey::default(),
+        cipher_seed,
     )
     .await
     .unwrap();
@@ -230,7 +262,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        CommsSecretKey::default(),
+        CipherSeed::new(),
     )
     .await
     .unwrap();
@@ -1659,7 +1691,7 @@ async fn test_oms_key_manager_discrepancy() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
 
-    let master_key1 = CommsSecretKey::random(&mut OsRng);
+    let master_seed1 = CipherSeed::new();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
@@ -1671,7 +1703,7 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
-        master_key1.clone(),
+        master_seed1.clone(),
     )
     .await
     .unwrap();
@@ -1689,14 +1721,14 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
-        master_key1,
+        master_seed1,
     )
     .await
     .expect("Should be able to make a new OMS with same master key");
     drop(output_manager_service2);
 
     let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
-    let master_key2 = CommsSecretKey::random(&mut OsRng);
+    let master_seed2 = CipherSeed::new();
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver3,
@@ -1707,12 +1739,12 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity,
-        master_key2,
+        master_seed2,
     )
     .await;
 
     assert!(matches!(
         output_manager_service3,
-        Err(OutputManagerError::MasterSecretKeyMismatch)
+        Err(OutputManagerError::MasterSeedMismatch)
     ));
 }

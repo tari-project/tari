@@ -82,7 +82,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
-    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
     fn set_pending_transaction_cancellation_status(
         &self,
@@ -627,9 +627,9 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.reject_completed_transaction(tx_id))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
