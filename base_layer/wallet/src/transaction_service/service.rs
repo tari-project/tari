@@ -1245,14 +1245,16 @@ where
             );
 
             // Check if this transaction has already been received and cancelled.
-            if let Ok(inbound_tx) = self.db.get_cancelled_pending_inbound_transaction(data.tx_id).await {
-                if inbound_tx.source_public_key != source_pubkey {
+            if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id).await {
+                let tx = CompletedTransaction::from(any_tx);
+
+                if tx.source_public_key != source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
                 }
                 trace!(
                     target: LOG_TARGET,
-                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled",
-                    inbound_tx.tx_id
+                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
+                    tx.tx_id
                 );
                 return Ok(());
             }
