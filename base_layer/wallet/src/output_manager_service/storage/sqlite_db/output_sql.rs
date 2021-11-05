@@ -3,6 +3,7 @@ use crate::{
         error::OutputManagerStorageError,
         service::Balance,
         storage::{
+            models::DbUnblindedOutput,
             sqlite_db::{AeadError, NullOutputSql, UpdateOutput, UpdateOutputSql},
             OutputStatus,
         },
@@ -12,8 +13,35 @@ use crate::{
 };
 use aes_gcm::Aes256Gcm;
 use diesel::{prelude::*, sql_query, SqliteConnection};
-use tari_common_types::transaction::TxId;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFlags};
+use log::*;
+use std::convert::{TryFrom, TryInto};
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        UnblindedOutput,
+    },
+    CryptoFactories,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+};
+use tari_utilities::hash::Hashable;
+
+const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db::output_sql";
 
 #[derive(Clone, Debug, Queryable, QueryableByName, Identifiable, PartialEq)]
 #[table_name = "outputs"]
@@ -382,6 +410,147 @@ impl OutputSql {
                     "Pending outgoing balance could not be calculated".to_string(),
                 )
             })?,
+        })
+    }
+}
+
+/// Conversion from an DbUnblindedOutput to the Sql datatype form
+impl TryFrom<OutputSql> for DbUnblindedOutput {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
+        let asset_features = match o.features_asset_public_key {
+            Some(ref public_key) => {
+                let template_ids_implemented: Vec<u32> = o
+                    .features_asset_template_ids_implemented
+                    .unwrap_or_default()
+                    .as_str()
+                    .split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.trim().parse().map_err(|_| OutputManagerStorageError::ConversionError))
+                    .collect::<Result<_, _>>()?;
+                Some(AssetOutputFeatures {
+                    public_key: PublicKey::from_bytes(public_key)?,
+                    template_ids_implemented,
+                })
+            },
+            None => None,
+        };
+        let mint_non_fungible = match o.features_mint_asset_public_key {
+            Some(ref public_key) => Some(MintNonFungibleFeatures {
+                asset_public_key: PublicKey::from_bytes(public_key)?,
+                asset_owner_commitment: o
+                    .features_mint_asset_owner_commitment
+                    .map(|ao| Commitment::from_bytes(&ao))
+                    .unwrap()?,
+            }),
+            None => None,
+        };
+        let sidechain_checkpoint = if let Some(ref merkle_root) = o.features_sidechain_checkpoint_merkle_root {
+            let merkle_root = merkle_root.to_owned();
+
+            let committee = o
+                .features_sidechain_committee
+                .unwrap_or_default()
+                .split(',')
+                .map(|c| PublicKey::from_hex(c))
+                .collect::<Result<_, _>>()?;
+            Some(SideChainCheckpointFeatures { merkle_root, committee })
+        } else {
+            None
+        };
+
+        let features = OutputFeatures {
+            flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
+            maturity: o.maturity as u64,
+            metadata: o.metadata.unwrap_or_default(),
+            unique_id: o.features_unique_id.clone(),
+            parent_public_key: o
+                .features_parent_public_key
+                .map(|p| PublicKey::from_bytes(&p))
+                .transpose()?,
+            asset: asset_features,
+            mint_non_fungible,
+            sidechain_checkpoint,
+        };
+        let unblinded_output = UnblindedOutput::new(
+            MicroTari::from(o.value as u64),
+            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            features,
+            TariScript::from_bytes(o.script.as_slice())?,
+            ExecutionStack::from_bytes(o.input_data.as_slice())?,
+            PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PublicKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
+            ComSignature::new(
+                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PublicKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+            ),
+        );
+
+        let hash = match o.hash {
+            None => {
+                let factories = CryptoFactories::default();
+                unblinded_output.as_transaction_output(&factories)?.hash()
+            },
+            Some(v) => v,
+        };
+        let commitment = match o.commitment {
+            None => {
+                let factories = CryptoFactories::default();
+                factories
+                    .commitment
+                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
+            },
+            Some(c) => Commitment::from_vec(&c)?,
+        };
+
+        Ok(Self {
+            commitment,
+            unblinded_output,
+            hash,
+            status: o.status.try_into()?,
+            mined_height: o.mined_height.map(|mh| mh as u64),
+            mined_in_block: o.mined_in_block,
+            mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
+            marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
+            marked_deleted_in_block: o.marked_deleted_in_block,
         })
     }
 }
