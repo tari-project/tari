@@ -60,7 +60,7 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
+function baseEnvs(forceSyncPeers = []) {
   const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
@@ -83,8 +83,6 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
     TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
-    TARI_COMMON__DNS_SEEDS_NAME_SERVER: "1.1.1.1:53",
-    TARI_COMMON__DNS_SEEDS_USE_DNSSEC: "false",
     TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
     TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
@@ -107,10 +105,6 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
   if (forceSyncPeers.length > 0) {
     envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");
   }
-  if (peerSeeds.length > 0) {
-    envs.TARI_COMMON__PEER_SEEDS = peerSeeds.join(",");
-  }
-
   return envs;
 }
 
@@ -131,7 +125,7 @@ function createEnv(
   _txnSendingMechanism = "DirectAndStoreAndForward",
   forceSyncPeers = []
 ) {
-  const envs = baseEnvs(peerSeeds, forceSyncPeers);
+  const envs = baseEnvs(forceSyncPeers);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
 
@@ -153,7 +147,13 @@ function createEnv(
 
     [`TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
     [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderFullAddress}`,
+    [`TARI_COMMON__${network}__DNS_SEEDS_NAME_SERVER`]: "1.1.1.1:53",
+    [`TARI_COMMON__${network}__DNS_SEEDS_USE_DNSSEC`]: "false",
   };
+
+  if (peerSeeds.length > 0) {
+    configEnvs[`TARI_COMMON__${network}__PEER_SEEDS`] = peerSeeds.join(",");
+  }
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
 }

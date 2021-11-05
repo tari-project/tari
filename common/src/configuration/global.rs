@@ -357,30 +357,30 @@ fn convert_node_config(
         })?;
 
     // Peer and DNS seeds
-    let key = "common.peer_seeds";
+    let key = config_string("common", net_str, "peer_seeds");
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
-    let peer_seeds = match cfg.get_array(key) {
+    let peer_seeds = match cfg.get_array(&key) {
         Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => optional(cfg.get_str(key))?
+        Err(..) => optional(cfg.get_str(&key))?
             .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
             .unwrap_or_default(),
     };
 
-    let key = "common.dns_seeds_name_server";
+    let key = config_string("common", net_str, "dns_seeds_name_server");
     let dns_seeds_name_server = cfg
-        .get_str(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         .and_then(|s| {
             s.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
     let key = config_string("base_node", net_str, "bypass_range_proof_verification");
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
-    let key = "common.dns_seeds_use_dnssec";
+    let key = config_string("common", net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
-        .get_bool(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "common.dns_seeds";
     let dns_seeds = optional(cfg.get_array(key))?
