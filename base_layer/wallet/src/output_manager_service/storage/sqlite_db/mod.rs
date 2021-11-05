@@ -38,7 +38,7 @@ use crate::{
 };
 use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, sql_query, SqliteConnection};
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 use std::{
     convert::{TryFrom, TryInto},
@@ -47,18 +47,10 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey},
 };
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
-        CryptoFactories,
-    },
-};
+use tari_core::transactions::transaction::TransactionOutput;
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::{
         hex::{from_hex, Hex},

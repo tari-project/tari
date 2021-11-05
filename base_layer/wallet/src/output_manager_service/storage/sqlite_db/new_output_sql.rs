@@ -22,51 +22,20 @@
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        service::Balance,
         storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
+            models::{DbUnblindedOutput, OutputStatus},
             sqlite_db::OutputSql,
         },
     },
-    schema::{key_manager_states, known_one_sided_payment_scripts, outputs},
-    storage::sqlite_utilities::WalletDbConnection,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
+    schema::outputs,
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 use aes_gcm::Aes256Gcm;
-use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, sql_query, SqliteConnection};
-use log::*;
-use std::{
-    convert::{TryFrom, TryInto},
-    str::from_utf8,
-    sync::{Arc, RwLock},
-};
-use tari_common_types::{
-    transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
-};
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
-        CryptoFactories,
-    },
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        ByteArray,
-    },
-};
-use tari_key_manager::cipher_seed::CipherSeed;
-use tokio::time::Instant;
+
+use diesel::{prelude::*, SqliteConnection};
+
+use tari_common_types::transaction::TxId;
+use tari_crypto::tari_utilities::ByteArray;
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
 /// equivalent datatypes for the members.
