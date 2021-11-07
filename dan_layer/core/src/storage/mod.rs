@@ -49,6 +49,7 @@ mod store;
 
 pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create(&self) -> Result<ChainDb<TBackendAdapter>, StorageError>;
+    fn create_state_db(&self) -> Result<StateDb, StorageError>;
 }
 
 pub enum UnitOfWorkTracker {
@@ -106,46 +107,49 @@ pub trait UnitOfWork: Clone + Send + Sync {
     ) -> Result<(), StorageError>;
 }
 
-pub struct StateDb {
-    unit_of_work: Option<StateDbUnitOfWork>,
+pub trait StateDbUnitOfWork: Clone + Send + Sync {
+    fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
+    fn commit(&mut self) -> Result<StateRoot, StorageError>;
 }
 
+pub struct StateRoot {
+    root: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct StateDbUnitOfWorkImpl {
+    // hashmap rather?
+    updates: Vec<(String, Vec<u8>, Vec<u8>)>,
+}
+
+impl StateDbUnitOfWork for StateDbUnitOfWorkImpl {
+    fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError> {
+        self.updates.push((schema, key, value));
+        Ok(())
+    }
+
+    fn commit(&mut self) -> Result<StateRoot, StorageError> {
+        // todo!("actually commit")
+        Ok(StateRoot {
+            root: Vec::from([8u8; 32]),
+        })
+    }
+}
+
+pub struct StateDb {}
+
 impl StateDb {
-    pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
-        self.unit_of_work = Some(StateDbUnitOfWork { child: None });
-        self.unit_of_work.as_mut().unwrap()
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn new_unit_of_work(&self) -> StateDbUnitOfWorkImpl {
+        StateDbUnitOfWorkImpl { updates: vec![] }
         // let mut unit_of_work = self.current_unit_of_work_mut();
         // if unit_of_work.is_none() {
         //     self.unit_of_work = Some(StateDbUnitOfWork {});
         //     unit_of_work = self.unit_of_work
         // };
         // unit_of_work.as_mut().unwrap()
-    }
-
-    fn current_unit_of_work_mut(&mut self) -> Option<&mut StateDbUnitOfWork> {
-        unimplemented!()
-        // let mut result = self.unit_of_work.as_mut();
-        // let mut child = result;
-        // while let Some(c) = child {
-        //     result = child;
-        //     child = c.child.as_mut();
-        // }
-        //
-        // return result;
-    }
-}
-
-pub struct StateDbUnitOfWork {
-    child: Option<Arc<RwLock<StateDbUnitOfWork>>>,
-}
-
-impl StateDbUnitOfWork {
-    pub fn new_unit_of_work(&mut self) -> &mut StateDbUnitOfWork {
-        // TODO: better implementation
-        self
-    }
-
-    pub fn commit(&mut self) -> Result<(), StorageError> {
-        Ok(())
     }
 }

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::types::PublicKey;
-use serde::{self, de, Deserialize, Deserializer};
+use serde::{self, de, Deserialize, Deserializer, Serialize};
 use std::{fmt, marker::PhantomData};
 use tari_crypto::tari_utilities::hex::Hex;
 
@@ -36,7 +36,7 @@ pub struct AssetDefinition {
     // TODO: Better name? lock time/peg time? (in number of blocks)
     pub base_layer_confirmation_time: u64,
     pub checkpoint_unique_id: Vec<u8>,
-    pub templates: Vec<TemplateArgs>,
+    pub initial_state: InitialState,
 }
 
 impl Default for AssetDefinition {
@@ -47,7 +47,7 @@ impl Default for AssetDefinition {
             public_key: Default::default(),
             initial_committee: vec![],
             phase_timeout: 10,
-            templates: vec![],
+            initial_state: Default::default(),
         }
     }
 }
@@ -73,10 +73,25 @@ impl AssetDefinition {
         }
         des.deserialize_str(KeyStringVisitor { marker: PhantomData })
     }
+
+    pub fn initial_state(&self) -> &InitialState {
+        &self.initial_state
+    }
 }
 
-#[derive(Deserialize, Clone)]
-#[serde(tag = "id", content = "data")]
-pub enum TemplateArgs {
-    Tmp721 { num_tokens: u64 },
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct InitialState {
+    pub schemas: Vec<SchemaState>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct SchemaState {
+    pub name: String,
+    pub items: Vec<KeyValue>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct KeyValue {
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
 }

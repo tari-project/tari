@@ -37,9 +37,19 @@ table! {
     }
 }
 
+table! {
+    state_key_values (id) {
+        id -> Integer,
+        schema_name -> Text,
+        key -> Binary,
+        value -> Binary,
+    }
+}
+
 allow_tables_to_appear_in_same_query!(
     instructions,
     locked_qc,
     nodes,
     prepare_qcs,
+    state_key_values,
 );

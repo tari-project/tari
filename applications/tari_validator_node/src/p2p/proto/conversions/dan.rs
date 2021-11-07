@@ -49,6 +49,7 @@ impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
             justify: source.justify().map(|j| j.clone().into()),
             partial_sig: source.partial_sig().map(|s| s.clone().into()),
             view_number: source.view_number().as_u64(),
+            node_hash: source.node_hash().map(|s| s.0.clone()),
         }
     }
 }
@@ -122,6 +123,7 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
             HotStuffMessageType::try_from(value.message_type as u8)?,
             value.justify.map(|j| j.try_into()).transpose()?,
             value.node.map(|n| n.try_into()).transpose()?,
+            value.node_hash.map(|v| TreeNodeHash(v.clone())),
             value.partial_sig.map(|p| p.try_into()).transpose()?,
         ))
     }

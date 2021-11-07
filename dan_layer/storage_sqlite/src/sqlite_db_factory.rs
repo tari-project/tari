@@ -24,7 +24,7 @@ use crate::{error::SqliteStorageError, SqliteBackendAdapter};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use tari_common::GlobalConfig;
-use tari_dan_core::storage::{ChainDb, DbFactory, StorageError};
+use tari_dan_core::storage::{ChainDb, DbFactory, StateDb, StorageError};
 
 #[derive(Clone)]
 pub struct SqliteDbFactory {
@@ -56,5 +56,9 @@ impl DbFactory<SqliteBackendAdapter> for SqliteDbFactory {
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
         Ok(ChainDb::new(self.create_adapter()))
+    }
+
+    fn create_state_db(&self) -> Result<StateDb, StorageError> {
+        Ok(StateDb::new())
     }
 }

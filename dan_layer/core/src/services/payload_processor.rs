@@ -24,7 +24,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, TariDanPayload},
     services::{AssetProcessor, MempoolService},
-    storage::{ChainDb, ChainDbUnitOfWork, DbFactory, UnitOfWork},
+    storage::{ChainDb, ChainDbUnitOfWork, DbFactory, StateDbUnitOfWork, UnitOfWork},
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ use tokio::sync::RwLock;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
-    async fn process_payload<TUnitOfWork: UnitOfWork + Send>(
+    async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         payload: &TPayload,
         unit_of_work: TUnitOfWork,
@@ -63,7 +63,7 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
     PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
-    async fn process_payload<TUnitOfWork: UnitOfWork + Clone + Send>(
+    async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
         &self,
         payload: &TariDanPayload,
         unit_of_work: TUnitOfWork,

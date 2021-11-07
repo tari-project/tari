@@ -20,7 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod locked_qc;
-pub mod node;
-pub mod prepare_qc;
-pub mod state_key_value;
+use crate::schema::*;
+
+#[derive(Queryable)]
+pub struct StateKeyValue {
+    pub id: i32,
+    pub schema_name: String,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
+}
+
+#[derive(Insertable)]
+#[table_name = "state_key_values"]
+pub struct NewStateKeyValue {
+    pub schema_name: String,
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
+}

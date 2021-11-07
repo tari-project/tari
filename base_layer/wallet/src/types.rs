@@ -42,10 +42,9 @@ pub(crate) struct MockPersistentKeyManager {
 
 impl MockPersistentKeyManager {
     pub fn new() -> Self {
-        todo!()
-        // Self {
-        //     key_manager: KeyManager::new(&mut OsRng),
-        // }
+        Self {
+            key_manager: KeyManager::new(),
+        }
     }
 }
 

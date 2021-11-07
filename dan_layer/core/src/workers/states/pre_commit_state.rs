@@ -29,6 +29,7 @@ use crate::{
         HotStuffTreeNode,
         Payload,
         QuorumCertificate,
+        TreeNodeHash,
         View,
         ViewId,
     },
@@ -199,9 +200,9 @@ where
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {
-                None => message.node().cloned(),
+                None => message.node_hash().cloned(),
                 Some(n) => {
-                    if let Some(m_node) = message.node() {
+                    if let Some(m_node) = message.node_hash() {
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
@@ -213,13 +214,12 @@ where
             };
         }
 
-        todo!("Fix this")
-        // let node = node.unwrap();
-        // let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
-        // for message in self.received_new_view_messages.values() {
-        //     qc.combine_sig(message.partial_sig().unwrap())
-        // }
-        // Some(qc)
+        let node = node.unwrap();
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node.clone(), None);
+        for message in self.received_new_view_messages.values() {
+            qc.combine_sig(message.partial_sig().unwrap())
+        }
+        Some(qc)
     }
 
     async fn process_replica_message(
@@ -250,16 +250,15 @@ where
                 return Ok(None);
             }
 
-            todo!("Fix this");
-            // self.prepare_qc = Some(justify.clone());
-            // self.send_vote_to_leader(
-            //     justify.node(),
-            //     outbound,
-            //     view_leader,
-            //     current_view.view_id,
-            //     signing_service,
-            // )
-            // .await?;
+            self.prepare_qc = Some(justify.clone());
+            self.send_vote_to_leader(
+                justify.node_hash().clone(),
+                outbound,
+                view_leader,
+                current_view.view_id,
+                signing_service,
+            )
+            .await?;
             Ok(Some(ConsensusWorkerStateEvent::PreCommitted))
         } else {
             // dbg!("received non justify message");
@@ -269,13 +268,13 @@ where
 
     async fn send_vote_to_leader(
         &self,
-        node: &HotStuffTreeNode<TPayload>,
+        node: TreeNodeHash,
         outbound: &mut TOutboundService,
         view_leader: &TAddr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::pre_commit(Some(node.clone()), None, view_number);
+        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

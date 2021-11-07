@@ -20,7 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, HotStuffTreeNode, Payload, QuorumCertificate, Signature, ViewId};
+use crate::models::{
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    Payload,
+    QuorumCertificate,
+    Signature,
+    TreeNodeHash,
+    ViewId,
+};
 use digest::Digest;
 
 use tari_crypto::common::Blake256;
@@ -31,6 +39,7 @@ pub struct HotStuffMessage<TPayload: Payload> {
     message_type: HotStuffMessageType,
     justify: Option<QuorumCertificate>,
     node: Option<HotStuffTreeNode<TPayload>>,
+    node_hash: Option<TreeNodeHash>,
     partial_sig: Option<Signature>,
 }
 
@@ -40,6 +49,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         message_type: HotStuffMessageType,
         justify: Option<QuorumCertificate>,
         node: Option<HotStuffTreeNode<TPayload>>,
+        node_hash: Option<TreeNodeHash>,
         partial_sig: Option<Signature>,
     ) -> Self {
         HotStuffMessage {
@@ -47,6 +57,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             message_type,
             justify,
             node,
+            node_hash,
             partial_sig,
         }
     }
@@ -58,6 +69,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: Some(prepare_qc),
             node: None,
             partial_sig: None,
+            node_hash: None,
         }
     }
 
@@ -72,6 +84,18 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: high_qc,
             view_number,
             partial_sig: None,
+            node_hash: None,
+        }
+    }
+
+    pub fn vote_prepare(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Prepare,
+            node_hash: Some(node_hash),
+            view_number,
+            node: None,
+            partial_sig: None,
+            justify: None,
         }
     }
 
@@ -85,7 +109,19 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node,
             justify: prepare_qc,
             view_number,
+            node_hash: None,
             partial_sig: None,
+        }
+    }
+
+    pub fn vote_pre_commit(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+        Self {
+            message_type: HotStuffMessageType::PreCommit,
+            node_hash: Some(node_hash),
+            view_number,
+            node: None,
+            partial_sig: None,
+            justify: None,
         }
     }
 
@@ -100,6 +136,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: pre_commit_qc,
             view_number,
             partial_sig: None,
+            node_hash: None,
         }
     }
 
@@ -114,6 +151,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             justify: commit_qc,
             view_number,
             partial_sig: None,
+            node_hash: None,
         }
     }
 
@@ -123,6 +161,10 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             .chain(self.view_number.as_u64().to_le_bytes());
         if let Some(ref node) = self.node {
             b = b.chain(node.calculate_hash().as_bytes());
+        } else {
+            if let Some(ref node_hash) = self.node_hash {
+                b = b.chain(node_hash.as_bytes());
+            }
         }
         b.finalize().to_vec()
     }
@@ -133,6 +175,10 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn node(&self) -> Option<&HotStuffTreeNode<TPayload>> {
         self.node.as_ref()
+    }
+
+    pub fn node_hash(&self) -> Option<&TreeNodeHash> {
+        self.node_hash.as_ref()
     }
 
     pub fn message_type(&self) -> &HotStuffMessageType {

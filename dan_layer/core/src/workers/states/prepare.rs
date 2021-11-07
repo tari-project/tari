@@ -289,15 +289,21 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_state_db()?;
                 let unit_of_work = db.new_unit_of_work();
 
                 let res = payload_processor.process_payload(node.payload(), unit_of_work).await?;
 
                 // TODO: Check result equals qc result
 
-                self.send_vote_to_leader(node, outbound, view_leader, current_view.view_id, signing_service)
-                    .await?;
+                self.send_vote_to_leader(
+                    node.hash().clone(),
+                    outbound,
+                    view_leader,
+                    current_view.view_id,
+                    signing_service,
+                )
+                .await?;
                 Ok(Some(ConsensusWorkerStateEvent::Prepared))
             } else {
                 unimplemented!("Did not extend from qc.justify.node")
@@ -364,13 +370,14 @@ where
 
     async fn send_vote_to_leader(
         &self,
-        node: &HotStuffTreeNode<TPayload>,
+        node: TreeNodeHash,
         outbound: &mut TOutboundService,
         view_leader: &TAddr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::prepare(node.clone(), None, view_number);
+        // TODO: Only send node hash, not the full node
+        let mut message = HotStuffMessage::vote_prepare(node, view_number);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
