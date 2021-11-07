@@ -23,7 +23,8 @@
 use super::dns::DnsClientError;
 use crate::dns::{default_trust_anchor, DnsClient};
 use anyhow::anyhow;
-use std::{net::SocketAddr, str::FromStr};
+use std::str::FromStr;
+use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures},
@@ -42,7 +43,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect_secure(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect_secure(name_server, default_trust_anchor()).await?;
         Ok(Self { client })
     }
@@ -51,7 +52,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect(name_server).await?;
         Ok(Self { client })
     }
@@ -184,7 +185,7 @@ mod test {
 
     mod peer_seed_resolver {
         use super::*;
-        use crate::dns::mock;
+        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
         use trust_dns_client::{
             proto::{
                 op::Query,
@@ -198,9 +199,12 @@ mod test {
         #[tokio::test]
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver {
-                client: DnsClient::connect("1.1.1.1:53".parse().unwrap()).await.unwrap(),
+                client: DnsClient::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
+                    .await
+                    .unwrap(),
             };
             let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
+            println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }
 
