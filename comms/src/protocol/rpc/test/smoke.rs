@@ -62,6 +62,7 @@ use tari_test_utils::unpack_enum;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
+    time,
 };
 
 pub(super) async fn setup_service<T: GreetingRpc>(
@@ -389,7 +390,7 @@ async fn stream_still_works_after_cancel() {
     // Request was sent
     assert_eq!(service_impl.call_count(), 1);
 
-    // Subsequent call still works, after waiting for the previous one
+    // Subsequent call still works
     let resp = client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
@@ -402,4 +403,51 @@ async fn stream_still_works_after_cancel() {
     resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
         r.unwrap();
     });
+}
+
+#[runtime::test]
+async fn stream_interruption_handling() {
+    let service_impl = GreetingService::default();
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 10000,
+            item_size: 100,
+            delay_ms: 100,
+        })
+        .await
+        .unwrap();
+
+    let _ = resp.next().await.unwrap().unwrap();
+    // Drop it before the stream is finished
+    drop(resp);
+
+    // Subsequent call still works, without waiting
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 1,
+        })
+        .await
+        .unwrap();
+
+    let next_fut = resp.next();
+    tokio::pin!(next_fut);
+    // Allow 10 seconds, if the previous stream is still streaming, it will take a while for this stream to start and
+    // the timeout will expire
+    time::timeout(Duration::from_secs(10), next_fut)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
 }

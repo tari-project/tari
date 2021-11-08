@@ -361,7 +361,7 @@ pub async fn init_wallet(
     );
 
     let updater_config = AutoUpdateConfig {
-        name_server: config.dns_seeds_name_server,
+        name_server: config.dns_seeds_name_server.clone(),
         update_uris: config.autoupdate_dns_hosts.clone(),
         use_dnssec: config.dns_seeds_use_dnssec,
         download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),

@@ -97,7 +97,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     .unwrap();
     cfg.set_default("common.peer_seeds", Vec::<String>::new()).unwrap();
     cfg.set_default("common.dns_seeds", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.dns_seeds_name_server", "1.1.1.1:53").unwrap();
+    cfg.set_default("common.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
+        .unwrap();
     cfg.set_default("common.dns_seeds_use_dnssec", true).unwrap();
 
     // Wallet settings
@@ -238,8 +239,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.dns_seeds_name_server", "1.1.1.1:53")
-        .unwrap();
+    cfg.set_default(
+        "base_node.weatherwax.dns_seeds_name_server",
+        "1.1.1.1:853/cloudflare-dns.com",
+    )
+    .unwrap();
     cfg.set_default("base_node.weatherwax.dns_seeds_use_dnssec", true)
         .unwrap();
     cfg.set_default("base_node.weatherwax.auto_ping_interval", 30).unwrap();
@@ -264,7 +268,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.igor.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:53")
+    cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
         .unwrap();
     cfg.set_default("base_node.igor.dns_seeds_use_dnssec", true).unwrap();
     cfg.set_default("base_node.igor.auto_ping_interval", 30).unwrap();
