@@ -512,6 +512,44 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Err(TransactionStorageError::ValuesNotFound)
     }
 
+    fn fetch_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        match OutboundTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut o) => {
+                self.decrypt_if_necessary(&mut o)?;
+
+                return Ok(Some(WalletTransaction::PendingOutbound(OutboundTransaction::try_from(
+                    o,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match InboundTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut i) => {
+                self.decrypt_if_necessary(&mut i)?;
+                return Ok(Some(WalletTransaction::PendingInbound(InboundTransaction::try_from(
+                    i,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match CompletedTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut c) => {
+                self.decrypt_if_necessary(&mut c)?;
+                return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(c)?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        Ok(None)
+    }
+
     fn complete_outbound_transaction(
         &self,
         tx_id: u64,
