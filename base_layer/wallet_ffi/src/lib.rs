@@ -236,9 +236,6 @@ pub struct EmojiSet(Vec<ByteVector>);
 #[derive(Debug, PartialEq)]
 pub struct TariSeedWords(Vec<String>);
 
-#[derive(Debug, PartialEq)]
-pub struct TariMnemonicWordList(Vec<String>);
-
 pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,

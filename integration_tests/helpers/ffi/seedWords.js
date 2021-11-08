@@ -1,6 +1,6 @@
 const InterfaceFFI = require("./ffiInterface");
 const utf8 = require("utf8");
-const {expect} = require("chai");
+const { expect } = require("chai");
 
 function mnemonicLanguageStepId() {
   return [
@@ -56,17 +56,19 @@ class SeedWords {
     const index = mnemonicLanguageStepId().indexOf(language);
     if (index < 0) {
       console.log(
-          "Mnemonic Language",
-          language,
-          "not recognized. Select from:\n",
-          mnemonicLanguageStepId()
+        "Mnemonic Language",
+        language,
+        "not recognized. Select from:\n",
+        mnemonicLanguageStepId()
       );
       expect(index < 0).to.equal(false);
     }
     const seed_words = new SeedWords();
-    seed_words.pointerAssign(InterfaceFFI.seedWordsGetMnemonicWordListForLanguage(
+    seed_words.pointerAssign(
+      InterfaceFFI.seedWordsGetMnemonicWordListForLanguage(
         utf8.encode(mnemonicLanguageText()[index])
-    ));
+      )
+    );
     const mnemonicWords = [];
     for (let i = 0; i < seed_words.getLength(); i++) {
       mnemonicWords.push(seed_words.getAt(i));
