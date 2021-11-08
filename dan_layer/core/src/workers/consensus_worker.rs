@@ -252,20 +252,28 @@ where
             },
             Prepare => {
                 let db = self.db_factory.create()?;
-                let locked_qc = db.get_locked_qc()?;
-
-                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone(), locked_qc);
-                p.next_event(
-                    &self.get_current_view()?,
-                    self.timeout,
-                    self.committee_manager.current_committee()?,
-                    &mut self.inbound_connections,
-                    &mut self.outbound_service,
-                    &self.payload_provider,
-                    &self.signing_service,
-                    &mut self.payload_processor,
-                )
-                .await
+                let mut unit_of_work = db.new_unit_of_work();
+                let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
+                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
+                let res = p
+                    .next_event(
+                        &self.get_current_view()?,
+                        self.timeout,
+                        self.committee_manager.current_committee()?,
+                        &mut self.inbound_connections,
+                        &mut self.outbound_service,
+                        &self.payload_provider,
+                        &self.signing_service,
+                        &mut self.payload_processor,
+                        &self.chain_storage_service,
+                        unit_of_work.clone(),
+                        &mut state_tx,
+                    )
+                    .await?;
+                // Will only be committed in DECIDE
+                self.state_db_unit_of_work = Some(state_tx);
+                unit_of_work.commit()?;
+                Ok(res)
             },
             PreCommit => {
                 let db = self.db_factory.create()?;
@@ -289,39 +297,55 @@ where
             },
 
             Commit => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                let (res, locked_qc) = state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
+                        unit_of_work.clone(),
                     )
                     .await?;
-                if let Some(locked_qc) = locked_qc {
-                    todo!("Save to db?");
-                    // self.locked_qc = Arc::new(locked_qc);
-                }
+
+                unit_of_work.commit()?;
+
                 Ok(res)
             },
             Decide => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
-                        &self.signing_service,
+                        unit_of_work.clone(),
                     )
-                    .await
+                    .await?;
+                unit_of_work.commit()?;
+                if let Some(mut state_tx) = self.state_db_unit_of_work.take() {
+                    state_tx.commit()?;
+                } else {
+                    // technically impossible
+                    error!(target: LOG_TARGET, "No state unit of work was present");
+                    return Err(DigitalAssetError::InvalidLogicPath {
+                        reason: "Tried to commit state after DECIDE, but no state tx was present".to_string(),
+                    });
+                }
+
+                Ok(res)
             },
             NextView => {
                 info!(
@@ -329,6 +353,7 @@ where
                     "Status: {} in mempool ",
                     self.payload_provider.get_payload_queue().await,
                 );
+                self.state_db_unit_of_work = None;
                 let mut state = states::NextViewState::new();
                 state
                     .next_event(

@@ -59,6 +59,7 @@ impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
         Self {
             parent: Vec::from(source.parent().as_bytes()),
             payload: Some(source.payload().clone().into()),
+            height: source.height(),
         }
     }
 }
@@ -156,6 +157,7 @@ impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
                 .map(|p| p.try_into())
                 .transpose()?
                 .ok_or_else(|| "payload not provided".to_string())?,
+            value.height,
         ))
     }
 }

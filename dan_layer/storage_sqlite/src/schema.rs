@@ -2,8 +2,7 @@ table! {
     instructions (id) {
         id -> Integer,
         hash -> Binary,
-        node_hash -> Binary,
-        asset_id -> Binary,
+        node_id -> Integer,
         template_id -> Integer,
         method -> Text,
         args -> Binary,
@@ -21,9 +20,12 @@ table! {
 }
 
 table! {
-    nodes (hash) {
+    nodes (id) {
+        id -> Integer,
         hash -> Binary,
         parent -> Binary,
+        height -> Integer,
+        is_committed -> Bool,
     }
 }
 
@@ -45,6 +47,8 @@ table! {
         value -> Binary,
     }
 }
+
+joinable!(instructions -> nodes (node_id));
 
 allow_tables_to_appear_in_same_query!(
     instructions,

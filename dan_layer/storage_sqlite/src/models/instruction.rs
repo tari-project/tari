@@ -19,31 +19,24 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::storage::StorageError;
-use thiserror::Error;
+use crate::schema::*;
 
-#[derive(Debug, Error)]
-pub enum DigitalAssetError {
-    #[error("Unknown method: {method_name}")]
-    _UnknownMethod { method_name: String },
-    #[error("Missing argument at position {position} (name: {argument_name}")]
-    _MissingArgument { argument_name: String, position: usize },
-    #[error("Invalid sig, TODO: fill in deets")]
-    InvalidSignature,
-    #[error("Peer sent an invalid message: {0}")]
-    InvalidPeerMessage(String),
-    #[error("Storage error: {0}")]
-    StorageError(#[from] StorageError),
-    #[error("Metadata was malformed: {0}")]
-    MalformedMetadata(String),
-    #[error("Could not convert between types:{0}")]
-    ConversionError(String),
-    #[error("Branched to an unexpected logic path, this is most likely due to a bug:{reason}")]
-    InvalidLogicPath { reason: String },
+#[derive(Queryable)]
+pub struct Instruction {
+    pub id: i32,
+    pub hash: Vec<u8>,
+    pub node_hash: Vec<u8>,
+    pub template_id: i32,
+    pub method: String,
+    pub args: Vec<u8>,
 }
 
-impl From<lmdb_zero::Error> for DigitalAssetError {
-    fn from(err: lmdb_zero::Error) -> Self {
-        Self::StorageError(err.into())
-    }
+#[derive(Insertable)]
+#[table_name = "instructions"]
+pub struct NewInstruction {
+    pub hash: Vec<u8>,
+    pub node_id: i32,
+    pub template_id: i32,
+    pub method: String,
+    pub args: Vec<u8>,
 }

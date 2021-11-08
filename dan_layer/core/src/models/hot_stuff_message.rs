@@ -140,6 +140,17 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         }
     }
 
+    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+        Self {
+            message_type: HotStuffMessageType::Commit,
+            node_hash: Some(node_hash),
+            view_number,
+            node: None,
+            partial_sig: None,
+            justify: None,
+        }
+    }
+
     pub fn decide(
         node: Option<HotStuffTreeNode<TPayload>>,
         commit_qc: Option<QuorumCertificate>,

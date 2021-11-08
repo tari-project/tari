@@ -40,4 +40,8 @@ pub enum StorageError {
     QueryError { reason: String },
     #[error("Migration error: {reason}")]
     MigrationError { reason: String },
+    #[error("Invalid unit of work tracker type")]
+    InvalidUnitOfWorkTrackerType,
+    #[error("Item does not exist")]
+    NotFound,
 }

@@ -24,8 +24,11 @@ use crate::schema::*;
 
 #[derive(Queryable)]
 pub struct Node {
-    hash: Vec<u8>,
-    parent: Vec<u8>,
+    pub id: i32,
+    pub hash: Vec<u8>,
+    pub parent: Vec<u8>,
+    pub height: i32,
+    pub is_committed: bool,
 }
 
 #[derive(Insertable)]
@@ -33,4 +36,5 @@ pub struct Node {
 pub struct NewNode {
     pub hash: Vec<u8>,
     pub parent: Vec<u8>,
+    pub height: i32,
 }

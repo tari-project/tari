@@ -45,7 +45,7 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
 use crate::{
     models::TreeNodeHash,
     services::PayloadProcessor,
-    storage::{BackendAdapter, DbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StorageError, UnitOfWork},
 };
 use tokio::time::{sleep, Duration};
 
@@ -73,7 +73,6 @@ pub struct Prepare<
     TDbFactory: DbFactory<TBackendAdapter>,
 {
     node_id: TAddr,
-    locked_qc: QuorumCertificate,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
@@ -119,10 +118,9 @@ where
     TBackendAdapter: BackendAdapter + Send + Sync,
     TDbFactory: DbFactory<TBackendAdapter> + Clone,
 {
-    pub fn new(node_id: TAddr, db_factory: TDbFactory, locked_qc: QuorumCertificate) -> Self {
+    pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
         Self {
             node_id,
-            locked_qc,
             phantom: PhantomData,
             phantom_payload_provider: PhantomData,
             phantom_outbound: PhantomData,
@@ -135,7 +133,11 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn next_event(
+    pub async fn next_event<
+        TChainStorageService: ChainStorageService<TPayload>,
+        TUnitOfWork: UnitOfWork,
+        TStateDbUnitOfWork: StateDbUnitOfWork,
+    >(
         &mut self,
         current_view: &View,
         timeout: Duration,
@@ -145,6 +147,9 @@ where
         payload_provider: &TPayloadProvider,
         signing_service: &TSigningService,
         payload_processor: &mut TPayloadProcessor,
+        chain_storage_service: &TChainStorageService,
+        chain_tx: TUnitOfWork,
+        state_tx: &mut TStateDbUnitOfWork,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
@@ -154,6 +159,7 @@ where
         trace!(target: LOG_TARGET, "next_event_result: {:?}", next_event_result);
 
         let started = Instant::now();
+        let mut chain_tx = chain_tx;
 
         loop {
             tokio::select! {
@@ -168,7 +174,7 @@ where
                     }
                     if let Some(result) = self.process_replica_message(&message, current_view, &from,
                         committee.leader_for_view(current_view.view_id),  outbound_service, signing_service,
-                    payload_processor).await? {
+                    payload_processor, &mut chain_tx, chain_storage_service, state_tx).await? {
                         next_event_result = result;
                         break;
                     }
@@ -238,13 +244,13 @@ where
                 committee.len()
             );
             let high_qc = self.find_highest_qc();
-            dbg!(&high_qc);
+
+            // TODO: get actual height
             let proposal = self
-                .create_proposal(high_qc.node_hash().clone(), payload_provider)
+                .create_proposal(high_qc.node_hash().clone(), payload_provider, 0)
                 .await?;
             self.broadcast_proposal(outbound, committee, proposal, high_qc, current_view.view_id)
                 .await?;
-            // Ok(Some(ConsensusWorkerStateEvent::Prepared))
             Ok(None) // Will move to pre-commit when it receives the message as a replica
         } else {
             println!(
@@ -256,7 +262,11 @@ where
         }
     }
 
-    async fn process_replica_message(
+    async fn process_replica_message<
+        TUnitOfWork: UnitOfWork,
+        TChainStorageService: ChainStorageService<TPayload>,
+        TStateDbUnitOfWork: StateDbUnitOfWork,
+    >(
         &self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
@@ -265,6 +275,9 @@ where
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
         payload_processor: &mut TPayloadProcessor,
+        chain_tx: &mut TUnitOfWork,
+        chain_storage_service: &TChainStorageService,
+        state_tx: &mut TStateDbUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
             // println!(
@@ -285,25 +298,28 @@ where
         let node = message.node().unwrap();
         if let Some(justify) = message.justify() {
             if self.does_extend(node, justify.node_hash()) {
-                if !self.is_safe_node(node, justify) {
+                if !self.is_safe_node(node, justify, chain_tx)? {
                     unimplemented!("Node is not safe")
                 }
 
-                let db = self.db_factory.create_state_db()?;
-                let unit_of_work = db.new_unit_of_work();
+                dbg!(&node);
+                let res = payload_processor
+                    .process_payload(node.payload(), state_tx.clone())
+                    .await?;
+                if res == node.payload().state_root() {
+                    chain_storage_service
+                        .add_node::<TUnitOfWork>(node, chain_tx.clone())
+                        .await?;
 
-                let res = payload_processor.process_payload(node.payload(), unit_of_work).await?;
-
-                // TODO: Check result equals qc result
-
-                self.send_vote_to_leader(
-                    node.hash().clone(),
-                    outbound,
-                    view_leader,
-                    current_view.view_id,
-                    signing_service,
-                )
-                .await?;
+                    self.send_vote_to_leader(
+                        node.hash().clone(),
+                        outbound,
+                        view_leader,
+                        current_view.view_id,
+                        signing_service,
+                    )
+                    .await?;
+                }
                 Ok(Some(ConsensusWorkerStateEvent::Prepared))
             } else {
                 unimplemented!("Did not extend from qc.justify.node")
@@ -335,6 +351,7 @@ where
         &self,
         parent: TreeNodeHash,
         payload_provider: &TPayloadProvider,
+        height: u32,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         info!(target: LOG_TARGET, "Creating new proposal");
 
@@ -342,7 +359,7 @@ where
         sleep(Duration::from_secs(3)).await;
 
         let payload = payload_provider.create_payload().await?;
-        Ok(HotStuffTreeNode::from_parent(parent, payload))
+        Ok(HotStuffTreeNode::from_parent(parent, payload, height))
     }
 
     async fn broadcast_proposal(
@@ -363,9 +380,14 @@ where
         &from == &node.parent()
     }
 
-    fn is_safe_node(&self, node: &HotStuffTreeNode<TPayload>, quorum_certificate: &QuorumCertificate) -> bool {
-        self.does_extend(node, self.locked_qc.node_hash()) ||
-            quorum_certificate.view_number() > self.locked_qc.view_number()
+    fn is_safe_node<TUnitOfWork: UnitOfWork>(
+        &self,
+        node: &HotStuffTreeNode<TPayload>,
+        quorum_certificate: &QuorumCertificate,
+        chain_tx: &mut TUnitOfWork,
+    ) -> Result<bool, StorageError> {
+        let locked_qc = chain_tx.get_locked_qc()?;
+        Ok(self.does_extend(node, locked_qc.node_hash()) || quorum_certificate.view_number() > locked_qc.view_number())
     }
 
     async fn send_vote_to_leader(

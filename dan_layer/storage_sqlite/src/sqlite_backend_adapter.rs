@@ -71,10 +71,11 @@ impl BackendAdapter for SqliteBackendAdapter {
 
     fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         match item {
-            NewUnitOfWorkTracker::Node { hash, parent } => {
+            NewUnitOfWorkTracker::Node { hash, parent, height } => {
                 let new_node = NewNode {
                     hash: Vec::from(hash.as_bytes()),
                     parent: Vec::from(parent.as_bytes()),
+                    height: *height as i32,
                 };
                 diesel::insert_into(nodes::table)
                     .values(&new_node)
@@ -163,6 +164,22 @@ impl BackendAdapter for SqliteBackendAdapter {
                     },
                 }
             },
+            UnitOfWorkTracker::Node {
+                hash,
+                parent,
+                height,
+                is_committed,
+            } => {
+                use crate::schema::nodes::dsl;
+                diesel::update(dsl::nodes.find(id))
+                    .set((
+                        dsl::hash.eq(&hash.0),
+                        dsl::parent.eq(&parent.0),
+                        dsl::height.eq(*height as i32),
+                        dsl::is_committed.eq(is_committed),
+                    ))
+                    .execute(transaction.connection())?;
+            },
         }
         Ok(())
     }
@@ -219,5 +236,17 @@ impl BackendAdapter for SqliteBackendAdapter {
             TreeNodeHash(qc.node_hash.clone()),
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
         ))
+    }
+
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), Self::Error> {
+        use crate::schema::nodes::dsl;
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let node: Node = dsl::nodes.filter(nodes::hash.eq(&node_hash.0)).first(&connection)?;
+        Ok((node.id, UnitOfWorkTracker::Node {
+            hash: TreeNodeHash(node.hash),
+            parent: TreeNodeHash(node.parent),
+            height: node.height as u32,
+            is_committed: node.is_committed,
+        }))
     }
 }

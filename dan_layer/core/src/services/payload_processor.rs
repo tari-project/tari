@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Payload, TariDanPayload},
+    models::{Payload, StateRoot, TariDanPayload},
     services::{AssetProcessor, MempoolService},
     storage::{ChainDb, ChainDbUnitOfWork, DbFactory, StateDbUnitOfWork, UnitOfWork},
 };
@@ -36,7 +36,7 @@ pub trait PayloadProcessor<TPayload: Payload> {
         &self,
         payload: &TPayload,
         unit_of_work: TUnitOfWork,
-    ) -> Result<(), DigitalAssetError>;
+    ) -> Result<StateRoot, DigitalAssetError>;
 }
 
 pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
@@ -66,22 +66,16 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolServ
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
         &self,
         payload: &TariDanPayload,
-        unit_of_work: TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        // let mut unit_of_work = db.new_unit_of_work();
+        state_tx: TUnitOfWork,
+    ) -> Result<StateRoot, DigitalAssetError> {
         for instruction in payload.instructions() {
             dbg!("Executing instruction");
             dbg!(&instruction);
             // TODO: Should we swallow + log the error instead of propagating it?
             self.asset_processor
-                .execute_instruction(instruction, unit_of_work.clone())?;
+                .execute_instruction(instruction, state_tx.clone())?;
         }
 
-        // self.mempool_service.remove_instructions(payload.instructions()).await?;
-
-        // TODO: Remove this....Unit of work should actually be committed only at COMMIT stage
-        // unit_of_work.commit()?;
-
-        Ok(())
+        Ok(state_tx.calculate_root()?)
     }
 }

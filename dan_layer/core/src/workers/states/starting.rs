@@ -113,7 +113,8 @@ where TBaseNodeClient: BaseNodeClient
             }
             let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());
             let genesis_qc = QuorumCertificate::genesis(node.hash().clone());
-            chain_storage_service.save_node(&node, tx.clone()).await?;
+            chain_storage_service.add_node(&node, tx.clone()).await?;
+            tx.commit_node(node.hash())?;
             chain_storage_service.set_locked_qc(genesis_qc, tx.clone()).await?;
             state_tx.commit()?;
             tx.commit()?;

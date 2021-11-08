@@ -21,7 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffMessageType, Instruction, Payload, QuorumCertificate, Signature, TreeNodeHash, ViewId},
+    models::{
+        HotStuffMessageType,
+        HotStuffTreeNode,
+        Instruction,
+        Payload,
+        QuorumCertificate,
+        Signature,
+        TreeNodeHash,
+        ViewId,
+    },
     storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWork, UnitOfWorkTracker},
 };
 use std::sync::{Arc, RwLock};
@@ -62,6 +71,42 @@ impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
 // Cloneable, Send, Sync wrapper
 pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
     inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
+}
+
+impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
+    fn find_proposed_node(
+        &mut self,
+        node_hash: &TreeNodeHash,
+    ) -> Result<(TBackendAdapter::Id, UnitOfWorkTracker), StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        for (clean_id, clean_item) in &inner.clean_items {
+            match clean_item {
+                UnitOfWorkTracker::Node { hash, .. } => {
+                    if hash == node_hash {
+                        return Ok((*clean_id, clean_item.clone()));
+                    }
+                },
+                _ => (),
+            };
+        }
+        for (dirty_id, dirty_item) in &inner.dirty_items {
+            match dirty_item {
+                UnitOfWorkTracker::Node { hash, .. } => {
+                    if hash == node_hash {
+                        return Ok((*dirty_id, dirty_item.clone()));
+                    }
+                },
+                _ => (),
+            };
+        }
+        // finally hit the db
+        let (id, item) = inner
+            .backend_adapter
+            .find_node_by_hash(node_hash)
+            .map_err(TBackendAdapter::Error::into)?;
+        inner.clean_items.push((id, item.clone()));
+        Ok((id, item))
+    }
 }
 
 pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
@@ -122,12 +167,12 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
         Ok(())
     }
 
-    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError> {
+    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash, height: u32) -> Result<(), StorageError> {
         self.inner
             .write()
             .unwrap()
             .new_items
-            .push(NewUnitOfWorkTracker::Node { hash, parent });
+            .push(NewUnitOfWorkTracker::Node { hash, parent, height });
         Ok(())
     }
 
@@ -140,20 +185,69 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
         Ok(())
     }
 
-    fn set_locked_qc(
-        &mut self,
-        message_type: HotStuffMessageType,
-        view_number: ViewId,
-        node_hash: TreeNodeHash,
-        signature: Option<Signature>,
-    ) -> Result<(), StorageError> {
+    fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        let id = inner.backend_adapter.locked_qc_id();
+
+        for (_, clean_item) in &inner.clean_items {
+            match clean_item {
+                UnitOfWorkTracker::LockedQc {
+                    message_type,
+                    view_number,
+                    node_hash,
+                    signature,
+                } => {
+                    return Ok(QuorumCertificate::new(
+                        message_type.clone(),
+                        view_number.clone(),
+                        node_hash.clone(),
+                        signature.clone(),
+                    ));
+                },
+                _ => (),
+            };
+        }
+        for (_, dirty_item) in &inner.dirty_items {
+            match dirty_item {
+                UnitOfWorkTracker::LockedQc {
+                    message_type,
+                    view_number,
+                    node_hash,
+                    signature,
+                } => {
+                    return Ok(QuorumCertificate::new(
+                        message_type.clone(),
+                        view_number.clone(),
+                        node_hash.clone(),
+                        signature.clone(),
+                    ));
+                },
+                _ => (),
+            };
+        }
+        // finally hit the db
+        let qc = inner
+            .backend_adapter
+            .get_locked_qc()
+            .map_err(TBackendAdapter::Error::into)?;
+        let id = inner.backend_adapter.locked_qc_id();
+        inner.clean_items.push((id, UnitOfWorkTracker::LockedQc {
+            message_type: qc.message_type().clone(),
+            view_number: qc.view_number().clone(),
+            node_hash: qc.node_hash().clone(),
+            signature: qc.signature().cloned(),
+        }));
+        Ok(qc)
+    }
+
+    fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
         let mut inner = self.inner.write().unwrap();
         let id = inner.backend_adapter.locked_qc_id();
         inner.dirty_items.push((id, UnitOfWorkTracker::LockedQc {
-            message_type,
-            view_number,
-            node_hash,
-            signature,
+            message_type: qc.message_type(),
+            view_number: qc.view_number(),
+            node_hash: qc.node_hash().clone(),
+            signature: qc.signature().cloned(),
         }));
         Ok(())
     }
@@ -167,6 +261,17 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
             node_hash: qc.node_hash().clone(),
             signature: qc.signature().cloned(),
         }));
+        Ok(())
+    }
+
+    fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError> {
+        let (id, mut item) = self.find_proposed_node(node_hash)?;
+        let mut inner = self.inner.write().unwrap();
+        match &mut item {
+            UnitOfWorkTracker::Node { is_committed, .. } => *is_committed = true,
+            _ => return Err(StorageError::InvalidUnitOfWorkTrackerType),
+        }
+        inner.dirty_items.push((id, item));
         Ok(())
     }
 }

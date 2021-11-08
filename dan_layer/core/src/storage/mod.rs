@@ -29,6 +29,7 @@ use crate::models::{
     QuorumCertificate,
     SidechainMetadata,
     Signature,
+    StateRoot,
     TreeNodeHash,
     ViewId,
 };
@@ -54,6 +55,9 @@ pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create_state_db(&self) -> Result<StateDb<StateDbUnitOfWorkImpl>, StorageError>;
 }
 
+// TODO: I don't really like the matches on this struct, so it would be better to have individual types, e.g.
+// NodeDataTracker, QcDataTracker
+#[derive(Clone)]
 pub enum UnitOfWorkTracker {
     SidechainMetadata,
     LockedQc {
@@ -68,12 +72,19 @@ pub enum UnitOfWorkTracker {
         node_hash: TreeNodeHash,
         signature: Option<Signature>,
     },
+    Node {
+        hash: TreeNodeHash,
+        parent: TreeNodeHash,
+        height: u32,
+        is_committed: bool,
+    },
 }
 
 pub enum NewUnitOfWorkTracker {
     Node {
         hash: TreeNodeHash,
         parent: TreeNodeHash,
+        height: u32,
     },
     Instruction {
         instruction: Instruction,
@@ -84,7 +95,7 @@ pub enum NewUnitOfWorkTracker {
 pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
-    type Id: Send + Sync;
+    type Id: Copy + Send + Sync;
     type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
@@ -101,30 +112,24 @@ pub trait BackendAdapter: Send + Sync + Clone {
     fn prepare_qc_id(&self) -> Self::Id;
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error>;
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), Self::Error>;
 }
 
 pub trait UnitOfWork: Clone + Send + Sync {
     fn commit(&mut self) -> Result<(), StorageError>;
-    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash) -> Result<(), StorageError>;
+    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash, height: u32) -> Result<(), StorageError>;
     fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
-    fn set_locked_qc(
-        &mut self,
-        message_type: HotStuffMessageType,
-        view_number: ViewId,
-        node_hash: TreeNodeHash,
-        signature: Option<Signature>,
-    ) -> Result<(), StorageError>;
-
+    fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
+    fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
+    fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
+    // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
 }
 
 pub trait StateDbUnitOfWork: Clone + Sized + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
     fn commit(&mut self) -> Result<StateRoot, StorageError>;
-}
-
-pub struct StateRoot {
-    root: Vec<u8>,
+    fn calculate_root(&self) -> Result<StateRoot, StorageError>;
 }
 
 #[derive(Clone)]
@@ -141,9 +146,11 @@ impl StateDbUnitOfWork for StateDbUnitOfWorkImpl {
 
     fn commit(&mut self) -> Result<StateRoot, StorageError> {
         // todo!("actually commit")
-        Ok(StateRoot {
-            root: Vec::from([8u8; 32]),
-        })
+        Ok(StateRoot::default())
+    }
+
+    fn calculate_root(&self) -> Result<StateRoot, StorageError> {
+        Ok(StateRoot::default())
     }
 }
 

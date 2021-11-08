@@ -31,6 +31,7 @@ message QuorumCertificate {
 message HotStuffTreeNode {
     bytes parent = 1;
     TariDanPayload payload = 2;
+    uint32 height = 3;
 }
 
 message Signature{

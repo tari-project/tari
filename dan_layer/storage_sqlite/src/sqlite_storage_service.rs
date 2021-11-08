@@ -38,7 +38,7 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
         todo!()
     }
 
-    async fn save_node<TUnitOfWork: UnitOfWork>(
+    async fn add_node<TUnitOfWork: UnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TariDanPayload>,
         db: TUnitOfWork,
@@ -47,7 +47,7 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
         for instruction in node.payload().instructions() {
             db.add_instruction(node.hash().clone(), instruction.clone())?;
         }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
+        db.add_node(node.hash().clone(), node.parent().clone(), node.height())?;
         Ok(())
     }
 
@@ -57,12 +57,7 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
         db: TUnitOfWork,
     ) -> Result<(), StorageError> {
         let mut db = db;
-        db.set_locked_qc(
-            qc.message_type(),
-            qc.view_number(),
-            qc.node_hash().clone(),
-            qc.signature().map(|s| s.clone()),
-        )?;
+        db.set_locked_qc(&qc)?;
         Ok(())
     }
 }

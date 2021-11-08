@@ -1,18 +1,22 @@
 -- Your SQL goes here
 create table nodes (
-    hash blob not null primary key,
-    parent blob not null
+    id integer primary key autoincrement not null,
+    hash blob not null unique,
+    parent blob not null,
+    height integer not null,
+    is_committed boolean not null DEFAULT FALSE
 );
 
 create table instructions (
     id integer primary  key autoincrement not null,
     hash blob not null,
-    node_hash blob not null,
-    asset_id blob not null,
+    node_id integer not null ,
     template_id int not null,
     method text not null,
-    args blob not null
+    args blob not null,
+    foreign key (node_id) references nodes(id)
 );
+
 
 create table locked_qc (
     id integer primary key not null, -- should always be 1 row
