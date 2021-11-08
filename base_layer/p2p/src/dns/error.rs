@@ -28,4 +28,8 @@ pub enum DnsClientError {
     ClientError(#[from] ClientError),
     #[error("DNS Protocol error: {0}")]
     ProtoError(#[from] ProtoError),
+    #[error("DNS timeout error")]
+    Timeout,
+    #[error("Failed to parse name server string")]
+    NameServerParseFailed,
 }

@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, Network},
+    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, Network},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
@@ -78,7 +78,7 @@ pub struct GlobalConfig {
     pub grpc_console_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
-    pub dns_seeds_name_server: SocketAddr,
+    pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
     pub num_mining_threads: usize,
@@ -366,14 +366,17 @@ fn convert_node_config(
             .unwrap_or_default(),
     };
 
+    // TODO: dns resolver presets e.g. "cloudflare", "quad9", "custom" (maybe just in toml) and
+    //       add support for multiple addresses
     let key = "common.dns_seeds_name_server";
     let dns_seeds_name_server = cfg
         .get_str(key)
         .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         .and_then(|s| {
-            s.parse::<SocketAddr>()
+            s.parse::<DnsNameServer>()
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         })?;
+
     let key = config_string("base_node", net_str, "bypass_range_proof_verification");
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
