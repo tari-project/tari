@@ -156,6 +156,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
     // The transaction was not found by the wallet its in transaction database
     TRANSACTION_STATUS_NOT_FOUND = 7;
+    // The transaction was rejected by the mempool
+    TRANSACTION_STATUS_REJECTED = 8;
 }
 
 message GetCompletedTransactionsRequest { }

@@ -361,7 +361,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
-        .block_on(db.cancel_completed_transaction(cancelled_tx_id))
+        .block_on(db.reject_completed_transaction(cancelled_tx_id))
         .unwrap();
     let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs_map.len(), num_completed_txs - 1);

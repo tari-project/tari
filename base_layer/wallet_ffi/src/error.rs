@@ -26,7 +26,7 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::mnemonic::MnemonicError;
+use tari_key_manager::error::MnemonicError;
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::{WalletError, WalletStorageError},
@@ -270,7 +270,7 @@ impl From<WalletError> for LibWalletError {
                 code: 427,
                 message: format!("{:?}", w),
             },
-            WalletError::WalletStorageError(WalletStorageError::IncorrectPassword) => Self {
+            WalletError::WalletStorageError(WalletStorageError::InvalidPassphrase) => Self {
                 code: 428,
                 message: format!("{:?}", w),
             },

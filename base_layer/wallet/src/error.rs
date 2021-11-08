@@ -40,6 +40,7 @@ use tari_comms::{
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
+use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use thiserror::Error;
@@ -90,6 +91,8 @@ pub enum WalletError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
+    #[error("Key manager error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
 
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
@@ -144,6 +147,8 @@ pub enum WalletStorageError {
     HexError(#[from] HexError),
     #[error("Invalid Encryption Cipher was provided to database")]
     InvalidEncryptionCipher,
+    #[error("Invalid passphrase was provided")]
+    InvalidPassphrase,
     #[error("Missing Nonce in encrypted data")]
     MissingNonce,
     #[error("Aead error: `{0}`")]
@@ -160,10 +165,10 @@ pub enum WalletStorageError {
     IoError(#[from] std::io::Error),
     #[error("No password provided for encrypted wallet")]
     NoPasswordError,
-    #[error("Incorrect password provided for encrypted wallet")]
-    IncorrectPassword,
     #[error("Deprecated operation error")]
     DeprecatedOperation,
+    #[error("Key Manager Error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
 }
 
 impl From<WalletStorageError> for ExitCodes {
@@ -171,7 +176,7 @@ impl From<WalletStorageError> for ExitCodes {
         use WalletStorageError::*;
         match err {
             NoPasswordError => ExitCodes::NoPassword,
-            IncorrectPassword => ExitCodes::IncorrectPassword,
+            InvalidPassphrase => ExitCodes::IncorrectPassword,
             e => ExitCodes::WalletError(e.to_string()),
         }
     }

@@ -151,6 +151,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError>;
+    /// Returns the stored header and accumulated data with the highest height.
+    fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored chain metadata.

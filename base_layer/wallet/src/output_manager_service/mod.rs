@@ -33,8 +33,8 @@ use crate::{
 use futures::future;
 use log::*;
 pub(crate) use master_key_manager::MasterKeyManager;
-use tari_comms::types::CommsSecretKey;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -63,7 +63,7 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    master_secret_key: CommsSecretKey,
+    master_seed: CipherSeed,
 }
 
 impl<T> OutputManagerServiceInitializer<T>
@@ -74,14 +74,14 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        master_secret_key: CommsSecretKey,
+        master_seed: CipherSeed,
     ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
-            master_secret_key,
+            master_seed,
         }
     }
 }
@@ -111,7 +111,7 @@ where T: OutputManagerBackend + 'static
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let master_secret_key = self.master_secret_key.clone();
+        let master_seed = self.master_seed.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -126,7 +126,7 @@ where T: OutputManagerBackend + 'static
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                master_secret_key,
+                master_seed,
             )
             .await
             .expect("Could not initialize Output Manager Service")

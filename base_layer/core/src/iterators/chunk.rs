@@ -105,7 +105,7 @@ macro_rules! non_overlapping_iter_impl {
                         Some(chunk)
                     },
                     None => {
-                        let chunk = (self.current, <$ty>::MAX);
+                        let chunk = (self.current, <$ty>::MAX - 1);
                         self.current = <$ty>::MAX;
                         Some(chunk)
                     },
@@ -117,6 +117,10 @@ macro_rules! non_overlapping_iter_impl {
                 if self.size == 0 || self.current_end == 0 {
                     return None;
                 }
+                // Check if end will go beyond start
+                if self.current_end == self.current {
+                    return None;
+                }
 
                 let size = self.size as $ty;
                 // Is this the first iteration?
@@ -126,7 +130,7 @@ macro_rules! non_overlapping_iter_impl {
                     // Would there be an overflow (if iterating from the forward to back)
                     if self.current_end.saturating_sub(rem).checked_add(size).is_none() {
                         self.current_end = self.current_end.saturating_sub(rem);
-                        let chunk = (self.current_end, <$ty>::MAX);
+                        let chunk = (self.current_end, <$ty>::MAX - 1);
                         return Some(chunk);
                     }
 
@@ -135,11 +139,6 @@ macro_rules! non_overlapping_iter_impl {
                         let chunk = (self.current_end, self.end - 1);
                         return Some(chunk);
                     }
-                }
-
-                // Check if end will go beyond start
-                if self.current_end == self.current {
-                    return None;
                 }
 
                 let next = self.current_end.saturating_sub(size);
@@ -236,7 +235,7 @@ mod test {
     fn overflow() {
         let mut iter = NonOverlappingIntegerPairIter::new(250u8, 255, 3);
         assert_eq!(iter.next().unwrap(), (250, 252));
-        assert_eq!(iter.next().unwrap(), (253, 255));
+        assert_eq!(iter.next().unwrap(), (253, 254));
         assert!(iter.next().is_none());
     }
 
@@ -267,6 +266,13 @@ mod test {
         assert_eq!(iter.next().unwrap(), (2001, 3000));
         assert_eq!(iter.next().unwrap(), (1001, 2000));
         assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(254u8, u8::MAX, 1000).rev();
+        assert_eq!(iter.next().unwrap(), (254, 254));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(255u8, u8::MAX, 1000).rev();
+        assert!(iter.next().is_none());
     }
 
     #[test]
@@ -274,15 +280,21 @@ mod test {
         let size = OsRng.gen_range(3usize..=10);
         let rand_start = OsRng.gen::<u8>();
         let rand_end = OsRng.gen::<u8>().saturating_add(rand_start);
+
+        // If the iterator never ends, we have the params used
+        println!(
+            "iterator_symmetry: rand_start = {}, rand_end = {}, size = {}",
+            rand_start, rand_end, size
+        );
         let iter_rev = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size).rev();
         let iter = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size);
+
+        let collect1 = iter.collect::<Vec<_>>();
+        let collect2 = iter_rev.collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>();
         assert_eq!(
-            iter.collect::<Vec<_>>(),
-            iter_rev.collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>(),
+            collect1, collect2,
             "Failed with rand_start = {}, rand_end = {}, size = {}",
-            rand_start,
-            rand_end,
-            size
+            rand_start, rand_end, size
         );
     }
 }

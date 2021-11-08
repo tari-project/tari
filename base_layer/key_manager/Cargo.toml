@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2018"
 
 [lib]
@@ -13,6 +13,13 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 
+arrayvec = "0.7.1"
+argon2 = { version = "0.2", features = ["std"] }
+blake2 = "0.9.1"
+chacha20 = "0.7.1"
+chrono = { version = "0.4.6", features = ["serde"] }
+clear_on_drop = "=0.2.4"
+crc32fast = "1.2.1"
 digest = "0.9.0"
 getrandom = { version = "0.2.3", features = ["js"] }
 rand = "0.8"

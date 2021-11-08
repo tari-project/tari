@@ -205,6 +205,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_last_header() -> BlockHeader, "fetch_last_header");
 
+    make_async_fn!(fetch_last_chain_header() -> ChainHeader, "fetch_last_chain_header");
+
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
 
     make_async_fn!(insert_valid_headers(headers: Vec<ChainHeader>) -> (), "insert_valid_headers");

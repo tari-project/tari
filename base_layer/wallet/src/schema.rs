@@ -53,7 +53,7 @@ table! {
 table! {
     key_manager_states (id) {
         id -> Integer,
-        master_key -> Binary,
+        seed -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
         timestamp -> Timestamp,

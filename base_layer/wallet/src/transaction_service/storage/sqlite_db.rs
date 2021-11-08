@@ -35,7 +35,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
-use aes_gcm::{self, aead::Error as AeadError, Aes256Gcm};
+use aes_gcm::{self, Aes256Gcm};
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
@@ -620,13 +620,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
         let acquire_lock = start.elapsed();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
-                v.cancel(&(*conn))?;
+                v.reject(&(*conn))?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -637,7 +637,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         };
         trace!(
             target: LOG_TARGET,
-            "sqlite profile - cancel_completed_transaction: lock {} + db_op {} = {} ms",
+            "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
             acquire_lock.as_millis(),
             (start.elapsed() - acquire_lock).as_millis(),
             start.elapsed().as_millis()
@@ -1291,19 +1291,19 @@ impl InboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for InboundTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.receiver_protocol.as_bytes().to_vec())?;
         self.receiver_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.receiver_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -1461,19 +1461,19 @@ impl OutboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.sender_protocol.as_bytes().to_vec())?;
         self.sender_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.sender_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -1627,6 +1627,19 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
+    pub fn reject(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateCompletedTransactionSql {
+                cancelled: Some(1i32),
+                status: Some(TransactionStatus::Rejected as i32),
+                ..Default::default()
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
     pub fn cancel(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         self.update(
             UpdateCompletedTransactionSql {
@@ -1715,19 +1728,19 @@ impl CompletedTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.transaction_protocol.as_bytes().to_vec())?;
         self.transaction_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.transaction_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -2171,7 +2184,7 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_err());
         CompletedTransactionSql::try_from(completed_tx1.clone())
             .unwrap()
-            .cancel(&conn)
+            .reject(&conn)
             .unwrap();
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &conn).is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_ok());
