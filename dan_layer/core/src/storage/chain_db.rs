@@ -157,4 +157,16 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
         }));
         Ok(())
     }
+
+    fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        let id = inner.backend_adapter.prepare_qc_id();
+        inner.dirty_items.push((id, UnitOfWorkTracker::PrepareQc {
+            message_type: qc.message_type(),
+            view_number: qc.view_number(),
+            node_hash: qc.node_hash().clone(),
+            signature: qc.signature().cloned(),
+        }));
+        Ok(())
+    }
 }

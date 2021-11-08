@@ -40,7 +40,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StateDbUnitOfWorkImpl, UnitOfWork},
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
@@ -96,6 +96,8 @@ pub struct ConsensusWorker<
     chain_storage_service: TChainStorageService,
     pd: PhantomData<TBackendAdapter>,
     pd2: PhantomData<TPayload>,
+    // TODO: Make generic
+    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl>,
 }
 
 impl<
@@ -138,7 +140,6 @@ where
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
-
     TBaseNodeClient: BaseNodeClient,
     // TODO: REmove this Send
     TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
@@ -181,6 +182,7 @@ where
             chain_storage_service,
             pd: PhantomData,
             pd2: PhantomData,
+            state_db_unit_of_work: None,
         }
     }
 
@@ -266,23 +268,23 @@ where
                 .await
             },
             PreCommit => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                let (res, prepare_qc) = state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
+                        unit_of_work.clone(),
                     )
                     .await?;
-                if let Some(prepare_qc) = prepare_qc {
-                    todo!("Fix this? save to db?");
-                    // self.prepare_qc = Arc::new(prepare_qc);
-                }
+                unit_of_work.commit()?;
                 Ok(res)
             },
 

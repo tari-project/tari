@@ -130,6 +130,39 @@ impl BackendAdapter for SqliteBackendAdapter {
                     },
                 }
             },
+            UnitOfWorkTracker::PrepareQc {
+                message_type,
+                view_number,
+                node_hash,
+                signature,
+            } => {
+                use crate::schema::prepare_qc::dsl;
+                let message_type = message_type.as_u8() as i32;
+                let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(id).first(transaction.connection());
+                match existing {
+                    Ok(x) => {
+                        diesel::update(dsl::prepare_qc.find(id))
+                            .set((
+                                dsl::message_type.eq(message_type),
+                                dsl::view_number.eq(view_number.0 as i64),
+                                dsl::node_hash.eq(node_hash.as_bytes()),
+                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
+                            ))
+                            .execute(transaction.connection())?;
+                    },
+                    Err(_) => {
+                        diesel::insert_into(prepare_qc::table)
+                            .values((
+                                dsl::id.eq(id),
+                                dsl::message_type.eq(message_type),
+                                dsl::view_number.eq(view_number.0 as i64),
+                                dsl::node_hash.eq(node_hash.as_bytes()),
+                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
+                            ))
+                            .execute(transaction.connection())?;
+                    },
+                }
+            },
         }
         Ok(())
     }
@@ -143,11 +176,16 @@ impl BackendAdapter for SqliteBackendAdapter {
         1
     }
 
+    fn prepare_qc_id(&self) -> Self::Id {
+        1
+    }
+
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::*;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        let result: Option<PrepareQc> = prepare_qcs::table
-            .order_by(prepare_qcs::view_number.desc())
+        // TODO: this should be a single row
+        let result: Option<PrepareQc> = prepare_qc::table
+            .order_by(prepare_qc::view_number.desc())
             .first(&connection)
             .optional()?;
         let qc = match result {

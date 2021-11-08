@@ -22,8 +22,8 @@ create table locked_qc (
     signature blob null
 );
 
-create table prepare_qcs (
-                           id integer primary key autoincrement not null,
+create table prepare_qc (
+                           id integer primary key not null,
                            message_type integer not null,
                            view_number bigint not null,
                            node_hash blob not null,

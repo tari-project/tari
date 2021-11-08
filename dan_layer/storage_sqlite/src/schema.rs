@@ -28,7 +28,7 @@ table! {
 }
 
 table! {
-    prepare_qcs (id) {
+    prepare_qc (id) {
         id -> Integer,
         message_type -> Integer,
         view_number -> BigInt,
@@ -50,6 +50,6 @@ allow_tables_to_appear_in_same_query!(
     instructions,
     locked_qc,
     nodes,
-    prepare_qcs,
+    prepare_qc,
     state_key_values,
 );

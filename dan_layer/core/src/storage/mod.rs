@@ -40,6 +40,8 @@ pub use store::{AssetDataStore, AssetStore};
 
 mod chain_db;
 pub use chain_db::{ChainDb, ChainDbUnitOfWork};
+use std::marker::PhantomData;
+
 mod chain_storage_service;
 mod error;
 pub mod lmdb;
@@ -49,12 +51,18 @@ mod store;
 
 pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create(&self) -> Result<ChainDb<TBackendAdapter>, StorageError>;
-    fn create_state_db(&self) -> Result<StateDb, StorageError>;
+    fn create_state_db(&self) -> Result<StateDb<StateDbUnitOfWorkImpl>, StorageError>;
 }
 
 pub enum UnitOfWorkTracker {
     SidechainMetadata,
     LockedQc {
+        message_type: HotStuffMessageType,
+        view_number: ViewId,
+        node_hash: TreeNodeHash,
+        signature: Option<Signature>,
+    },
+    PrepareQc {
         message_type: HotStuffMessageType,
         view_number: ViewId,
         node_hash: TreeNodeHash,
@@ -90,6 +98,7 @@ pub trait BackendAdapter: Send + Sync + Clone {
     ) -> Result<(), Self::Error>;
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn locked_qc_id(&self) -> Self::Id;
+    fn prepare_qc_id(&self) -> Self::Id;
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error>;
 }
@@ -105,9 +114,11 @@ pub trait UnitOfWork: Clone + Send + Sync {
         node_hash: TreeNodeHash,
         signature: Option<Signature>,
     ) -> Result<(), StorageError>;
+
+    fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
 }
 
-pub trait StateDbUnitOfWork: Clone + Send + Sync {
+pub trait StateDbUnitOfWork: Clone + Sized + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
     fn commit(&mut self) -> Result<StateRoot, StorageError>;
 }
@@ -136,11 +147,13 @@ impl StateDbUnitOfWork for StateDbUnitOfWorkImpl {
     }
 }
 
-pub struct StateDb {}
+pub struct StateDb<TStateDbUnitOfWork: StateDbUnitOfWork> {
+    pd: PhantomData<TStateDbUnitOfWork>,
+}
 
-impl StateDb {
+impl StateDb<StateDbUnitOfWorkImpl> {
     pub fn new() -> Self {
-        Self {}
+        Self { pd: Default::default() }
     }
 
     pub fn new_unit_of_work(&self) -> StateDbUnitOfWorkImpl {
