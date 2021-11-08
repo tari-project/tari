@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.13.0](https://github.com/tari-project/tari/compare/v0.12.0...v0.13.0) (2021-11-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* implement new CipherSeed and upgrade encryption KDF (#3505)
+
+### Features
+
+* add a Rejected status to TransactionStatus ([#3512](https://github.com/tari-project/tari/issues/3512)) ([c65a01c](https://github.com/tari-project/tari/commit/c65a01c33f20b79f07227daeb91ccbef5b804b18))
+* add caching and clippy annotations to CI ([#3518](https://github.com/tari-project/tari/issues/3518)) ([beacb9e](https://github.com/tari-project/tari/commit/beacb9e652fdb70ff7164ebcc5f496759c26a903))
+* implement new CipherSeed and upgrade encryption KDF ([#3505](https://github.com/tari-project/tari/issues/3505)) ([ef4f84f](https://github.com/tari-project/tari/commit/ef4f84ff97dd9543669a8b4a37b20d718bd8d18b))
+
+
+### Bug Fixes
+
+* edge case fix for integer pair iter ([#3508](https://github.com/tari-project/tari/issues/3508)) ([097e3e2](https://github.com/tari-project/tari/commit/097e3e2c5b3b4fee305c0d279177e1231b82bf1c))
+* header sync must allow transition to archival/pruned if tip is behind ([#3520](https://github.com/tari-project/tari/issues/3520)) ([e028386](https://github.com/tari-project/tari/commit/e0283867cf7e0c3848dc48b67fee8aa2645ac67c))
+
 ## [0.12.0](https://github.com/tari-project/tari/compare/v0.11.0...v0.12.0) (2021-10-29)
 
 
