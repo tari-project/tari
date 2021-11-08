@@ -172,7 +172,10 @@ impl GreetingRpc for GreetingService {
         tokio::spawn(async move {
             for _ in 0..num_items {
                 time::sleep(Duration::from_millis(delay_ms)).await;
-                tx.send(Ok(item.clone())).await.unwrap();
+                if tx.send(Ok(item.clone())).await.is_err() {
+                    log::info!("stream was interrupted");
+                    break;
+                }
             }
         });
 
