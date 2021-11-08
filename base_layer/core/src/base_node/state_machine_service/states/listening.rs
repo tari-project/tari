@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
     ops::Deref,
+    time::{Duration, Instant},
 };
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
@@ -101,6 +102,7 @@ impl Listening {
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
+        let mut time_since_better_block = None;
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
             match metadata_event.as_ref().map(|v| v.deref()) {
@@ -158,7 +160,7 @@ impl Listening {
                         None => {
                             debug!(
                                 target: LOG_TARGET,
-                                "No best metadata for {} peer(s)",
+                                "No better metadata advertised for {} peer(s)",
                                 peer_metadata_list.len()
                             );
                             continue;
@@ -171,6 +173,26 @@ impl Listening {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+
+                    // If this node is just one block behind, wait for block propagation before
+                    // rushing to sync mode
+                    if self.is_synced &&
+                        best_metadata.height_of_longest_chain() == local.height_of_longest_chain() + 1 &&
+                        time_since_better_block
+                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(30))
+                            .unwrap_or(true)
+                    {
+                        if time_since_better_block.is_none() {
+                            time_since_better_block = Some(Instant::now());
+                        }
+                        debug!(
+                            target: LOG_TARGET,
+                            "This node is one block behind. Best network metadata is at height {}.",
+                            best_metadata.height_of_longest_chain()
+                        );
+                        continue;
+                    }
+                    time_since_better_block = None;
 
                     // If we have configured sync peers, they are already filtered at this point
                     let sync_peers = if configured_sync_peers.is_empty() {
