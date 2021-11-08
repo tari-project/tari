@@ -606,7 +606,7 @@ fn check_db_encryption_status(
 /// A Sql version of the wallet setting key-value table
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "wallet_settings"]
-struct WalletSettingSql {
+pub(crate) struct WalletSettingSql {
     key: String,
     value: String,
 }
