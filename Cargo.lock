@@ -149,6 +149,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dabe5a181f83789739c194cbe5a897dde195078fac08568d09221fd6137a7ba8"
 
 [[package]]
+name = "argon2"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca5162d1b961cb589a8ca08a2aa7cabc6341e05e0bf18d66a07697900b5d2ad0"
+dependencies = [
+ "blake2",
+ "password-hash",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,6 +172,12 @@ checksum = "cd9fd44efafa8690358b7408d253adf110036b88f55672a933f01d616ad9b1b9"
 dependencies = [
  "nodrop",
 ]
+
+[[package]]
+name = "arrayvec"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4dc07131ffa69b8072d35f5007352af944213cde02545e2103680baed38fcd"
 
 [[package]]
 name = "async-stream"
@@ -257,6 +273,12 @@ name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
+
+[[package]]
+name = "base64ct"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6b4d9b1225d28d360ec6a231d65af1fd99a2a095154c8040689617290569c5c"
 
 [[package]]
 name = "bigdecimal"
@@ -920,6 +942,22 @@ dependencies = [
  "libc",
  "mio",
  "parking_lot 0.10.2",
+ "signal-hook",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "crossterm"
+version = "0.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e86d73f2a0b407b5768d10a8c720cf5d2df49a9efc10ca09176d201ead4b7fb"
+dependencies = [
+ "bitflags 1.3.2",
+ "crossterm_winapi",
+ "lazy_static 1.4.0",
+ "libc",
+ "mio",
+ "parking_lot 0.11.2",
  "signal-hook",
  "winapi 0.3.9",
 ]
@@ -2663,7 +2701,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bafe4179722c2894288ee77a9f044f02811c86af699344c498b0840c698a2465"
 dependencies = [
- "arrayvec",
+ "arrayvec 0.4.12",
  "itoa",
 ]
 
@@ -2901,6 +2939,17 @@ dependencies = [
  "redox_syscall 0.2.10",
  "smallvec",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "password-hash"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77e0b28ace46c5a396546bcf443bf422b57049617433d8854227352a4a9b24e7"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.3",
+ "subtle",
 ]
 
 [[package]]
@@ -4236,7 +4285,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "chrono",
  "prost",
@@ -4251,7 +4300,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "config",
  "dirs-next 1.0.2",
@@ -4276,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4334,7 +4383,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "config",
@@ -4364,7 +4413,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "digest",
  "futures 0.3.17",
@@ -4378,7 +4427,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4427,7 +4476,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -4474,7 +4523,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "futures 0.3.17",
  "proc-macro2 1.0.32",
@@ -4489,12 +4538,12 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
  "chrono-english",
- "crossterm",
+ "crossterm 0.17.7",
  "futures 0.3.17",
  "log 0.4.14",
  "opentelemetry",
@@ -4531,7 +4580,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4612,7 +4661,7 @@ dependencies = [
 
 [[package]]
 name = "tari_infra_derive"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "blake2",
  "proc-macro2 0.4.30",
@@ -4622,13 +4671,17 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
+ "argon2",
+ "arrayvec 0.7.1",
+ "blake2",
+ "chacha20",
+ "chrono",
+ "clear_on_drop",
+ "crc32fast",
  "digest",
  "rand 0.8.4",
- "serde 1.0.130",
- "serde_derive",
- "serde_json",
  "sha2",
  "tari_crypto",
  "thiserror",
@@ -4636,7 +4689,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4673,7 +4726,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_node"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bufstream",
  "chrono",
@@ -4703,7 +4756,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -4722,7 +4775,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "bytes 0.5.6",
@@ -4740,6 +4793,7 @@ dependencies = [
  "prost",
  "rand 0.8.4",
  "reqwest",
+ "rustls",
  "semver 1.0.4",
  "serde 1.0.130",
  "serde_derive",
@@ -4760,11 +4814,12 @@ dependencies = [
  "tower 0.3.1",
  "tower-service",
  "trust-dns-client",
+ "webpki",
 ]
 
 [[package]]
 name = "tari_service_framework"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4781,7 +4836,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "futures 0.3.17",
  "tokio 1.13.0",
@@ -4789,7 +4844,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -4807,7 +4862,7 @@ dependencies = [
 
 [[package]]
 name = "tari_stratum_ffi"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "hex",
  "libc",
@@ -4860,7 +4915,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "futures 0.3.17",
  "futures-test",
@@ -4891,13 +4946,15 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "aes-gcm 0.8.0",
+ "argon2",
  "async-trait",
  "bincode",
  "blake2",
  "chrono",
+ "clear_on_drop",
  "crossbeam-channel 0.3.9",
  "diesel",
  "diesel_migrations",
@@ -4934,7 +4991,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -4987,7 +5044,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "rand 0.8.4",
  "serde 1.0.130",
@@ -5661,13 +5718,13 @@ dependencies = [
 
 [[package]]
 name = "tui"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2eaeee894a1e9b90f80aa466fe59154fdb471980b5e104d8836fcea309ae17e"
+checksum = "5d4e6c82bb967df89f20b875fa8835fab5d5622c6a5efa574a1f0b6d0aa6e8f6"
 dependencies = [
  "bitflags 1.3.2",
  "cassowary",
- "crossterm",
+ "crossterm 0.18.2",
  "unicode-segmentation",
  "unicode-width",
 ]

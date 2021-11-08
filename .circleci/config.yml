@@ -182,6 +182,8 @@ jobs:
     docker:
       - image: *rust_image
     resource_class: medium
+    environment:
+      CARGO_HTTP_MULTIPLEXING: false
     steps:
       - checkout
       - cucumber-js

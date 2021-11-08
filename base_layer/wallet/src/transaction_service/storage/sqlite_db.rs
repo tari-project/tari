@@ -35,7 +35,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
-use aes_gcm::{self, aead::Error as AeadError, Aes256Gcm};
+use aes_gcm::{self, Aes256Gcm};
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
@@ -510,6 +510,44 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         Err(TransactionStorageError::ValuesNotFound)
+    }
+
+    fn fetch_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+
+        match OutboundTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut o) => {
+                self.decrypt_if_necessary(&mut o)?;
+
+                return Ok(Some(WalletTransaction::PendingOutbound(OutboundTransaction::try_from(
+                    o,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match InboundTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut i) => {
+                self.decrypt_if_necessary(&mut i)?;
+                return Ok(Some(WalletTransaction::PendingInbound(InboundTransaction::try_from(
+                    i,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match CompletedTransactionSql::find_by_cancelled(tx_id, true, &(*conn)) {
+            Ok(mut c) => {
+                self.decrypt_if_necessary(&mut c)?;
+                return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(c)?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        Ok(None)
     }
 
     fn complete_outbound_transaction(
@@ -1291,19 +1329,19 @@ impl InboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for InboundTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.receiver_protocol.as_bytes().to_vec())?;
         self.receiver_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.receiver_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -1461,19 +1499,19 @@ impl OutboundTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for OutboundTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.sender_protocol.as_bytes().to_vec())?;
         self.sender_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.sender_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -1728,19 +1766,19 @@ impl CompletedTransactionSql {
 }
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_protocol = encrypt_bytes_integral_nonce(cipher, self.transaction_protocol.as_bytes().to_vec())?;
         self.transaction_protocol = encrypted_protocol.to_hex();
         Ok(())
     }
 
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_protocol = decrypt_bytes_integral_nonce(
             cipher,
-            from_hex(self.transaction_protocol.as_str()).map_err(|_| aes_gcm::Error)?,
+            from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
         )?;
         self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|_| aes_gcm::Error)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
