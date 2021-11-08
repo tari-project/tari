@@ -169,10 +169,21 @@ class MiningNodeProcess {
     });
   }
 
-  async mineBlocksUntilHeightIncreasedBy(numBlocks, minDifficulty) {
+  async mineBlocksUntilHeightIncreasedBy(
+    numBlocks,
+    minDifficulty,
+    mineOnTipOnly
+  ) {
     const height =
       parseInt(await this.baseNodeClient.getTipHeight()) + parseInt(numBlocks);
-    await this.init(numBlocks, height, minDifficulty, 9999999999, true, 1);
+    await this.init(
+      numBlocks,
+      height,
+      minDifficulty,
+      9999999999,
+      mineOnTipOnly,
+      1
+    );
     await this.startNew();
     await this.stop();
     const tipHeight = await this.baseNodeClient.getTipHeight();
