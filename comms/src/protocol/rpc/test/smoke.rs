@@ -418,7 +418,6 @@ async fn stream_interruption_handling() {
         .await
         .unwrap();
 
-    // Subsequent call still works, after waiting for the previous one
     let mut resp = client
         .slow_stream(SlowStreamRequest {
             num_items: 10000,
@@ -428,9 +427,8 @@ async fn stream_interruption_handling() {
         .await
         .unwrap();
 
-    // Get one item, the stream should be going
     let _ = resp.next().await.unwrap().unwrap();
-    // Now drop it before the stream is working
+    // Drop it before the stream is finished
     drop(resp);
 
     // Subsequent call still works, without waiting
@@ -445,7 +443,8 @@ async fn stream_interruption_handling() {
 
     let next_fut = resp.next();
     tokio::pin!(next_fut);
-    // Allow 10 seconds, if the previous stream is blocking things up, the timeout will expire
+    // Allow 10 seconds, if the previous stream is still streaming, it will take a while for this stream to start and
+    // the timeout will expire
     time::timeout(Duration::from_secs(10), next_fut)
         .await
         .unwrap()
