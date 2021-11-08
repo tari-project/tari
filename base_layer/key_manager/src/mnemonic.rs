@@ -68,6 +68,19 @@ impl MnemonicLanguage {
         ];
         MNEMONIC_LANGUAGES.iter()
     }
+
+    /// Returns the mnemonic word list count for the specified language
+    pub fn word_count(language: &MnemonicLanguage) -> usize {
+        match language {
+            MnemonicLanguage::ChineseSimplified => MNEMONIC_CHINESE_SIMPLIFIED_WORDS.len(),
+            MnemonicLanguage::English => MNEMONIC_ENGLISH_WORDS.len(),
+            MnemonicLanguage::French => MNEMONIC_FRENCH_WORDS.len(),
+            MnemonicLanguage::Italian => MNEMONIC_ITALIAN_WORDS.len(),
+            MnemonicLanguage::Japanese => MNEMONIC_JAPANESE_WORDS.len(),
+            MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.len(),
+            MnemonicLanguage::Spanish => MNEMONIC_SPANISH_WORDS.len(),
+        }
+    }
 }
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language

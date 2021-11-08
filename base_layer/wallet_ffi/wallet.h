@@ -71,6 +71,8 @@ struct TariPendingInboundTransaction;
 
 struct TariTransportType;
 
+struct TariMnemonicWordList;
+
 struct TariSeedWords;
 
 struct EmojiSet;
@@ -159,16 +161,12 @@ struct TariPrivateKey *private_key_from_hex(const char *hex, int *error_out);
 // Frees memory for a TariPrivateKey
 void private_key_destroy(struct TariPrivateKey *pk);
 
-/// -------------------------------- Mnemonic Word List  ------------------------------------------ ///
-// Create a TariMnemonicWordList instance containing the entire mnemonic wordlist for the requested language
-struct TariMnemonicWordList *mnemonic_word_list_for_language(const char *language, int *error_out);
-
-// Frees the memory for a TariMnemonicWordList collection
-void mnemonic_word_list_destroy(struct TariMnemonicWordList *mnemonic_word_list);
-
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
+
+// Create a TariMnemonicWordList instance containing the entire mnemonic wordlist for the requested language
+struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char *language, int *error_out);
 
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int *error_out);

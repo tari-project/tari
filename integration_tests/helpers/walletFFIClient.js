@@ -87,7 +87,7 @@ class WalletFFIClient {
   }
 
   getMnemonicWordListForLanguage(language) {
-    return this.wallet.getMnemonicWordListForLanguage(language);
+    return SeedWords.getMnemonicWordListForLanguage(language);
   }
 
   getCompletedTxs() {

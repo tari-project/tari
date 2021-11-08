@@ -232,6 +232,7 @@ Then(
     const wallet = this.getWallet(walletName);
     const mnemonicWordList = wallet.getMnemonicWordListForLanguage(language);
     console.log("Mnemonic word list for", language, ":", mnemonicWordList);
+    expect(mnemonicWordList.length).to.equal(2048);
   }
 );
 

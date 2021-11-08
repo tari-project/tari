@@ -848,7 +848,24 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 
 /// -------------------------------------------------------------------------------------------- ///
 
-/// Create a TariMnemonicWordList instance containing the entire mnemonic wordlist for the requested language
+/// ----------------------------------- Seed Words ----------------------------------------------///
+
+/// Create an empty instance of TariSeedWords
+///
+/// ## Arguments
+/// None
+///
+/// ## Returns
+/// `TariSeedWords` - Returns an empty TariSeedWords instance
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
+    Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+}
+
+/// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
 ///
 /// ## Arguments
 /// `language` - The required language as a string
@@ -856,28 +873,36 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariMnemonicWordList` - Returns the TariMnemonicWordList instance containing the entire mnemonic wordlist for the
+/// `TariSeedWords` - Returns the TariSeedWords instance containing the entire mnemonic wordlist for the
 /// requested language.
 ///
 /// # Safety
-/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+/// The `seed_words_destroy` method must be called when finished with a TariSeedWords instance from rust to prevent a
+/// memory leak
 #[no_mangle]
-pub unsafe extern "C" fn mnemonic_word_list_for_language(
+pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     language: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariMnemonicWordList {
+) -> *mut TariSeedWords {
     use tari_key_manager::mnemonic_wordlists;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
-    let mut seed_words_vec = Vec::new();
+    let mut mnemonic_word_list_vec = Vec::new();
     if language.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("mnemonic wordlist".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
-        let language_string = CStr::from_ptr(language).to_str().unwrap();
-        let seed_words = match TariMnemonicLanguage::from_str(language_string) {
+        let not_supported;
+        let language_string = match CStr::from_ptr(language).to_str() {
+            Ok(str) => str,
+            Err(e) => {
+                not_supported = e.to_string();
+                not_supported.as_str()
+            },
+        };
+        let mnemonic_word_list = match TariMnemonicLanguage::from_str(language_string) {
             Ok(language) => match language {
                 TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
                 TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
@@ -905,47 +930,10 @@ pub unsafe extern "C" fn mnemonic_word_list_for_language(
             target: LOG_TARGET,
             "Retrieved mnemonic wordlist for'{}'", language_string
         );
-        seed_words_vec = seed_words.to_vec().iter().map(|s| s.to_string()).collect();
+        mnemonic_word_list_vec = mnemonic_word_list.to_vec().iter().map(|s| s.to_string()).collect();
     }
 
-    Box::into_raw(Box::new(TariMnemonicWordList(seed_words_vec)))
-}
-
-/// Frees memory for a TariMnemonicWordList
-///
-/// ## Arguments
-/// `mnemonic_word_list` - The pointer to a TariMnemonicWordList
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn mnemonic_word_list_destroy(mnemonic_word_list: *mut TariMnemonicWordList) {
-    if !mnemonic_word_list.is_null() {
-        Box::from_raw(mnemonic_word_list);
-    }
-}
-
-/// ----------------------------------- Mnemonic Word List --------------------------------------///
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- Seed Words ----------------------------------------------///
-
-/// Create an empty instance of TariSeedWords
-///
-/// ## Arguments
-/// None
-///
-/// ## Returns
-/// `TariSeedWords` - Returns an empty TariSeedWords instance
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
-    Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+    Box::into_raw(Box::new(TariSeedWords(mnemonic_word_list_vec)))
 }
 
 /// Gets the length of TariSeedWords
@@ -1002,7 +990,7 @@ pub unsafe extern "C" fn seed_words_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
         let len = (*seed_words).0.len();
-        if position > len as u32 {
+        if position >= len as u32 {
             error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         } else {
@@ -1054,6 +1042,27 @@ pub unsafe extern "C" fn seed_words_push_word(
     }
 
     // Check word is from a word list
+    match MnemonicLanguage::from(word_string.as_str()) {
+        Ok(language) => {
+            if (*seed_words).0.len() >= MnemonicLanguage::word_count(&language) {
+                let error_msg = "Invalid seed words object, i.e. the entire mnemonic word list, is being used";
+                log::error!(target: LOG_TARGET, "{}", error_msg);
+                error = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return SeedWordPushResult::InvalidObject as u8;
+            }
+        },
+        Err(e) => {
+            log::error!(
+                target: LOG_TARGET,
+                "{} is not a valid mnemonic seed word ({:?})",
+                word_string,
+                e
+            );
+            return SeedWordPushResult::InvalidSeedWord as u8;
+        },
+    }
+
     if MnemonicLanguage::from(word_string.as_str()).is_err() {
         log::error!(target: LOG_TARGET, "{} is not a valid mnemonic seed word", word_string);
         return SeedWordPushResult::InvalidSeedWord as u8;
@@ -6315,7 +6324,8 @@ mod test {
             for language in MnemonicLanguage::iterator() {
                 let language_str: *const c_char =
                     CString::into_raw(CString::new(language.to_string()).unwrap()) as *const c_char;
-                let mnemonic_wordlist_ffi = mnemonic_word_list_for_language(language_str, error_ptr);
+                let mnemonic_wordlist_ffi = seed_words_get_mnemonic_word_list_for_language(language_str, error_ptr);
+                assert_eq!(error, 0);
                 let mnemonic_wordlist = match *(language) {
                     TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
                     TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
@@ -6325,6 +6335,7 @@ mod test {
                     TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
                     TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
                 };
+                // Compare from Rust's perspective
                 assert_eq!(
                     (*mnemonic_wordlist_ffi).0,
                     mnemonic_wordlist
@@ -6333,7 +6344,29 @@ mod test {
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                 );
-                mnemonic_word_list_destroy(mnemonic_wordlist_ffi);
+                // Compare from C's perspective
+                let count = seed_words_get_length(mnemonic_wordlist_ffi, error_ptr);
+                assert_eq!(error, 0);
+                for i in 0..count {
+                    // Compare each word in the list
+                    let mnemonic_word_ffi = CString::from_raw(seed_words_get_at(mnemonic_wordlist_ffi, i, error_ptr));
+                    assert_eq!(error, 0);
+                    assert_eq!(
+                        mnemonic_word_ffi.to_str().unwrap().to_string(),
+                        mnemonic_wordlist[i as usize].to_string()
+                    );
+                }
+                // Try to wrongfully add a new seed word onto the mnemonic wordlist seed words object
+                let w = CString::new(mnemonic_wordlist[188]).unwrap();
+                let w_str: *const c_char = CString::into_raw(w) as *const c_char;
+                seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr);
+                assert_eq!(
+                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr),
+                    SeedWordPushResult::InvalidObject as u8
+                );
+                assert_ne!(error, 0);
+                // Clear memory
+                seed_words_destroy(mnemonic_wordlist_ffi);
             }
         }
     }

@@ -110,9 +110,8 @@ class InterfaceFFI {
       private_key_get_bytes: [this.ptr, [this.ptr, this.intPtr]],
       private_key_from_hex: [this.ptr, [this.string, this.intPtr]],
       private_key_destroy: [this.void, [this.ptr]],
-      mnemonic_word_list_for_language: [this.ptr, [this.string, this.intPtr]],
-      mnemonic_word_list_destroy: [this.void, [this.ptr]],
       seed_words_create: [this.ptr, []],
+      seed_words_get_mnemonic_word_list_for_language: [this.ptr, [this.string, this.intPtr]],
       seed_words_get_length: [this.uint, [this.ptr, this.intPtr]],
       seed_words_get_at: [this.stringPtr, [this.ptr, this.uint, this.intPtr]],
       seed_words_push_word: [this.uchar, [this.ptr, this.string, this.intPtr]],
@@ -658,22 +657,16 @@ class InterfaceFFI {
   }
   //endregion
 
-  //region MnemonicWordLlist
-  static mnemonicWordListForLanguageRetrieve(language) {
-    let error = this.initError();
-    let result = this.fn.mnemonic_word_list_for_language(language, error);
-    this.checkErrorResult(error, `mnemonic_word_list_for_language`);
-    return result;
-  }
-
-  static mnemonicWordLlistDestroy(ptr) {
-    this.fn.mnemonic_word_list_destroy(ptr);
-  }
-  //endregion
-
   //region SeedWords
   static seedWordsCreate() {
     return this.fn.seed_words_create();
+  }
+
+  static seedWordsGetMnemonicWordListForLanguage(language) {
+    let error = this.initError();
+    let result = this.fn.seed_words_get_mnemonic_word_list_for_language(language, error);
+    this.checkErrorResult(error, `seed_words_get_mnemonic_word_list_for_language`);
+    return result;
   }
 
   static seedWordsGetLength(ptr) {
