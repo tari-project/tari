@@ -65,6 +65,7 @@ pub(super) enum RecipientInfo {
     Multiple(HashMap<u64, MultiRecipientInfo>),
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for RecipientInfo {
     fn default() -> Self {
         RecipientInfo::Single(None)

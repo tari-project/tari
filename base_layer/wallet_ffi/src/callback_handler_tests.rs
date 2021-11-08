@@ -266,7 +266,7 @@ mod test {
         runtime
             .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled.clone()))
             .unwrap();
-        runtime.block_on(db.cancel_completed_transaction(5u64)).unwrap();
+        runtime.block_on(db.reject_completed_transaction(5u64)).unwrap();
         runtime
             .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx.clone()))
             .unwrap();

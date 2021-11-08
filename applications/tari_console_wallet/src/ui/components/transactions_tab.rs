@@ -210,6 +210,8 @@ impl TransactionsTab {
             )));
             let status = if (t.cancelled || !t.valid) && t.status == TransactionStatus::Coinbase {
                 "Abandoned".to_string()
+            } else if t.cancelled && t.status == TransactionStatus::Rejected {
+                "Rejected".to_string()
             } else if t.cancelled {
                 "Cancelled".to_string()
             } else if !t.valid {
@@ -331,7 +333,9 @@ impl TransactionsTab {
                 Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
                 fee_details,
             ]);
-            let status_msg = if tx.cancelled {
+            let status_msg = if tx.cancelled && tx.status == TransactionStatus::Rejected {
+                "Rejected".to_string()
+            } else if tx.cancelled {
                 "Cancelled".to_string()
             } else if !tx.valid {
                 "Invalid".to_string()
