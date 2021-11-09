@@ -1,5 +1,13 @@
-# Please update all references in the codebase!
-# and increment this number:
-# Hours spent updating the Rust Toolchain = 1
+# So, you want to update the Rust toolchain...
+
+# Besides making sure the code compiles (duh) and the tests/clippy pass (obviously)
+# Please note that you'll have to update all the toolchain references in the codebase!
+# AND build new docker images for:
+# - rust_tari-build-with-deps
+# - rust-ndk
+# AND update the action-buildlibs dockerfile.
+
+
+# Hours spent updating the Rust Toolchain = 4
 [toolchain]
 channel = "nightly-2021-09-18"
