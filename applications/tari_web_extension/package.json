@@ -2,15 +2,12 @@
   "name": "@tari/web-extension",
   "version": "0.1.0",
   "description": "Tari Web Extension",
-  "main": "index.js",
   "scripts": {
     "test": "jest",
-    "build": "webpack",
-    "serve": "webpack serve"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tari-project/tari.git"
+    "build-webpack": "webpack",
+    "serve": "webpack serve",
+    "start": "react-scripts start",
+    "build": "react-scripts build"
   },
   "keywords": [
     "tari"
@@ -20,17 +17,40 @@
   "bugs": {
     "url": "https://github.com/tari-project/tari/issues"
   },
-  "homepage": "https://github.com/tari-project/tari#readme",
   "dependencies": {
+    "@reduxjs/toolkit": "^1.6.2",
+    "@testing-library/jest-dom": "^5.15.0",
+    "@testing-library/react": "^11.2.7",
+    "@testing-library/user-event": "^12.8.3",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-redux": "^7.2.6",
+    "react-router": "^6.0.1",
+    "react-router-dom": "^6.0.1",
+    "react-scripts": "4.0.3",
+    "redux": "^4.1.2",
     "wallet-grpc-client": "file:../../clients/wallet_grpc_client"
   },
   "devDependencies": {
     "@wasm-tool/wasm-pack-plugin": "1.5.0",
-    "html-webpack-plugin": "^5.3.2",
-    "jest": "^27.3.1",
-    "text-encoding": "^0.7.0",
-    "webpack": "^5.49.0",
-    "webpack-cli": "^4.7.2",
-    "webpack-dev-server": "^3.11.2"
+    "text-encoding": "^0.7.0"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }
