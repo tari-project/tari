@@ -227,6 +227,16 @@ Then(
 );
 
 Then(
+  "I retrieve the mnemonic word list for {word} from ffi wallet {word}",
+  async function (language, walletName) {
+    const wallet = this.getWallet(walletName);
+    const mnemonicWordList = wallet.getMnemonicWordListForLanguage(language);
+    console.log("Mnemonic word list for", language, ":", mnemonicWordList);
+    expect(mnemonicWordList.length).to.equal(2048);
+  }
+);
+
+Then(
   "Check callbacks for finished inbound tx on ffi wallet {word}",
   async function (walletName) {
     const wallet = this.getWallet(walletName);
