@@ -1,0 +1,11 @@
+.assets {
+  display: grid;
+  grid-template-columns: auto;
+}
+
+.title {
+  font-size: xx-large;
+  text-align: center;
+  justify-self: stretch;
+  border-bottom: 1px solid;
+}
