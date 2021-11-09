@@ -1,5 +1,34 @@
 # Changelog
 
+
+## [0.21.0](https://github.com/tari-project/tari/compare/v0.13.0...v0.21.0) (2021-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove outdated wallet_ffi balance methods (#3528)
+* **rpc:** read from substream while streaming to check for interruptions (#3548)
+
+### Features
+
+* add ffi get mnemonic wordlist ([#3538](https://github.com/tari-project/tari/issues/3538)) ([d8e0ced](https://github.com/tari-project/tari/commit/d8e0cedc19ee008a8dd937347d7e2fc5e7fc4c3f))
+* optimize transaction validation for wallet ([#3537](https://github.com/tari-project/tari/issues/3537)) ([9064b83](https://github.com/tari-project/tari/commit/9064b830c04000683aecf7b2972ffeabe5d90f08))
+
+
+### Bug Fixes
+
+* add check for old db encryption and provide warning ([#3549](https://github.com/tari-project/tari/issues/3549)) ([69bbbdf](https://github.com/tari-project/tari/commit/69bbbdfd87fae56d31bcd342fe4dc5c84086402e))
+* add decision step between header sync and pruned/archival ([#3546](https://github.com/tari-project/tari/issues/3546)) ([23e868a](https://github.com/tari-project/tari/commit/23e868a8a4d2d8b673e4bd3df9fb9f4d33d191d9))
+* check for previously cancelled completed txn before accepting a repeat message ([#3542](https://github.com/tari-project/tari/issues/3542)) ([911b83b](https://github.com/tari-project/tari/commit/911b83b675816cd41b4e40e0f001bca6f7037369))
+* prevent race condition between block propagation and sync ([#3536](https://github.com/tari-project/tari/issues/3536)) ([6bbb654](https://github.com/tari-project/tari/commit/6bbb65453ed5d8969e0e659fd855d5183262c6d6))
+* remove dns resolver config from cucumber tests, use default ([#3547](https://github.com/tari-project/tari/issues/3547)) ([e17ee64](https://github.com/tari-project/tari/commit/e17ee645add6c3030d1198d8efe96149fffbb7b6))
+* **rpc:** read from substream while streaming to check for interruptions ([#3548](https://github.com/tari-project/tari/issues/3548)) ([9194501](https://github.com/tari-project/tari/commit/919450186f70f3c00ade937a76288ce00ef2175c))
+* update the seed words used in the Daily tests ([#3545](https://github.com/tari-project/tari/issues/3545)) ([7696840](https://github.com/tari-project/tari/commit/76968400fbb1560d11f3beeecb6d1bb5ba60433b))
+* use tcp tls backend for peer seed DNS resolution ([#3544](https://github.com/tari-project/tari/issues/3544)) ([5b38909](https://github.com/tari-project/tari/commit/5b389098aa0aab9dd723213a29aeebe22e4d9bb6))
+
+
+* remove outdated wallet_ffi balance methods ([#3528](https://github.com/tari-project/tari/issues/3528)) ([413757b](https://github.com/tari-project/tari/commit/413757bcea5474524b18a860a95df255cbe95d33))
+
 ## [0.13.0](https://github.com/tari-project/tari/compare/v0.12.0...v0.13.0) (2021-11-04)
 
 
