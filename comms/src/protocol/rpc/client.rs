@@ -587,13 +587,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 self.protocol_name(),
             );
             rx.close();
-            // RPC is strictly request/response
-            // If the client drops the RpcClient request at this point after the, we have two options:
-            // 1. Obey the protocol: receive the response
-            // 2. Error out and immediately close the session (seems brittle and may be unexpected)
-            // Option 1 has the disadvantage when receiving large/many streamed responses, however if all client handles
-            // have been dropped, then read_reply will exit early the stream will close and the server-side
-            // can exit early
+            return Ok(());
         }
 
         if let Err(err) = self.send_request(req).await {
@@ -603,6 +597,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         }
 
         loop {
+            if self.shutdown_signal.is_triggered() {
+                debug!(
+                    target: LOG_TARGET,
+                    "[{}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream early",
+                    self.protocol_name(),
+                    self.stream_id(),
+                    request_id
+                );
+                break;
+            }
+
             let resp = match self.read_response(request_id).await {
                 Ok(resp) => {
                     let latency = start.elapsed();
@@ -667,10 +672,20 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         warn!(
                             target: LOG_TARGET,
                             "(stream={}) Response receiver was dropped before the response/stream could complete for \
-                             protocol {}, the stream will continue until completed",
+                             protocol {}, interrupting the stream. ",
                             self.stream_id(),
                             self.protocol_name()
                         );
+                        let req = proto::rpc::RpcRequest {
+                            request_id: request_id as u32,
+                            method,
+                            deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
+                            flags: RpcMessageFlags::FIN.bits().into(),
+                            payload: vec![],
+                        };
+
+                        self.send_request(req).await?;
+                        break;
                     } else {
                         let _ = response_tx.send(Ok(resp)).await;
                     }
@@ -714,7 +729,31 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
     async fn read_response(&mut self, request_id: u16) -> Result<proto::rpc::RpcResponse, RpcError> {
         let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
-        let resp = reader.read_response().await?;
+
+        let mut num_ignored = 0;
+        let resp = loop {
+            match reader.read_response().await {
+                Ok(resp) => break resp,
+                Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
+                    if actual.saturating_add(1) == request_id =>
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Possible delayed response received for previous request {}", actual
+                    );
+                    num_ignored += 1;
+
+                    // Be lenient for a number of messages that may have been buffered to come through for the previous
+                    // request.
+                    const MAX_ALLOWED_IGNORED: usize = 5;
+                    if num_ignored > MAX_ALLOWED_IGNORED {
+                        return Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected });
+                    }
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        };
         Ok(resp)
     }
 
