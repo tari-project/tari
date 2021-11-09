@@ -5,7 +5,7 @@ const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 const KEY_MANAGER_PATH = "../../base_layer/key_manager/";
 
 module.exports = {
-  entry: "./src/index.js",
+  entry: "./rust/index.js",
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "index.js",
