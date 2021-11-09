@@ -63,15 +63,18 @@ use crate::{
     Bytes,
     Substream,
 };
-use futures::{stream, SinkExt, StreamExt};
+use futures::{future, stream, SinkExt, StreamExt};
 use prost::Message;
 use std::{
     borrow::Cow,
     future::Future,
+    pin::Pin,
     sync::Arc,
+    task::Poll,
     time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, time};
+use tokio_stream::Stream;
 use tower::Service;
 use tower_make::MakeService;
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
@@ -502,6 +505,11 @@ where
         }
 
         let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+
+        if msg_flags.contains(RpcMessageFlags::FIN) {
+            debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
+            return Ok(());
+        }
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
@@ -594,6 +602,12 @@ where
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
 
         loop {
+            // Check if the client interrupted the outgoing stream
+            if let Err(err) = self.check_interruptions().await {
+                warn!(target: LOG_TARGET, "{}", err);
+                break;
+            }
+
             let next_item = log_timing(
                 self.logging_context_string.clone(),
                 request_id,
@@ -602,7 +616,7 @@ where
             );
             match time::timeout(deadline, next_item).await {
                 Ok(Some(msg)) => {
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "({}) Sending body len = {}",
                         self.logging_context_string,
@@ -628,6 +642,20 @@ where
             }
         } // end loop
         Ok(())
+    }
+
+    async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
+        let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
+            Poll::Ready(Some(Ok(_))) => Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessage)),
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(RpcServerError::from(err))),
+            Poll::Ready(None) => Poll::Ready(Some(RpcServerError::StreamClosedByRemote)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        match check {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 
     fn create_request_context(&self, request_id: u32) -> RequestContext {

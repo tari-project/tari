@@ -69,9 +69,8 @@ pub use helpers::SyncPeerConfig;
 mod header_sync;
 pub use header_sync::HeaderSync;
 
-// TODO: Consolidate with header sync
-// mod horizon_header_sync;
-// pub use horizon_header_sync::HorizonHeaderSync;
+mod sync_decide;
+pub use sync_decide::DecideNextSync;
 
 mod horizon_state_sync;
 pub use horizon_state_sync::{HorizonStateSync, HorizonSyncConfig};

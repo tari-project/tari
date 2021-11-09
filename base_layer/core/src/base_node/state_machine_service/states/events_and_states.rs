@@ -23,6 +23,7 @@
 use crate::base_node::{
     state_machine_service::states::{
         BlockSync,
+        DecideNextSync,
         HeaderSync,
         HorizonStateSync,
         Listening,
@@ -36,12 +37,13 @@ use crate::base_node::{
 use randomx_rs::RandomXFlag;
 use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{peer_manager::NodeId, PeerConnection};
+use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug)]
 pub enum BaseNodeState {
     Starting(Starting),
     HeaderSync(HeaderSync),
+    DecideNextSync(DecideNextSync),
     HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSync),
     // The best network chain metadata
@@ -54,8 +56,10 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    HeadersSynchronized(PeerConnection),
+    HeadersSynchronized(SyncPeer),
     HeaderSyncFailed,
+    ProceedToHorizonSync(SyncPeer),
+    ProceedToBlockSync(SyncPeer),
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
     BlocksSynchronized,
@@ -81,8 +85,6 @@ impl<E: std::error::Error> From<E> for StateEvent {
 pub enum SyncStatus {
     // We are behind the chain tip.
     Lagging(ChainMetadata, Vec<SyncPeer>),
-    // We are behind the pruning horizon.
-    LaggingBehindHorizon(ChainMetadata, Vec<SyncPeer>),
     UpToDate,
 }
 
@@ -107,13 +109,6 @@ impl Display for SyncStatus {
                 m.height_of_longest_chain(),
                 m.accumulated_difficulty(),
             ),
-            LaggingBehindHorizon(m, v) => write!(
-                f,
-                "Lagging behind pruning horizon ({} peer(s), Network height: #{}, Difficulty: {})",
-                v.len(),
-                m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
-            ),
             UpToDate => f.write_str("UpToDate"),
         }
     }
@@ -123,18 +118,20 @@ impl Display for StateEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use StateEvent::*;
         match self {
-            Initialized => f.write_str("Initialized"),
-            BlocksSynchronized => f.write_str("Synchronised Blocks"),
-            HeadersSynchronized(conn) => write!(f, "Headers Synchronized from peer `{}`", conn.peer_node_id()),
-            HeaderSyncFailed => f.write_str("Header Synchronization Failed"),
-            HorizonStateSynchronized => f.write_str("Horizon State Synchronized"),
-            HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failed"),
-            BlockSyncFailed => f.write_str("Block Synchronization Failed"),
+            Initialized => write!(f, "Initialized"),
+            BlocksSynchronized => write!(f, "Synchronised Blocks"),
+            HeadersSynchronized(peer) => write!(f, "Headers Synchronized from peer `{}`", peer),
+            HeaderSyncFailed => write!(f, "Header Synchronization Failed"),
+            ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
+            ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
+            HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),
+            HorizonStateSyncFailure => write!(f, "Horizon State Synchronization Failed"),
+            BlockSyncFailed => write!(f, "Block Synchronization Failed"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
-            NetworkSilence => f.write_str("Network Silence"),
-            Continue => f.write_str("Continuing"),
+            NetworkSilence => write!(f, "Network Silence"),
+            Continue => write!(f, "Continuing"),
             FatalError(e) => write!(f, "Fatal Error - {}", e),
-            UserQuit => f.write_str("User Termination"),
+            UserQuit => write!(f, "User Termination"),
         }
     }
 }
@@ -145,6 +142,7 @@ impl Display for BaseNodeState {
         let s = match self {
             Starting(_) => "Initializing",
             HeaderSync(_) => "Synchronizing block headers",
+            DecideNextSync(_) => "Deciding next sync",
             HorizonStateSync(_) => "Synchronizing horizon state",
             BlockSync(_) => "Synchronizing blocks",
             Listening(_) => "Listening",

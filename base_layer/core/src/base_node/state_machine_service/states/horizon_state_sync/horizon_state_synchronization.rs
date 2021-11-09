@@ -27,7 +27,7 @@ use crate::{
             states::events_and_states::{HorizonSyncInfo, HorizonSyncStatus, StateInfo},
             BaseNodeStateMachine,
         },
-        sync::rpc,
+        sync::{rpc, SyncPeer},
     },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree, PrunedOutput},
@@ -49,7 +49,6 @@ use std::{
     sync::Arc,
 };
 use tari_common_types::types::{HashDigest, RangeProofService};
-use tari_comms::PeerConnection;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     tari_utilities::{hex::Hex, Hashable},
@@ -60,7 +59,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sy
 
 pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peer: PeerConnection,
+    sync_peer: &'a SyncPeer,
     horizon_sync_height: u64,
     prover: &'a RangeProofService,
     num_kernels: u64,
@@ -70,7 +69,7 @@ pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     pub fn new(
         shared: &'a mut BaseNodeStateMachine<B>,
-        sync_peer: PeerConnection,
+        sync_peer: &'a SyncPeer,
         horizon_sync_height: u64,
         prover: &'a RangeProofService,
     ) -> Self {
@@ -97,7 +96,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         })?;
 
-        let mut client = self.sync_peer.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
+        let mut connection = self
+            .shared
+            .connectivity
+            .dial_peer(self.sync_peer.node_id().clone())
+            .await?;
+        let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
 
         match self.begin_sync(&mut client, &header).await {
             Ok(_) => match self.finalize_horizon_sync().await {
@@ -142,7 +146,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
 
         let info = HorizonSyncInfo::new(
-            vec![self.sync_peer.peer_node_id().clone()],
+            vec![self.sync_peer.node_id().clone()],
             HorizonSyncStatus::Kernels(local_num_kernels, remote_num_kernels),
         );
         self.shared.set_state_info(StateInfo::HorizonSync(info));
@@ -158,9 +162,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let latency = client.get_last_request_latency().await?;
         debug!(
             target: LOG_TARGET,
-            "Initiating kernel sync with peer `{}` `{}` (latency = {}ms)",
-            self.sync_peer.peer_node_id(),
-            self.sync_peer.address(),
+            "Initiating kernel sync with peer `{}` (latency = {}ms)",
+            self.sync_peer.node_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -236,7 +239,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
                 let info = HorizonSyncInfo::new(
-                    vec![self.sync_peer.peer_node_id().clone()],
+                    vec![self.sync_peer.node_id().clone()],
                     HorizonSyncStatus::Kernels(mmr_position, self.num_kernels),
                 );
                 self.shared.set_state_info(StateInfo::HorizonSync(info));
@@ -267,7 +270,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
 
         let info = HorizonSyncInfo::new(
-            vec![self.sync_peer.peer_node_id().clone()],
+            vec![self.sync_peer.node_id().clone()],
             HorizonSyncStatus::Outputs(local_num_outputs, self.num_outputs),
         );
         self.shared.set_state_info(StateInfo::HorizonSync(info));
@@ -288,7 +291,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Initiating output sync with peer `{}` (latency = {}ms)",
-            self.sync_peer.peer_node_id(),
+            self.sync_peer.node_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -425,14 +428,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                              peer {}",
                             diff_bitmap.len(),
                             MAX_DIFF_BITMAP_BYTE_LEN,
-                            self.sync_peer.peer_node_id()
+                            self.sync_peer.node_id()
                         )));
                     }
 
                     let diff_bitmap = Bitmap::try_deserialize(&diff_bitmap).ok_or_else(|| {
                         HorizonSyncError::IncorrectResponse(format!(
                             "Peer {} sent an invalid difference bitmap",
-                            self.sync_peer.peer_node_id()
+                            self.sync_peer.node_id()
                         ))
                     })?;
 
@@ -498,7 +501,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             if mmr_position % 100 == 0 || mmr_position == self.num_outputs {
                 let info = HorizonSyncInfo::new(
-                    vec![self.sync_peer.peer_node_id().clone()],
+                    vec![self.sync_peer.node_id().clone()],
                     HorizonSyncStatus::Outputs(mmr_position, self.num_outputs),
                 );
                 self.shared.set_state_info(StateInfo::HorizonSync(info));
@@ -518,10 +521,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn finalize_horizon_sync(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
 
-        let info = HorizonSyncInfo::new(
-            vec![self.sync_peer.peer_node_id().clone()],
-            HorizonSyncStatus::Finalizing,
-        );
+        let info = HorizonSyncInfo::new(vec![self.sync_peer.node_id().clone()], HorizonSyncStatus::Finalizing);
         self.shared.set_state_info(StateInfo::HorizonSync(info));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;

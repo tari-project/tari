@@ -35,10 +35,14 @@ pub enum RpcServerError {
     MaximumSessionsReached,
     #[error("Internal service request canceled")]
     RequestCanceled,
+    #[error("Stream was closed by remote")]
+    StreamClosedByRemote,
     #[error("Handshake error: {0}")]
     HandshakeError(#[from] RpcHandshakeError),
     #[error("Service not found for protocol `{0}`")]
     ProtocolServiceNotFound(String),
+    #[error("Unexpected incoming message")]
+    UnexpectedIncomingMessage,
 }
 
 impl From<oneshot::error::RecvError> for RpcServerError {
