@@ -166,6 +166,10 @@ pub enum TransactionKeyError {
     Source(ByteArrayError),
     #[error("Invalid destination PublicKey")]
     Destination(ByteArrayError),
+    #[error("Invalid transaction signature nonce")]
+    SignatureNonce(ByteArrayError),
+    #[error("Invalid transaction signature key")]
+    SignatureKey(ByteArrayError),
 }
 
 #[derive(Debug, Error)]
