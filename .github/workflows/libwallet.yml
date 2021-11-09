@@ -18,7 +18,7 @@ jobs:
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.3.2
+        uses: delta1/action-buildlibs@master
         with:
           platforms: "x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
           level: "24"
@@ -31,7 +31,7 @@ jobs:
       # Copy tarballs to S3
       - name: Sync to S3
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        continue-on-error: true  # Don't break if s3 upload fails
+        continue-on-error: true # Don't break if s3 upload fails
         uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --acl public-read --follow-symlinks
