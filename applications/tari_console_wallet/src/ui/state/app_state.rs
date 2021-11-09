@@ -27,11 +27,11 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tari_p2p::auto_update::SoftwareUpdaterHandle;
+use time::OffsetDateTime;
 use tokio::{
     sync::{watch, RwLock},
     task,
@@ -442,7 +442,7 @@ impl AppState {
         self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
     }
 
-    pub fn get_notifications(&self) -> &Vec<(DateTime<Local>, String)> {
+    pub fn get_notifications(&self) -> &[(OffsetDateTime, String)] {
         &self.cached_data.notifications
     }
 
@@ -847,7 +847,9 @@ impl AppStateInner {
     }
 
     pub fn add_notification(&mut self, notification: String) {
-        self.data.notifications.push((Local::now(), notification));
+        self.data
+            .notifications
+            .push((OffsetDateTime::now_local().unwrap(), notification));
         self.data.new_notification_count += 1;
         self.updated = true;
     }
@@ -873,7 +875,7 @@ pub struct CompletedTransactionInfo {
     pub maturity: u64,
     pub status: TransactionStatus,
     pub message: String,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: OffsetDateTime,
     pub cancelled: bool,
     pub direction: TransactionDirection,
     pub valid: bool,
@@ -911,7 +913,7 @@ impl CompletedTransactionInfo {
                 .unwrap_or(0),
             status: tx.status,
             message: tx.message,
-            timestamp: tx.timestamp,
+            timestamp: OffsetDateTime::from_unix_timestamp(tx.timestamp.timestamp()).unwrap(),
             cancelled: tx.cancelled,
             direction: tx.direction,
             valid: tx.valid,
@@ -938,7 +940,7 @@ struct AppStateData {
     base_node_previous: Peer,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
-    notifications: Vec<(DateTime<Local>, String)>,
+    notifications: Vec<(OffsetDateTime, String)>,
     new_notification_count: u32,
 }
 
