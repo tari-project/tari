@@ -48,6 +48,7 @@ jobs:
         run: |
           echo "VBRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "CARGO_HTTP_MULTIPLEXING=false" >> $GITHUB_ENV
 
       - name: Default Destination Folder
         run: |
