@@ -75,7 +75,7 @@ pub use sync_protocol::MempoolSyncInitializer;
 use crate::transactions::transaction::Transaction;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

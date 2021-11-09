@@ -47,7 +47,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use std::convert::TryFrom;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";

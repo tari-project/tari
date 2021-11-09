@@ -36,7 +36,7 @@ use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
 use tari_common_types::{
     emoji::EmojiId,
-    types::{Commitment, CompressedCommitment, CompressedPublicKey, CompressedSignature, HashOutput, Signature},
+    types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, HashOutput},
 };
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -58,7 +58,7 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_crypto::{tari_utilities::Hashable};
 use tari_p2p::{
     auto_update::SoftwareUpdaterHandle,
     services::liveness::{LivenessEvent, LivenessHandle},

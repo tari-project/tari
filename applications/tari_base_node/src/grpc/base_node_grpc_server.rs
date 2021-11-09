@@ -38,7 +38,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::{CompressedSignature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{

@@ -23,10 +23,7 @@
 use crate::transactions::transaction::Transaction;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    types::{CompressedSignature, Signature},
-    waiting_requests::RequestKey,
-};
+use tari_common_types::{types::CompressedSignature, waiting_requests::RequestKey};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.

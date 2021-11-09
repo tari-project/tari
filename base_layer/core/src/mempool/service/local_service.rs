@@ -30,7 +30,7 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 

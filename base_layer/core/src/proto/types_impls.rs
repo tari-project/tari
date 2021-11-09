@@ -24,8 +24,6 @@ use super::types as proto;
 use std::convert::TryFrom;
 use tari_common_types::types::{
     BlindingFactor,
-    ComSignature,
-    Commitment,
     CompressedComSig,
     CompressedCommitment,
     CompressedPublicKey,

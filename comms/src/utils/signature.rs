@@ -24,7 +24,7 @@ use crate::types::{Challenge, CommsPublicKey, CommsSecretKey};
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
-    keys::{CompressedPublicKey, PublicKey, SecretKey},
+    keys::{CompressedPublicKey, SecretKey},
     ristretto::{ristretto_sig::CompressedRistrettoSchnorr, RistrettoPublicKey},
     signatures::{CompressedSchnorrSignature, SchnorrSignature, SchnorrSignatureError},
     tari_utilities::message_format::MessageFormat,

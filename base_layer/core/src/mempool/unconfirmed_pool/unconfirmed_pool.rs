@@ -35,7 +35,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use tari_common_types::types::{CompressedSignature, HashOutput, Signature};
+use tari_common_types::types::{CompressedSignature, HashOutput};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";

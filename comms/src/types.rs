@@ -23,8 +23,7 @@
 use crate::peer_manager::{Peer, PeerId};
 use tari_crypto::{
     common::Blake256,
-    keys::PublicKey,
-    ristretto::{ristretto_keys::CompressedRistrettoPublicKey, RistrettoPublicKey, RistrettoSecretKey},
+    ristretto::{ristretto_keys::CompressedRistrettoPublicKey, RistrettoSecretKey},
 };
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]

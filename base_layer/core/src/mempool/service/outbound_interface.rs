@@ -29,7 +29,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use log::*;
-use tari_common_types::types::{CompressedSignature, Signature};
+use tari_common_types::types::CompressedSignature;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;

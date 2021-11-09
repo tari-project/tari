@@ -41,13 +41,10 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{
-    Commitment,
     CompressedCommitment,
     CompressedPublicKey,
     CompressedSignature,
     PrivateKey,
-    PublicKey,
-    Signature,
 };
 use tari_core::{
     crypto::tari_utilities::hex::from_hex,

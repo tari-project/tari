@@ -40,13 +40,7 @@ use crate::{
     },
 };
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{
-    BlindingFactor,
-    BulletRangeProof,
-    CompressedCommitment,
-    CompressedPublicKey,
-    PublicKey,
-};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, CompressedCommitment, CompressedPublicKey};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},

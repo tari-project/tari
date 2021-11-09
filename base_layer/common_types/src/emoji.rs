@@ -22,7 +22,7 @@
 
 use crate::{
     luhn::{checksum, is_valid},
-    types::{CompressedPublicKey, PublicKey},
+    types::CompressedPublicKey,
 };
 use std::{
     collections::HashMap,
