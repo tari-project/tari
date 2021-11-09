@@ -330,7 +330,7 @@ impl DhtConnectivity {
             .fetch_random_peers(self.config.num_random_nodes, &self.neighbours)
             .await?;
         if random_peers.is_empty() {
-            warn!(
+            info!(
                 target: LOG_TARGET,
                 "Unable to refresh random peer pool because there are insufficient known peers",
             );
@@ -489,7 +489,7 @@ impl DhtConnectivity {
                     self.connectivity.request_many_dials(vec![new_peer]).await?;
                 },
                 None => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Unable to fetch new random peer to replace disconnected peer '{}' because not enough peers \
                          are known. Random pool size is {}.",
@@ -516,7 +516,7 @@ impl DhtConnectivity {
                     self.connectivity.request_many_dials(vec![node_id]).await?;
                 },
                 None => {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Unable to fetch new neighbouring peer to replace disconnected peer '{}'. Neighbour pool size \
                          is {}.",
