@@ -74,6 +74,10 @@ class WalletFFIClient {
     return this.wallet.getBalance();
   }
 
+  pollBalance() {
+    return this.wallet.pollBalance();
+  }
+
   addBaseNodePeer(public_key_hex, address) {
     return this.wallet.addBaseNodePeer(public_key_hex, address);
   }
@@ -84,6 +88,10 @@ class WalletFFIClient {
 
   getContactList() {
     return this.wallet.getContacts();
+  }
+
+  getMnemonicWordListForLanguage(language) {
+    return SeedWords.getMnemonicWordListForLanguage(language);
   }
 
   getCompletedTxs() {

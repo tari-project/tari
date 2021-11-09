@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.13.0"
+version = "0.21.0"
 edition = "2018"
 
 [dependencies]
@@ -20,6 +20,8 @@ crc32fast = "1.2.1"
 rand = "0.8"
 digest = "0.9.0"
 thiserror = "1.0.26"
+strum_macros = "0.22"
+strum = { version = "0.22", features = ["derive"] }
 
 [dev-dependencies]
 sha2 = "0.9.8"
