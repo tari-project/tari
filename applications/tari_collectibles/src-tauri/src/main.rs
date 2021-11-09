@@ -21,7 +21,8 @@ fn main() {
       commands::assets::assets_create,
       commands::assets::assets_list_owned,
       commands::assets::assets_list_registered_assets,
-      commands::assets::assets_issue_simple_tokens
+      commands::assets::assets_issue_simple_tokens,
+      commands::assets::watched::assets_watched_create
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

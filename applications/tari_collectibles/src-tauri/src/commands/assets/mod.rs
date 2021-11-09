@@ -29,6 +29,7 @@ use tari_common_types::types::Commitment;
 use tari_crypto::{hash::blake2::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
+pub mod watched;
 
 #[tauri::command]
 pub(crate) async fn assets_create(

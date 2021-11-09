@@ -32,7 +32,7 @@ import {
   AppBar,
   Box,
   CssBaseline, Divider,
-  Drawer,
+  Drawer, IconButton,
   List,
   ListItem,
   ListItemIcon,
@@ -42,6 +42,7 @@ import {
 } from "@mui/material";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import CreateIcon from "@mui/icons-material/Create";
+import AddIcon from "@mui/icons-material/Add";
 import AppsIcon from "@mui/icons-material/Apps";
 import { ThemeProvider } from "@emotion/react";
 import Create from "./Create";
@@ -51,6 +52,8 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
+import NewWatchedAsset from "./NewWatchedAsset";
+import WatchedAssetDetails from "./WatchedAssetDetails";
 
 const mdTheme = createTheme({
   palette: {
@@ -59,6 +62,20 @@ const mdTheme = createTheme({
     secondary: pink,
   },
 });
+
+function IconButtonLink(props) {
+  const { icon, to} = props;
+  const renderLink = React.useMemo(
+      () => React.forwardRef(function Link(itemProps, ref) {
+        return <RouterLink to={to} ref={ref} {...itemProps} role={undefined} />;
+      }),
+        [to]
+  )
+
+  return (
+      <IconButton edge="end" aria-label="add" component={renderLink} >{icon}</IconButton>
+  );
+}
 
 function ListItemLink(props) {
   const { icon, primary, to } = props;
@@ -108,6 +125,10 @@ function App() {
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
+                <ListSubheader ><ListItem disableGutters={true} secondaryAction={
+                  <IconButtonLink icon={<AddIcon />} to="/assets/watched/new">
+                  </IconButtonLink>
+                }>My Assets</ListItem></ListSubheader>
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -126,6 +147,13 @@ function App() {
               sx={{ flexGrow: 1, height: "100vh", overflow: "auto" }}
             >
               <Switch>
+                <Route path="/assets/watched/details/:assetPubKey">
+                  <WatchedAssetDetails />
+                </Route>
+                <Route path="/assets/watched/new" >
+                  <NewWatchedAsset />
+                </Route>
+
                 <Route path="/create">
                   <Create />
                 </Route>

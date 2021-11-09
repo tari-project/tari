@@ -19,41 +19,33 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-import { invoke } from "@tauri-apps/api/tauri";
 
-async function command_assets_create(name, description, image) {
-  return await invoke("assets_create", { name, description, image });
+import React from "react";
+import {withRouter} from "react-router-dom";
+import {Container, Stack, Typography} from "@mui/material";
+
+class WatchedAssetDetails extends React.Component {
+    constructor(props) {
+        super(props);
+
+        this.state = {
+            error: null,
+            isSaving: false,
+            assetPublicKey: ""
+        };
+    }
+
+    render() {
+        return (<Container maxWidth="lg" sx={{mt: 4, mb: 4, py: 8}}>
+                <Typography variant="h3" sx={{mb: "30px"}}>
+                    Asset Details
+                </Typography>
+                <Stack>
+                    <Typography variant="h4">Templates Implemented</Typography>
+                </Stack>
+            </Container>
+        );
+    }
 }
 
-async function command_assets_list_owned() {
-  return await invoke("assets_list_owned", {});
-}
-
-async function command_assets_list_registered_assets(offset, count) {
-  return await invoke("assets_list_registered_assets", { offset, count });
-}
-
-async function command_asset_issue_simple_tokens(
-  assetPubKey,
-  numTokens,
-  committee
-) {
-  return await invoke("assets_issue_simple_tokens", {
-    assetPubKey,
-    numTokens,
-    committee,
-  });
-}
-
-async function command_assets_watched_create(assetPubKey) {
-  return await invoke("assets_watched_create", {assetPubKey});
-}
-const commands = {
-  command_assets_create,
-  command_assets_list_owned,
-  command_assets_list_registered_assets,
-  command_asset_issue_simple_tokens,
-  command_assets_watched_create
-};
-
-export default commands;
+export default withRouter(WatchedAssetDetails);
