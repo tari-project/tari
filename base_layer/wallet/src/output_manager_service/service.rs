@@ -36,7 +36,6 @@ use crate::{
         tasks::TxoValidationTask,
         MasterKeyManager,
     },
-    transaction_service::handle::TransactionServiceHandle,
     types::HashDigest,
 };
 use blake2::Digest;
@@ -49,7 +48,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
 };
-use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_comms::types::CommsPublicKey;
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -70,6 +69,7 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 
@@ -95,7 +95,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: OutputManagerServiceConfig,
-        transaction_service: TransactionServiceHandle,
         request_stream: reply_channel::Receiver<
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
@@ -107,18 +106,17 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        master_secret_key: CommsSecretKey,
+        master_seed: CipherSeed,
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
         db.clear_short_term_encumberances().await?;
 
-        let master_key_manager = MasterKeyManager::new(master_secret_key, db.clone()).await?;
+        let master_key_manager = MasterKeyManager::new(master_seed, db.clone()).await?;
 
         let resources = OutputManagerResources {
             config,
             db,
-            transaction_service,
             factories,
             connectivity,
             event_publisher,
@@ -274,6 +272,10 @@ where
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
+            OutputManagerRequest::RevalidateTxos => self
+                .revalidate_outputs()
+                .await
+                .map(OutputManagerResponse::TxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
                     .fetch_invalid_outputs()
@@ -383,6 +385,11 @@ where
             }
         });
         Ok(id)
+    }
+
+    async fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {
+        self.resources.db.set_outputs_to_be_revalidated().await?;
+        self.validate_outputs()
     }
 
     /// Add an unblinded output to the unspent outputs list

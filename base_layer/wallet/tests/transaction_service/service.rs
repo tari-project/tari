@@ -50,7 +50,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsSecretKey,
     CommsNode,
     PeerConnection,
 };
@@ -96,6 +95,7 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -205,7 +205,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
             oms_backend,
             factories.clone(),
             Network::Weatherwax.into(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -331,7 +331,6 @@ pub fn setup_transaction_service_no_comms(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
-            ts_handle.clone(),
             oms_request_receiver,
             oms_db,
             oms_event_publisher.clone(),
@@ -340,7 +339,7 @@ pub fn setup_transaction_service_no_comms(
             shutdown.to_signal(),
             basenode_service_handle.clone(),
             wallet_connectivity.clone(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
         ))
         .unwrap();
 

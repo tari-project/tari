@@ -646,6 +646,10 @@ where
                 .start_transaction_validation_protocol(transaction_validation_join_handles)
                 .await
                 .map(TransactionServiceResponse::ValidationStarted),
+            TransactionServiceRequest::ReValidateTransactions => self
+                .start_transaction_revalidation(transaction_validation_join_handles)
+                .await
+                .map(TransactionServiceResponse::ValidationStarted),
         };
 
         // If the individual handlers did not already send the API response then do it here.
@@ -1241,14 +1245,16 @@ where
             );
 
             // Check if this transaction has already been received and cancelled.
-            if let Ok(inbound_tx) = self.db.get_cancelled_pending_inbound_transaction(data.tx_id).await {
-                if inbound_tx.source_public_key != source_pubkey {
+            if let Ok(Some(any_tx)) = self.db.get_any_cancelled_transaction(data.tx_id).await {
+                let tx = CompletedTransaction::from(any_tx);
+
+                if tx.source_public_key != source_pubkey {
                     return Err(TransactionServiceError::InvalidSourcePublicKey);
                 }
                 trace!(
                     target: LOG_TARGET,
-                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled",
-                    inbound_tx.tx_id
+                    "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
+                    tx.tx_id
                 );
                 return Ok(());
             }
@@ -1474,9 +1480,9 @@ where
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
-        let inbound_txs = self.db.get_pending_inbound_transactions().await?;
-        for (tx_id, tx) in inbound_txs {
-            self.restart_receive_transaction_protocol(tx_id, tx.source_public_key.clone(), join_handles);
+        let inbound_txs = self.db.get_pending_inbound_transaction_sender_info().await?;
+        for txn in inbound_txs {
+            self.restart_receive_transaction_protocol(txn.tx_id, txn.source_public_key, join_handles);
         }
 
         Ok(())
@@ -1542,6 +1548,14 @@ where
             })?;
 
         Ok(())
+    }
+
+    async fn start_transaction_revalidation(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<u64, TransactionServiceError> {
+        self.resources.db.mark_all_transactions_as_unvalidated().await?;
+        self.start_transaction_validation_protocol(join_handles).await
     }
 
     async fn start_transaction_validation_protocol(
@@ -1613,12 +1627,14 @@ where
         }
 
         trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
-        self.broadcast_all_completed_transactions(broadcast_join_handles)
+        self.broadcast_completed_and_broadcast_transactions(broadcast_join_handles)
             .await
             .map_err(|resp| {
                 error!(
                     target: LOG_TARGET,
-                    "Error broadcasting all completed transactions: {:?}", resp
+                    "Error broadcasting all valid and not cancelled Completed Transactions with status 'Completed' \
+                     and 'Broadcast': {:?}",
+                    resp
                 );
                 resp
             })?;
@@ -1670,22 +1686,21 @@ where
         Ok(())
     }
 
-    /// Go through all completed transactions that have not yet been broadcast and broadcast all of them to the base
+    /// Broadcast all valid and not cancelled completed transactions with status 'Completed' and 'Broadcast' to the base
     /// node.
-    async fn broadcast_all_completed_transactions(
+    async fn broadcast_completed_and_broadcast_transactions(
         &mut self,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
     ) -> Result<(), TransactionServiceError> {
-        trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
-        let completed_txs = self.db.get_completed_transactions().await?;
-        for (_, completed_tx) in completed_txs {
-            if completed_tx.valid &&
-                (completed_tx.status == TransactionStatus::Completed ||
-                    completed_tx.status == TransactionStatus::Broadcast) &&
-                !completed_tx.is_coinbase()
-            {
-                self.broadcast_completed_transaction(completed_tx, join_handles).await?;
-            }
+        trace!(
+            target: LOG_TARGET,
+            "Attempting to Broadcast all valid and not cancelled Completed Transactions with status 'Completed' and \
+             'Broadcast'"
+        );
+        let txn_list = self.db.get_transactions_to_be_broadcast().await?;
+        for completed_txn in txn_list {
+            self.broadcast_completed_transaction(completed_txn, join_handles)
+                .await?;
         }
 
         Ok(())

@@ -213,7 +213,7 @@ COPY_FILES=(
   "target/release/tari_console_wallet"
   "target/release/tari_merge_mining_proxy"
   "target/release/tari_mining_node"
-  "common/config/presets/tari_config_example.toml"
+  "common/config/presets/*.toml"
   "common/logging/log4rs_sample_base_node.yml"
   "applications/tari_base_node/README.md"
   applications/tari_base_node/$osname/*
@@ -223,6 +223,8 @@ COPY_FILES=(
 for COPY_FILE in "${COPY_FILES[@]}"; do
   cp -vr "$COPY_FILE" "$distDir/dist/"
 done
+
+cat common/config/presets/*.toml >"$distDir/dist/tari_config_example.toml"
 
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then

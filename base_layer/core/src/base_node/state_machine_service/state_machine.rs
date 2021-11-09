@@ -22,7 +22,7 @@
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
-        comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
             states,
             states::{BaseNodeState, HorizonSyncConfig, StateEvent, StateInfo, StatusInfo, SyncPeerConfig, SyncStatus},
@@ -83,7 +83,6 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) _outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
     pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -104,7 +103,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
-        outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -119,7 +117,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db,
             local_node_interface,
-            _outbound_nci: outbound_nci,
             connectivity,
             peer_manager,
             metadata_event_stream,
@@ -141,7 +138,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (Listening(s), InitialSync) => HeaderSync(s.into()),
             (HeaderSync(_), HeadersSynchronized(conn)) => {
                 if self.config.pruning_horizon > 0 {
                     HorizonStateSync(states::HorizonStateSync::with_peer(conn))
@@ -150,6 +146,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 }
             },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
+            (HeaderSync(s), Continue) => Listening(s.into()),
             (HeaderSync(s), NetworkSilence) => Listening(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),

@@ -22,7 +22,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![warn(dead_code)]
 #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
@@ -157,11 +157,13 @@ use tari_comms::{
     transports::MemoryTransport,
     types::CommsSecretKey,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
+    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -194,8 +196,12 @@ use crate::{
 };
 
 mod callback_handler;
+#[cfg(test)]
+mod callback_handler_tests;
 mod enums;
 mod error;
+#[cfg(test)]
+mod output_manager_service_mock;
 mod tasks;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -210,6 +216,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
@@ -967,9 +974,12 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     (*seed_words).0.push(word_string);
     if (*seed_words).0.len() >= 24 {
-        return if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
-            error = LibWalletError::from(e).code;
+        return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            log::error!(
+                target: LOG_TARGET,
+                "Problem building valid private seed from seed phrase"
+            );
+            error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             SeedWordPushResult::InvalidSeedPhrase as u8
         } else {
@@ -2591,7 +2601,10 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
-                            saf_msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                            saf_config: SafConfig {
+                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
@@ -2600,7 +2613,7 @@ pub unsafe extern "C" fn comms_config_create(
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
                         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+                        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
                         peer_seeds: Default::default(),
                         dns_seeds: Default::default(),
                         dns_seeds_use_dnssec: true,
@@ -2727,6 +2740,8 @@ unsafe fn init_logging(log_path: *const c_char, num_rolling_log_files: c_uint, s
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
+/// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
@@ -2762,6 +2777,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     recovery_in_progress: *mut bool,
@@ -2791,14 +2807,14 @@ pub unsafe extern "C" fn wallet_create(
         None
     };
 
-    let recovery_master_key = if seed_words.is_null() {
+    let recovery_seed = if seed_words.is_null() {
         None
     } else {
-        match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            Ok(private_key) => Some(private_key),
+        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                error = LibWalletError::from(e).code;
+                error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
@@ -2880,7 +2896,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        recovery_master_key,
+        recovery_seed,
     ));
 
     match w {
@@ -2896,6 +2912,7 @@ pub unsafe extern "C" fn wallet_create(
                 TransactionDatabase::new(transaction_backend),
                 w.transaction_service.get_event_stream(),
                 w.output_manager_service.get_event_stream(),
+                w.output_manager_service.clone(),
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
@@ -2909,6 +2926,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
+                callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
             );
@@ -3220,6 +3238,128 @@ pub unsafe extern "C" fn wallet_remove_contact(
             ptr::swap(error_out, &mut error as *mut c_int);
             false
         },
+    }
+}
+
+/// Gets the available balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The available balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).available_balance)
+}
+
+/// Gets the time locked balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The time locked balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    let b = if let Some(bal) = (*balance).time_locked_balance {
+        bal
+    } else {
+        MicroTari::from(0)
+    };
+    c_ulonglong::from(b)
+}
+
+/// Gets the pending incoming balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending incoming, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_incoming_balance)
+}
+
+/// Gets the pending outgoing balance from a TariBalance. This is the balance the user can spend.
+///
+/// ## Arguments
+/// `balance` - The TariBalance pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` - The pending outgoing balance, 0 if wallet is null
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if balance.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("balance".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    c_ulonglong::from((*balance).pending_outgoing_balance)
+}
+
+/// Frees memory for a TariBalance
+///
+/// ## Arguments
+/// `balance` - The pointer to a TariBalance
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
+    if !balance.is_null() {
+        Box::from_raw(balance);
     }
 }
 
@@ -5157,6 +5297,7 @@ mod test {
         std::any::type_name::<T>().to_string()
     }
 
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
@@ -5169,6 +5310,7 @@ mod test {
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
+        pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
     }
 
@@ -5185,6 +5327,7 @@ mod test {
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
+                callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
             }
         }
@@ -5305,6 +5448,10 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn balance_updated_callback(_balance: *mut TariBalance) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -5622,9 +5769,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
             drop(wallet_backend);
-            assert!(stored_key.is_none(), "No key should be stored yet");
+            assert!(stored_seed.is_none(), "No key should be stored yet");
 
             let alice_wallet = wallet_create(
                 alice_config,
@@ -5643,6 +5790,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5656,10 +5804,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key1 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed1 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
             drop(wallet_backend);
 
@@ -5681,6 +5826,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5695,12 +5841,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key2 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed2 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
-            assert_eq!(stored_key1, stored_key2);
+            assert_eq!(stored_seed1, stored_seed2);
 
             drop(wallet_backend);
 
@@ -5717,9 +5860,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
 
-            assert!(stored_key.is_none(), "key should be cleared");
+            assert!(stored_seed.is_none(), "key should be cleared");
             drop(wallet_backend);
 
             string_destroy(alice_network_str as *mut c_char);
@@ -5785,6 +5928,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5831,6 +5975,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5860,6 +6005,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5884,6 +6030,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -5929,6 +6076,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6003,6 +6151,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6078,9 +6227,9 @@ mod test {
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
-                "clever", "jaguar", "bus", "engage", "oil", "august", "media", "high", "trick", "remove", "tiny",
-                "join", "item", "tobacco", "orange", "pony", "tomorrow", "also", "dignity", "giraffe", "little",
-                "board", "army", "scale",
+                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
+                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
+                "gauge", "fossil", "orphan",
             ];
 
             let seed_words = seed_words_create();
@@ -6152,6 +6301,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,
@@ -6205,6 +6355,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 recovery_in_progress_ptr,

@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.11.0"
+version = "0.13.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.11", path = "../../comms" }
-tari_comms_dht = { version = "^0.11", path = "../../comms/dht" }
-tari_common = { version = "^0.11", path = "../../common" }
+tari_comms = { version = "^0.13", path = "../../comms" }
+tari_comms_dht = { version = "^0.13", path = "../../comms/dht" }
+tari_common = { version = "^0.13", path = "../../common" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_service_framework = { version = "^0.11", path = "../service_framework" }
-tari_shutdown = { version = "^0.11", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.11", path = "../../infrastructure/storage" }
+tari_service_framework = { version = "^0.13", path = "../service_framework" }
+tari_shutdown = { version = "^0.13", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.13", path = "../../infrastructure/storage" }
 tari_utilities = "^0.3"
 
 anyhow = "1.0.32"
@@ -38,10 +38,12 @@ tokio = { version = "1.11", features = ["macros"] }
 tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
 tower = "0.3.0-alpha.2"
 tower-service = { version = "0.3.0-alpha.2" }
-trust-dns-client = { version = "0.21.0-alpha.2", features = ["dns-over-rustls"] }
+trust-dns-client = { version = "0.21.0-alpha.4", features = ["dns-over-rustls"] }
+rustls = "0.19.1"
+webpki = "0.21"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.11", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.13", path = "../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 env_logger = "0.6.2"
@@ -56,7 +58,7 @@ features = ["console_appender", "file_appender", "file", "yaml_format"]
 default-features = false
 
 [build-dependencies]
-tari_common = { version = "^0.11", path = "../../common", features = ["build"] }
+tari_common = { version = "^0.13", path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []

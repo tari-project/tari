@@ -54,6 +54,8 @@ service Wallet {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+    // Will triggger a complete revalidation of all wallet outputs.
+    rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
 }
 
 message GetVersionRequest { }
@@ -143,6 +145,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
     // The transaction was not found by the wallet its in transaction database
     TRANSACTION_STATUS_NOT_FOUND = 7;
+    // The transaction was rejected by the mempool
+    TRANSACTION_STATUS_REJECTED = 8;
 }
 
 message GetCompletedTransactionsRequest { }
@@ -197,3 +201,7 @@ message CancelTransactionResponse {
     bool is_success = 1;
     string failure_message = 2;
 }
+
+message RevalidateRequest{}
+
+message RevalidateResponse{}

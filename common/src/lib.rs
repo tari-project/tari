@@ -88,7 +88,8 @@ pub use configuration::{
     error::ConfigError,
     global::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
-    utils::{default_config, install_default_config_file, load_configuration},
+    name_server::DnsNameServer,
+    utils::{config_installer, default_config, load_configuration},
 };
 
 pub mod dir_utils;

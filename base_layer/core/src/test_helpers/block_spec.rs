@@ -26,7 +26,7 @@ use crate::{
 };
 
 pub struct BlockSpecs {
-    pub specs: Vec<BlockSpec>,
+    specs: Vec<BlockSpec>,
 }
 
 impl BlockSpecs {
@@ -135,7 +135,7 @@ macro_rules! block_specs {
         {
             let mut specs = Vec::new();
             $crate::block_specs!(@ { specs } [$name, $($k: $v),*], $($tail)*);
-            BlockSpecs::from(specs)
+            $crate::test_helpers::BlockSpecs::from(specs)
         }
     };
     ([$name:expr, $($k:ident: $v:expr),* $(,)?] $(,)*) => {{

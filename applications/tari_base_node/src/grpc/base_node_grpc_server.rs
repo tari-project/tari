@@ -26,6 +26,7 @@ use crate::{
         helpers::{mean, median},
     },
 };
+use either::Either;
 use futures::{channel::mpsc, SinkExt};
 use log::*;
 use std::{
@@ -49,6 +50,7 @@ use tari_core::{
     chain_storage::ChainStorageError,
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     crypto::tari_utilities::{hex::Hex, ByteArray},
+    iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
     transactions::transaction::Transaction,
@@ -64,7 +66,7 @@ const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
 // client, so memory is not really a concern here, but a malicious client could request a large
 // number here to keep the node busy
-const GET_DIFFICULTY_MAX_HEIGHTS: usize = 10_000;
+const GET_DIFFICULTY_MAX_HEIGHTS: u64 = 10_000;
 const GET_DIFFICULTY_PAGE_SIZE: usize = 1_000;
 // The maximum number of headers a client can request at a time. If the client requests more than
 // this, this is the maximum that will be returned.
@@ -104,7 +106,7 @@ impl BaseNodeGrpcServer {
 pub async fn get_heights(
     request: &tari_rpc::HeightRequest,
     handler: LocalNodeCommsInterface,
-) -> Result<Vec<u64>, Status> {
+) -> Result<(u64, u64), Status> {
     block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
 
@@ -132,111 +134,74 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             request.end_height
         );
         let mut handler = self.node_service.clone();
-        let mut heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
-        heights = heights
-            .drain(..cmp::min(heights.len(), GET_DIFFICULTY_MAX_HEIGHTS))
-            .collect();
-        let (mut tx, rx) = mpsc::channel(GET_DIFFICULTY_MAX_HEIGHTS);
+        let (start_height, end_height) = get_heights(&request, handler.clone()).await?;
+        // Overflow safety: checked in get_heights
+        let num_requested = end_height - start_height;
+        if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
+            return Err(Status::invalid_argument(format!(
+                "Number of headers requested exceeds maximum. Expected less than {} but got {}",
+                GET_DIFFICULTY_MAX_HEIGHTS, num_requested
+            )));
+        }
+        let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
         task::spawn(async move {
-            let mut page: Vec<u64> = heights
-                .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
-                .collect();
-            while !page.is_empty() {
-                let mut difficulties = match handler.get_headers(page.clone()).await {
+            let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
+            for (start, end) in page_iter {
+                // headers are returned by height
+                let headers = match handler.get_headers(start..=end).await {
+                    Ok(headers) => headers,
                     Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {:?}", err,
-                        );
+                        warn!(target: LOG_TARGET, "Base node service error: {:?}", err,);
+                        let _ = tx
+                            .send(Err(Status::internal("Internal error when fetching blocks")))
+                            .await;
                         return;
-                    },
-                    Ok(mut data) => {
-                        data.sort_by(|a, b| a.height.cmp(&b.height));
-                        let mut iter = data.iter().peekable();
-                        let mut result = Vec::new();
-                        while let Some(next) = iter.next() {
-                            match handler.get_blocks(vec![next.height]).await {
-                                Err(err) => {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Error communicating with local base node: {:?}", err,
-                                    );
-                                    return;
-                                },
-                                Ok(blocks) => {
-                                    match blocks.first() {
-                                        Some(block) => {
-                                            let current_difficulty: u64 =
-                                                block.accumulated_data.target_difficulty.as_u64();
-                                            let current_timestamp = next.timestamp.as_u64();
-                                            let current_height = next.height;
-                                            let pow_algo = next.pow.pow_algo.as_u64();
-                                            let estimated_hash_rate = if let Some(peek) = iter.peek() {
-                                                let peeked_timestamp = peek.timestamp.as_u64();
-                                                // Sometimes blocks can have the same timestamp, lucky miner and some
-                                                // clock drift.
-                                                if peeked_timestamp > current_timestamp {
-                                                    current_difficulty / (peeked_timestamp - current_timestamp)
-                                                } else {
-                                                    0
-                                                }
-                                            } else {
-                                                0
-                                            };
-                                            result.push((
-                                                current_difficulty,
-                                                estimated_hash_rate,
-                                                current_height,
-                                                current_timestamp,
-                                                pow_algo,
-                                            ))
-                                        },
-                                        None => {
-                                            return;
-                                        },
-                                    }
-                                },
-                            };
-                        }
-                        result
                     },
                 };
 
-                difficulties.sort_by(|a, b| b.2.cmp(&a.2));
-                let result_size = difficulties.len();
-                for difficulty in difficulties {
-                    match tx
-                        .send(Ok({
-                            tari_rpc::NetworkDifficultyResponse {
-                                difficulty: difficulty.0,
-                                estimated_hash_rate: difficulty.1,
-                                height: difficulty.2,
-                                timestamp: difficulty.3,
-                                pow_algo: difficulty.4,
-                            }
-                        }))
-                        .await
-                    {
-                        Ok(_) => (),
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error sending difficulty via GRPC:  {}", err);
-                            match tx.send(Err(Status::unknown("Error sending data"))).await {
-                                Ok(_) => (),
-                                Err(send_err) => {
-                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                                },
-                            }
-                            return;
-                        },
+                if headers.is_empty() {
+                    let _ = tx.send(Err(Status::invalid_argument(format!(
+                        "No blocks found within range {} - {}",
+                        start, end
+                    ))));
+                    return;
+                }
+
+                let mut headers_iter = headers.iter().peekable();
+
+                while let Some(chain_header) = headers_iter.next() {
+                    let current_difficulty = chain_header.accumulated_data().target_difficulty.as_u64();
+                    let current_timestamp = chain_header.header().timestamp.as_u64();
+                    let current_height = chain_header.header().height;
+                    let pow_algo = chain_header.header().pow.pow_algo.as_u64();
+
+                    let estimated_hash_rate = headers_iter
+                        .peek()
+                        .map(|chain_header| chain_header.header().timestamp.as_u64())
+                        .and_then(|peeked_timestamp| {
+                            // Sometimes blocks can have the same timestamp, lucky miner and some
+                            // clock drift.
+                            peeked_timestamp
+                                .checked_sub(current_timestamp)
+                                .filter(|td| *td > 0)
+                                .map(|time_diff| current_timestamp / time_diff)
+                        })
+                        .unwrap_or(0);
+
+                    let difficulty = tari_rpc::NetworkDifficultyResponse {
+                        difficulty: current_difficulty,
+                        estimated_hash_rate,
+                        height: current_height,
+                        timestamp: current_timestamp,
+                        pow_algo,
+                    };
+
+                    if let Err(err) = tx.send(Ok(difficulty)).await {
+                        warn!(target: LOG_TARGET, "Error sending difficulties via GRPC:  {}", err);
+                        return;
                     }
                 }
-                if result_size < GET_DIFFICULTY_PAGE_SIZE {
-                    break;
-                }
-                page = heights
-                    .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
-                    .collect();
             }
         });
 
@@ -326,21 +291,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let from_height = cmp::min(request.from_height, tip);
 
-        let headers: Vec<u64> = if from_height != 0 {
+        let (header_range, is_reversed) = if from_height != 0 {
             match sorting {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
                         (_, true) => 0,
                         (res, false) => res + 1,
                     };
-                    (from..=from_height).rev().collect()
+                    (from..=from_height, true)
                 },
                 Sorting::Asc => {
-                    let to = match from_height.overflowing_add(num_headers) {
-                        (_, true) => u64::MAX,
-                        (res, false) => res,
-                    };
-                    (from_height..to).collect()
+                    let to = from_height.saturating_add(num_headers).saturating_sub(1);
+                    (from_height..=to, false)
                 },
             }
         } else {
@@ -350,34 +312,50 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         (_, true) => 0,
                         (res, false) => res + 1,
                     };
-                    (from..=tip).rev().collect()
+                    (from..=tip, true)
                 },
-                Sorting::Asc => (0..num_headers).collect(),
+                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
             }
         };
 
         task::spawn(async move {
-            trace!(target: LOG_TARGET, "Starting base node request");
-            let mut headers = headers;
-            trace!(target: LOG_TARGET, "Headers:{:?}", headers);
-            let mut page: Vec<u64> = headers
-                .drain(..cmp::min(headers.len(), LIST_HEADERS_PAGE_SIZE))
-                .collect();
-            while !page.is_empty() {
-                trace!(target: LOG_TARGET, "Page: {:?}", page);
-                let result_headers = match handler.get_headers(page).await {
+            debug!(
+                target: LOG_TARGET,
+                "Starting base node request {}-{}",
+                header_range.start(),
+                header_range.end()
+            );
+            let page_iter = NonOverlappingIntegerPairIter::new(
+                *header_range.start(),
+                *header_range.end() + 1,
+                LIST_HEADERS_PAGE_SIZE,
+            );
+            let page_iter = if is_reversed {
+                Either::Left(page_iter.rev())
+            } else {
+                Either::Right(page_iter)
+            };
+            for (start, end) in page_iter {
+                debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
+                let result_headers = match handler.get_headers(start..=end).await {
                     Err(err) => {
-                        warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                        warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
                         return;
                     },
-                    Ok(data) => data,
+                    Ok(data) => {
+                        if is_reversed {
+                            data.into_iter().rev().collect::<Vec<_>>()
+                        } else {
+                            data
+                        }
+                    },
                 };
-                trace!(target: LOG_TARGET, "Result headers: {}", result_headers.len());
                 let result_size = result_headers.len();
+                debug!(target: LOG_TARGET, "Result headers: {}", result_size);
 
                 for header in result_headers {
-                    trace!(target: LOG_TARGET, "Sending block header: {}", header.height);
-                    match tx.send(Ok(header.into())).await {
+                    debug!(target: LOG_TARGET, "Sending block header: {}", header.height());
+                    match tx.send(Ok(header.into_header().into())).await {
                         Ok(_) => (),
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Error sending block header via GRPC:  {}", err);
@@ -391,12 +369,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         },
                     }
                 }
-                if result_size < LIST_HEADERS_PAGE_SIZE {
-                    break;
-                }
-                page = headers
-                    .drain(..cmp::min(headers.len(), LIST_HEADERS_PAGE_SIZE))
-                    .collect();
             }
         });
 
@@ -587,10 +559,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             })?;
 
         if !base_node_response.is_empty() {
-            debug!(target: LOG_TARGET, "Sending Transaction state response to client");
             let response = tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::Mined.into(),
             };
+            debug!(
+                target: LOG_TARGET,
+                "Sending Transaction state response to client {:?}", response
+            );
             return Ok(Response::new(response));
         }
 
@@ -620,7 +595,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
         };
 
-        debug!(target: LOG_TARGET, "Sending Transaction state response to client");
+        debug!(
+            target: LOG_TARGET,
+            "Sending Transaction state response to client {:?}", response
+        );
         Ok(Response::new(response))
     }
 
@@ -670,18 +648,24 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             target: LOG_TARGET,
             "Incoming GRPC request for GetBlocks: {:?}", request.heights
         );
+
         let mut heights = request.heights;
-        heights = heights
-            .drain(..cmp::min(heights.len(), GET_BLOCKS_MAX_HEIGHTS))
-            .collect();
+        if heights.is_empty() {
+            return Err(Status::invalid_argument("heights cannot be empty"));
+        }
+
+        heights.truncate(GET_BLOCKS_MAX_HEIGHTS);
+        heights.sort_unstable();
+        // unreachable panic: `heights` is not empty
+        let start = *heights.first().expect("unreachable");
+        let end = *heights.last().expect("unreachable");
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
         task::spawn(async move {
-            let mut page: Vec<u64> = heights.drain(..cmp::min(heights.len(), GET_BLOCKS_PAGE_SIZE)).collect();
-
-            while !page.is_empty() {
-                let blocks = match handler.get_blocks(page.clone()).await {
+            let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE);
+            for (start, end) in page_iter {
+                let blocks = match handler.get_blocks(start..=end).await {
                     Err(err) => {
                         warn!(
                             target: LOG_TARGET,
@@ -689,10 +673,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         );
                         return;
                     },
-                    Ok(data) => data,
+                    Ok(data) => {
+                        // TODO: Change this interface to a start-end ranged one (clients like the block explorer
+                        // convert start end ranges to integer lists anyway)
+                        data.into_iter().filter(|b| heights.contains(&b.header().height))
+                    },
                 };
-                let result_size = blocks.len();
+
                 for block in blocks {
+                    debug!(
+                        target: LOG_TARGET,
+                        "GetBlock GRPC sending block #{}",
+                        block.header().height
+                    );
                     match tx
                         .send(
                             block
@@ -714,10 +707,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         },
                     }
                 }
-                if result_size < GET_BLOCKS_PAGE_SIZE {
-                    break;
-                }
-                page = heights.drain(..cmp::min(heights.len(), GET_BLOCKS_PAGE_SIZE)).collect();
             }
         });
 
@@ -888,10 +877,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
+        let (start, end) = get_heights(&request, handler.clone()).await?;
 
-        let headers = match handler.get_headers(heights).await {
-            Ok(headers) => headers,
+        let headers = match handler.get_headers(start..=end).await {
+            Ok(headers) => headers.into_iter().map(|h| h.into_header()).collect::<Vec<_>>(),
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
                 Vec::new()
@@ -1177,9 +1166,9 @@ async fn get_block_group(
         height_request.end_height
     );
 
-    let heights = get_heights(&height_request, handler.clone()).await?;
+    let (start, end) = get_heights(&height_request, handler.clone()).await?;
 
-    let blocks = match handler.get_blocks(heights).await {
+    let blocks = match handler.get_blocks(start..=end).await {
         Err(err) => {
             warn!(
                 target: LOG_TARGET,

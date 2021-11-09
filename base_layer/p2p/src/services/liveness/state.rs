@@ -74,7 +74,6 @@ pub struct LivenessState {
     pongs_received: usize,
     pings_sent: usize,
     pongs_sent: usize,
-    num_active_peers: usize,
 
     local_metadata: Metadata,
 }

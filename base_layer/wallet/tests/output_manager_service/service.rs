@@ -34,7 +34,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsSecretKey,
 };
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
@@ -59,6 +58,7 @@ use tari_crypto::{
     script,
     script::TariScript,
 };
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::Network;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -149,6 +149,38 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
         wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
     }
+
+    let cipher_seed = CipherSeed::from_mnemonic(
+        &[
+            "parade".to_string(),
+            "genius".to_string(),
+            "cradle".to_string(),
+            "milk".to_string(),
+            "perfect".to_string(),
+            "ride".to_string(),
+            "online".to_string(),
+            "world".to_string(),
+            "lady".to_string(),
+            "apple".to_string(),
+            "rent".to_string(),
+            "business".to_string(),
+            "oppose".to_string(),
+            "force".to_string(),
+            "tumble".to_string(),
+            "escape".to_string(),
+            "tongue".to_string(),
+            "camera".to_string(),
+            "ceiling".to_string(),
+            "edge".to_string(),
+            "shine".to_string(),
+            "gauge".to_string(),
+            "fossil".to_string(),
+            "orphan".to_string(),
+        ],
+        None,
+    )
+    .unwrap();
+
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig {
             base_node_query_timeout: Duration::from_secs(10),
@@ -156,7 +188,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             peer_dial_retry_timeout: Duration::from_secs(5),
             ..Default::default()
         },
-        ts_handle.clone(),
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
@@ -165,7 +196,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
-        CommsSecretKey::default(),
+        cipher_seed,
     )
     .await
     .unwrap();
@@ -223,7 +254,6 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
             peer_dial_retry_timeout: Duration::from_secs(5),
             ..Default::default()
         },
-        ts_handle.clone(),
         oms_request_receiver,
         OutputManagerDatabase::new(backend),
         oms_event_publisher.clone(),
@@ -232,7 +262,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         shutdown.to_signal(),
         base_node_service_handle.clone(),
         connectivity,
-        CommsSecretKey::default(),
+        CipherSeed::new(),
     )
     .await
     .unwrap();
@@ -1381,6 +1411,23 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
+    // This is needed on a fast computer, otherwise the balance have not been updated correctly yet with the next step
+    let mut event_stream = oms.get_event_stream();
+    let delay = sleep(Duration::from_secs(10));
+    tokio::pin!(delay);
+    loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                 if let OutputManagerEvent::TxoValidationSuccess(_) = &*event.unwrap(){
+                    break;
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(
         balance.available_balance,
@@ -1455,15 +1502,167 @@ async fn test_txo_validation() {
 }
 
 #[tokio::test]
+async fn test_txo_revalidation() {
+    let factories = CryptoFactories::default();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (
+        mut oms,
+        wallet_connectivity,
+        _shutdown,
+        _ts,
+        mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _base_node_service_event_publisher,
+    ) = setup_output_manager_service(backend, true).await;
+
+    wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
+    // Now we add the connection
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
+        .await;
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+
+    let output1_value = 1_000_000;
+    let output1 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output1_value),
+    );
+    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
+    oms.add_output_with_tx_id(1, output1.clone()).await.unwrap();
+
+    let output2_value = 2_000_000;
+    let output2 = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::default(),
+        TestParamsHelpers::new(),
+        MicroTari::from(output2_value),
+    );
+    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
+
+    oms.add_output_with_tx_id(2, output2.clone()).await.unwrap();
+
+    let mut block1_header = BlockHeader::new(1);
+    block1_header.height = 1;
+    let mut block4_header = BlockHeader::new(1);
+    block4_header.height = 4;
+
+    let mut block_headers = HashMap::new();
+    block_headers.insert(1, block1_header.clone());
+    block_headers.insert(4, block4_header.clone());
+    rpc_service_state.set_blocks(block_headers.clone());
+
+    // These responses will mark outputs 1 and 2 and mined confirmed
+    let responses = vec![
+        UtxoQueryResponse {
+            output: Some(output1_tx_output.clone().into()),
+            mmr_position: 1,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output1_tx_output.hash(),
+        },
+        UtxoQueryResponse {
+            output: Some(output2_tx_output.clone().into()),
+            mmr_position: 2,
+            mined_height: 1,
+            mined_in_block: block1_header.hash(),
+            output_hash: output2_tx_output.hash(),
+        },
+    ];
+
+    let utxo_query_responses = UtxoQueryResponses {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        responses,
+    };
+
+    rpc_service_state.set_utxo_query_response(utxo_query_responses.clone());
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![],
+        not_deleted_positions: vec![1, 2],
+        heights_deleted_at: vec![],
+        blocks_deleted_in: vec![],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.validate_txos().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 2);
+
+    // This response sets output1 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1],
+        not_deleted_positions: vec![2],
+        heights_deleted_at: vec![4],
+        blocks_deleted_in: vec![block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 1);
+
+    // This response sets output1 and 2 as spent
+    let query_deleted_response = QueryDeletedResponse {
+        best_block: block4_header.hash(),
+        height_of_longest_chain: 4,
+        deleted_positions: vec![1, 2],
+        not_deleted_positions: vec![],
+        heights_deleted_at: vec![4, 4],
+        blocks_deleted_in: vec![block4_header.hash(), block4_header.hash()],
+    };
+
+    rpc_service_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.revalidate_all_outputs().await.unwrap();
+    let _utxo_query_calls = rpc_service_state
+        .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+    let _query_deleted_calls = rpc_service_state
+        .wait_pop_query_deleted(1, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    let unspent_txos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(unspent_txos.len(), 0);
+}
+
+#[tokio::test]
 async fn test_oms_key_manager_discrepancy() {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
     let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (oms_event_publisher, _) = broadcast::channel(200);
-    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
-    let (event_publisher, _) = channel(100);
-    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
@@ -1478,11 +1677,10 @@ async fn test_oms_key_manager_discrepancy() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
 
-    let master_key1 = CommsSecretKey::random(&mut OsRng);
+    let master_seed1 = CipherSeed::new();
 
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle.clone(),
         oms_request_receiver,
         db.clone(),
         oms_event_publisher.clone(),
@@ -1491,7 +1689,7 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
-        master_key1.clone(),
+        master_seed1.clone(),
     )
     .await
     .unwrap();
@@ -1501,7 +1699,6 @@ async fn test_oms_key_manager_discrepancy() {
     let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
     let output_manager_service2 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle.clone(),
         oms_request_receiver2,
         db.clone(),
         oms_event_publisher.clone(),
@@ -1510,17 +1707,16 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
-        master_key1,
+        master_seed1,
     )
     .await
     .expect("Should be able to make a new OMS with same master key");
     drop(output_manager_service2);
 
     let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
-    let master_key2 = CommsSecretKey::random(&mut OsRng);
+    let master_seed2 = CipherSeed::new();
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
-        ts_handle,
         oms_request_receiver3,
         db,
         oms_event_publisher,
@@ -1529,12 +1725,12 @@ async fn test_oms_key_manager_discrepancy() {
         shutdown.to_signal(),
         basenode_service_handle,
         wallet_connectivity,
-        master_key2,
+        master_seed2,
     )
     .await;
 
     assert!(matches!(
         output_manager_service3,
-        Err(OutputManagerError::MasterSecretKeyMismatch)
+        Err(OutputManagerError::MasterSeedMismatch)
     ));
 }

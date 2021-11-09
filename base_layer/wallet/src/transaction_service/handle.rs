@@ -59,6 +59,7 @@ pub enum TransactionServiceRequest {
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
     ValidateTransactions,
+    ReValidateTransactions,
 }
 
 impl fmt::Display for TransactionServiceRequest {
@@ -99,6 +100,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
             TransactionServiceRequest::ValidateTransactions => f.write_str("ValidateTransactions"),
+            TransactionServiceRequest::ReValidateTransactions => f.write_str("ReValidateTransactions"),
         }
     }
 }
@@ -392,6 +394,17 @@ impl TransactionServiceHandle {
     pub async fn set_low_power_mode(&mut self) -> Result<(), TransactionServiceError> {
         match self.handle.call(TransactionServiceRequest::SetLowPowerMode).await?? {
             TransactionServiceResponse::LowPowerModeSet => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn revalidate_all_transactions(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ReValidateTransactions)
+            .await??
+        {
+            TransactionServiceResponse::ValidationStarted(_) => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

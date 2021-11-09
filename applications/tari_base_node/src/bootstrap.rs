@@ -28,7 +28,7 @@ use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
-use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
     base_node,
     base_node::{
@@ -122,7 +122,7 @@ where B: BlockchainBackend + 'static
                     .parse()
                     .expect("Unable to parse application version. Not valid semver"),
                 AutoUpdateConfig {
-                    name_server: config.dns_seeds_name_server,
+                    name_server: config.dns_seeds_name_server.clone(),
                     update_uris: config.autoupdate_dns_hosts.clone(),
                     use_dnssec: config.dns_seeds_use_dnssec,
                     download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
@@ -251,7 +251,10 @@ where B: BlockchainBackend + 'static
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
-                saf_msg_validity: self.config.saf_expiry_duration,
+                saf_config: SafConfig {
+                    msg_validity: self.config.saf_expiry_duration,
+                    ..Default::default()
+                },
                 dedup_cache_capacity: self.config.dedup_cache_capacity,
                 ..Default::default()
             },
@@ -268,7 +271,7 @@ where B: BlockchainBackend + 'static
                 .chain(self.config.force_sync_peers.clone())
                 .collect(),
             dns_seeds: self.config.dns_seeds.clone(),
-            dns_seeds_name_server: self.config.dns_seeds_name_server,
+            dns_seeds_name_server: self.config.dns_seeds_name_server.clone(),
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
         }
     }

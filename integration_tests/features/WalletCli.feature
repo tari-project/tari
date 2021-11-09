@@ -15,6 +15,7 @@ Feature: Wallet CLI
         And I clear custom base node of wallet WALLET via command line
 
     Scenario: As a user I want to change password via command line
+        Given I have a seed node SEED
         Given I have wallet WALLET connected to all seed nodes
         When I stop wallet WALLET
         And I change the password of wallet WALLET to changedpwd via command line
@@ -75,12 +76,12 @@ Feature: Wallet CLI
         And I have wallet RECEIVER connected to base node BASE
         And I have mining node MINE connected to base node BASE and wallet SENDER
         And mining node MINE mines 15 blocks
-        Then wallets SENDER should have 12 spendable coinbase outputs
+        Then wallets SENDER should have EXACTLY 12 spendable coinbase outputs
         # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
         # TODO: base node connection.
         And I wait 30 seconds
         And I stop wallet SENDER
-        And I make it rain from wallet SENDER 1 tx / sec 10 sec 8000 uT 100 increment to RECEIVER via command line
+        And I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
         Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
         Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
         And mining node MINE mines 5 blocks
@@ -122,6 +123,7 @@ Feature: Wallet CLI
         Then I wait for wallet WALLET to have at least 1000000 uT
         And I export the utxos of wallet WALLET via command line
 
+    @flaky
     Scenario: As a user I want to discover-peer via command line
         Given I have a seed node SEED
         And I have a base node BASE1 connected to seed SEED

@@ -23,6 +23,7 @@
 use crate::proof_of_work::{Difficulty, PowAlgorithm};
 
 /// Immutable struct that is guaranteed to have achieved the target difficulty
+#[derive(Debug, Clone, Copy)]
 pub struct AchievedTargetDifficulty {
     pow_algo: PowAlgorithm,
     achieved: Difficulty,

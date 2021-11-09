@@ -1,8 +1,7 @@
 #!/bin/bash
-#
+# todo: update arg handling
 
-if [ $# -eq 0 ]
-then
+if [ $# -eq 0 ]; then
     echo
     echo Please provide archive file name, \'.tar.gz\' will be appended
     echo
@@ -11,23 +10,25 @@ fi
 rm -f "./$1.tar.gz" >/dev/null
 
 tarball_parent=/tmp
-tarball_source=tari_stibbons_testnet
+tarball_source=tari_testnet
 tarball_folder=${tarball_parent}/${tarball_source}
-if [ -d "${tarball_folder}" ]
-then
+if [ -d "${tarball_folder}" ]; then
     rm -f -r "${tarball_folder:?}"
 fi
 
 mkdir "${tarball_folder}"
 mkdir "${tarball_folder}/config"
 mkdir "${tarball_folder}/runtime"
+mkdir "${tarball_folder}/scripts"
 
-local_dir="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+local_dir="$(
+    cd "$(dirname "$0")" >/dev/null 2>&1 || exit 1
+    pwd -P
+)"
 project_dir="$(dirname "$(greadlink -e "$local_dir")")"
 app_dir="$(dirname "$(greadlink -e "$project_dir/applications/tari_base_node")")"
 
-if [ ! "${app_dir}" == "${project_dir}/applications" ]
-then
+if [ ! "${app_dir}" == "${project_dir}/applications" ]; then
     echo
     echo Please run this script from '/buildtools'
     echo
@@ -74,18 +75,27 @@ cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.s
 cp -f "${local_dir}/get_xmrig_osx.ps1" "${tarball_folder}/runtime/get_xmrig_osx.ps1"
 
 # Config
-cp -f "${project_dir}/common/config/presets/tari_config_example.toml" "${tarball_folder}/config/config.toml"
+cat "${project_dir}"/common/config/presets/*.toml >"${tarball_folder}/config/config.toml"
 cp -f "${project_dir}/common/xmrig_config/config_example_stagenet.json" "${tarball_folder}/config/xmrig_config_example_stagenet.json"
 cp -f "${project_dir}/common/xmrig_config/config_example_mainnet.json" "${tarball_folder}/config/xxmrig_config_example_mainnet.json"
 cp -f "${project_dir}/common/xmrig_config/config_example_mainnet_self_select.json" "${tarball_folder}/config/xmrig_config_example_mainnet_self_select.json"
+
+# Scripts
+cp -f "${local_dir}/osx_postinstall.sh" "${tarball_folder}/scripts/postinstall"
 
 echo Files copied to "${tarball_folder}"
 echo Creating archive...
 echo
 
-cd "${tarball_parent}"
-tar -cvf "${local_dir}/$1.tar.gz" ${tarball_source}
-cd "${local_dir}"
-echo
-echo Created "./$1.tar.gz" in "${local_dir}"
-echo
+cd "${tarball_parent}" || exit 1
+if [ -z "$2" ]; then
+    tar -cvf "${local_dir}/$1.tar.gz" ${tarball_source}
+    cd "${local_dir}" || exit 1
+    echo
+    echo Created "./$1.tar.gz" in "${local_dir}".
+    echo
+else
+    echo
+    echo Files copied to "${tarball_folder}". No zip created.
+    echo
+fi

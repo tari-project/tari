@@ -31,7 +31,7 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::SyncPeers,
+    sync::SyncPeer,
 };
 use randomx_rs::RandomXFlag;
 use std::fmt::{Display, Error, Formatter};
@@ -54,7 +54,6 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    InitialSync,
     HeadersSynchronized(PeerConnection),
     HeaderSyncFailed,
     HorizonStateSynchronized,
@@ -81,9 +80,9 @@ impl<E: std::error::Error> From<E> for StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, SyncPeers),
+    Lagging(ChainMetadata, Vec<SyncPeer>),
     // We are behind the pruning horizon.
-    LaggingBehindHorizon(ChainMetadata, SyncPeers),
+    LaggingBehindHorizon(ChainMetadata, Vec<SyncPeer>),
     UpToDate,
 }
 
@@ -125,7 +124,6 @@ impl Display for StateEvent {
         use StateEvent::*;
         match self {
             Initialized => f.write_str("Initialized"),
-            InitialSync => f.write_str("InitialSync"),
             BlocksSynchronized => f.write_str("Synchronised Blocks"),
             HeadersSynchronized(conn) => write!(f, "Headers Synchronized from peer `{}`", conn.peer_node_id()),
             HeaderSyncFailed => f.write_str("Header Synchronization Failed"),
@@ -191,14 +189,7 @@ impl StateInfo {
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
-            BlockSync(info) => format!(
-                "Syncing blocks: ({}) {}",
-                info.sync_peers
-                    .first()
-                    .map(|n| n.short_str())
-                    .unwrap_or_else(|| "".to_string()),
-                info.sync_progress_string()
-            ),
+            BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
             Listening(_) => "Listening".to_string(),
             BlockSyncStarting => "Starting block sync".to_string(),
         }
@@ -276,7 +267,7 @@ pub struct BlockSyncInfo {
 }
 
 impl BlockSyncInfo {
-    /// Creates a new blockSyncInfo
+    /// Creates a new BlockSyncInfo
     pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<NodeId>) -> BlockSyncInfo {
         BlockSyncInfo {
             tip_height,
@@ -287,7 +278,12 @@ impl BlockSyncInfo {
 
     pub fn sync_progress_string(&self) -> String {
         format!(
-            "{}/{} ({:.0}%)",
+            "({}) {}/{} ({:.0}%)",
+            self.sync_peers
+                .iter()
+                .map(|n| n.short_str())
+                .collect::<Vec<_>>()
+                .join(", "),
             self.local_height,
             self.tip_height,
             (self.local_height as f64 / self.tip_height as f64 * 100.0)
@@ -297,10 +293,6 @@ impl BlockSyncInfo {
 
 impl Display for BlockSyncInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        writeln!(f, "Syncing from the following peers:")?;
-        for peer in &self.sync_peers {
-            writeln!(f, "{}", peer)?;
-        }
         writeln!(f, "Syncing {}", self.sync_progress_string())
     }
 }

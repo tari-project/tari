@@ -34,8 +34,9 @@ use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::transaction_protocol::RewindData;
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, range_proof::REWIND_USER_MESSAGE_LENGTH};
 use tari_key_manager::{
+    cipher_seed::CipherSeed,
     key_manager::KeyManager,
-    mnemonic::{from_secret_key, MnemonicLanguage},
+    mnemonic::{Mnemonic, MnemonicLanguage},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::master_key_manager";
@@ -59,15 +60,12 @@ pub(crate) struct MasterKeyManager<TBackend> {
 impl<TBackend> MasterKeyManager<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
-    pub async fn new(
-        master_secret_key: PrivateKey,
-        db: OutputManagerDatabase<TBackend>,
-    ) -> Result<Self, OutputManagerError> {
+    pub async fn new(master_seed: CipherSeed, db: OutputManagerDatabase<TBackend>) -> Result<Self, OutputManagerError> {
         // Check to see if there is any persisted state. If there is confirm that the provided master secret key matches
         let key_manager_state = match db.get_key_manager_state().await? {
             None => {
                 let starting_state = KeyManagerState {
-                    master_key: master_secret_key,
+                    seed: master_seed,
                     branch_seed: "".to_string(),
                     primary_key_index: 0,
                 };
@@ -75,46 +73,46 @@ where TBackend: OutputManagerBackend + 'static
                 starting_state
             },
             Some(km) => {
-                if km.master_key != master_secret_key {
-                    return Err(OutputManagerError::MasterSecretKeyMismatch);
+                if km.seed != master_seed {
+                    return Err(OutputManagerError::MasterSeedMismatch);
                 }
                 km
             },
         };
 
         let utxo_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
+            key_manager_state.seed.clone(),
             key_manager_state.branch_seed,
             key_manager_state.primary_key_index,
         );
 
         let utxo_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
+            key_manager_state.seed.clone(),
             KEY_MANAGER_SCRIPT_BRANCH_KEY.to_string(),
             key_manager_state.primary_key_index,
         );
 
         let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
+            key_manager_state.seed.clone(),
             KEY_MANAGER_COINBASE_BRANCH_KEY.to_string(),
             0,
         );
 
         let coinbase_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
+            key_manager_state.seed.clone(),
             KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY.to_string(),
             0,
         );
 
         let rewind_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key.clone(),
+            key_manager_state.seed.clone(),
             KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY.to_string(),
             0,
         );
         let rewind_key = rewind_key_manager.derive_key(0)?.k;
 
         let rewind_blinding_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key,
+            key_manager_state.seed,
             KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY.to_string(),
             0,
         );
@@ -173,10 +171,9 @@ where TBackend: OutputManagerBackend + 'static
 
     /// Return the Seed words for the current Master Key set in the Key Manager
     pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, OutputManagerError> {
-        Ok(from_secret_key(
-            self.utxo_key_manager.lock().await.master_key(),
-            language,
-        )?)
+        let km = self.utxo_key_manager.lock().await;
+        let seed_words = (*km).cipher_seed().to_mnemonic(language, None)?;
+        Ok(seed_words)
     }
 
     /// Return the public rewind keys

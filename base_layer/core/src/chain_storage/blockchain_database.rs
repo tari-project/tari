@@ -285,8 +285,8 @@ where B: BlockchainBackend
         Ok(db.fetch_chain_metadata()?.height_of_longest_chain())
     }
 
-    /// Return the geometric mean of the proof of work of the longest chain.
-    /// The proof of work is returned as the geometric mean of all difficulties
+    /// Return the accumulated proof of work of the longest chain.
+    /// The proof of work is returned as the product of total difficulties of all PoW algorithms
     pub fn get_accumulated_difficulty(&self) -> Result<u128, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
@@ -564,6 +564,11 @@ where B: BlockchainBackend
     pub fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_last_header()
+    }
+
+    pub fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_last_chain_header()
     }
 
     /// Returns the sum of all kernels

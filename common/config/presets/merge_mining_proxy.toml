@@ -1,0 +1,37 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                             Merge Mining Configuration Options                                      #
+#                                                                                                                      #
+########################################################################################################################
+
+[merge_mining_proxy.weatherwax]
+
+# URL to monerod
+monerod_url = "http://monero-stagenet.exan.tech:38081"  # stagenet
+#monerod_url = "http://18.133.59.45:28081"               # testnet
+#monerod_url = "http://18.132.124.81:18081"              # mainnet
+#monerod_url = "http://monero.exan.tech:18081"           # mainnet alternative
+
+# Address of the tari_merge_mining_proxy application
+proxy_host_address = "127.0.0.1:7878"
+
+# In sole merged mining, the block solution is usually submitted to the Monero blockchain
+# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
+# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
+# pool does that, then this setting should be "false". (default = true).
+proxy_submit_to_origin = true
+
+# If authentication is being used for curl
+monerod_use_auth = false
+
+# Username for curl
+monerod_username = ""
+
+# Password for curl
+monerod_password = ""
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# accepted. (Default value = true; will wait for base node initial sync).
+#wait_for_initial_sync_at_startup = true
+

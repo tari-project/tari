@@ -14,7 +14,7 @@ Feature: Block Sync
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 1         | 1          |
 
-     @long-running
+    @long-running
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 10        | 2          |
@@ -46,10 +46,11 @@ Feature: Block Sync
   Scenario: When a new node joins the network, it should receive all peers
     Given I have 10 seed nodes
     And I have a base node NODE1 connected to all seed nodes
-    Then NODE1 should have 10 peers
+    # additional peer seeds are being included from config.toml [common]
+    Then NODE1 should have at least 10 peers
     Given I have a base node NODE2 connected to node NODE1
-    Then NODE1 should have 11 peers
-    Then NODE2 should have 11 peers
+    Then NODE1 should have at least 11 peers
+    Then NODE2 should have at least 11 peers
 
 
   @critical
@@ -69,22 +70,27 @@ Feature: Block Sync
   @long-running @flaky
   Scenario: Node should not sync from pruned node
     Given I have a base node NODE1 connected to all seed nodes
-    And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 5
-    When I mine 40 blocks on NODE1
+    And I have wallet WALLET1 connected to base node NODE1
+    And I have mining node MINING1 connected to base node NODE1 and wallet WALLET1
+    And I have a pruned node PNODE1 connected to node NODE1 with pruning horizon set to 6
+    When mining node MINING1 mines 40 blocks with min difficulty 20 and max difficulty 9999999999
     Then all nodes are at height 40
     When I stop node NODE1
-    Given I have a base node NODE2 connected to node PNODE1
     Given I have a pruned node PNODE2 connected to node PNODE1 with pruning horizon set to 5
-    When I mine 5 blocks on NODE2
-    Then node NODE2 is at height 5
+    Given I have a base node NODE2
+    And I have wallet WALLET2 connected to base node NODE2
+    And I have mining node MINING2 connected to base node NODE2 and wallet WALLET2
+    When mining node MINING2 mines 5 blocks with min difficulty 1 and max difficulty 2
+    And I connect node NODE2 to node PNODE1
+    And I connect node NODE2 to node PNODE2
     Then node PNODE2 is at height 40
+    Then node NODE2 is at height 5
     When I start base node NODE1
     # We need for node to boot up and supply node 2 with blocks
-    And I connect node NODE2 to node NODE1 and wait 1 seconds
+    And I connect node NODE2 to node NODE1
     # NODE2 may initially try to sync from PNODE1 and PNODE2, then eventually try to sync from NODE1; mining blocks
     # on NODE1 will make this test less flaky and force NODE2 to sync from NODE1 much quicker
     When I mine 10 blocks on NODE1
-    Then all transactions must have succeeded
     Then all nodes are at height 50
 
   Scenario Outline: Syncing node while also mining before tip sync
@@ -99,9 +105,7 @@ Feature: Block Sync
     Then node SEED is at height <X1>
     When I start base node SYNCER
     # Try to mine much faster than block sync, but still producing a lower accumulated difficulty
-    And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 10
-    # Allow reorg to filter through
-    Then node SYNCER is in state LISTENING
+    And mining node MINER2 mines <Y1> blocks with min difficulty 1 and max difficulty 2
     Then node SYNCER is at the same height as node SEED
     @critical
     Examples:
@@ -115,7 +119,6 @@ Feature: Block Sync
       | 999  | 50 |
       | 1000 | 50 |
       | 1001 | 50 |
-
 
   Scenario: Pruned mode network only
     Given I have a base node NODE1 connected to all seed nodes
@@ -143,7 +146,7 @@ Feature: Block Sync
     @critical
     Examples:
       | NODES | BLOCKS | PRUNE_HORIZON |
-      | 5     | 10     | 0             |
+      | 5     | 10     | 0             |
 
     @long-running
     Examples:

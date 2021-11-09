@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,8 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::chain_metadata_service::PeerChainMetadata;
+mod tls;
+pub(super) use tls::TLS_SERVER_ROOTS;
 
-pub type SyncPeer = PeerChainMetadata;
-/// Type alias for a collection of PeerChainMetadata
-pub type SyncPeers = Vec<SyncPeer>;
+use trust_dns_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
+
+#[inline]
+pub fn default_trust_anchor() -> TrustAnchor {
+    // This was copied from the trust-dns crate.
+    const ROOT_ANCHOR_ORIG: &[u8] = include_bytes!("19036.rsa");
+    // This was generated from the `.` root domain in 10/2020.
+    const ROOT_ANCHOR_CURRENT: &[u8] = include_bytes!("20326.rsa");
+
+    let mut anchor = TrustAnchor::new();
+    anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_ORIG).expect("Invalid ROOT_ANCHOR_ORIG"));
+    anchor.insert_trust_anchor(&Rsa::from_public_bytes(ROOT_ANCHOR_CURRENT).expect("Invalid ROOT_ANCHOR_CURRENT"));
+    anchor
+}
