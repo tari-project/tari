@@ -156,7 +156,7 @@ Feature: Wallet FFI
     # Scenario: As a client I want feedback about my connection status to the specifed Base Node
 
     # Scenario: As a client I want feedback about the wallet restoration process
-    # As a client I want to be able to restore my wallet from seed words
+    # It's a subtest of "As a client I want to be able to restore my wallet from seed words"
 
     # Scenario: As a client I want feedback about TXO and TX validation processes
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"

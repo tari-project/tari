@@ -477,6 +477,9 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  bool *recovery_in_progress,
                                  int *error_out);
 
+// Gets the balance
+struct TariBalance *wallet_get_balance(struct TariWallet *wallet, int *error_out);
+
 // Signs a message
 char *wallet_sign_message(struct TariWallet *wallet, const char *msg, int *error_out);
 
@@ -503,15 +506,6 @@ unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int
 
 // Gets the available balance from a TariBalance
 unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
-
-// Gets the available balance from a TariWallet
-unsigned long long wallet_get_available_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the incoming balance from a TariWallet
-unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the outgoing balance from a TariWallet
-unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet, int *error_out);
 
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);

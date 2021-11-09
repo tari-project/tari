@@ -444,7 +444,7 @@ Then(
       120
     );
 
-    let balance = wallet.getBalance().available;
+    let balance = wallet.pollBalance().available;
 
     if (!(balance >= amount)) {
       console.log("Balance not adequate!");

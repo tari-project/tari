@@ -54,6 +54,8 @@ pub enum InterfaceError {
     InvalidEmojiId,
     #[error("An error has occurred due to an invalid argument: `{0}`")]
     InvalidArgument(String),
+    #[error("Balance Unavailable")]
+    BalanceError,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -95,6 +97,10 @@ impl From<InterfaceError> for LibWalletError {
             InterfaceError::InvalidArgument(_) => Self {
                 code: 7,
                 message: format!("{:?}", v),
+            },
+            InterfaceError::BalanceError => Self {
+                code: 8,
+                message: "Balance Unavailable".to_string(),
             },
         }
     }

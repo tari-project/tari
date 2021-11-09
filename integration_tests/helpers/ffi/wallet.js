@@ -10,8 +10,17 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
+
+class WalletBalance {
+  available = 0;
+  timeLocked = 0;
+  pendingIn = 0;
+  pendingOut = 0;
+}
+
 class Wallet {
   ptr;
+  balance = new WalletBalance();
   log_path = "";
   receivedTransaction = 0;
   receivedTransactionReply = 0;
@@ -269,8 +278,16 @@ class Wallet {
   onBalanceUpdated = (ptr) => {
     let b = new Balance();
     b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
     console.log(
-      `${new Date().toISOString()} callbackBalanceUpdated: available = ${b.getAvailable()},  time locked = ${b.getTimeLocked()}  pending incoming = ${b.getPendingIncoming()} pending outgoing = ${b.getPendingOutgoing()}`
+      `${new Date().toISOString()} callbackBalanceUpdated: available = ${
+        this.balance.available
+      },  time locked = ${this.balance.timeLocked}  pending incoming = ${
+        this.balance.pendingIn
+      } pending outgoing = ${this.balance.pendingOut}`
     );
     b.destroy();
   };
@@ -320,6 +337,22 @@ class Wallet {
     return result;
   }
 
+  getBalance() {
+    return this.balance;
+  }
+
+  pollBalance() {
+    let b = new Balance();
+    let ptr = InterfaceFFI.walletGetBalance(this.ptr);
+    b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
+    b.destroy();
+    return this.balance;
+  }
+
   getEmojiId() {
     let ptr = InterfaceFFI.walletGetPublicKey(this.ptr);
     let pk = new PublicKey();
@@ -327,21 +360,6 @@ class Wallet {
     let result = pk.getEmojiId();
     pk.destroy();
     return result;
-  }
-
-  getBalance() {
-    let available = InterfaceFFI.walletGetAvailableBalance(this.ptr);
-    let pendingIncoming = InterfaceFFI.walletGetPendingIncomingBalance(
-      this.ptr
-    );
-    let pendingOutgoing = InterfaceFFI.walletGetPendingOutgoingBalance(
-      this.ptr
-    );
-    return {
-      pendingIn: pendingIncoming,
-      pendingOut: pendingOutgoing,
-      available: available,
-    };
   }
 
   addBaseNodePeer(public_key_hex, address) {
