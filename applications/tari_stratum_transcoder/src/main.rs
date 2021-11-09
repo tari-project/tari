@@ -35,7 +35,7 @@ use crate::error::StratumTranscoderProxyError;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{StratumTranscoderProxyConfig, StratumTranscoderProxyService};
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 use structopt::StructOpt;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
@@ -45,7 +45,7 @@ use tokio::time::Duration;
 async fn main() -> Result<(), StratumTranscoderProxyError> {
     let config = initialize()?;
 
-    let config = StratumTranscoderProxyConfig::from(config);
+    let config = StratumTranscoderProxyConfig::try_from(config)?;
     let addr = config.transcoder_host_address;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))

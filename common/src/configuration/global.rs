@@ -27,7 +27,6 @@ use crate::{
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
-use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
     fmt,
@@ -35,9 +34,13 @@ use std::{
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
+    prelude::rust_2021::FromIterator,
     str::FromStr,
     time::Duration,
 };
+
+use multiaddr::{Error, Multiaddr, Protocol};
+
 use tari_storage::lmdb_store::LMDBConfig;
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
@@ -74,8 +77,8 @@ pub struct GlobalConfig {
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
-    pub grpc_base_node_address: SocketAddr,
-    pub grpc_console_wallet_address: SocketAddr,
+    pub grpc_base_node_address: Multiaddr,
+    pub grpc_console_wallet_address: Multiaddr,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: DnsNameServer,
@@ -191,7 +194,7 @@ fn convert_node_config(
             return Err(ConfigurationError::new(
                 &key,
                 &format!("DB initial size must be at least {} MB.", DB_INIT_MIN_MB),
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -206,7 +209,7 @@ fn convert_node_config(
             return Err(ConfigurationError::new(
                 &key,
                 &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -224,19 +227,19 @@ fn convert_node_config(
                     "DB resize threshold must be at least {} MB.",
                     DB_RESIZE_THRESHOLD_MIN_MB
                 ),
-            ))
+            ));
         },
         Ok(mb) if mb as usize >= grow_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 "DB resize threshold must be less than grow size.",
-            ))
+            ));
         },
         Ok(mb) if mb as usize >= init_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 "DB resize threshold must be less than init size.",
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -340,20 +343,13 @@ fn convert_node_config(
     let key = config_string("base_node", net_str, "grpc_base_node_address");
     let grpc_base_node_address = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
     let key = config_string("base_node", net_str, "grpc_console_wallet_address");
     let grpc_console_wallet_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
     // Peer and DNS seeds
     let key = "common.peer_seeds";
@@ -973,6 +969,17 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
             .to_lowercase(),
         parts.next(),
     )
+}
+
+/// Interpret a string as either a socket address (first) or a multiaddr format string.
+/// If the former, it gets converted into a MultiAddr before being returned.
+pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
+    addr.parse::<SocketAddr>()
+        .map(|socket| match socket {
+            SocketAddr::V4(ip4) => Multiaddr::from_iter([Protocol::Ip4(*ip4.ip()), Protocol::Tcp(ip4.port())]),
+            SocketAddr::V6(ip6) => Multiaddr::from_iter([Protocol::Ip6(*ip6.ip()), Protocol::Tcp(ip6.port())]),
+        })
+        .or_else(|_| addr.parse::<Multiaddr>())
 }
 
 impl FromStr for TorControlAuthentication {

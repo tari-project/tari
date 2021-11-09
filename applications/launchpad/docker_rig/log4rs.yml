@@ -109,7 +109,7 @@ loggers:
     level: info
     appenders:
       - other
-    additive: core
+    additive: false
 
 
   # Comms messages get logged to the 'network' log
