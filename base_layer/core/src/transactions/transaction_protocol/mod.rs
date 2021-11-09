@@ -91,7 +91,7 @@ pub mod transaction_initializer;
 use crate::transactions::{tari_amount::*, transaction::TransactionError};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedPublicKey, MessageHash, PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, MessageHash, PrivateKey};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},

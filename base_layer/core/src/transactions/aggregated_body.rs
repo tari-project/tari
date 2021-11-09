@@ -55,7 +55,6 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{CompressedPublicKey, PublicKey as PublicKeyTrait},
     ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";

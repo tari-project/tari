@@ -207,7 +207,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 return Err(ValidationError::TransactionError(TransactionError::NoCoinbase));
             }
 
-            let coinbase_index = coinbase_index.unwrap();
             let coinbase_excess = coinbase_kernel_excess.unwrap();
 
             debug!(
@@ -219,7 +218,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             Ok(KernelValidationData {
                 kernels,
                 kernel_sum,
-                coinbase_index,
                 coinbase_excess,
             })
         })
@@ -437,7 +435,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 );
                 return Err(ValidationError::TransactionError(TransactionError::NoCoinbase));
             }
-            let coinbase_index = coinbase_index.unwrap();
             let coinbase_commitment = coinbase_commitment.unwrap();
 
             // Return result in original order
@@ -448,7 +445,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 outputs,
                 commitment_sum: output_commitment_sum,
                 aggregate_offset_pubkey,
-                coinbase_index,
                 coinbase_commitment,
             })
         })
@@ -494,28 +490,14 @@ impl<B: BlockchainBackend + 'static> BlockSyncBodyValidation for BlockValidator<
 struct KernelValidationData {
     pub kernels: Vec<TransactionKernel>,
     pub kernel_sum: KernelSum,
-    pub coinbase_index: usize,
     pub coinbase_excess: PublicKey,
-}
-
-impl KernelValidationData {
-    pub fn coinbase(&self) -> &TransactionKernel {
-        &self.kernels[self.coinbase_index]
-    }
 }
 
 struct OutputValidationData {
     pub outputs: Vec<TransactionOutput>,
     pub commitment_sum: Commitment,
     pub aggregate_offset_pubkey: PublicKey,
-    pub coinbase_index: usize,
     pub coinbase_commitment: PublicKey,
-}
-
-impl OutputValidationData {
-    pub fn coinbase(&self) -> &TransactionOutput {
-        &self.outputs[self.coinbase_index]
-    }
 }
 
 struct InputValidationData {

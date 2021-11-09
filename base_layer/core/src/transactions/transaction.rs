@@ -63,7 +63,6 @@ use tari_common_types::types::{
     PublicKey,
     RangeProof,
     RangeProofService,
-    Signature,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -635,7 +634,7 @@ impl TransactionInput {
             } => {
                 let challenge = TransactionInput::build_script_challenge(
                     // TODO: Add a compressed comsig
-                    &self.script_signature.public_nonce(),
+                    self.script_signature.public_nonce(),
                     script,
                     &self.input_data,
                     &public_script_key.compress(),
@@ -863,7 +862,7 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &self.metadata_signature.public_nonce(),
+            self.metadata_signature.public_nonce(),
             &self.commitment,
         );
         if !self.metadata_signature.decompress().expect("fix me").verify_challenge(
@@ -1073,7 +1072,7 @@ impl Default for TransactionOutput {
     fn default() -> Self {
         TransactionOutput::new(
             OutputFeatures::default(),
-            CompressedCommitment::from_bytes(&vec![0u8; 32]).unwrap(),
+            CompressedCommitment::from_bytes(&[0u8; 32]).unwrap(),
             RangeProof::default(),
             TariScript::default(),
             PublicKey::default().compress(),

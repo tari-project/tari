@@ -44,7 +44,7 @@ use crate::{
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, CompressedPublicKey, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CommitmentFactory, CompressedPublicKey, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,

@@ -39,8 +39,6 @@ use tari_common_types::types::{
     CompressedSignature,
     MessageHash,
     PrivateKey,
-    PublicKey,
-    Signature,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

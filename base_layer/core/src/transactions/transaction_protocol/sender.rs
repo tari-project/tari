@@ -64,7 +64,7 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     keys::{CompressedPublicKey as CompressedPublicKeyTrait, PublicKey as PublicKeyTrait},
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    ristretto::pedersen::{PedersenCommitmentFactory},
     script::TariScript,
     tari_utilities::ByteArray,
 };

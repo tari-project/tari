@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{Commitment, CompressedPublicKey};
+use tari_common_types::types::CompressedPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionKernel},

@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 use tari_core::crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
-use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey};
 
 impl TryFrom<grpc::Signature> for CompressedSignature {
     type Error = String;

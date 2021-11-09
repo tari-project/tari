@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey};
 use tari_core::{
     crypto::{
         script::{ExecutionStack, TariScript},

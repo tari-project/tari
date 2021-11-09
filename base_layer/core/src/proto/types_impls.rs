@@ -32,7 +32,6 @@ use tari_common_types::types::{
     PrivateKey,
 };
 use tari_crypto::{
-    keys::CompressedPublicKey as CompressedPublicKeyTrait,
     tari_utilities::{ByteArray, ByteArrayError},
 };
 

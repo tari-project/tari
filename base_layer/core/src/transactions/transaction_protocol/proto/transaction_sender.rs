@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::ByteArray;
 
 // The generated _oneof_ enum
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
-use tari_common_types::types::{CompressedPublicKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey};
 use tari_crypto::script::TariScript;
 
 impl proto::TransactionSenderMessage {
