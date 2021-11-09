@@ -10,7 +10,6 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
-
 class Wallet {
   ptr;
   log_path = "";

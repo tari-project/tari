@@ -163,6 +163,9 @@ void private_key_destroy(struct TariPrivateKey *pk);
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
 
+// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char *language, int *error_out);
+
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int *error_out);
 
