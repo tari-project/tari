@@ -250,7 +250,9 @@ Given(
     const nodeA = this.getNode(nodeNameA);
     const nodeB = this.getNode(nodeNameB);
     nodeA.setPeerSeeds([nodeB.peerAddress()]);
+    console.log("Stopping node");
     await this.stopNode(nodeNameA);
+    console.log("Starting node");
     await this.startNode(nodeNameA);
   }
 );
@@ -684,17 +686,7 @@ Given(
 Given(
   /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
   async function (miner, node, wallet) {
-    const baseNode = this.getNode(node);
-    const walletNode = await this.getOrCreateWallet(wallet);
-    const miningNode = new MiningNodeProcess(
-      miner,
-      baseNode.getGrpcAddress(),
-      this.getClient(node),
-      walletNode.getGrpcAddress(),
-      this.logFilePathMiningNode,
-      true
-    );
-    this.addMiningNode(miner, miningNode);
+    await this.createMiningNode(miner, node, wallet);
   }
 );
 
@@ -1339,12 +1331,30 @@ When(
 );
 
 When(
+  /I mine (.*) blocks on (.*) with difficulty (.*)/,
+  { timeout: 20 * 1000 },
+  async function (numBlocks, node, difficulty) {
+    const miner = await this.createMiningNode("temp", node, "temp");
+    await miner.init(
+      parseInt(numBlocks),
+      null,
+      parseInt(difficulty),
+      parseInt(difficulty),
+      false,
+      null
+    );
+    await miner.startNew();
+  }
+);
+
+When(
   /mining node (.*) mines (\d+) blocks$/,
   { timeout: 1200 * 1000 }, // Must allow many blocks to be mined; dynamic time out below limits actual time
   async function (miner, numBlocks) {
-    const miningNode = this.getMiningNode(miner);
-    // Don't wait for sync before mining
-    await miningNode.init(numBlocks, null, 1, 100000, false, null);
+    const miningNode = this.getMiningNode(miner);d
+    // Don't wait for sync before mining. Also use a max difficulty of 1, since most tests assume
+    // that 1 block = 1 difficulty
+    await miningNode.init(numBlocks, null, 1, 1, false, null);
     await withTimeout(
       (10 + parseInt(numBlocks) * 1) * 1000,
       await miningNode.startNew()

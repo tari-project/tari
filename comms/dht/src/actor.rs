@@ -561,7 +561,7 @@ impl DhtActor {
                 };
 
                 if connections.is_empty() {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Propagation requested but there are no node peer connections available"
                     );
