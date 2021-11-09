@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,40 +20,43 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
+use anyhow::anyhow;
+use std::{
+    fmt::{Display, Formatter},
+    net::SocketAddr,
+    str::FromStr,
+};
 
-#[cfg(test)]
-#[macro_use]
-mod test_utils;
+#[derive(Debug, Clone)]
+pub struct DnsNameServer {
+    pub addr: SocketAddr,
+    pub dns_name: String,
+}
 
-#[cfg(feature = "auto-update")]
-pub mod auto_update;
-pub mod comms_connector;
-pub mod domain_message;
-pub mod initialization;
-pub mod peer;
-pub mod peer_seeds;
-pub mod proto;
-pub mod services;
-pub mod tari_message;
-pub mod transport;
+impl DnsNameServer {
+    pub fn new(addr: SocketAddr, dns_name: String) -> Self {
+        Self { addr, dns_name }
+    }
+}
 
-mod dns;
+impl Display for DnsNameServer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.addr, self.dns_name)
+    }
+}
 
-// Re-export
-pub use tari_common::configuration::Network;
+// TODO: Instead of using our own format, we should use multiaddresses in the format
+//       /ip4/1.1.1.1/tcp/853/tls/sni/cloudflare-dns.com
+impl FromStr for DnsNameServer {
+    type Err = anyhow::Error;
 
-/// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
-pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";
-
-/// Major network version. Peers will refuse connections if this value differs
-pub const MAJOR_NETWORK_VERSION: u32 = 0;
-/// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
-/// way.
-pub const MINOR_NETWORK_VERSION: u32 = 0;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut split = s.splitn(2, '/');
+        let addr = split.next().ok_or_else(|| anyhow!("failed to parse DNS name server"))?;
+        let dns_name = split.next().ok_or_else(|| anyhow!("failed to parse name server"))?;
+        Ok(Self {
+            addr: addr.parse()?,
+            dns_name: dns_name.to_string(),
+        })
+    }
+}

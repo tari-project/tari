@@ -58,6 +58,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
 
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
+    /// Check for presence of any form of cancelled transaction with this TxId
+    fn fetch_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError>;
+
     /// Check if a record with the provided key exists in the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -568,6 +574,18 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
+    }
+
+    pub async fn get_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        let tx = tokio::task::spawn_blocking(move || db_clone.fetch_any_cancelled_transaction(tx_id))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(tx)
     }
 
     async fn get_completed_transactions_by_cancelled(

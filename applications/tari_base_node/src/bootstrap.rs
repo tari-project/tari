@@ -122,7 +122,7 @@ where B: BlockchainBackend + 'static
                     .parse()
                     .expect("Unable to parse application version. Not valid semver"),
                 AutoUpdateConfig {
-                    name_server: config.dns_seeds_name_server,
+                    name_server: config.dns_seeds_name_server.clone(),
                     update_uris: config.autoupdate_dns_hosts.clone(),
                     use_dnssec: config.dns_seeds_use_dnssec,
                     download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
@@ -271,7 +271,7 @@ where B: BlockchainBackend + 'static
                 .chain(self.config.force_sync_peers.clone())
                 .collect(),
             dns_seeds: self.config.dns_seeds.clone(),
-            dns_seeds_name_server: self.config.dns_seeds_name_server,
+            dns_seeds_name_server: self.config.dns_seeds_name_server.clone(),
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
         }
     }
