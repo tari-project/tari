@@ -111,6 +111,10 @@ class InterfaceFFI {
       private_key_from_hex: [this.ptr, [this.string, this.intPtr]],
       private_key_destroy: [this.void, [this.ptr]],
       seed_words_create: [this.ptr, []],
+      seed_words_get_mnemonic_word_list_for_language: [
+        this.ptr,
+        [this.string, this.intPtr],
+      ],
       seed_words_get_length: [this.uint, [this.ptr, this.intPtr]],
       seed_words_get_at: [this.stringPtr, [this.ptr, this.uint, this.intPtr]],
       seed_words_push_word: [this.uchar, [this.ptr, this.string, this.intPtr]],
@@ -290,6 +294,7 @@ class InterfaceFFI {
           this.intPtr,
         ],
       ],
+      wallet_get_balance: [this.ptr, [this.ptr, this.intPtr]],
       wallet_sign_message: [
         this.stringPtr,
         [this.ptr, this.string, this.intPtr],
@@ -308,15 +313,6 @@ class InterfaceFFI {
       balance_get_time_locked: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_incoming: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_outgoing: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_get_available_balance: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_get_pending_incoming_balance: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
-      wallet_get_pending_outgoing_balance: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
       wallet_get_fee_estimate: [
         this.ulonglong,
         [
@@ -659,6 +655,19 @@ class InterfaceFFI {
   //region SeedWords
   static seedWordsCreate() {
     return this.fn.seed_words_create();
+  }
+
+  static seedWordsGetMnemonicWordListForLanguage(language) {
+    let error = this.initError();
+    let result = this.fn.seed_words_get_mnemonic_word_list_for_language(
+      language,
+      error
+    );
+    this.checkErrorResult(
+      error,
+      `seed_words_get_mnemonic_word_list_for_language`
+    );
+    return result;
   }
 
   static seedWordsGetLength(ptr) {
@@ -1194,6 +1203,13 @@ class InterfaceFFI {
     return result;
   }
 
+  static walletGetBalance(ptr) {
+    let error = this.initError();
+    let result = this.fn.wallet_get_balance(ptr, error);
+    this.checkErrorResult(error, `walletGetBalance`);
+    return result;
+  }
+
   static walletGetPublicKey(ptr) {
     let error = this.initError();
     let result = this.fn.wallet_get_public_key(ptr, error);
@@ -1272,27 +1288,6 @@ class InterfaceFFI {
     let error = this.initError();
     let result = this.fn.balance_get_pending_outgoing(ptr, error);
     this.checkErrorResult(error, `balanceGetPendingOutgoing`);
-    return result;
-  }
-
-  static walletGetAvailableBalance(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_get_available_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetAvailableBalance`);
-    return result;
-  }
-
-  static walletGetPendingIncomingBalance(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_get_pending_incoming_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetPendingIncomingBalance`);
-    return result;
-  }
-
-  static walletGetPendingOutgoingBalance(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_get_pending_outgoing_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetPendingOutgoingBalance`);
     return result;
   }
 

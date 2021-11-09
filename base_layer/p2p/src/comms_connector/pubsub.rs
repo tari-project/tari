@@ -179,37 +179,37 @@ mod test {
         #[derive(Debug, Clone)]
         struct Dummy {
             a: u32,
-            b: String,
+            _b: String,
         }
 
         let messages = vec![
             TopicPayload::new("Topic1", Dummy {
                 a: 1u32,
-                b: "one".to_string(),
+                _b: "one".to_string(),
             }),
             TopicPayload::new("Topic2", Dummy {
                 a: 2u32,
-                b: "two".to_string(),
+                _b: "two".to_string(),
             }),
             TopicPayload::new("Topic1", Dummy {
                 a: 3u32,
-                b: "three".to_string(),
+                _b: "three".to_string(),
             }),
             TopicPayload::new("Topic2", Dummy {
                 a: 4u32,
-                b: "four".to_string(),
+                _b: "four".to_string(),
             }),
             TopicPayload::new("Topic1", Dummy {
                 a: 5u32,
-                b: "five".to_string(),
+                _b: "five".to_string(),
             }),
             TopicPayload::new("Topic2", Dummy {
                 a: 6u32,
-                b: "size".to_string(),
+                _b: "size".to_string(),
             }),
             TopicPayload::new("Topic1", Dummy {
                 a: 7u32,
-                b: "seven".to_string(),
+                _b: "seven".to_string(),
             }),
         ];
 
@@ -231,15 +231,15 @@ mod test {
         let messages2 = vec![
             TopicPayload::new("Topic1", Dummy {
                 a: 11u32,
-                b: "one one".to_string(),
+                _b: "one one".to_string(),
             }),
             TopicPayload::new("Topic2", Dummy {
                 a: 22u32,
-                b: "two two".to_string(),
+                _b: "two two".to_string(),
             }),
             TopicPayload::new("Topic1", Dummy {
                 a: 33u32,
-                b: "three three".to_string(),
+                _b: "three three".to_string(),
             }),
         ];
 

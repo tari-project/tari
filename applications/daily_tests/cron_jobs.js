@@ -53,7 +53,7 @@ async function runWalletRecoveryTest(instances) {
       recoveredAmount,
     } = await walletRecoveryTest({
       seedWords:
-        "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
+        "abandon rely pave boil case broken volume bracket own false sketch ordinary gown bitter strong unhappy shoulder salad season student public will monkey inquiry",
       log: LOG_FILE,
       numWallets: instances,
       baseDir,

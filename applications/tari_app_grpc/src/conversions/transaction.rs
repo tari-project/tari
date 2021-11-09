@@ -77,6 +77,7 @@ impl From<tx::TransactionStatus> for grpc::TransactionStatus {
             Imported => grpc::TransactionStatus::Imported,
             Pending => grpc::TransactionStatus::Pending,
             Coinbase => grpc::TransactionStatus::Coinbase,
+            Rejected => grpc::TransactionStatus::Rejected,
         }
     }
 }

@@ -28,7 +28,10 @@ use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
 
-use crate::transaction_service::storage::{models::WalletTransaction, sqlite_db::InboundTransactionSenderInfo};
+use crate::transaction_service::storage::{
+    models::WalletTransaction,
+    sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
+};
 use std::{
     collections::HashMap,
     fmt,
@@ -54,9 +57,16 @@ pub trait TransactionBackend: Send + Sync + Clone {
 
     fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
 
-    fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    /// Light weight method to retrieve pertinent unconfirmed transactions info from completed transactions
+    fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError>;
 
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+
+    /// Check for presence of any form of cancelled transaction with this TxId
+    fn fetch_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError>;
 
     /// Check if a record with the provided key exists in the backend.
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError>;
@@ -81,7 +91,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
-    fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
     fn set_pending_transaction_cancellation_status(
         &self,
@@ -125,9 +135,9 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Mark all transactions as unvalidated
+    /// Reset optional 'mined height' and 'mined in block' fields to nothing
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
-    /// Get transaction sender info for all pending inbound transactions
+    /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
     fn get_pending_inbound_transaction_sender_info(
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
@@ -425,8 +435,11 @@ where T: TransactionBackend + 'static
         self.db.fetch_last_mined_transaction()
     }
 
-    pub async fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        self.db.fetch_unconfirmed_transactions()
+    /// Light weight method to return completed but unconfirmed transactions that were not imported
+    pub async fn fetch_unconfirmed_transactions_info(
+        &self,
+    ) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
+        self.db.fetch_unconfirmed_transactions_info()
     }
 
     /// This method returns all completed transactions that must be broadcast
@@ -570,6 +583,18 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
+    pub async fn get_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+
+        let tx = tokio::task::spawn_blocking(move || db_clone.fetch_any_cancelled_transaction(tx_id))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(tx)
+    }
+
     async fn get_completed_transactions_by_cancelled(
         &self,
         cancelled: bool,
@@ -624,9 +649,9 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.cancel_completed_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.reject_completed_transaction(tx_id))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

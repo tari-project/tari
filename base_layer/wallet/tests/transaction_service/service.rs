@@ -50,7 +50,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsSecretKey,
     CommsNode,
     PeerConnection,
 };
@@ -96,6 +95,7 @@ use tari_crypto::{
     script,
     script::{ExecutionStack, TariScript},
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -205,7 +205,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
             oms_backend,
             factories.clone(),
             Network::Weatherwax.into(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -331,7 +331,6 @@ pub fn setup_transaction_service_no_comms(
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
-            ts_handle.clone(),
             oms_request_receiver,
             oms_db,
             oms_event_publisher.clone(),
@@ -340,7 +339,7 @@ pub fn setup_transaction_service_no_comms(
             shutdown.to_signal(),
             basenode_service_handle.clone(),
             wallet_connectivity.clone(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
         ))
         .unwrap();
 
@@ -1817,6 +1816,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -1828,7 +1828,7 @@ fn test_power_mode_updates() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 6000 * uT,
         fee: MicroTari::from(200),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -1838,6 +1838,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -4981,7 +4982,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -4991,6 +4992,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -5126,7 +5128,7 @@ fn dont_broadcast_invalid_transactions() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -5136,6 +5138,7 @@ fn dont_broadcast_invalid_transactions() {
         send_count: 0,
         last_send_timestamp: None,
         valid: false,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,

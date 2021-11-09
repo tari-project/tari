@@ -50,6 +50,10 @@ impl Metadata {
     pub fn get(&self, key: MetadataKey) -> Option<&Vec<u8>> {
         self.inner.get(&(key as i32))
     }
+
+    pub fn has(&self, key: MetadataKey) -> bool {
+        self.inner.contains_key(&(key as i32))
+    }
 }
 
 impl From<HashMap<i32, Vec<u8>>> for Metadata {
@@ -74,7 +78,6 @@ pub struct LivenessState {
     pongs_received: usize,
     pings_sent: usize,
     pongs_sent: usize,
-    num_active_peers: usize,
 
     local_metadata: Metadata,
 }

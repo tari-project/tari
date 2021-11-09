@@ -22,7 +22,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![warn(dead_code)]
 #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
@@ -159,9 +159,11 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
+    DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::Shutdown;
 use tari_wallet::{
@@ -215,6 +217,7 @@ pub struct TariContacts(Vec<TariContact>);
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
+pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
@@ -842,6 +845,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 }
 
 /// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Seed Words ----------------------------------------------///
 
 /// Create an empty instance of TariSeedWords
@@ -857,6 +861,77 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
     Box::into_raw(Box::new(TariSeedWords(Vec::new())))
+}
+
+/// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+///
+/// ## Arguments
+/// `language` - The required language as a string
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariSeedWords` - Returns the TariSeedWords instance containing the entire mnemonic wordlist for the
+/// requested language.
+///
+/// # Safety
+/// The `seed_words_destroy` method must be called when finished with a TariSeedWords instance from rust to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
+    language: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TariSeedWords {
+    use tari_key_manager::mnemonic_wordlists;
+
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let mut mnemonic_word_list_vec = Vec::new();
+    if language.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("mnemonic wordlist".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        let not_supported;
+        let language_string = match CStr::from_ptr(language).to_str() {
+            Ok(str) => str,
+            Err(e) => {
+                not_supported = e.to_string();
+                not_supported.as_str()
+            },
+        };
+        let mnemonic_word_list = match TariMnemonicLanguage::from_str(language_string) {
+            Ok(language) => match language {
+                TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+            },
+            Err(_) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Mnemonic wordlist - '{}' language not supported", language_string
+                );
+                error = LibWalletError::from(InterfaceError::InvalidArgument(format!(
+                    "mnemonic wordlist - '{}' language not supported",
+                    language_string
+                )))
+                .code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                [""; 2048]
+            },
+        };
+        info!(
+            target: LOG_TARGET,
+            "Retrieved mnemonic wordlist for'{}'", language_string
+        );
+        mnemonic_word_list_vec = mnemonic_word_list.to_vec().iter().map(|s| s.to_string()).collect();
+    }
+
+    Box::into_raw(Box::new(TariSeedWords(mnemonic_word_list_vec)))
 }
 
 /// Gets the length of TariSeedWords
@@ -913,7 +988,7 @@ pub unsafe extern "C" fn seed_words_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
     } else {
         let len = (*seed_words).0.len();
-        if position > len as u32 {
+        if position >= len as u32 {
             error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
         } else {
@@ -965,6 +1040,27 @@ pub unsafe extern "C" fn seed_words_push_word(
     }
 
     // Check word is from a word list
+    match MnemonicLanguage::from(word_string.as_str()) {
+        Ok(language) => {
+            if (*seed_words).0.len() >= MnemonicLanguage::word_count(&language) {
+                let error_msg = "Invalid seed words object, i.e. the entire mnemonic word list, is being used";
+                log::error!(target: LOG_TARGET, "{}", error_msg);
+                error = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return SeedWordPushResult::InvalidObject as u8;
+            }
+        },
+        Err(e) => {
+            log::error!(
+                target: LOG_TARGET,
+                "{} is not a valid mnemonic seed word ({:?})",
+                word_string,
+                e
+            );
+            return SeedWordPushResult::InvalidSeedWord as u8;
+        },
+    }
+
     if MnemonicLanguage::from(word_string.as_str()).is_err() {
         log::error!(target: LOG_TARGET, "{} is not a valid mnemonic seed word", word_string);
         return SeedWordPushResult::InvalidSeedWord as u8;
@@ -972,9 +1068,12 @@ pub unsafe extern "C" fn seed_words_push_word(
 
     (*seed_words).0.push(word_string);
     if (*seed_words).0.len() >= 24 {
-        return if let Err(e) = TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            log::error!(target: LOG_TARGET, "Problem building private key from seed phrase");
-            error = LibWalletError::from(e).code;
+        return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            log::error!(
+                target: LOG_TARGET,
+                "Problem building valid private seed from seed phrase"
+            );
+            error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             SeedWordPushResult::InvalidSeedPhrase as u8
         } else {
@@ -2608,7 +2707,7 @@ pub unsafe extern "C" fn comms_config_create(
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
                         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+                        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
                         peer_seeds: Default::default(),
                         dns_seeds: Default::default(),
                         dns_seeds_use_dnssec: true,
@@ -2802,14 +2901,14 @@ pub unsafe extern "C" fn wallet_create(
         None
     };
 
-    let recovery_master_key = if seed_words.is_null() {
+    let recovery_seed = if seed_words.is_null() {
         None
     } else {
-        match TariPrivateKey::from_mnemonic(&(*seed_words).0) {
-            Ok(private_key) => Some(private_key),
+        match CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+            Ok(seed) => Some(seed),
             Err(e) => {
                 error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
-                error = LibWalletError::from(e).code;
+                error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return ptr::null_mut();
             },
@@ -2891,7 +2990,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        recovery_master_key,
+        recovery_seed,
     ));
 
     match w {
@@ -2945,6 +3044,39 @@ pub unsafe extern "C" fn wallet_create(
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Retrieves the balance from a wallet
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// ## Returns
+/// `*mut Balance` - Returns the pointer to the TariBalance or null if error occurs
+///
+/// # Safety
+/// The ```balance_destroy``` method must be called when finished with a TariBalance to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariBalance {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    let balance = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.output_manager_service.get_balance());
+    match balance {
+        Ok(balance) => Box::into_raw(Box::new(balance)),
+        Err(_) => {
+            error = LibWalletError::from(InterfaceError::BalanceError).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -3355,119 +3487,6 @@ pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance,
 pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
     if !balance.is_null() {
         Box::from_raw(balance);
-    }
-}
-
-/// Gets the available balance from a TariWallet. This is the balance the user can spend.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The available balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.available_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// Gets the incoming balance from a `TariWallet`. This is the uncleared balance of Tari that is
-/// expected to come into the `TariWallet` but is not yet spendable.
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The incoming balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.pending_incoming_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
-    }
-}
-
-/// Gets the outgoing balance from a `TariWallet`. This is the uncleared balance of Tari that has
-/// been spent
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_ulonglong` - The outgoing balance, 0 if wallet is null
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
-
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_balance())
-    {
-        Ok(b) => c_ulonglong::from(b.pending_outgoing_balance),
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
-        },
     }
 }
 
@@ -5283,6 +5302,7 @@ mod test {
     use tempfile::tempdir;
 
     use tari_common_types::{emoji, transaction::TransactionStatus};
+    use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
 
@@ -5292,6 +5312,7 @@ mod test {
         std::any::type_name::<T>().to_string()
     }
 
+    #[allow(dead_code)]
     #[derive(Debug)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
@@ -5763,9 +5784,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
             drop(wallet_backend);
-            assert!(stored_key.is_none(), "No key should be stored yet");
+            assert!(stored_seed.is_none(), "No key should be stored yet");
 
             let alice_wallet = wallet_create(
                 alice_config,
@@ -5798,10 +5819,7 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key1 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed1 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
             drop(wallet_backend);
 
@@ -5838,12 +5856,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key2 = runtime
-                .block_on(wallet_backend.get_master_secret_key())
-                .unwrap()
-                .unwrap();
+            let stored_seed2 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
 
-            assert_eq!(stored_key1, stored_key2);
+            assert_eq!(stored_seed1, stored_seed2);
 
             drop(wallet_backend);
 
@@ -5860,9 +5875,9 @@ mod test {
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
-            let stored_key = runtime.block_on(wallet_backend.get_master_secret_key()).unwrap();
+            let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
 
-            assert!(stored_key.is_none(), "key should be cleared");
+            assert!(stored_seed.is_none(), "key should be cleared");
             drop(wallet_backend);
 
             string_destroy(alice_network_str as *mut c_char);
@@ -6219,6 +6234,62 @@ mod test {
     }
 
     #[test]
+    pub fn test_mnemonic_word_lists() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            for language in MnemonicLanguage::iterator() {
+                let language_str: *const c_char =
+                    CString::into_raw(CString::new(language.to_string()).unwrap()) as *const c_char;
+                let mnemonic_wordlist_ffi = seed_words_get_mnemonic_word_list_for_language(language_str, error_ptr);
+                assert_eq!(error, 0);
+                let mnemonic_wordlist = match *(language) {
+                    TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                    TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                    TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                    TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                    TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                    TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                    TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+                };
+                // Compare from Rust's perspective
+                assert_eq!(
+                    (*mnemonic_wordlist_ffi).0,
+                    mnemonic_wordlist
+                        .to_vec()
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                );
+                // Compare from C's perspective
+                let count = seed_words_get_length(mnemonic_wordlist_ffi, error_ptr);
+                assert_eq!(error, 0);
+                for i in 0..count {
+                    // Compare each word in the list
+                    let mnemonic_word_ffi = CString::from_raw(seed_words_get_at(mnemonic_wordlist_ffi, i, error_ptr));
+                    assert_eq!(error, 0);
+                    assert_eq!(
+                        mnemonic_word_ffi.to_str().unwrap().to_string(),
+                        mnemonic_wordlist[i as usize].to_string()
+                    );
+                }
+                // Try to wrongfully add a new seed word onto the mnemonic wordlist seed words object
+                let w = CString::new(mnemonic_wordlist[188]).unwrap();
+                let w_str: *const c_char = CString::into_raw(w) as *const c_char;
+                seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr);
+                assert_eq!(
+                    seed_words_push_word(mnemonic_wordlist_ffi, w_str, error_ptr),
+                    SeedWordPushResult::InvalidObject as u8
+                );
+                assert_ne!(error, 0);
+                // Clear memory
+                seed_words_destroy(mnemonic_wordlist_ffi);
+            }
+        }
+    }
+
+    #[test]
     pub fn test_seed_words() {
         unsafe {
             let mut error = 0;
@@ -6227,9 +6298,9 @@ mod test {
             let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
 
             let mnemonic = vec![
-                "clever", "jaguar", "bus", "engage", "oil", "august", "media", "high", "trick", "remove", "tiny",
-                "join", "item", "tobacco", "orange", "pony", "tomorrow", "also", "dignity", "giraffe", "little",
-                "board", "army", "scale",
+                "parade", "genius", "cradle", "milk", "perfect", "ride", "online", "world", "lady", "apple", "rent",
+                "business", "oppose", "force", "tumble", "escape", "tongue", "camera", "ceiling", "edge", "shine",
+                "gauge", "fossil", "orphan",
             ];
 
             let seed_words = seed_words_create();

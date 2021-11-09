@@ -1,4 +1,4 @@
-const { Given, When, Then } = require("cucumber");
+const { Given, When, Then } = require("@cucumber/cucumber");
 const expect = require("chai").expect;
 
 const { sleep, waitForIterate } = require("../../helpers/util");
@@ -227,6 +227,16 @@ Then(
 );
 
 Then(
+  "I retrieve the mnemonic word list for {word} from ffi wallet {word}",
+  async function (language, walletName) {
+    const wallet = this.getWallet(walletName);
+    const mnemonicWordList = wallet.getMnemonicWordListForLanguage(language);
+    console.log("Mnemonic word list for", language, ":", mnemonicWordList);
+    expect(mnemonicWordList.length).to.equal(2048);
+  }
+);
+
+Then(
   "Check callbacks for finished inbound tx on ffi wallet {word}",
   async function (walletName) {
     const wallet = this.getWallet(walletName);
@@ -434,7 +444,7 @@ Then(
       120
     );
 
-    let balance = wallet.getBalance().available;
+    let balance = wallet.pollBalance().available;
 
     if (!(balance >= amount)) {
       console.log("Balance not adequate!");

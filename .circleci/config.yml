@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-18
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18
 
 commands:
   test:
@@ -76,13 +76,13 @@ commands:
       - run:
           name: Cargo fmt
           command: |
-            TOOLCHAIN=$(cat rust-toolchain)
+            TOOLCHAIN=$(awk '/channel = /{print $NF}' rust-toolchain.toml)
             rustup component add --toolchain $TOOLCHAIN rustfmt
             cargo fmt --all -- --check
       - run:
           name: Run clippy (main source)
           command: |
-            TOOLCHAIN=$(cat rust-toolchain)
+            TOOLCHAIN=$(awk '/channel = /{print $NF}' rust-toolchain.toml)
             rustup component add --toolchain $TOOLCHAIN clippy
             cargo clippy -- -D warnings -W clippy::cognitive_complexity
       - run:
@@ -182,6 +182,8 @@ jobs:
     docker:
       - image: *rust_image
     resource_class: medium
+    environment:
+      CARGO_HTTP_MULTIPLEXING: false
     steps:
       - checkout
       - cucumber-js

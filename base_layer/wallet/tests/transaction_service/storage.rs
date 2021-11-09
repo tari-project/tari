@@ -28,7 +28,7 @@ use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus},
-    types::{HashDigest, PrivateKey, PublicKey},
+    types::{HashDigest, PrivateKey, PublicKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
@@ -266,6 +266,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -358,7 +359,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
-        .block_on(db.cancel_completed_transaction(cancelled_tx_id))
+        .block_on(db.reject_completed_transaction(cancelled_tx_id))
         .unwrap();
     let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
@@ -533,7 +534,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled outbound tx");
     }
 
-    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
 
     assert_eq!(unmined_txs.len(), 4);
 
@@ -541,7 +542,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
         .unwrap();
 
-    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
     assert_eq!(unmined_txs.len(), 5);
 }
 

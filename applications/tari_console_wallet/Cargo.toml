@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.12.0"
+version = "0.21.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -50,7 +50,7 @@ default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dependencies.tui]
-version = "^0.12"
+version = "0.16"
 default-features = false
 features = ["crossterm"]
 

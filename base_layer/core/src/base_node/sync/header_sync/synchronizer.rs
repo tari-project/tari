@@ -34,7 +34,7 @@ use crate::{
     tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::{future, stream::FuturesUnordered, StreamExt, TryFutureExt};
+use futures::StreamExt;
 use log::*;
 use std::{
     convert::TryFrom,
@@ -97,25 +97,25 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.hooks.add_on_rewind_hook(hook);
     }
 
-    pub async fn synchronize(&mut self) -> Result<PeerConnection, BlockHeaderSyncError> {
+    pub async fn synchronize(&mut self) -> Result<SyncPeer, BlockHeaderSyncError> {
         debug!(target: LOG_TARGET, "Starting header sync.",);
         self.hooks.call_on_starting_hook();
 
-        let sync_peers = self.select_sync_peers().await?;
         info!(
             target: LOG_TARGET,
             "Synchronizing headers ({} candidate peers selected)",
-            sync_peers.len()
+            self.sync_peers.len()
         );
 
-        for (sync_peer, peer_conn) in sync_peers {
+        for sync_peer in self.sync_peers {
+            let peer_conn = self.dial_sync_peer(sync_peer).await?;
             let node_id = peer_conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
                 "Attempting to synchronize headers with `{}`", node_id
             );
-            match self.attempt_sync(&sync_peer, peer_conn.clone()).await {
-                Ok(()) => return Ok(peer_conn),
+            match self.attempt_sync(sync_peer, peer_conn).await {
+                Ok(()) => return Ok(sync_peer.clone()),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     warn!(target: LOG_TARGET, "{}", err);
@@ -169,36 +169,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Err(BlockHeaderSyncError::SyncFailedAllPeers)
     }
 
-    async fn select_sync_peers(&self) -> Result<Vec<(SyncPeer, PeerConnection)>, BlockHeaderSyncError> {
-        let tasks = self
-            .sync_peers
-            .iter()
-            .cloned()
-            .map(|sync_peer| {
-                debug!(target: LOG_TARGET, "Dialing {} sync peer", sync_peer.node_id());
-                self.connectivity
-                    .dial_peer(sync_peer.node_id().clone())
-                    .and_then(|conn| future::ready(Ok((sync_peer, conn))))
-            })
-            .collect::<FuturesUnordered<_>>();
-
-        let connections = tasks
-            .filter_map(|r| match r {
-                Ok((sync_peer, conn)) => future::ready(Some((sync_peer, conn))),
-                Err(err) => {
-                    debug!(target: LOG_TARGET, "Failed to dial sync peer: {}", err);
-                    future::ready(None)
-                },
-            })
-            .collect::<Vec<_>>()
-            .await;
+    async fn dial_sync_peer(&self, sync_peer: &SyncPeer) -> Result<PeerConnection, BlockHeaderSyncError> {
+        let timer = Instant::now();
+        debug!(target: LOG_TARGET, "Dialing {} sync peer", sync_peer.node_id());
+        let conn = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
         info!(
             target: LOG_TARGET,
-            "Successfully dialed {} of {} sync peer(s)",
-            connections.len(),
-            self.sync_peers.len()
+            "Successfully dialed sync peer {} in {:.2?}",
+            sync_peer,
+            timer.elapsed()
         );
-        Ok(connections)
+        Ok(conn)
     }
 
     async fn ban_peer_long(&mut self, node_id: NodeId, reason: BanReason) -> Result<(), BlockHeaderSyncError> {
@@ -246,22 +227,37 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         );
 
         // Fetch the local tip header at the beginning of the sync process
-        let local_tip_header = self.db.fetch_tip_header().await?;
+        let local_tip_header = self.db.fetch_last_chain_header().await?;
         let local_total_accumulated_difficulty = local_tip_header.accumulated_data().total_accumulated_difficulty;
+        let header_tip_height = local_tip_header.height();
         let sync_status = self
             .determine_sync_status(sync_peer, local_tip_header, &mut client)
             .await?;
         match sync_status {
-            SyncStatus::InSync => Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: None,
-                local: local_total_accumulated_difficulty,
-            }),
-            SyncStatus::WereAhead => Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: None,
-                local: local_total_accumulated_difficulty,
-            }),
+            SyncStatus::InSync | SyncStatus::WereAhead => {
+                let metadata = self.db.get_chain_metadata().await?;
+                if metadata.height_of_longest_chain() < header_tip_height {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Headers are in sync at height {} but tip is {}. Proceeding to archival/pruned block sync",
+                        header_tip_height,
+                        metadata.height_of_longest_chain()
+                    );
+                    Ok(())
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {})",
+                        header_tip_height,
+                        metadata.height_of_longest_chain()
+                    );
+                    Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                        claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                        actual: None,
+                        local: local_total_accumulated_difficulty,
+                    })
+                }
+            },
             SyncStatus::Lagging(split_info) => {
                 self.hooks.call_on_progress_header_hooks(
                     split_info.local_tip_header.height(),

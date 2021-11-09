@@ -566,6 +566,11 @@ where B: BlockchainBackend
         db.fetch_last_header()
     }
 
+    pub fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_last_chain_header()
+    }
+
     /// Returns the sum of all kernels
     pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum)
@@ -1136,7 +1141,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    // TODO: #testnetreset clean up this code
+    // TODO: #testnet_reset clean up this code
     let input_mr = if header.version == 1 {
         MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
     } else {

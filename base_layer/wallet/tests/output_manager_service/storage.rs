@@ -25,9 +25,8 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::PrivateKey;
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
-use tari_crypto::keys::SecretKey;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
@@ -351,7 +350,7 @@ pub fn test_key_manager_crud() {
     assert!(runtime.block_on(db.increment_key_index()).is_err());
 
     let state1 = KeyManagerState {
-        master_key: PrivateKey::random(&mut OsRng),
+        seed: CipherSeed::new(),
         branch_seed: "blah".to_string(),
         primary_key_index: 0,
     };

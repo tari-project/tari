@@ -1,4 +1,9 @@
-const { setWorldConstructor, After, BeforeAll, Before } = require("cucumber");
+const {
+  setWorldConstructor,
+  After,
+  BeforeAll,
+  Before,
+} = require("@cucumber/cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
@@ -155,6 +160,7 @@ class CustomWorld {
 
       const txn = new TransactionBuilder();
       txn.addInput(input);
+      txn.changeFee(1);
       const txOutput = txn.addOutput(txn.getSpendableAmount());
       const completedTx = txn.build();
 
@@ -199,10 +205,16 @@ class CustomWorld {
     return promise;
   }
 
-  sha3MineBlocksUntilHeightIncreasedBy(miner, numBlocks, minDifficulty) {
+  sha3MineBlocksUntilHeightIncreasedBy(
+    miner,
+    numBlocks,
+    minDifficulty,
+    mineOnTipOnly
+  ) {
     const promise = this.getMiningNode(miner).mineBlocksUntilHeightIncreasedBy(
       numBlocks,
-      minDifficulty
+      minDifficulty,
+      mineOnTipOnly
     );
     return promise;
   }
@@ -356,11 +368,13 @@ class CustomWorld {
   async stopNode(name) {
     const node = this.seeds[name] || this.nodes[name];
     await node.stop();
+    console.log("\n", name, "stopped\n");
   }
 
   async startNode(name, args) {
     const node = this.seeds[name] || this.nodes[name];
     await node.start(args);
+    console.log("\n", name, "started\n");
   }
 
   addTransaction(pubKey, txId) {
