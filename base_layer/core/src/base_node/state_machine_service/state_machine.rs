@@ -138,22 +138,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (HeaderSync(_), HeadersSynchronized(conn)) => {
-                if self.config.pruning_horizon > 0 {
-                    HorizonStateSync(states::HorizonStateSync::with_peer(conn))
-                } else {
-                    BlockSync(states::BlockSync::with_peer(conn))
-                }
-            },
+            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
-            (HeaderSync(s), Continue) => Listening(s.into()),
-            (HeaderSync(s), NetworkSilence) => Listening(s.into()),
+            (HeaderSync(s), Continue | NetworkSilence) => Listening(s.into()),
+            (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
+
+            (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
+            (DecideNextSync(s), Continue) => Listening(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
+
+            (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
             (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
-            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
-            (Listening(_), FallenBehind(LaggingBehindHorizon(_, sync_peers))) => HeaderSync(sync_peers.into()),
+
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
@@ -240,6 +238,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         match state {
             Starting(s) => s.next_event(shared_state).await,
             HeaderSync(s) => s.next_event(shared_state).await,
+            DecideNextSync(s) => s.next_event(shared_state).await,
             HorizonStateSync(s) => s.next_event(shared_state).await,
             BlockSync(s) => s.next_event(shared_state).await,
             Listening(s) => s.next_event(shared_state).await,
