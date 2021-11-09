@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::ByteArray;
 
 // The generated _oneof_ enum
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{CompressedPublicKey, PublicKey};
 use tari_crypto::script::TariScript;
 
 impl proto::TransactionSenderMessage {
@@ -90,17 +90,17 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     type Error = String;
 
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
-        let public_excess = PublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
-        let public_nonce = PublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
+        let public_excess = CompressedPublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
+        let public_nonce = CompressedPublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
         let sender_offset_public_key =
-            PublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
+            CompressedPublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(Into::into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())?;
         let message = data.message;
         let public_commitment_nonce =
-            PublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;
+            CompressedPublicKey::from_bytes(&data.public_commitment_nonce).map_err(|err| err.to_string())?;
         let features = data
             .features
             .map(TryInto::try_into)

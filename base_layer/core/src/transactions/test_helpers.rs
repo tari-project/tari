@@ -44,7 +44,7 @@ use crate::{
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{Commitment, CommitmentFactory, CompressedPublicKey, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
@@ -75,14 +75,14 @@ pub struct TestParams {
     pub change_spend_key: PrivateKey,
     pub offset: PrivateKey,
     pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
+    pub public_nonce: CompressedPublicKey,
     pub script_private_key: PrivateKey,
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     pub sender_offset_private_key: PrivateKey,
     pub sender_sig_private_nonce: PrivateKey,
     pub sender_sig_public_nonce: PublicKey,
     pub sender_private_commitment_nonce: PrivateKey,
-    pub sender_public_commitment_nonce: PublicKey,
+    pub sender_public_commitment_nonce: CompressedPublicKey,
     pub commitment_factory: CommitmentFactory,
     pub transaction_weight: TransactionWeight,
 }
@@ -116,15 +116,15 @@ impl TestParams {
             spend_key: PrivateKey::random(&mut OsRng),
             change_spend_key: PrivateKey::random(&mut OsRng),
             offset: PrivateKey::random(&mut OsRng),
-            public_nonce: PublicKey::from_secret_key(&r),
+            public_nonce: PublicKey::from_secret_key(&r).compress(),
             nonce: r,
             script_private_key,
-            sender_offset_public_key: PublicKey::from_secret_key(&sender_offset_private_key),
+            sender_offset_public_key: PublicKey::from_secret_key(&sender_offset_private_key).compress(),
             sender_offset_private_key,
             sender_sig_private_nonce: sender_sig_pvt_nonce.clone(),
             sender_sig_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             sender_private_commitment_nonce: sender_sig_pvt_nonce.clone(),
-            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
+            sender_public_commitment_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce).compress(),
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v2(),
         }
@@ -151,10 +151,10 @@ impl TestParams {
             params.script.clone(),
             params
                 .input_data
-                .unwrap_or_else(|| inputs!(self.get_script_public_key())),
+                .unwrap_or_else(|| inputs!(self.get_script_public_key().compress())),
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
-            metadata_signature,
+            metadata_signature.compress(),
         )
     }
 
@@ -208,7 +208,7 @@ pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, 
 pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
     let tx_meta = TransactionMetadata { fee, lock_height };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    let e = build_challenge(&PublicKey::from_secret_key(&r).compress(), &tx_meta);
     Signature::sign(k, r, &e).unwrap()
 }
 
@@ -222,7 +222,7 @@ pub fn create_random_signature_from_s_key(
     let r = PrivateKey::random(&mut OsRng);
     let p = PK::from_secret_key(&s_key);
     let tx_meta = TransactionMetadata { fee, lock_height };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    let e = build_challenge(&PublicKey::from_secret_key(&r).compress(), &tx_meta);
     (p, Signature::sign(s_key, r, &e).unwrap())
 }
 
@@ -469,9 +469,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .with_change_secret(test_params_change_and_txn.change_spend_key.clone())
         .with_change_script(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(
-                &test_params_change_and_txn.script_private_key
-            )),
+            inputs!(PublicKey::from_secret_key(&test_params_change_and_txn.script_private_key).compress()),
             test_params_change_and_txn.script_private_key.clone(),
         );
 
@@ -505,7 +503,8 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             &utxo.features,
             &test_params.sender_offset_private_key,
         )
-        .unwrap();
+        .unwrap()
+        .compress();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
         outputs.push(utxo.clone());
         stx_builder
@@ -526,16 +525,15 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         &schema.features,
         &test_params_change_and_txn.sender_offset_private_key,
     )
-    .unwrap();
+    .unwrap()
+    .compress();
 
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
         schema.features,
         script,
-        inputs!(PublicKey::from_secret_key(
-            &test_params_change_and_txn.script_private_key
-        )),
+        inputs!(PublicKey::from_secret_key(&test_params_change_and_txn.script_private_key).compress()),
         test_params_change_and_txn.script_private_key.clone(),
         change_sender_offset_public_key,
         metadata_sig,
@@ -552,8 +550,8 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
     KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(lock_height)
-        .with_excess(&Commitment::from_public_key(&excess))
-        .with_signature(&s)
+        .with_excess(&excess.compress())
+        .with_signature(&s.compress())
         .build()
         .unwrap()
 }
@@ -574,11 +572,11 @@ pub fn create_utxo(
 
     let utxo = TransactionOutput::new(
         features,
-        commitment,
+        commitment.as_public_key().compress(),
         proof.into(),
         script.clone(),
-        offset_keys.pk,
-        metadata_sig,
+        offset_keys.pk.compress(),
+        metadata_sig.compress(),
     );
     (utxo, keys.k, offset_keys.k)
 }

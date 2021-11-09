@@ -40,7 +40,15 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key,
     parse_emoji_id_or_public_key_or_node_id,
 };
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{
+    Commitment,
+    CompressedCommitment,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    PublicKey,
+    Signature,
+};
 use tari_core::{
     crypto::tari_utilities::hex::from_hex,
     proof_of_work::PowAlgorithm,
@@ -461,7 +469,7 @@ impl Parser {
             self.print_help(BaseNodeCommand::SearchUtxo);
             return;
         }
-        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
+        let commitment = match CompressedCommitment::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid commitment provided.");
@@ -480,7 +488,7 @@ impl Parser {
             self.print_help(BaseNodeCommand::SearchKernel);
             return;
         }
-        let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
+        let public_nonce = match CompressedPublicKey::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid public nonce provided.");
@@ -502,7 +510,7 @@ impl Parser {
                 return;
             },
         };
-        let kernel_sig = Signature::new(public_nonce, signature);
+        let kernel_sig = CompressedSignature::new(public_nonce, signature);
 
         self.command_handler.search_kernel(kernel_sig)
     }

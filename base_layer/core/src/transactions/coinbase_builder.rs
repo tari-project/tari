@@ -207,7 +207,7 @@ impl CoinbaseBuilder {
             inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
             script_private_key,
             sender_offset_public_key.compress(),
-            metadata_sig,
+            metadata_sig.compress(),
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
@@ -222,8 +222,8 @@ impl CoinbaseBuilder {
             .with_fee(0 * uT)
             .with_features(kernel_features)
             .with_lock_height(0)
-            .with_excess(&excess)
-            .with_signature(&sig)
+            .with_excess(&excess.as_public_key().compress())
+            .with_signature(&sig.compress())
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 

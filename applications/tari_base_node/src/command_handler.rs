@@ -36,7 +36,7 @@ use tari_app_utilities::consts;
 use tari_common::GlobalConfig;
 use tari_common_types::{
     emoji::EmojiId,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, CompressedCommitment, CompressedPublicKey, CompressedSignature, HashOutput, Signature},
 };
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -312,7 +312,7 @@ impl CommandHandler {
         });
     }
 
-    pub fn search_utxo(&self, commitment: Commitment) {
+    pub fn search_utxo(&self, commitment: CompressedCommitment) {
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
             match handler.fetch_blocks_with_utxos(vec![commitment.clone()]).await {
@@ -334,7 +334,7 @@ impl CommandHandler {
         });
     }
 
-    pub fn search_kernel(&self, excess_sig: Signature) {
+    pub fn search_kernel(&self, excess_sig: CompressedSignature) {
         let mut handler = self.node_service.clone();
         let hex_sig = excess_sig.get_signature().to_hex();
         self.executor.spawn(async move {
@@ -382,7 +382,7 @@ impl CommandHandler {
         });
     }
 
-    pub fn discover_peer(&self, dest_pubkey: Box<RistrettoPublicKey>) {
+    pub fn discover_peer(&self, dest_pubkey: Box<CompressedPublicKey>) {
         let mut dht = self.discovery_service.clone();
 
         self.executor.spawn(async move {

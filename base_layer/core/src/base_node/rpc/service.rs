@@ -241,7 +241,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         };
 
         let message = request.into_message();
-        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+        let signature =
+            CompressedSignature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
 
         let mut response = self.fetch_kernel(signature).await?;
         response.is_synced = is_synced;
@@ -272,7 +273,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         for sig in message.sigs {
-            let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            let signature =
+                CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
             responses.push(TxQueryBatchResponse {
                 signature: Some(SignatureProto::from(signature)),

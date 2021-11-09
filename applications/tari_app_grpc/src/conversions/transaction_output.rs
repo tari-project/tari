@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{BulletRangeProof, Commitment, CompressedPublicKey, PublicKey};
 use tari_core::{
     crypto::{
         script::TariScript,
@@ -40,9 +40,9 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_bytes(&output.commitment)
+        let commitment = CompressedPublicKey::from_bytes(&output.commitment)
             .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
-        let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+        let sender_offset_public_key = CompressedPublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
         let script = TariScript::from_bytes(output.script.as_slice())

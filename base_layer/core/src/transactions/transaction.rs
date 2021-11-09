@@ -52,6 +52,7 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
+    CompressedComSig,
     CompressedCommitment,
     CompressedPublicKey,
     CompressedSignature,
@@ -307,7 +308,7 @@ pub struct UnblindedOutput {
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: CompressedPublicKey,
-    pub metadata_signature: ComSignature,
+    pub metadata_signature: CompressedComSig,
 }
 
 impl UnblindedOutput {
@@ -321,7 +322,7 @@ impl UnblindedOutput {
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
         sender_offset_public_key: CompressedPublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: CompressedComSig,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -368,7 +369,7 @@ impl UnblindedOutput {
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
             },
             input_data: self.input_data.clone(),
-            script_signature,
+            script_signature: script_signature.compress(),
         })
     }
 
@@ -492,7 +493,7 @@ pub struct TransactionInput {
     /// The script input data, if any
     pub input_data: ExecutionStack,
     /// A signature with k_s, signing the script, input data, and mined height
-    pub script_signature: ComSignature,
+    pub script_signature: CompressedComSig,
 }
 
 /// An input for a transaction that spends an existing output
@@ -501,7 +502,7 @@ impl TransactionInput {
     pub fn new_with_output_hash(
         output_hash: HashOutput,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: CompressedComSig,
     ) -> TransactionInput {
         TransactionInput {
             spent_output: SpentOutput::OutputHash(output_hash),
@@ -516,7 +517,7 @@ impl TransactionInput {
         commitment: CompressedCommitment,
         script: TariScript,
         input_data: ExecutionStack,
-        script_signature: ComSignature,
+        script_signature: CompressedComSig,
         sender_offset_public_key: CompressedPublicKey,
     ) -> TransactionInput {
         TransactionInput {
@@ -634,13 +635,13 @@ impl TransactionInput {
             } => {
                 let challenge = TransactionInput::build_script_challenge(
                     // TODO: Add a compressed comsig
-                    &self.script_signature.public_nonce().as_public_key().compress(),
+                    &self.script_signature.public_nonce(),
                     script,
                     &self.input_data,
                     &public_script_key.compress(),
                     commitment,
                 );
-                if self.script_signature.verify_challenge(
+                if self.script_signature.decompress().expect("fix me").verify_challenge(
                     &Commitment::from_public_key(&(uncompressed_commitment + public_script_key)),
                     &challenge,
                     factory,
@@ -715,13 +716,7 @@ impl TransactionInput {
                 .chain(sender_offset_public_key.as_bytes())
                 .chain(self.script_signature.u().as_bytes())
                 .chain(self.script_signature.v().as_bytes())
-                .chain(
-                    self.script_signature
-                        .public_nonce()
-                        .as_public_key()
-                        .compress()
-                        .as_bytes(),
-                )
+                .chain(self.script_signature.public_nonce().as_bytes())
                 .chain(self.input_data.as_bytes())
                 .finalize()
                 .to_vec()),
@@ -823,7 +818,7 @@ pub struct TransactionOutput {
     /// Tari script offset pubkey, K_O
     pub sender_offset_public_key: CompressedPublicKey,
     /// UTXO signature with the script offset private key, k_O
-    pub metadata_signature: ComSignature,
+    pub metadata_signature: CompressedComSig,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -835,7 +830,7 @@ impl TransactionOutput {
         proof: RangeProof,
         script: TariScript,
         sender_offset_public_key: CompressedPublicKey,
-        metadata_signature: ComSignature,
+        metadata_signature: CompressedComSig,
     ) -> TransactionOutput {
         TransactionOutput {
             features,
@@ -868,10 +863,10 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &self.metadata_signature.public_nonce().as_public_key().compress(),
+            &self.metadata_signature.public_nonce(),
             &self.commitment,
         );
-        if !self.metadata_signature.verify_challenge(
+        if !self.metadata_signature.decompress().expect("fix me").verify_challenge(
             &Commitment::from_public_key(
                 &(&self.commitment.decompress().expect("fix me") +
                     &self.sender_offset_public_key.decompress().expect("fix me")),
@@ -931,13 +926,16 @@ impl TransactionOutput {
     pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> MessageHash {
         let nonce_commitment = match partial_commitment_nonce {
             None => self.metadata_signature.public_nonce().clone(),
-            Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
+            Some(partial_nonce) => (self.metadata_signature.decompress().expect("fix me").public_nonce() +
+                partial_nonce)
+                .as_public_key()
+                .compress(),
         };
         TransactionOutput::build_metadata_signature_challenge(
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &nonce_commitment.as_public_key().compress(),
+            &nonce_commitment,
             &self.commitment,
         )
     }
@@ -1046,13 +1044,7 @@ impl TransactionOutput {
             .chain(self.proof.as_bytes())
             .chain(self.metadata_signature.u().as_bytes())
             .chain(self.metadata_signature.v().as_bytes())
-            .chain(
-                self.metadata_signature
-                    .public_nonce()
-                    .as_public_key()
-                    .compress()
-                    .as_bytes(),
-            )
+            .chain(self.metadata_signature.public_nonce().as_bytes())
             .finalize()
             .to_vec()
     }
@@ -1085,7 +1077,7 @@ impl Default for TransactionOutput {
             RangeProof::default(),
             TariScript::default(),
             PublicKey::default().compress(),
-            ComSignature::default(),
+            CompressedComSig::default(),
         )
     }
 }
@@ -1111,11 +1103,7 @@ impl Display for TransactionOutput {
             self.sender_offset_public_key.to_hex(),
             self.metadata_signature.u().to_hex(),
             self.metadata_signature.v().to_hex(),
-            self.metadata_signature
-                .public_nonce()
-                .as_public_key()
-                .compress()
-                .to_hex(),
+            self.metadata_signature.public_nonce().to_hex(),
             proof
         )
     }

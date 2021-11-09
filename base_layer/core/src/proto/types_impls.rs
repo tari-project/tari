@@ -26,6 +26,7 @@ use tari_common_types::types::{
     BlindingFactor,
     ComSignature,
     Commitment,
+    CompressedComSig,
     CompressedCommitment,
     CompressedPublicKey,
     CompressedSignature,
@@ -79,7 +80,7 @@ impl From<CompressedSignature> for proto::Signature {
 
 //---------------------------------- ComSignature --------------------------------------------//
 
-impl TryFrom<proto::ComSignature> for ComSignature {
+impl TryFrom<proto::ComSignature> for CompressedComSig {
     type Error = ByteArrayError;
 
     fn try_from(sig: proto::ComSignature) -> Result<Self, Self::Error> {
@@ -87,22 +88,14 @@ impl TryFrom<proto::ComSignature> for ComSignature {
         let signature_u = PrivateKey::from_bytes(&sig.signature_u)?;
         let signature_v = PrivateKey::from_bytes(&sig.signature_v)?;
 
-        Ok(Self::new(
-            Commitment::from_public_key(
-                &public_nonce
-                    .decompress()
-                    .ok_or_else(|| ByteArrayError::ConversionError("Not a real public key".to_string()))?,
-            ),
-            signature_u,
-            signature_v,
-        ))
+        Ok(Self::new(public_nonce, signature_u, signature_v))
     }
 }
 
-impl From<ComSignature> for proto::ComSignature {
-    fn from(sig: ComSignature) -> Self {
+impl From<CompressedComSig> for proto::ComSignature {
+    fn from(sig: CompressedComSig) -> Self {
         Self {
-            public_nonce_commitment: sig.public_nonce().as_public_key().compress().to_vec(),
+            public_nonce_commitment: sig.public_nonce().to_vec(),
             signature_u: sig.u().to_vec(),
             signature_v: sig.v().to_vec(),
         }

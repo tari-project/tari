@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{Commitment, CompressedPublicKey, PublicKey};
 use tari_core::transactions::transaction::TransactionInput;
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
@@ -41,14 +41,14 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
         // Check if the received Transaction input is in compact form or not
         if !input.commitment.is_empty() {
-            let commitment = Commitment::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
+            let commitment = CompressedPublicKey::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
             let features = input
                 .features
                 .map(TryInto::try_into)
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key =
-                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+            let sender_offset_public_key = CompressedPublicKey::from_bytes(input.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("{:?}", err))?;
 
             Ok(TransactionInput::new_with_output_data(
                 features,

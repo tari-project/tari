@@ -52,7 +52,7 @@ use std::{
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    keys::{CompressedPublicKey, PublicKey as PublicKeyTrait, SecretKey},
     ristretto::pedersen::PedersenCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::fixed_set::FixedSet,
@@ -207,13 +207,18 @@ impl SenderTransactionInitializer {
             &output.features,
             &output.sender_offset_public_key,
             output.metadata_signature.public_nonce(),
-            &commitment,
+            &commitment.as_public_key().compress(),
         );
-        if !output.metadata_signature.verify_challenge(
-            &(&commitment + &output.sender_offset_public_key),
-            &e,
-            &commitment_factory,
-        ) {
+        if !output
+            .metadata_signature
+            .decompress()
+            .expect("fix me")
+            .verify_challenge(
+                &(&commitment + &output.sender_offset_public_key.decompress().expect("fix me")),
+                &e,
+                &commitment_factory,
+            )
+        {
             self.clone().build_err(&*format!(
                 "Metadata signature not valid, cannot add output: {:?}",
                 output
@@ -379,8 +384,8 @@ impl SenderTransactionInitializer {
                                 .as_ref()
                                 .ok_or("Change script private key was not provided")?
                                 .clone(),
-                            PublicKey::from_secret_key(&change_sender_offset_private_key),
-                            metadata_signature,
+                            PublicKey::from_secret_key(&change_sender_offset_private_key).compress(),
+                            metadata_signature.compress(),
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
@@ -541,7 +546,7 @@ impl SenderTransactionInitializer {
         }
 
         let nonce = self.private_nonce.clone().unwrap();
-        let public_nonce = PublicKey::from_secret_key(&nonce);
+        let public_nonce = PublicKey::from_secret_key(&nonce).compress();
         let offset = self.offset.clone().unwrap();
         let excess_blinding_factor = self.excess_blinding_factor.clone();
         let offset_blinding_factor = &excess_blinding_factor - &offset;
@@ -598,7 +603,7 @@ impl SenderTransactionInitializer {
             change_output_metadata_signature,
             change_sender_offset_public_key: self
                 .change_sender_offset_private_key
-                .map(|pk| PublicKey::from_secret_key(&pk)),
+                .map(|pk| PublicKey::from_secret_key(&pk).compress()),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
@@ -608,7 +613,7 @@ impl SenderTransactionInitializer {
             offset,
             offset_blinding_factor,
             gamma,
-            public_excess: excess,
+            public_excess: excess.compress(),
             private_nonce: nonce,
             public_nonce: public_nonce.clone(),
             public_nonce_sum: public_nonce,

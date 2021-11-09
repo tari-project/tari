@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedPublicKey, PrivateKey, PublicKey};
 use tari_core::{
     crypto::{
         script::{ExecutionStack, TariScript},
@@ -73,7 +73,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let script_private_key = PrivateKey::from_bytes(output.script_private_key.as_bytes())
             .map_err(|e| format!("script_private_key: {:?}", e))?;
 
-        let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+        let sender_offset_public_key = CompressedPublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
 
         let metadata_signature = output

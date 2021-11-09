@@ -24,14 +24,14 @@ use std::convert::TryFrom;
 use tari_core::crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, PrivateKey, PublicKey, Signature};
 
-impl TryFrom<grpc::Signature> for Signature {
+impl TryFrom<grpc::Signature> for CompressedSignature {
     type Error = String;
 
     fn try_from(sig: grpc::Signature) -> Result<Self, Self::Error> {
         let public_nonce =
-            PublicKey::from_bytes(&sig.public_nonce).map_err(|_| "Could not get public nonce".to_string())?;
+            CompressedPublicKey::from_bytes(&sig.public_nonce).map_err(|_| "Could not get public nonce".to_string())?;
         let signature = PrivateKey::from_bytes(&sig.signature).map_err(|_| "Could not get signature".to_string())?;
 
         Ok(Self::new(public_nonce, signature))

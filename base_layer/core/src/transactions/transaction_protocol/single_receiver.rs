@@ -39,6 +39,7 @@ use crate::transactions::{
     },
 };
 use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
+use tari_crypto::keys::CompressedPublicKey;
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -67,13 +68,16 @@ impl SingleReceiverTransactionProtocol {
         )?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
+        let e = build_challenge(
+            &(&sender_info.public_nonce.decompress().expect("fix me") + &public_nonce).compress(),
+            &sender_info.metadata,
+        );
         let signature = Signature::sign(spending_key, nonce, &e).map_err(TPE::SigningError)?;
         let data = RD {
             tx_id: sender_info.tx_id,
             output,
-            public_spend_key: public_spending_key,
-            partial_signature: signature,
+            public_spend_key: public_spending_key.compress(),
+            partial_signature: signature.compress(),
         };
         Ok(data)
     }
@@ -116,18 +120,18 @@ impl SingleReceiverTransactionProtocol {
             &spending_key.clone(),
             &sender_info.script,
             &sender_info.features,
-            &sender_info.sender_offset_public_key,
-            &sender_info.public_commitment_nonce,
+            &sender_info.sender_offset_public_key.decompress().expect("fix mew"),
+            &sender_info.public_commitment_nonce.decompress().expect("fix me"),
         )?;
 
         let output = TransactionOutput::new(
             features,
-            commitment.compress(),
+            commitment.as_public_key().compress(),
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
-            partial_metadata_signature,
+            partial_metadata_signature.compress(),
         );
         Ok(output)
     }

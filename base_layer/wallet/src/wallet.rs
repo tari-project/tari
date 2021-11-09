@@ -358,7 +358,7 @@ where
         source_public_key: &CommsPublicKey,
         features: OutputFeatures,
         message: String,
-        metadata_signature: ComSignature,
+        metadata_signature: CompressedComSig,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
     ) -> Result<TxId, WalletError> {

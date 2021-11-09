@@ -34,7 +34,14 @@ use crate::transactions::{
         TransactionProtocolError,
     },
 };
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{
+    CompressedPublicKey,
+    CompressedSignature,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    Signature,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -83,8 +90,8 @@ pub(super) struct MultiRecipientInfo {
 pub struct RecipientSignedMessage {
     pub tx_id: u64,
     pub output: TransactionOutput,
-    pub public_spend_key: PublicKey,
-    pub partial_signature: Signature,
+    pub public_spend_key: CompressedPublicKey,
+    pub partial_signature: CompressedSignature,
 }
 
 /// The generalised transaction recipient protocol. A different state transition network is followed depending on

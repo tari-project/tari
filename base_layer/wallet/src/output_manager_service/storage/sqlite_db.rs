@@ -1269,7 +1269,7 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
-            // Return outputs not marked as deleted or confirmed 
+            // Return outputs not marked as deleted or confirmed
             .filter(outputs::marked_deleted_in_block.is_null().or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)))
             // Only return mined
             .filter(outputs::mined_in_block.is_not_null())
@@ -1560,8 +1560,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            ComSignature::new(
-                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+            CompressedComSig::new(
+                CompressedPublicKey::from_vec(&o.metadata_signature_nonce).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"

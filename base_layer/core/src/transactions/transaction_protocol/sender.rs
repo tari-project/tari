@@ -50,9 +50,20 @@ use crate::{
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
+use tari_common_types::types::{
+    BlindingFactor,
+    ComSignature,
+    Commitment,
+    CompressedComSig,
+    CompressedPublicKey,
+    CompressedSignature,
+    PrivateKey,
+    PublicKey,
+    RangeProofService,
+    Signature,
+};
 use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
+    keys::{CompressedPublicKey as CompressedPublicKeyTrait, PublicKey as PublicKeyTrait},
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
     script::TariScript,
     tari_utilities::ByteArray,
@@ -77,8 +88,8 @@ pub(super) struct RawTransactionInfo {
     // The sender's portion of the public commitment nonce
     pub private_commitment_nonces: Vec<PrivateKey>,
     pub change: MicroTari,
-    pub change_output_metadata_signature: Option<ComSignature>,
-    pub change_sender_offset_public_key: Option<PublicKey>,
+    pub change_output_metadata_signature: Option<CompressedComSig>,
+    pub change_sender_offset_public_key: Option<CompressedPublicKey>,
     pub unblinded_change_output: Option<UnblindedOutput>,
     pub metadata: TransactionMetadata,
     pub inputs: Vec<TransactionInput>,
@@ -87,16 +98,16 @@ pub(super) struct RawTransactionInfo {
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
     pub gamma: PrivateKey,
-    pub public_excess: PublicKey,
+    pub public_excess: CompressedPublicKey,
     // The sender's private nonce
     pub private_nonce: PrivateKey,
     // The sender's public nonce
-    pub public_nonce: PublicKey,
+    pub public_nonce: CompressedPublicKey,
     // The sum of all public nonces
-    pub public_nonce_sum: PublicKey,
+    pub public_nonce_sum: CompressedPublicKey,
     #[serde(skip)]
     pub recipient_info: RecipientInfo,
-    pub signatures: Vec<Signature>,
+    pub signatures: Vec<CompressedSignature>,
     pub message: String,
 }
 
@@ -107,9 +118,9 @@ pub struct SingleRoundSenderData {
     /// The amount, in µT, being sent to the recipient
     pub amount: MicroTari,
     /// The offset public excess for this transaction
-    pub public_excess: PublicKey,
+    pub public_excess: CompressedPublicKey,
     /// The sender's public nonce
-    pub public_nonce: PublicKey,
+    pub public_nonce: CompressedPublicKey,
     /// The transaction metadata
     pub metadata: TransactionMetadata,
     /// Plain text message to receiver
@@ -119,9 +130,9 @@ pub struct SingleRoundSenderData {
     /// Script Hash
     pub script: TariScript,
     /// Script offset public key
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_public_key: CompressedPublicKey,
     /// The sender's portion of the public commitment nonce
-    pub public_commitment_nonce: PublicKey,
+    pub public_commitment_nonce: CompressedPublicKey,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,7 +286,7 @@ impl SenderTransactionProtocol {
     }
 
     /// This function will return the metadata signature of the change output
-    pub fn get_change_output_metadata_signature(&self) -> Result<Option<ComSignature>, TPE> {
+    pub fn get_change_output_metadata_signature(&self) -> Result<Option<CompressedComSig>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -287,7 +298,7 @@ impl SenderTransactionProtocol {
     }
 
     /// This function will return the the script offset public key of the change transaction
-    pub fn get_change_sender_offset_public_key(&self) -> Result<Option<PublicKey>, TPE> {
+    pub fn get_change_sender_offset_public_key(&self) -> Result<Option<CompressedPublicKey>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
@@ -369,8 +380,8 @@ impl SenderTransactionProtocol {
                     message: info.message.clone(),
                     features: recipient_output_features,
                     script: recipient_script,
-                    sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
-                    public_commitment_nonce: PublicKey::from_secret_key(private_commitment_nonce),
+                    sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key).compress(),
+                    public_commitment_nonce: PublicKey::from_secret_key(private_commitment_nonce).compress(),
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -413,12 +424,17 @@ impl SenderTransactionProtocol {
                         recipient_sender_offset_private_key,
                         &info.outputs[index].clone(),
                         &PedersenCommitmentFactory::default(),
-                    )?;
+                    )?
+                    .compress();
                 }
 
                 // Nonce is in the signature, so we'll add those together later
-                info.public_excess = &info.public_excess + &rec.public_spend_key;
-                info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
+                info.public_excess = (&info.public_excess.decompress().expect("fix me") +
+                    &rec.public_spend_key.decompress().expect("fix me"))
+                    .compress();
+                info.public_nonce_sum = (&info.public_nonce_sum.decompress().expect("fix me") +
+                    &rec.partial_signature.get_public_nonce().decompress().expect("fix me"))
+                    .compress();
                 info.signatures.push(rec.partial_signature);
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
@@ -439,15 +455,18 @@ impl SenderTransactionProtocol {
         let sender_signature =
             Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
+        let sig = output.metadata_signature.decompress().expect("fix me");
         // Create aggregated metadata signature
-        let (r_pub, u, v) = output.metadata_signature.complete_signature_tuple();
+        let (r_pub, u, v) = sig.complete_signature_tuple();
         let r_pub_aggregated = r_pub + &public_commitment_nonce;
         let u_aggregated = u + sender_signature;
         let aggregated_metadata_signature = ComSignature::new(r_pub_aggregated, u_aggregated, v.clone());
 
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         if !aggregated_metadata_signature.verify_challenge(
-            &(&output.commitment + &sender_offset_public_key),
+            &Commitment::from_public_key(
+                &(&output.commitment.decompress().expect("fix me") + &sender_offset_public_key),
+            ),
             &e,
             commitment_factory,
         ) {
@@ -476,15 +495,17 @@ impl SenderTransactionProtocol {
         }
         tx_builder.add_offset(info.offset.clone());
         tx_builder.add_script_offset(info.gamma.clone());
-        let mut s_agg = info.signatures[0].clone();
-        info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
-        let excess = PedersenCommitment::from_public_key(&info.public_excess);
+        let mut s_agg = info.signatures[0].decompress().expect("fix me");
+        info.signatures
+            .iter()
+            .skip(1)
+            .for_each(|s| s_agg = &s_agg + s.decompress().expect("fix me"));
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
             .with_features(features)
             .with_lock_height(info.metadata.lock_height)
-            .with_excess(&excess)
-            .with_signature(&s_agg)
+            .with_excess(&info.public_excess)
+            .with_signature(&s_agg.compress())
             .build()?;
         tx_builder.with_kernel(kernel);
         tx_builder.build(factories).map_err(TPE::from)
@@ -528,7 +549,7 @@ impl SenderTransactionProtocol {
                 let k = info.offset_blinding_factor.clone();
                 let r = info.private_nonce.clone();
                 let s = Signature::sign(k, r, &e).map_err(TPE::SigningError)?;
-                info.signatures.push(s);
+                info.signatures.push(s.compress());
                 Ok(())
             },
             _ => Err(TPE::InvalidStateError),
@@ -630,7 +651,7 @@ impl fmt::Display for SenderTransactionProtocol {
     }
 }
 
-pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
+pub fn calculate_tx_id<D: Digest>(pub_nonce: &CompressedPublicKey, index: usize) -> u64 {
     let hash = D::new()
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())

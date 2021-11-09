@@ -24,7 +24,7 @@ use super::protocol as proto;
 
 use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{CompressedPublicKey, PublicKey};
 use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
@@ -36,7 +36,8 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output not provided".to_string())??;
 
-        let public_spend_key = PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
+        let public_spend_key =
+            CompressedPublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
 
         let partial_signature = message
             .partial_signature

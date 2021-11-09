@@ -24,13 +24,13 @@ use std::convert::TryFrom;
 use tari_core::crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
-use tari_common_types::types::{ComSignature, Commitment, PrivateKey};
+use tari_common_types::types::{ComSignature, Commitment, CompressedComSig, CompressedPublicKey, PrivateKey};
 
-impl TryFrom<grpc::ComSignature> for ComSignature {
+impl TryFrom<grpc::ComSignature> for CompressedComSig {
     type Error = String;
 
     fn try_from(sig: grpc::ComSignature) -> Result<Self, Self::Error> {
-        let public_nonce = Commitment::from_bytes(&sig.public_nonce_commitment)
+        let public_nonce = CompressedPublicKey::from_bytes(&sig.public_nonce_commitment)
             .map_err(|_| "Could not get public nonce commitment".to_string())?;
         let signature_u =
             PrivateKey::from_bytes(&sig.signature_u).map_err(|_| "Could not get partial signature u".to_string())?;

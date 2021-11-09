@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::Commitment;
+use tari_common_types::types::{Commitment, CompressedPublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionKernel},
@@ -33,7 +33,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(&kernel.excess)
+        let excess = CompressedPublicKey::from_bytes(&kernel.excess)
             .map_err(|err| format!("Excess could not be converted:{}", err.to_string()))?;
 
         let excess_sig = kernel
