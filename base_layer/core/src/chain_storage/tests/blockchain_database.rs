@@ -24,6 +24,7 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
+    crypto::tari_utilities::hex::Hex,
     proof_of_work::Difficulty,
     tari_utilities::Hashable,
     test_helpers::{
@@ -33,8 +34,10 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        transaction::{Transaction, UnblindedOutput},
+        test_helpers::{schema_to_transaction, TransactionSchema},
+        transaction::{OutputFeatures, Transaction, UnblindedOutput},
     },
+    txn_schema,
 };
 use std::sync::Arc;
 use tari_common::configuration::Network;
@@ -351,16 +354,6 @@ mod fetch_block_hashes_from_header_tip {
 
 mod add_block {
     use super::*;
-    use crate::{
-        chain_storage::ChainStorageError,
-        crypto::tari_utilities::hex::Hex,
-        transactions::{
-            tari_amount::T,
-            test_helpers::{schema_to_transaction, TransactionSchema},
-            transaction::OutputFeatures,
-        },
-        txn_schema,
-    };
 
     #[test]
     fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {
@@ -391,10 +384,13 @@ mod add_block {
         }]);
 
         let (block, _) = create_next_block(&prev_block, txns);
-        let err = db.add_block(block).unwrap_err();
+        let err = db.add_block(block.clone()).unwrap_err();
         unpack_enum!(ChainStorageError::KeyExists { key, table_name } = err);
         assert_eq!(table_name, "utxo_commitment_index");
         assert_eq!(key, prev_output.commitment.to_hex());
+        // Check rollback
+        let header = db.fetch_header(block.header.height).unwrap();
+        assert!(header.is_none());
 
         let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![prev_utxo.clone()], to: vec![50 * T])]);
         let (block, _) = create_next_block(&prev_block, txns);
