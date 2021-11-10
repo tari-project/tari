@@ -40,11 +40,10 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::{GlobalConfig, NetworkConfigPath};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MinerConfig {
-    pub base_node_grpc_address: Option<String>,
-    pub wallet_grpc_address: Option<String>,
     pub num_mining_threads: usize,
     pub mine_on_tip_only: bool,
     pub proof_of_work_algo: ProofOfWork,
@@ -68,8 +67,6 @@ impl NetworkConfigPath for MinerConfig {
 impl Default for MinerConfig {
     fn default() -> Self {
         Self {
-            base_node_grpc_address: None,
-            wallet_grpc_address: None,
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
@@ -82,16 +79,14 @@ impl Default for MinerConfig {
 }
 
 impl MinerConfig {
-    pub fn base_node_addr(&self, global: &GlobalConfig) -> String {
-        self.base_node_grpc_address
-            .clone()
-            .unwrap_or_else(|| format!("http://{}", global.grpc_base_node_address))
+    pub fn base_node_addr(&self, global: &GlobalConfig) -> Result<String, std::io::Error> {
+        let socket = multiaddr_to_socketaddr(&global.grpc_base_node_address)?;
+        Ok(format!("http://{}", socket))
     }
 
-    pub fn wallet_addr(&self, global: &GlobalConfig) -> String {
-        self.wallet_grpc_address
-            .clone()
-            .unwrap_or_else(|| format!("http://{}", global.grpc_console_wallet_address))
+    pub fn wallet_addr(&self, global: &GlobalConfig) -> Result<String, std::io::Error> {
+        let socket = multiaddr_to_socketaddr(&global.grpc_console_wallet_address)?;
+        Ok(format!("http://{}", socket))
     }
 
     pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
