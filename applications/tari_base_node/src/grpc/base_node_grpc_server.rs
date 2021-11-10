@@ -47,7 +47,7 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, PrunedOutput},
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
@@ -462,6 +462,69 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         });
         Ok(Response::new(rx))
+    }
+
+    async fn get_asset_metadata(
+        &self,
+        request: Request<tari_rpc::GetAssetMetadataRequest>,
+    ) -> Result<Response<tari_rpc::GetAssetMetadataResponse>, Status> {
+        let request = request.into_inner();
+
+        let mut handler = self.node_service.clone();
+        let metadata = handler
+            .get_asset_metadata(
+                PublicKey::from_bytes(&request.asset_public_key)
+                    .map_err(|e| Status::invalid_argument("Not a valid asset public key"))?,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        if let Some(m) = metadata {
+            match m.output {
+                PrunedOutput::Pruned {
+                    output_hash,
+                    witness_hash,
+                } => return Err(Status::not_found("Output has been pruned")),
+                PrunedOutput::NotPruned { output } => {
+                    if let Some(ref asset) = output.features.asset {
+                        const ASSET_METADATA_TEMPLATE_ID: u32 = 1;
+                        if asset.template_ids_implemented.contains(&ASSET_METADATA_TEMPLATE_ID) {
+                            // TODO: move to a better location, or better yet, have the grpc caller split the metadata
+                            let m = String::from_utf8(output.features.metadata.clone()).unwrap();
+                            let mut m = m
+                                .as_str()
+                                .split('|')
+                                .map(|s| s.to_string())
+                                .collect::<Vec<String>>()
+                                .into_iter();
+                            let name = m.next();
+                            let description = m.next();
+                            let image = m.next();
+
+                            // TODO Perhaps this should just return metadata and have the client read the metadata in a
+                            // pattern described by the template
+                            return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
+                                name,
+                                description,
+                                image,
+                                owner_commitment: Vec::from(output.commitment.as_bytes()),
+                                features: Some(output.features.clone().into()),
+                            }));
+                        }
+                    }
+                    return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
+                        name: None,
+                        description: None,
+                        image: None,
+                        owner_commitment: Vec::from(output.commitment.as_bytes()),
+                        features: Some(output.features.clone().into()),
+                    }));
+                },
+            };
+            Err(Status::unknown("Could not find a matching arm"))
+        } else {
+            Err(Status::not_found("Could not find any utxo"))
+        }
     }
 
     async fn list_asset_registrations(

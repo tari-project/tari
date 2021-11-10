@@ -27,4 +27,7 @@ use diesel::prelude::*;
 pub struct Account {
   pub id: Vec<u8>,
   pub asset_public_key: Vec<u8>,
+  pub name: Option<String>,
+  pub description: Option<String>,
+  pub image: Option<String>,
 }

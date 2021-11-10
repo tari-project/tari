@@ -28,8 +28,14 @@ use uuid::Uuid;
 pub struct Account {
   pub id: Uuid,
   pub asset_public_key: PublicKey,
+  pub name: Option<String>,
+  pub description: Option<String>,
+  pub image: Option<String>,
 }
 
 pub struct NewAccount {
   pub asset_public_key: PublicKey,
+  pub name: Option<String>,
+  pub description: Option<String>,
+  pub image: Option<String>,
 }

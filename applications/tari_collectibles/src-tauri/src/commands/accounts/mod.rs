@@ -32,12 +32,20 @@ pub(crate) async fn accounts_create(
   asset_pub_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Account, String> {
-  // Connect to storage
-  // save to storage
-  let new_account = NewAccount {
-    asset_public_key: PublicKey::from_hex(asset_pub_key.as_str())
-      .map_err(|e| format!("Invalid public key:{}", e))?,
+  let asset_pub_key =
+    PublicKey::from_hex(asset_pub_key.as_str()).map_err(|e| format!("Invalid public key:{}", e))?;
+  let mut new_account = NewAccount {
+    asset_public_key: asset_pub_key.clone(),
+    name: None,
+    description: None,
+    image: None,
   };
+
+  let mut client = state.connect_base_node_client().await?;
+  let chain_registration_data = client.get_asset_metadata(asset_pub_key).await?;
+  new_account.name = chain_registration_data.name.clone();
+  new_account.description = chain_registration_data.description.clone();
+  new_account.image = chain_registration_data.image.clone();
   let result = state
     .create_db()
     .await

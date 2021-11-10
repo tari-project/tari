@@ -62,6 +62,9 @@ pub enum NodeCommsRequest {
     FetchAssetRegistrations {
         range: RangeInclusive<usize>,
     },
+    FetchAssetMetadata {
+        asset_public_key: PublicKey,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,6 +106,9 @@ impl Display for NodeCommsRequest {
             },
             FetchAssetRegistrations { .. } => {
                 write!(f, "FetchAllNonFungibleTokens")
+            },
+            FetchAssetMetadata { .. } => {
+                write!(f, "FetchAssetMetadata")
             },
         }
     }

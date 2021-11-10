@@ -89,6 +89,9 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     let sql_model = models::Account {
       id: Vec::from(id.as_bytes().as_slice()),
       asset_public_key: Vec::from(account.asset_public_key.as_bytes()),
+      name: account.name.clone(),
+      description: account.description.clone(),
+      image: account.image.clone(),
     };
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
 
@@ -99,6 +102,9 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     let result = Account {
       id,
       asset_public_key: account.asset_public_key,
+      name: account.name,
+      description: account.description,
+      image: account.image,
     };
     Ok(result)
   }

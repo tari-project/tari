@@ -85,6 +85,19 @@ service BaseNode {
 
     rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
     rpc ListAssetRegistrations(ListAssetRegistrationsRequest) returns (stream ListAssetRegistrationsResponse);
+    rpc GetAssetMetadata(GetAssetMetadataRequest) returns (GetAssetMetadataResponse);
+}
+
+message GetAssetMetadataRequest {
+    bytes asset_public_key = 1;
+}
+
+message GetAssetMetadataResponse {
+    optional string name = 2;
+    optional string description =3;
+    optional string image = 4;
+    bytes owner_commitment = 5;
+    OutputFeatures features = 6;
 }
 
 message ListAssetRegistrationsRequest {

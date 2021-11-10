@@ -303,4 +303,18 @@ impl LocalNodeCommsInterface {
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
+
+    pub async fn get_asset_metadata(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetMetadata { asset_public_key })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(output),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
 }

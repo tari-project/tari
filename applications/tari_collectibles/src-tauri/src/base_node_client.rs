@@ -22,6 +22,8 @@
 
 use futures::StreamExt;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_common_types::types::PublicKey;
+use tari_utilities::ByteArray;
 
 pub struct BaseNodeClient {
   client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
@@ -61,6 +63,24 @@ impl BaseNodeClient {
     }
 
     Ok(assets)
+  }
+
+  pub async fn get_asset_metadata(
+    &mut self,
+    asset_public_key: PublicKey,
+  ) -> Result<grpc::GetAssetMetadataResponse, String> {
+    let client = self.client_mut();
+    let request = grpc::GetAssetMetadataRequest {
+      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+    };
+    dbg!(&request);
+    let response = client
+      .get_asset_metadata(request)
+      .await
+      .map(|response| response.into_inner())
+      .map_err(|s| format!("Could not get asset metadata: {}", s))?;
+    dbg!(&response);
+    Ok(response)
   }
 
   fn client_mut(
