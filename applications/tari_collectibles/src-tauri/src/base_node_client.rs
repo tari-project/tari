@@ -67,7 +67,7 @@ impl BaseNodeClient {
 
   pub async fn get_asset_metadata(
     &mut self,
-    asset_public_key: PublicKey,
+    asset_public_key: &PublicKey,
   ) -> Result<grpc::GetAssetMetadataResponse, String> {
     let client = self.client_mut();
     let request = grpc::GetAssetMetadataRequest {
@@ -81,6 +81,52 @@ impl BaseNodeClient {
       .map_err(|s| format!("Could not get asset metadata: {}", s))?;
     dbg!(&response);
     Ok(response)
+  }
+
+  // TODO: probably can get the full checkpoint instead
+  pub async fn get_sidechain_committee(
+    &mut self,
+    asset_public_key: &PublicKey,
+  ) -> Result<Vec<PublicKey>, String> {
+    let client = self.client_mut();
+    let request = grpc::GetTokensRequest {
+      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+      unique_ids: vec![vec![3u8; 32]],
+    };
+
+    dbg!(&request);
+    let mut stream = client
+      .get_tokens(request)
+      .await
+      .map(|response| response.into_inner())
+      .map_err(|s| format!("Could not get asset sidechain checkpoint"))?;
+    let mut i = 0;
+    // Could def do this better
+    #[allow(clippy::never_loop)]
+    while let Some(response) = stream.next().await {
+      i += 1;
+      if i > 10 {
+        break;
+      }
+      dbg!(&response);
+      let features = response
+        .map_err(|status| format!("Got an error status from GRPC:{}", status))?
+        .features;
+      if let Some(sidechain) = features.and_then(|f| f.sidechain_checkpoint) {
+        let pub_keys = sidechain
+          .committee
+          .iter()
+          .map(|s| PublicKey::from_bytes(s).map_err(|e| format!("Not a valid public key:{}", e)))
+          .collect::<Result<_, String>>()?;
+        return Ok(pub_keys);
+      } else {
+        return Err("Found utxo but was missing sidechain data".to_string());
+      }
+    }
+    Err(format!(
+      "No side chain tokens were found out of {} streamed",
+      i
+    ))
   }
 
   fn client_mut(

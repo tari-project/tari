@@ -54,6 +54,8 @@ import Manage from "./Manage";
 import AssetManager from "./AssetManager";
 import AccountDashboard from "./AccountDashboard";
 import NewAccount from "./NewAccount";
+import {useEffect, useState} from "react";
+import binding from "./binding";
 
 const mdTheme = createTheme({
   palette: {
@@ -105,6 +107,15 @@ ListItemLink.propTypes = {
 };
 
 function App() {
+  const [accounts, setAccounts] = useState([]);
+
+  useEffect(async () => {
+   let a = await binding.command_accounts_list();
+  console.log(a);
+  setAccounts(a);
+
+  });
+
   return (
     <div className="App">
       <Router>
@@ -129,6 +140,9 @@ function App() {
                   <IconButtonLink icon={<AddIcon />} to="/accounts/new">
                   </IconButtonLink>
                 }>My Assets</ListItem></ListSubheader>
+                { accounts.map((item) => {
+                return (<ListItemLink primary={item.name || item.assetPublicKey} to={`/accounts/${item.asset_public_key}`}></ListItemLink>);
+              })}
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"

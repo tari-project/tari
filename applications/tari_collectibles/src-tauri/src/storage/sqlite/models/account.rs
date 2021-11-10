@@ -30,4 +30,6 @@ pub struct Account {
   pub name: Option<String>,
   pub description: Option<String>,
   pub image: Option<String>,
+  pub committee_length: i32,
+  pub committee_pub_keys: Vec<u8>,
 }

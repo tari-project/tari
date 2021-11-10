@@ -31,6 +31,7 @@ pub struct Account {
   pub name: Option<String>,
   pub description: Option<String>,
   pub image: Option<String>,
+  pub committee: Option<Vec<PublicKey>>,
 }
 
 pub struct NewAccount {
@@ -38,4 +39,5 @@ pub struct NewAccount {
   pub name: Option<String>,
   pub description: Option<String>,
   pub image: Option<String>,
+  pub committee: Option<Vec<PublicKey>>,
 }

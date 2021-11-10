@@ -29,6 +29,7 @@ use uuid::Uuid;
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 pub mod models;
+use crate::schema::{self, accounts::dsl::accounts, *};
 use diesel::prelude::*;
 use std::fs;
 use tari_common_types::types::PublicKey;
@@ -81,17 +82,58 @@ pub struct SqliteAccountsTableGateway {
 
 impl AccountsTableGateway for SqliteAccountsTableGateway {
   fn list(&self) -> Result<Vec<Account>, StorageError> {
-    todo!()
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let results: Vec<models::Account> = schema::accounts::table
+      .order_by(schema::accounts::name.asc())
+      .load(&conn)?;
+    Ok(
+      results
+        .iter()
+        .map(|r| {
+          let mut committee = Vec::with_capacity(r.committee_length as usize);
+          for i in 0..r.committee_length as usize {
+            committee
+              .push(PublicKey::from_bytes(&r.committee_pub_keys[i * 32..(i + 1) * 32]).unwrap());
+          }
+          Account {
+            id: Uuid::from_slice(&r.id).unwrap(),
+            asset_public_key: PublicKey::from_bytes(&r.asset_public_key).unwrap(),
+            name: r.name.clone(),
+            description: r.description.clone(),
+            image: r.image.clone(),
+            committee: if committee.is_empty() {
+              None
+            } else {
+              Some(committee)
+            },
+          }
+        })
+        .collect(),
+    )
   }
 
   fn insert(&self, account: NewAccount) -> Result<Account, StorageError> {
     let id = Uuid::new_v4();
+    let mut committee_pub_keys = vec![];
+    if let Some(pub_keys) = account.committee.as_ref() {
+      for key in pub_keys {
+        committee_pub_keys.extend_from_slice(key.as_bytes());
+      }
+    }
+    // let committee_pub_keys = if committee_pub_keys.is_empty() { None} else {Some(committee_pub_keys)};
+
     let sql_model = models::Account {
       id: Vec::from(id.as_bytes().as_slice()),
       asset_public_key: Vec::from(account.asset_public_key.as_bytes()),
       name: account.name.clone(),
       description: account.description.clone(),
       image: account.image.clone(),
+      committee_length: account
+        .committee
+        .as_ref()
+        .map(|s| s.len() as i32)
+        .unwrap_or(0i32),
+      committee_pub_keys,
     };
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
 
@@ -105,6 +147,7 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
       name: account.name,
       description: account.description,
       image: account.image,
+      committee: account.committee,
     };
     Ok(result)
   }

@@ -39,13 +39,30 @@ pub(crate) async fn accounts_create(
     name: None,
     description: None,
     image: None,
+    committee: None,
   };
 
   let mut client = state.connect_base_node_client().await?;
-  let chain_registration_data = client.get_asset_metadata(asset_pub_key).await?;
+  let chain_registration_data = client.get_asset_metadata(&asset_pub_key).await?;
   new_account.name = chain_registration_data.name.clone();
   new_account.description = chain_registration_data.description.clone();
   new_account.image = chain_registration_data.image.clone();
+
+  let sidechain_committee = match client.get_sidechain_committee(&asset_pub_key).await {
+    Ok(s) => {
+      if s.is_empty() {
+        None
+      } else {
+        Some(s)
+      }
+    }
+    Err(e) => {
+      dbg!(e);
+      None
+    }
+  };
+  new_account.committee = sidechain_committee;
+
   let result = state
     .create_db()
     .await
@@ -53,5 +70,20 @@ pub(crate) async fn accounts_create(
     .accounts()
     .insert(new_account)
     .map_err(|e| format!("Could not save account: {}", e))?;
+  Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn accounts_list(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<Account>, String> {
+  let db = state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not connect to DB:{}", e))?;
+  let result = db
+    .accounts()
+    .list()
+    .map_err(|e| format!("Could list accounts from DB: {}", e))?;
   Ok(result)
 }
