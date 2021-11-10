@@ -1351,7 +1351,7 @@ When(
   /mining node (.*) mines (\d+) blocks$/,
   { timeout: 1200 * 1000 }, // Must allow many blocks to be mined; dynamic time out below limits actual time
   async function (miner, numBlocks) {
-    const miningNode = this.getMiningNode(miner);d
+    const miningNode = this.getMiningNode(miner);
     // Don't wait for sync before mining. Also use a max difficulty of 1, since most tests assume
     // that 1 block = 1 difficulty
     await miningNode.init(numBlocks, null, 1, 1, false, null);
