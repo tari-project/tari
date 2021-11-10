@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,29 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection_stats;
+use crate::connection_manager::ConnectionDirection;
+use once_cell::sync::Lazy;
+use tari_metrics::{IntGauge, IntGaugeVec};
 
-mod config;
-pub use config::ConnectivityConfig;
+pub fn connections(direction: ConnectionDirection) -> IntGauge {
+    static GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+        tari_metrics::register_int_gauge_vec("comms::connections", "Number of active connections by direction", &[
+            "direction",
+        ])
+        .unwrap()
+    });
 
-mod connection_pool;
+    GAUGE.with_label_values(&[direction.as_str()])
+}
 
-mod error;
-pub use error::ConnectivityError;
+pub fn uptime() -> IntGauge {
+    static GAUGE: Lazy<IntGauge> =
+        Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
 
-mod manager;
-pub(crate) use manager::ConnectivityManager;
-pub use manager::ConnectivityStatus;
-
-#[cfg(feature = "metrics")]
-mod metrics;
-
-mod requester;
-pub(crate) use requester::ConnectivityRequest;
-pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
-
-mod selection;
-pub use selection::ConnectivitySelection;
-
-#[cfg(test)]
-mod test;
+    GAUGE.clone()
+}

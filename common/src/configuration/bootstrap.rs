@@ -66,6 +66,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -153,6 +154,12 @@ pub struct ConfigBootstrap {
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]
     pub network: Option<String>,
+    /// Metrics server bind address (prometheus pull)
+    #[structopt(long, alias = "metrics-bind-addr")]
+    pub metrics_server_bind_addr: Option<SocketAddr>,
+    /// Metrics push endpoint (prometheus push)
+    #[structopt(long)]
+    pub metrics_push_endpoint: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -189,6 +196,8 @@ impl Default for ConfigBootstrap {
             miner_max_diff: None,
             tracing_enabled: false,
             network: None,
+            metrics_server_bind_addr: None,
+            metrics_push_endpoint: None,
         }
     }
 }

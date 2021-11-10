@@ -398,7 +398,13 @@ impl __rpc_deps::NamedProtocolService for GreetingClient {
 
 impl GreetingClient {
     pub async fn connect(framed: __rpc_deps::CanonicalFraming<Substream>) -> Result<Self, RpcError> {
-        let inner = __rpc_deps::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
+        let inner = __rpc_deps::RpcClient::connect(
+            Default::default(),
+            Default::default(),
+            framed,
+            Self::PROTOCOL_NAME.into(),
+        )
+        .await?;
         Ok(Self { inner })
     }
 

@@ -140,6 +140,7 @@ pub struct GlobalConfig {
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
+    pub metrics: MetricsConfig,
 }
 
 impl GlobalConfig {
@@ -702,6 +703,8 @@ fn convert_node_config(
         .filter(|c| c.is_alphanumeric())
         .collect::<String>();
 
+    let metrics = MetricsConfig::from_config(&cfg)?;
+
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -788,6 +791,7 @@ fn convert_node_config(
         mining_wallet_address,
         mining_worker_name,
         base_node_bypass_range_proof_verification,
+        metrics,
     })
 }
 
@@ -1073,4 +1077,28 @@ pub enum CommsTransport {
         auth: SocksAuthentication,
         listener_address: Multiaddr,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct MetricsConfig {
+    pub prometheus_scraper_bind_addr: Option<SocketAddr>,
+    pub prometheus_push_endpoint: Option<String>,
+}
+
+impl MetricsConfig {
+    fn from_config(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let key = "common.metrics.server_bind_addr";
+        let prometheus_scraper_bind_addr = optional(cfg.get_str(key))?
+            .map(|s| {
+                s.parse()
+                    .map_err(|_| ConfigurationError::new(key, "Invalid metrics server socket address"))
+            })
+            .transpose()?;
+        let prometheus_push_endpoint = optional(cfg.get_str(key))?;
+
+        Ok(Self {
+            prometheus_scraper_bind_addr,
+            prometheus_push_endpoint,
+        })
+    }
 }

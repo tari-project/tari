@@ -13,6 +13,7 @@ members = [
     "comms",
     "comms/dht",
     "comms/rpc_macros",
+    "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",

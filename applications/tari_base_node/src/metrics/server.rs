@@ -20,8 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod comms_integration;
-pub(super) mod greeting_service;
-mod handshake;
-pub(super) mod mock;
-mod smoke;
+use log::*;
+use std::{convert::Infallible, net::SocketAddr, string::FromUtf8Error};
+use tari_metrics::{Encoder, Registry, TextEncoder};
+use tokio::{task, task::JoinError};
+use warp::{reject::Reject, Filter, Rejection, Reply};
+
+const LOG_TARGET: &str = "app::metrics_server";
+
+pub async fn start(listen_addr: SocketAddr, registry: Registry) {
+    let route = warp::path!("metrics")
+        .and(with(registry))
+        .and_then(metrics_text_handler);
+
+    info!(target: LOG_TARGET, "Metrics server started on {}", listen_addr);
+    let routes = route.with(warp::log("metrics_server"));
+    warp::serve(routes).run(listen_addr).await;
+}
+
+async fn metrics_text_handler(registry: Registry) -> Result<impl Reply, Rejection> {
+    task::spawn_blocking::<_, Result<_, Error>>(move || {
+        let encoder = TextEncoder::new();
+        let mut buffer = Vec::new();
+        encoder.encode(&registry.gather(), &mut buffer)?;
+        let encoded = String::from_utf8(buffer)?;
+        Ok(encoded)
+    })
+    .await
+    .map_err(Error::JoinError)?
+    .map_err(Into::into)
+}
+
+fn with<T: Clone + Send>(t: T) -> impl Filter<Extract = (T,), Error = Infallible> + Clone {
+    warp::any().map(move || t.clone())
+}
+
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error("Failed to encode: {0}")]
+    PrometheusEncodeFailed(#[from] tari_metrics::Error),
+    #[error("Failed to encode: {0}")]
+    FromUtf8Error(#[from] FromUtf8Error),
+    #[error("Failed to spawn blocking thread: {0}")]
+    JoinError(#[from] JoinError),
+}
+
+impl Reject for Error {}
