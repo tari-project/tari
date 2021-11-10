@@ -114,7 +114,11 @@ use tari_app_utilities::{
     utilities::setup_runtime,
 };
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    tor::HiddenServiceControllerError,
+    utils::multiaddr::multiaddr_to_socketaddr,
+};
 use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
@@ -228,7 +232,9 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     if node_config.grpc_enabled {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
+        let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
+            .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
     }
 
     // Run, node, run!
