@@ -20,14 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::app_state::ConcurrentAppState;
+use crate::schema::*;
+use diesel::prelude::*;
 
-#[tauri::command]
-pub(crate) async fn assets_watched_create(
-  asset_pub_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<String, String> {
-  // Connect to storage
-  // save to storage
-  Ok("No problem".to_string())
+#[derive(Queryable, Insertable)]
+pub struct Account {
+  pub id: Vec<u8>,
+  pub asset_public_key: Vec<u8>,
 }

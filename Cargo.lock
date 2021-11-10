@@ -6087,6 +6087,8 @@ name = "tari_collectibles"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "diesel",
+ "diesel_migrations",
  "futures 0.3.17",
  "rand 0.8.4",
  "serde 1.0.130",
@@ -6098,7 +6100,9 @@ dependencies = [
  "tari_utilities",
  "tauri",
  "tauri-build",
+ "thiserror",
  "tonic",
+ "uuid",
 ]
 
 [[package]]
@@ -7939,6 +7943,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
+ "serde 1.0.130",
 ]
 
 [[package]]

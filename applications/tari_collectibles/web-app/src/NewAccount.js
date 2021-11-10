@@ -25,7 +25,7 @@ import {withRouter} from "react-router-dom";
 import {Alert, Button, Container, Stack, TextField, Typography} from "@mui/material";
 import binding from "./binding";
 
-class NewWatchedAsset extends React.Component {
+class NewAccount extends React.Component {
     constructor(props) {
         super(props);
 
@@ -45,7 +45,7 @@ class NewWatchedAsset extends React.Component {
         console.log(this.state.assetPublicKey);
         this.setState({isSaving: true, error: null});
         try{
-            await binding.command_assets_watched_create(this.state.assetPublicKey);
+            await binding.command_accounts_create(this.state.assetPublicKey);
             let history = this.props.history;
 let path =`/assets/watched/details/${this.state.assetPublicKey}`;
 console.log(path);
@@ -86,4 +86,4 @@ console.log(path);
     }
 }
 
-export default withRouter(NewWatchedAsset);
+export default withRouter(NewAccount);

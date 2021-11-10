@@ -19,33 +19,31 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::{
+  app_state::ConcurrentAppState,
+  models::{Account, NewAccount},
+  storage::{AccountsTableGateway, CollectiblesStorage},
+};
+use tari_common_types::types::PublicKey;
+use tari_utilities::hex::Hex;
 
-use std::{env, path::PathBuf};
-
-pub struct Settings {
-  pub(crate) wallet_grpc_address: String,
-  pub(crate) base_node_grpc_address: String,
-  pub(crate) _favourite_assets: Vec<String>,
-  pub(crate) data_dir: PathBuf,
-}
-
-impl Settings {
-  pub fn new() -> Self {
-    // Self {
-    //   wallet_grpc_address: "localhost:18143".to_string(),
-    //   base_node_grpc_address: "localhost:18142".to_string(),
-    //   _favourite_assets: vec!["1234".to_string()],
-    // }
-    let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
-    let data_dir = PathBuf::from(data_dir);
-    // TODO: remove this, just for convenience
-    Self {
-      wallet_grpc_address: env::var("WALLET_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18143".to_string()),
-      base_node_grpc_address: env::var("BASE_NODE_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18142".to_string()),
-      _favourite_assets: vec!["1234".to_string()],
-      data_dir,
-    }
-  }
+#[tauri::command]
+pub(crate) async fn accounts_create(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Account, String> {
+  // Connect to storage
+  // save to storage
+  let new_account = NewAccount {
+    asset_public_key: PublicKey::from_hex(asset_pub_key.as_str())
+      .map_err(|e| format!("Invalid public key:{}", e))?,
+  };
+  let result = state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not connect to DB:{}", e))?
+    .accounts()
+    .insert(new_account)
+    .map_err(|e| format!("Could not save account: {}", e))?;
+  Ok(result)
 }

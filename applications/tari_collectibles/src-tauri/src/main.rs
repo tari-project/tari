@@ -1,3 +1,4 @@
+#![feature(array_methods)]
 #![cfg_attr(
   all(not(debug_assertions), target_os = "windows"),
   windows_subsystem = "windows"
@@ -5,11 +6,19 @@
 
 use crate::app_state::ConcurrentAppState;
 
+#[macro_use]
+extern crate diesel;
+
+#[macro_use]
+extern crate diesel_migrations;
+
 mod app_state;
 mod base_node_client;
 mod commands;
 mod models;
+mod schema;
 mod settings;
+mod storage;
 mod wallet_client;
 
 fn main() {
@@ -22,7 +31,7 @@ fn main() {
       commands::assets::assets_list_owned,
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_issue_simple_tokens,
-      commands::assets::watched::assets_watched_create
+      commands::accounts::accounts_create
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

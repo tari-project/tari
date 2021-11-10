@@ -45,15 +45,15 @@ async function command_asset_issue_simple_tokens(
   });
 }
 
-async function command_assets_watched_create(assetPubKey) {
-  return await invoke("assets_watched_create", {assetPubKey});
+async function command_accounts_create(assetPubKey) {
+  return await invoke("accounts_create", {assetPubKey});
 }
 const commands = {
   command_assets_create,
   command_assets_list_owned,
   command_assets_list_registered_assets,
   command_asset_issue_simple_tokens,
-  command_assets_watched_create
+  command_accounts_create
 };
 
 export default commands;

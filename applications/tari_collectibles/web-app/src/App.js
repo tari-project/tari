@@ -52,8 +52,8 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
-import NewWatchedAsset from "./NewWatchedAsset";
-import WatchedAssetDetails from "./WatchedAssetDetails";
+import AccountDashboard from "./AccountDashboard";
+import NewAccount from "./NewAccount";
 
 const mdTheme = createTheme({
   palette: {
@@ -126,7 +126,7 @@ function App() {
                 />
                 <Divider></Divider>
                 <ListSubheader ><ListItem disableGutters={true} secondaryAction={
-                  <IconButtonLink icon={<AddIcon />} to="/assets/watched/new">
+                  <IconButtonLink icon={<AddIcon />} to="/accounts/new">
                   </IconButtonLink>
                 }>My Assets</ListItem></ListSubheader>
                 <ListSubheader>Issued Assets</ListSubheader>
@@ -147,12 +147,13 @@ function App() {
               sx={{ flexGrow: 1, height: "100vh", overflow: "auto" }}
             >
               <Switch>
-                <Route path="/assets/watched/details/:assetPubKey">
-                  <WatchedAssetDetails />
+                <Route path="/accounts/new" >
+                  <NewAccount />
                 </Route>
-                <Route path="/assets/watched/new" >
-                  <NewWatchedAsset />
+                <Route path="/accounts/:assetPubKey">
+                  <AccountDashboard />
                 </Route>
+
 
                 <Route path="/create">
                   <Create />

@@ -20,32 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env, path::PathBuf};
+use diesel;
+use diesel_migrations;
 
-pub struct Settings {
-  pub(crate) wallet_grpc_address: String,
-  pub(crate) base_node_grpc_address: String,
-  pub(crate) _favourite_assets: Vec<String>,
-  pub(crate) data_dir: PathBuf,
-}
-
-impl Settings {
-  pub fn new() -> Self {
-    // Self {
-    //   wallet_grpc_address: "localhost:18143".to_string(),
-    //   base_node_grpc_address: "localhost:18142".to_string(),
-    //   _favourite_assets: vec!["1234".to_string()],
-    // }
-    let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
-    let data_dir = PathBuf::from(data_dir);
-    // TODO: remove this, just for convenience
-    Self {
-      wallet_grpc_address: env::var("WALLET_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18143".to_string()),
-      base_node_grpc_address: env::var("BASE_NODE_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18142".to_string()),
-      _favourite_assets: vec!["1234".to_string()],
-      data_dir,
-    }
-  }
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+  #[error("Could not connect to database: {source}")]
+  ConnectionError {
+    #[from]
+    source: diesel::ConnectionError,
+  },
+  #[error("General diesel error: {source}")]
+  DieselError {
+    #[from]
+    source: diesel::result::Error,
+  },
+  #[error("Could not migrate the database")]
+  MigrationError {
+    #[from]
+    source: diesel_migrations::RunMigrationsError,
+  },
 }

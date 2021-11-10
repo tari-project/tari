@@ -20,32 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import React from "react";
-import {withRouter} from "react-router-dom";
-import {Container, Stack, Typography} from "@mui/material";
+use crate::models::{Account, NewAccount};
+pub mod sqlite;
+mod storage_error;
+pub use storage_error::StorageError;
 
-class WatchedAssetDetails extends React.Component {
-    constructor(props) {
-        super(props);
-
-        this.state = {
-            error: null,
-            isSaving: false,
-            assetPublicKey: ""
-        };
-    }
-
-    render() {
-        return (<Container maxWidth="lg" sx={{mt: 4, mb: 4, py: 8}}>
-                <Typography variant="h3" sx={{mb: "30px"}}>
-                    Asset Details
-                </Typography>
-                <Stack>
-                    <Typography variant="h4">Templates Implemented</Typography>
-                </Stack>
-            </Container>
-        );
-    }
+pub trait CollectiblesStorage {
+  type Accounts: AccountsTableGateway;
+  fn accounts(&self) -> Self::Accounts;
 }
 
-export default withRouter(WatchedAssetDetails);
+pub trait AccountsTableGateway {
+  fn list(&self) -> Result<Vec<Account>, StorageError>;
+  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
+}
