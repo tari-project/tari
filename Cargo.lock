@@ -1213,6 +1213,7 @@ dependencies = [
  "num-bigint 0.2.6",
  "num-integer",
  "num-traits 0.2.14",
+ "r2d2",
  "serde_json",
 ]
 
@@ -3277,6 +3278,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "r2d2"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "545c5bc2b880973c9c10e4067418407a0ccaa3091781d1671d46eb35107cb26f"
+dependencies = [
+ "log",
+ "parking_lot 0.11.2",
+ "scheduled-thread-pool",
+]
+
+[[package]]
 name = "radix_trie"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3737,6 +3749,15 @@ checksum = "8f05ba609c234e60bee0d547fe94a4c7e9da733d1c962cf6e59efa4cd9c8bc75"
 dependencies = [
  "lazy_static 1.4.0",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "scheduled-thread-pool"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc6f74fd1204073fa02d5d5d68bec8021be4c38690b61264b2fdb48083d0e7d7"
+dependencies = [
+ "parking_lot 0.11.2",
 ]
 
 [[package]]
@@ -4330,7 +4351,7 @@ dependencies = [
  "config",
  "either",
  "futures 0.3.17",
- "log 0.4.14",
+ "log",
  "log-mdc",
  "num_cpus",
  "opentelemetry",
@@ -4410,6 +4431,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_common_sqlite"
+version = "0.21.0"
+dependencies = [
+ "diesel",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_common_types"
 version = "0.21.0"
 dependencies = [
@@ -4441,7 +4471,7 @@ dependencies = [
  "futures 0.3.17",
  "lazy_static 1.4.0",
  "lmdb-zero",
- "log 0.4.14",
+ "log",
  "log-mdc",
  "multiaddr",
  "nom 5.1.2",
@@ -4493,7 +4523,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "libsqlite3-sys",
  "lmdb-zero",
- "log 0.4.14",
+ "log",
  "log-mdc",
  "petgraph",
  "pin-project 0.4.28",
@@ -4599,7 +4629,7 @@ dependencies = [
  "integer-encoding 3.0.2",
  "lazy_static 1.4.0",
  "lmdb-zero",
- "log 0.4.14",
+ "log",
  "log-mdc",
  "monero",
  "newtype-ops",
@@ -4975,6 +5005,7 @@ dependencies = [
  "serde 1.0.130",
  "serde_json",
  "tari_common",
+ "tari_common_sqlite",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",

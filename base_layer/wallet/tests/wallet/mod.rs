@@ -136,7 +136,7 @@ async fn create_wallet(
         .with_extension("sqlite3");
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-        initialize_sqlite_database_backends(sql_database_path, passphrase).unwrap();
+        initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
         resend_response_cooldown: Duration::from_secs(1),
@@ -312,7 +312,7 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
 
     if WalletSqliteDatabase::new(connection.clone(), None).is_ok() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
@@ -348,7 +348,7 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let db = WalletSqliteDatabase::new(connection, None).expect(
         "Should be able to instantiate db with
     cipher",
@@ -386,12 +386,12 @@ async fn test_wallet() {
         .unwrap();
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
     let master_seed = wallet_db.get_master_seed().await.unwrap();
     assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
-    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
+    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path, 16).expect(
         "Could not open Sqlite
     db",
     );
@@ -764,14 +764,14 @@ fn test_db_file_locking() {
     let db_tempdir = tempdir().unwrap();
     let wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
-    let connection = run_migration_and_create_sqlite_connection(&wallet_path).expect("Could not open Sqlite db");
+    let connection = run_migration_and_create_sqlite_connection(&wallet_path, 16).expect("Could not open Sqlite db");
 
-    match run_migration_and_create_sqlite_connection(&wallet_path) {
+    match run_migration_and_create_sqlite_connection(&wallet_path, 16) {
         Err(WalletStorageError::CannotAcquireFileLock) => {},
         _ => panic!("Should not be able to acquire file lock"),
     }
 
     drop(connection);
 
-    assert!(run_migration_and_create_sqlite_connection(&wallet_path).is_ok());
+    assert!(run_migration_and_create_sqlite_connection(&wallet_path, 16).is_ok());
 }

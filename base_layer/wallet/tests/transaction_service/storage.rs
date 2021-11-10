@@ -552,7 +552,7 @@ pub fn test_transaction_service_sqlite_db() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, None));
 }
@@ -563,7 +563,7 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
     let key = GenericArray::from_slice(b"an example very very secret key.");
     let cipher = Aes256Gcm::new(key);

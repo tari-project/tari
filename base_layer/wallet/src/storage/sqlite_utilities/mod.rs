@@ -27,38 +27,24 @@ use crate::{
     storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
-use diesel::{Connection, ExpressionMethods, QueryDsl, SqliteConnection};
+use diesel::{ExpressionMethods, QueryDsl, SqliteConnection};
 use fs2::FileExt;
 use log::*;
 use std::{
     fs::File,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
 };
+use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+pub use wallet_db_connection::WalletDbConnection;
+
+pub(crate) mod wallet_db_connection;
 
 const LOG_TARGET: &str = "wallet::storage:sqlite_utilities";
 
-#[derive(Clone)]
-pub struct WalletDbConnection {
-    pub connection: Arc<Mutex<SqliteConnection>>,
-    _file_lock: Arc<Option<File>>,
-}
-
-impl WalletDbConnection {
-    pub fn new(connection: SqliteConnection, file_lock: Option<File>) -> Self {
-        Self {
-            connection: Arc::new(Mutex::new(connection)),
-            _file_lock: Arc::new(file_lock),
-        }
-    }
-
-    pub fn acquire_lock(&self) -> MutexGuard<SqliteConnection> {
-        acquire_lock!(self.connection)
-    }
-}
-
 pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     db_path: P,
+    sqlite_pool_size: usize,
 ) -> Result<WalletDbConnection, WalletStorageError> {
     let file_lock = acquire_exclusive_file_lock(&db_path.as_ref().to_path_buf())?;
 
@@ -66,8 +52,16 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
         .as_ref()
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
-    let connection = SqliteConnection::establish(path_str)?;
-    connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
+
+    let mut pool = SqliteConnectionPool::new(
+        String::from(path_str),
+        sqlite_pool_size,
+        true,
+        true,
+        Duration::from_secs(60),
+    );
+    pool.create_pool()?;
+    let connection = pool.get_pooled_connection()?;
 
     check_for_incompatible_db_encryption(&connection)?;
 
@@ -75,7 +69,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     embedded_migrations::run(&connection)
         .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
 
-    Ok(WalletDbConnection::new(connection, Some(file_lock)))
+    Ok(WalletDbConnection::new(pool, Some(file_lock)))
 }
 
 /// This function will copy a wallet database to the provided path and then clear the Master Private Key from the
@@ -94,7 +88,7 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
         .map_err(|_| WalletStorageError::FileError("Could not copy database file for backup".to_string()))?;
 
     // open a connection and clear the Master Secret Key
-    let connection = run_migration_and_create_sqlite_connection(backup_path)?;
+    let connection = run_migration_and_create_sqlite_connection(backup_path, 16)?;
     let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
     db.clear_master_seed().await?;
 
@@ -136,6 +130,7 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
 pub fn initialize_sqlite_database_backends(
     db_path: PathBuf,
     passphrase: Option<String>,
+    sqlite_pool_size: usize,
 ) -> Result<
     (
         WalletSqliteDatabase,
@@ -145,7 +140,7 @@ pub fn initialize_sqlite_database_backends(
     ),
     WalletStorageError,
 > {
-    let connection = run_migration_and_create_sqlite_connection(&db_path).map_err(|e| {
+    let connection = run_migration_and_create_sqlite_connection(&db_path, sqlite_pool_size).map_err(|e| {
         error!(
             target: LOG_TARGET,
             "Error creating Sqlite Connection in Wallet: {:?}", e

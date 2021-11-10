@@ -2933,7 +2933,7 @@ pub unsafe extern "C" fn wallet_create(
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-        match initialize_sqlite_database_backends(sql_database_path, passphrase_option) {
+        match initialize_sqlite_database_backends(sql_database_path, passphrase_option, 16) {
             Ok((w, t, o, c)) => (w, t, o, c),
             Err(e) => {
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
@@ -5781,7 +5781,7 @@ mod test {
             let runtime = Runtime::new().unwrap();
 
             let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
             let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
@@ -5816,7 +5816,7 @@ mod test {
             wallet_destroy(alice_wallet);
 
             let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
             let stored_seed1 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
@@ -5853,7 +5853,7 @@ mod test {
             wallet_destroy(alice_wallet2);
 
             let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
             let stored_seed2 = runtime.block_on(wallet_backend.get_master_seed()).unwrap().unwrap();
@@ -5872,7 +5872,7 @@ mod test {
 
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+                run_migration_and_create_sqlite_connection(&sql_database_path, 16).expect("Could not open Sqlite db");
             let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
             let stored_seed = runtime.block_on(wallet_backend.get_master_seed()).unwrap();
