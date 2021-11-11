@@ -30,9 +30,9 @@ reqwest = { version = "0.11", features = [ "json"] }
 serde_json = "1.0.57"
 native-tls = "0.2"
 bufstream = "0.1"
-chrono = { version = "0.4.19", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4.19", default-features = false }
 hex = "0.4.2"
 
 [dev-dependencies]
 prost-types = "0.8"
-chrono = { version = "0.4.19", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4.19", default-features = false }
