@@ -44,6 +44,7 @@ use crate::{
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
         },
+        utc::utc_duration_since,
     },
     types::HashDigest,
     util::watch::Watch,
@@ -1267,7 +1268,7 @@ where
                 }
                 // Check if the last reply is beyond the resend cooldown
                 if let Some(timestamp) = inbound_tx.last_send_timestamp {
-                    let elapsed_time = Utc::now().naive_utc().signed_duration_since(timestamp).to_std()?;
+                    let elapsed_time = utc_duration_since(&timestamp)?;
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,
