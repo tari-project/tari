@@ -33,7 +33,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{BlindingFactor, Commitment, HashOutput, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 

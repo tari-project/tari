@@ -43,7 +43,6 @@ use tari_core::{
 };
 use tari_crypto::{
     common::Blake256,
-    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script,
     script::{ExecutionStack, TariScript},
