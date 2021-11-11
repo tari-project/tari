@@ -40,3 +40,7 @@ base_layer/wallet_ffi/build.config
 base_layer/wallet_ffi/.cargo/config
 
 keys.json
+
+# Ignore docker files
+applications/launchpad/docker_rig/*.Dockerfile
+applications/launchpad/docker_rig/docker-compose.yml

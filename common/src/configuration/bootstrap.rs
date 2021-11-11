@@ -116,8 +116,10 @@ pub struct ConfigBootstrap {
     /// This will clean out the orphans db at startup
     #[structopt(long, alias = "clean_orphans_db")]
     pub clean_orphans_db: bool,
-    /// Supply the password for the console wallet
-    #[structopt(long)]
+    /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
+    /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
+    /// possible.
+    #[structopt(long, env = "TARI_WALLET_PASSWORD")]
     pub password: Option<String>,
     /// Change the password for the console wallet
     #[structopt(long, alias = "update-password")]
