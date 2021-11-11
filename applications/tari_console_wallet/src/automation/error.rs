@@ -34,7 +34,6 @@ use tari_wallet::{
     transaction_service::error::TransactionServiceError,
 };
 use thiserror::Error;
-use time::error::ComponentRange;
 use tokio::task::JoinError;
 
 pub const LOG_TARGET: &str = "wallet::automation::error";
@@ -88,9 +87,7 @@ pub enum ParseError {
     #[error("Failed to parse int.")]
     Int(#[from] ParseIntError),
     #[error("Failed to parse date. {0}")]
-    Date(#[from] time::error::Parse),
-    #[error("Failed to convert time. {0}")]
-    TimeRange(#[from] ComponentRange),
+    Date(#[from] chrono::ParseError),
     #[error("Failed to parse a net address.")]
     Address,
     #[error("Invalid combination of arguments ({0}).")]
