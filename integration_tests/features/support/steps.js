@@ -1331,9 +1331,9 @@ When(
 );
 
 When(
-  /I mine (.*) blocks on (.*) with difficulty (.*)/,
+  /I mine (.*) blocks with difficulty (.*) on (.*)/,
   { timeout: 20 * 1000 },
-  async function (numBlocks, node, difficulty) {
+  async function (numBlocks, difficulty, node) {
     const miner = await this.createMiningNode("temp", node, "temp");
     await miner.init(
       parseInt(numBlocks),
