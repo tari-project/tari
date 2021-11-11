@@ -14,7 +14,7 @@ arrayvec = "0.7.1"
 argon2 = { version = "0.2", features = ["std"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
-chrono = { version = "0.4.6", features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock", "std"] }
 clear_on_drop = "=0.2.4"
 crc32fast = "1.2.1"
 rand = "0.8"
