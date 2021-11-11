@@ -28,6 +28,7 @@ use std::{
     io::{BufRead, ErrorKind, Write},
     sync::{mpsc, Arc, RwLock},
     thread,
+    time::{Duration, Instant},
 };
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
@@ -312,12 +313,12 @@ impl Controller {
 
     #[allow(clippy::cognitive_complexity)]
     pub fn run(mut self) {
-        let server_read_interval = 1;
-        let server_retry_interval = 5;
-        let mut next_server_read = time::get_time().sec + server_read_interval;
-        let mut next_server_retry = time::get_time().sec;
+        let server_read_interval = Duration::from_secs(1);
+        let server_retry_interval = Duration::from_secs(5);
+        let mut next_server_read = Instant::now() + server_read_interval;
+        let mut next_server_retry = Instant::now();
         // Request the first job template
-        thread::sleep(std::time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
         let mut was_disconnected = true;
         loop {
             // Check our connection status, and try to correct if possible
@@ -326,11 +327,12 @@ impl Controller {
                     let _ = self.send_miner_stop();
                 }
                 was_disconnected = true;
-                if time::get_time().sec > next_server_retry {
+                if Instant::now() > next_server_retry {
                     if self.try_connect().is_err() {
                         let status = format!(
                             "Connection Status: Can't establish server connection to {}. Will retry every {} seconds",
-                            self.server_url, server_retry_interval
+                            self.server_url,
+                            server_retry_interval.as_secs()
                         );
                         warn!("{}", status);
                         self.stream = None;
@@ -338,7 +340,7 @@ impl Controller {
                         let status = format!("Connection Status: Connected to server at {}.", self.server_url);
                         info!(target: LOG_TARGET, "{}", status);
                     }
-                    next_server_retry = time::get_time().sec + server_retry_interval;
+                    next_server_retry = Instant::now() + server_retry_interval;
                     if self.stream.is_none() {
                         thread::sleep(std::time::Duration::from_secs(1));
                         continue;
@@ -352,7 +354,7 @@ impl Controller {
                     let _ = self.send_miner_resume();
                 }
                 // read messages from server
-                if time::get_time().sec > next_server_read {
+                if Instant::now() > next_server_read {
                     match self.read_message() {
                         Ok(Some(m)) => {
                             // figure out what kind of message,
@@ -396,7 +398,7 @@ impl Controller {
                             continue;
                         },
                     }
-                    next_server_read = time::get_time().sec + server_read_interval;
+                    next_server_read = Instant::now() + server_read_interval;
                 }
             }
 
@@ -418,7 +420,7 @@ impl Controller {
                     self.stream = None;
                 }
             }
-            thread::sleep(std::time::Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(10));
         } // loop
     }
 }

@@ -4787,7 +4787,6 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "thiserror",
- "time 0.1.44",
  "tokio 1.13.0",
  "tonic",
 ]
