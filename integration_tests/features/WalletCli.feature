@@ -126,9 +126,9 @@ Feature: Wallet CLI
     @flaky
     Scenario: As a user I want to discover-peer via command line
         Given I have a seed node SEED
+        And I have wallet WALLET connected to seed node SEED
         And I have a base node BASE1 connected to seed SEED
         And I have a base node BASE2 connected to seed SEED
-        And I have wallet WALLET connected to base node BASE1
         And I discover peer BASE2 on wallet WALLET via command line
         Then WALLET is connected to BASE2
 
