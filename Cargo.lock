@@ -1125,7 +1125,7 @@ dependencies = [
 name = "deps_only"
 version = "0.1.0"
 dependencies = [
- "log 0.4.14",
+ "log",
 ]
 
 [[package]]

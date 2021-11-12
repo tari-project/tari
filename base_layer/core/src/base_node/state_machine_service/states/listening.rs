@@ -210,7 +210,7 @@ impl Listening {
 
                     // If we have configured sync peers, they are already filtered at this point
                     let sync_peers = if configured_sync_peers.is_empty() {
-                        select_sync_peers(&best_metadata, &peer_metadata_list)
+                        select_sync_peers(best_metadata, &peer_metadata_list)
                     } else {
                         peer_metadata_list
                     };
