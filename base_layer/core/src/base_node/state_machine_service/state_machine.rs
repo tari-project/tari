@@ -218,7 +218,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_state_future = self.next_state_event(&mut state);
 
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
+            log_mdc::extend(mdc);
             // Publish the event on the event bus
             let _ = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
