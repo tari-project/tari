@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
-package tari.validator_node.rpc;
+import "types.proto";
+package tari.rpc;
 
 service ValidatorNode {
     rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);

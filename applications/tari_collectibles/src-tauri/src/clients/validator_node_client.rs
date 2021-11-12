@@ -19,20 +19,26 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use tari_app_grpc::tari_rpc as grpc;
 
-use crate::models::{Account, NewAccount};
-pub mod sqlite;
-mod storage_error;
-pub use storage_error::StorageError;
-use uuid::Uuid;
+pub trait ValidatorNodeClient {}
 
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  fn accounts(&self) -> Self::Accounts;
+pub struct GrpcValidatorNodeClient {
+  client: grpc::validator_node_client::ValidatorNodeClient<tonic::transport::Channel>,
 }
 
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
+impl GrpcValidatorNodeClient {
+  pub async fn connect(endpoint: String) -> Result<Self, String> {
+    let s = Self {
+      client: grpc::validator_node_client::ValidatorNodeClient::connect(endpoint.clone())
+        .await
+        .map_err(|e| {
+          format!(
+            "No connection to validator node. Is it running with gRPC on '{}'? Error: {}",
+            endpoint, e
+          )
+        })?,
+    };
+    Ok(s)
+  }
 }

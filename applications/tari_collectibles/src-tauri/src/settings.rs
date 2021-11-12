@@ -25,7 +25,7 @@ use std::{env, path::PathBuf};
 pub struct Settings {
   pub(crate) wallet_grpc_address: String,
   pub(crate) base_node_grpc_address: String,
-  pub(crate) _favourite_assets: Vec<String>,
+  pub(crate) validator_node_grpc_address: String,
   pub(crate) data_dir: PathBuf,
 }
 
@@ -44,7 +44,8 @@ impl Settings {
         .unwrap_or_else(|_| "localhost:18143".to_string()),
       base_node_grpc_address: env::var("BASE_NODE_GRPC_ADDRESS")
         .unwrap_or_else(|_| "localhost:18142".to_string()),
-      _favourite_assets: vec!["1234".to_string()],
+      validator_node_grpc_address: env::var("VALIDATOR_NODE_GRPC_ADDRESS")
+        .unwrap_or_else(|_| "localhost:18144".to_string()),
       data_dir,
     }
   }

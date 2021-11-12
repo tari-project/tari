@@ -89,26 +89,8 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     Ok(
       results
         .iter()
-        .map(|r| {
-          let mut committee = Vec::with_capacity(r.committee_length as usize);
-          for i in 0..r.committee_length as usize {
-            committee
-              .push(PublicKey::from_bytes(&r.committee_pub_keys[i * 32..(i + 1) * 32]).unwrap());
-          }
-          Account {
-            id: Uuid::from_slice(&r.id).unwrap(),
-            asset_public_key: PublicKey::from_bytes(&r.asset_public_key).unwrap(),
-            name: r.name.clone(),
-            description: r.description.clone(),
-            image: r.image.clone(),
-            committee: if committee.is_empty() {
-              None
-            } else {
-              Some(committee)
-            },
-          }
-        })
-        .collect(),
+        .map(|r| SqliteAccountsTableGateway::convert_account(r))
+        .collect::<Result<_, _>>()?,
     )
   }
 
@@ -150,5 +132,35 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
       committee: account.committee,
     };
     Ok(result)
+  }
+
+  fn find(&self, account_id: Uuid) -> Result<Account, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let db_account = schema::accounts::table
+      .find(Vec::from(account_id.as_bytes().as_slice()))
+      .get_result(&conn)?;
+
+    SqliteAccountsTableGateway::convert_account(&db_account)
+  }
+}
+
+impl SqliteAccountsTableGateway {
+  fn convert_account(r: &models::Account) -> Result<Account, StorageError> {
+    let mut committee = Vec::with_capacity(r.committee_length as usize);
+    for i in 0..r.committee_length as usize {
+      committee.push(PublicKey::from_bytes(&r.committee_pub_keys[i * 32..(i + 1) * 32]).unwrap());
+    }
+    Ok(Account {
+      id: Uuid::from_slice(&r.id).unwrap(),
+      asset_public_key: PublicKey::from_bytes(&r.asset_public_key).unwrap(),
+      name: r.name.clone(),
+      description: r.description.clone(),
+      image: r.image.clone(),
+      committee: if committee.is_empty() {
+        None
+      } else {
+        Some(committee)
+      },
+    })
   }
 }

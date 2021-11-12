@@ -23,7 +23,7 @@
 use crate::schema::*;
 use diesel::prelude::*;
 
-#[derive(Queryable, Insertable)]
+#[derive(Queryable, Insertable, Identifiable)]
 pub struct Account {
   pub id: Vec<u8>,
   pub asset_public_key: Vec<u8>,

@@ -21,16 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-  base_node_client::BaseNodeClient,
+  clients::{BaseNodeClient, GrpcValidatorNodeClient, ValidatorNodeClient, WalletClient},
   settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
     StorageError,
   },
-  wallet_client::WalletClient,
 };
 use diesel::SqliteConnection;
 use std::sync::Arc;
+use tari_common_types::types::PublicKey;
 use tauri::async_runtime::RwLock;
 
 pub struct AppState {
@@ -62,6 +62,20 @@ impl ConcurrentAppState {
     let lock = self.inner.read().await;
     let client =
       BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
+    Ok(client)
+  }
+
+  pub async fn connect_validator_node_client(
+    &self,
+    _public_key: PublicKey,
+  ) -> Result<GrpcValidatorNodeClient, String> {
+    // todo: convert this GRPC to tari comms
+    let lock = self.inner.read().await;
+    let client = GrpcValidatorNodeClient::connect(format!(
+      "http://{}",
+      lock.config.validator_node_grpc_address
+    ))
+    .await?;
     Ok(client)
   }
 

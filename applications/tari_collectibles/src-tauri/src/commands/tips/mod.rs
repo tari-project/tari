@@ -20,19 +20,4 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Account, NewAccount};
-pub mod sqlite;
-mod storage_error;
-pub use storage_error::StorageError;
-use uuid::Uuid;
-
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  fn accounts(&self) -> Self::Accounts;
-}
-
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
-}
+pub mod tip002;

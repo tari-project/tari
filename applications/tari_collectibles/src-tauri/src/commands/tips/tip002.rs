@@ -20,19 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Account, NewAccount};
-pub mod sqlite;
-mod storage_error;
-pub use storage_error::StorageError;
+use crate::{
+  app_state::ConcurrentAppState,
+  models::Tip002Info,
+  storage::{AccountsTableGateway, CollectiblesStorage},
+};
 use uuid::Uuid;
 
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  fn accounts(&self) -> Self::Accounts;
-}
-
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
+#[tauri::command]
+pub async fn tip002_get_info(
+  account_id: Uuid,
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Option<Tip002Info>, String> {
+  // let db = state
+  //   .create_db()
+  //   .await
+  //   .map_err(|e| format!("Could not open DB:{}", e))?;
+  // let account = db
+  //   .accounts()
+  //   .find(account_id)
+  //   .map_err(|e| format!("Could not find account: {}", e))?;
+  // let committee = account.committee;
+  // let validator_client = state.connect_validator_node_client(committee[0]).await?;
+  // let asset_public_key = PublicKey::from_hex(asset_public_key
+  // let template_data = tari_tips::tip002::InfoRequest{
+  //
+  // };
+  // let template_data = template_data.encode_to_vec();
+  // validator_client.call(comittee[0], "tip002", )
+  todo!()
 }

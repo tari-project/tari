@@ -21,11 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::configure()
-        .build_server(true)
-        .format(false)
-        .compile(&["proto/grpc/validator_node.proto"], &["proto"])?;
-
     tari_common::build::ProtobufCompiler::new()
         .proto_paths(&["proto/p2p"])
         .emit_rerun_if_changed_directives()
