@@ -3512,7 +3512,7 @@ async function wallet_run_command(
       return true;
     },
     true,
-      timeOutSeconds * 1000,
+    timeOutSeconds * 1000,
     5 * 1000,
     5
   );
@@ -3540,7 +3540,7 @@ When(
     await wallet_run_command(
       wallet,
       `send-tari ${amount} ${dest_pubkey} test message`,
-        180
+      180
     );
     // await wallet.sendTari(dest_pubkey, amount, "test message");
   }
@@ -3555,7 +3555,7 @@ When(
     await wallet_run_command(
       wallet,
       `send-one-sided ${amount} ${dest_pubkey} test message`,
-        180
+      180
     );
     // await wallet.sendOneSided(dest_pubkey, amount, "test message");
   }
@@ -3570,7 +3570,7 @@ Then(
     await wallet_run_command(
       wallet,
       `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`,
-        300
+      300
     );
   }
 );
@@ -3594,7 +3594,7 @@ When(
     await wallet_run_command(
       wallet,
       `coin-split ${amount_per_coin} ${number_of_coins}`,
-        180
+      180
     );
   }
 );

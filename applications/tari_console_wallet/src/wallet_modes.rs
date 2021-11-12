@@ -337,7 +337,7 @@ async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr
         .serve(socket)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
-    
+
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (gRPC mode completed)";
     println!("{}", CUCUMBER_TEST_MARKER_B);
