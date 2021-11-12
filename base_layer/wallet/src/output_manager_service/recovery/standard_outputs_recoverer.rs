@@ -101,7 +101,7 @@ where TBackend: OutputManagerBackend + 'static
                     let script_key = PrivateKey::random(&mut OsRng);
                     UnblindedOutput::new(
                         output.committed_value,
-                        output.blinding_factor.clone(),
+                        output.blinding_factor,
                         features,
                         script,
                         inputs!(PublicKey::from_secret_key(&script_key)),
