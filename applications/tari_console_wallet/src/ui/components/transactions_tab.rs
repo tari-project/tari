@@ -6,9 +6,8 @@ use crate::ui::{
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
-use anyhow::Error;
+use chrono::{DateTime, Local};
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
-use time::{format_description::FormatItem, macros::format_description, UtcOffset};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -18,8 +17,6 @@ use tui::{
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
-
-const DT_FORMAT: &[FormatItem<'static>] = format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -44,7 +41,7 @@ impl TransactionsTab {
         }
     }
 
-    fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) -> Result<(), Error>
+    fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {
             self.selected_tx_list = SelectedTransactionList::CompletedTxs;
@@ -69,20 +66,12 @@ impl TransactionsTab {
             .title(Span::styled("(P)ending Transactions", style));
         f.render_widget(block, list_areas[0]);
 
-        self.draw_pending_transactions(f, list_areas[0], app_state)?;
-        self.draw_completed_transactions(f, list_areas[1], app_state)?;
-        Ok(())
+        self.draw_pending_transactions(f, list_areas[0], app_state);
+        self.draw_completed_transactions(f, list_areas[1], app_state);
     }
 
-    fn draw_pending_transactions<B>(
-        &mut self,
-        f: &mut Frame<B>,
-        area: Rect,
-        app_state: &AppState,
-    ) -> Result<(), Error>
-    where
-        B: Backend,
-    {
+    fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
         // Pending Transactions
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
@@ -125,10 +114,9 @@ impl TransactionsTab {
                 };
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
-            let offset = UtcOffset::current_local_offset()?;
-            let local_time = t.timestamp.replace_offset(offset);
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                local_time.format(&DT_FORMAT)?,
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
             column3_items.push(ListItem::new(Span::styled(
@@ -146,18 +134,10 @@ impl TransactionsTab {
             .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
         column_list.render(f, area, &mut pending_list_state);
-        Ok(())
     }
 
-    fn draw_completed_transactions<B>(
-        &mut self,
-        f: &mut Frame<B>,
-        area: Rect,
-        app_state: &AppState,
-    ) -> Result<(), Error>
-    where
-        B: Backend,
-    {
+    fn draw_completed_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
         //  Completed Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
@@ -223,10 +203,9 @@ impl TransactionsTab {
                 let amount_style = Style::default().fg(color);
                 column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
-            let offset = UtcOffset::current_local_offset()?;
-            let local_time = t.timestamp.replace_offset(offset);
+            let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
-                local_time.format(&DT_FORMAT)?,
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
             let status = if (t.cancelled || !t.valid) && t.status == TransactionStatus::Coinbase {
@@ -253,7 +232,6 @@ impl TransactionsTab {
             .add_column(Some("Status"), None, column3_items);
 
         column_list.render(f, area, &mut completed_list_state);
-        Ok(())
     }
 
     fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
@@ -366,10 +344,9 @@ impl TransactionsTab {
             };
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
-            // TODO: Get Local from UTC
-            let local_time = tx.timestamp;
+            let local_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
             let timestamp = Span::styled(
-                format!("{}", local_time.format(&DT_FORMAT).unwrap()),
+                format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
             let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
@@ -469,9 +446,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
         f.render_widget(instructions, areas[1]);
 
-        if let Err(err) = self.draw_transaction_lists(f, areas[2], app_state) {
-            log::error!("Can't draw transactions list: {}", err);
-        }
+        self.draw_transaction_lists(f, areas[2], app_state);
         self.draw_detailed_transaction(f, areas[3], app_state);
 
         if let Some(msg) = self.error_message.clone() {

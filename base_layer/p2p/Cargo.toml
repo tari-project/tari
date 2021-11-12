@@ -21,7 +21,7 @@ tari_utilities = "^0.3"
 
 anyhow = "1.0.32"
 bytes = "0.5"
-chrono = { version = "0.4.6", features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 fs2 = "0.3.0"
 futures = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"

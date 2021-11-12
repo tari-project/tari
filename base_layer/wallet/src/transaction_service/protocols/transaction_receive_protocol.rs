@@ -29,6 +29,7 @@ use crate::transaction_service::{
         models::{CompletedTransaction, InboundTransaction},
     },
     tasks::send_transaction_reply::send_transaction_reply,
+    utc::utc_duration_since,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
@@ -236,10 +237,7 @@ where
         };
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(inbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&inbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -261,10 +259,7 @@ where
         let resend = match inbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
