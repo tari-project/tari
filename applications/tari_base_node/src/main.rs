@@ -175,6 +175,9 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
+    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
+    log_mdc::insert("node-id", node_identity.node_id().to_string());
+
     // Exit if create_id or init arguments were run
     if bootstrap.create_id {
         info!(

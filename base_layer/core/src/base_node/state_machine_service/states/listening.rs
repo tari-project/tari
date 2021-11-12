@@ -112,8 +112,11 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         let mut time_since_better_block = None;
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
+            log_mdc::extend(mdc.clone());
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::NetworkSilence) => {
                     debug!("NetworkSilence event received");
@@ -139,6 +142,7 @@ impl Listening {
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;
+                        log_mdc::extend(mdc.clone());
                     }
 
                     let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
@@ -182,6 +186,7 @@ impl Listening {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+                    log_mdc::extend(mdc.clone());
 
                     // If this node is just one block behind, wait for block propagation before
                     // rushing to sync mode
@@ -216,6 +221,7 @@ impl Listening {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+                    log_mdc::extend(mdc.clone());
 
                     let sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,

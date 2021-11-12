@@ -3490,6 +3490,7 @@ Given(
 async function wallet_run_command(
   wallet,
   command,
+  timeOutSeconds = 15,
   message = "",
   printMessage = true
 ) {
@@ -3511,7 +3512,7 @@ async function wallet_run_command(
       return true;
     },
     true,
-    45 * 1000,
+    timeOutSeconds * 1000,
     5 * 1000,
     5
   );
@@ -3523,7 +3524,7 @@ Then(
   { timeout: 180 * 1000 },
   async function (name, amount) {
     let wallet = this.getWallet(name);
-    let output = await wallet_run_command(wallet, "get-balance");
+    let output = await wallet_run_command(wallet, "get-balance", 180);
     let parse = output.buffer.match(/Available balance: (\d*.\d*) T/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parseFloat(parse[1])).to.be.greaterThanOrEqual(amount / 1000000);
@@ -3538,7 +3539,8 @@ When(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `send-tari ${amount} ${dest_pubkey} test message`
+      `send-tari ${amount} ${dest_pubkey} test message`,
+      180
     );
     // await wallet.sendTari(dest_pubkey, amount, "test message");
   }
@@ -3552,7 +3554,8 @@ When(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `send-one-sided ${amount} ${dest_pubkey} test message`
+      `send-one-sided ${amount} ${dest_pubkey} test message`,
+      180
     );
     // await wallet.sendOneSided(dest_pubkey, amount, "test message");
   }
@@ -3566,7 +3569,8 @@ Then(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`
+      `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`,
+      300
     );
   }
 );
@@ -3589,7 +3593,8 @@ When(
     let wallet = this.getWallet(name);
     await wallet_run_command(
       wallet,
-      `coin-split ${amount_per_coin} ${number_of_coins}`
+      `coin-split ${amount_per_coin} ${number_of_coins}`,
+      180
     );
   }
 );
@@ -3600,7 +3605,7 @@ When(
   async function (node, name) {
     let wallet = this.getWallet(name);
     let peer = this.getNode(node).peerAddress().split("::")[0];
-    let output = await wallet_run_command(wallet, `discover-peer ${peer}`);
+    let output = await wallet_run_command(wallet, `discover-peer ${peer}`, 120);
     let parse = output.buffer.match(/Discovery succeeded/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
   }
@@ -3613,7 +3618,7 @@ When(
     await sleep(5000);
     let wallet = this.getWallet(name);
     let pubkey = this.getNode(who).peerAddress().split("::")[0];
-    let output = await wallet_run_command(wallet, `whois ${pubkey}`);
+    let output = await wallet_run_command(wallet, `whois ${pubkey}`, 20);
     let parse = output.buffer.match(/Public Key: (.+)\n/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parse[1]).to.be.equal(pubkey);

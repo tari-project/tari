@@ -149,7 +149,12 @@ struct ConnectivityManagerActor {
 
 impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
-        task::spawn(Self::run(self))
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
+        task::spawn(async {
+            log_mdc::extend(mdc);
+            Self::run(self).await
+        })
     }
 
     #[tracing::instrument(name = "connectivity_manager_actor::run", skip(self))]

@@ -117,9 +117,13 @@ impl DhtConnectivity {
     pub fn spawn(mut self) -> JoinHandle<Result<(), DhtConnectivityError>> {
         // Listen to events as early as possible
         let connectivity_events = self.connectivity.get_event_subscription();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         task::spawn(async move {
+            log_mdc::extend(mdc.clone());
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
             let _ = self.connectivity.wait_started().await;
+            log_mdc::extend(mdc.clone());
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
