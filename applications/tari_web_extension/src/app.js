@@ -12,7 +12,7 @@ export default function App() {
   useEffect(() => {
     dispatch(refreshLogin());
   }, [dispatch]);
-  console.log("he?", credentials);
+
   return (
     <div className="main">
       <MemoryRouter>

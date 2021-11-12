@@ -33,11 +33,11 @@ use chacha20::{
     Key,
     Nonce,
 };
-use chrono::Utc;
 use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
-use std::{convert::TryFrom, mem::size_of};
+use serde::{Deserialize, Serialize};
+use std::mem::size_of;
 use tari_crypto::tari_utilities::ByteArray;
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
@@ -57,17 +57,17 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// encoding.
 /// In our scheme we will have the following data:
 /// version     1 byte
-/// birthday    2 bytes     Days after Unix Epoch
-/// entropy     16 bytes   
+/// birthday    2 bytes     Days since Unix Epoch
+/// entropy     16 bytes
 /// MAC         5 bytes     Hash(birthday||entropy||version||salt||passphrase)
 /// salt        5 bytes
 /// checksum    4 bytes
 ///
-/// In it's enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
+/// In its enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
 /// encrypted. The version and salt are associated data that are included in the MAC but not encrypted.
 /// The enciphered data will look as follows:
 /// version     1 byte
-/// ciphertext  23 bytes     
+/// ciphertext  23 bytes
 /// salt        5 bytes
 /// checksum    4 bytes
 ///
@@ -79,9 +79,9 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 /// are not tampered with. If no passphrase is provided a default string will be used
 ///
 /// The Birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we only
-/// have to scan the blocks in the chain since that day to fully recover rather than scan the entire blockchain
+/// have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire blockchain.
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
@@ -90,13 +90,28 @@ pub struct CipherSeed {
 }
 
 impl CipherSeed {
+    #[cfg(not(feature = "js"))]
     pub fn new() -> Self {
+        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+        let days = chrono::Utc::now().timestamp() as u64 / SECONDS_PER_DAY;
+        let birthday = u16::try_from(days).unwrap_or(0u16);
+        CipherSeed::new_with_birthday(birthday)
+    }
+
+    #[cfg(feature = "js")]
+    pub fn new() -> Self {
+        const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
+        let millis = js_sys::Date::now() as u64;
+        let days = millis / MILLISECONDS_PER_DAY;
+        let birthday = u16::try_from(days).unwrap_or(0u16);
+        CipherSeed::new_with_birthday(birthday)
+    }
+
+    fn new_with_birthday(birthday: u16) -> Self {
         let mut entropy = [0u8; CIPHER_SEED_ENTROPY_BYTES];
         OsRng.fill_bytes(&mut entropy);
         let mut salt = [0u8; CIPHER_SEED_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
-
-        let birthday = u16::try_from(Utc::now().timestamp() as u64 / (24 * 60 * 60)).unwrap_or(0u16);
 
         Self {
             version: CIPHER_SEED_VERSION,
