@@ -59,7 +59,7 @@ class WalletProcess {
     this.peerSeeds = addresses;
   }
 
-  run(cmd, args, saveFile, input_buffer, output) {
+  run(cmd, args, saveFile, input_buffer, output, waitForCommand) {
     let thePromise = new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -110,16 +110,20 @@ class WalletProcess {
         ps.stdin.write(input_buffer);
       }
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        //console.log(`\nstdout: ${data}`);
         if (output !== undefined && output.buffer !== undefined) {
           output.buffer += data;
         }
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
-          (!this.recoverWallet &&
-            data.toString().match(/Starting grpc server/)) ||
-          (this.recoverWallet &&
-            data.toString().match(/Initializing logging according/))
+          (!waitForCommand &&
+            data.toString().match(/Tari Console Wallet running/i)) ||
+          (waitForCommand &&
+            data
+              .toString()
+              .match(
+                /(?=.*Tari Console Wallet running)(?=.*Command mode completed)/gim
+              ))
         ) {
           resolve(ps);
         }
@@ -144,7 +148,6 @@ class WalletProcess {
       });
       expect(ps.error).to.be.undefined;
       this.ps = ps;
-      resolve(ps);
     });
     return thePromise;
   }
@@ -244,7 +247,7 @@ class WalletProcess {
     }
     let output = { buffer: "" };
     // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
-    await this.run(await this.compile(), args, true, "\n", output);
+    await this.run(await this.compile(), args, true, "\n", output, true);
     return output;
   }
 
