@@ -36,6 +36,7 @@ use crate::{
             send_transaction_cancelled::send_transaction_cancelled_message,
             wait_on_dial::wait_on_dial,
         },
+        utc::utc_duration_since,
     },
 };
 use chrono::Utc;
@@ -325,10 +326,7 @@ where
         }
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(outbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&outbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -350,10 +348,7 @@ where
         let resend = match outbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },

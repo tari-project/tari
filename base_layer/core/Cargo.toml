@@ -36,7 +36,7 @@ bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
 bytes = "0.5"
-chrono = { version = "0.4.6", features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 croaring = { version = "=0.4.5", optional = true }
 decimal-rs = "0.1.20"
 derive_more = "0.99.16"
@@ -48,6 +48,7 @@ integer-encoding = "3.0.2"
 lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 log = "0.4"
+log-mdc = "0.1.0"
 monero = { version = "^0.13.0", features = ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
 num = "0.3"

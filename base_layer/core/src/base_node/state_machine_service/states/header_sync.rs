@@ -111,22 +111,28 @@ impl HeaderSync {
         });
 
         let timer = Instant::now();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok(sync_peer) => {
+                log_mdc::extend(mdc);
                 info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
             },
             Err(err @ BlockHeaderSyncError::SyncFailedAllPeers) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}. Continuing...", err);
                 StateEvent::Continue
             },
             Err(err @ BlockHeaderSyncError::NetworkSilence) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}", err);
                 self.is_synced = true;
                 StateEvent::NetworkSilence
             },
             Err(err) => {
+                log_mdc::extend(mdc);
                 debug!(target: LOG_TARGET, "Header sync failed: {}", err);
                 StateEvent::HeaderSyncFailed
             },

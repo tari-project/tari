@@ -20,7 +20,7 @@ async-trait = "0.1.36"
 bitflags = "1.0.4"
 blake2 = "0.9.0"
 bytes = { version = "1", features = ["serde"] }
-chrono = { version = "0.4.6", features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 cidr = "0.1.0"
 clear_on_drop = "=0.2.4"
 data-encoding = "2.2.0"
@@ -29,6 +29,7 @@ futures = { version = "^0.3", features = ["async-await"] }
 lazy_static = "1.3.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
+log-mdc = "0.1.0"
 multiaddr = { version = "0.13.0" }
 nom = { version = "5.1.0", features = ["std"], default-features = false }
 openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }

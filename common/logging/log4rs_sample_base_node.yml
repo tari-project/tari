@@ -18,8 +18,7 @@ appenders:
     encoder:
       pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
     filters:
-      -
-        kind: threshold
+      - kind: threshold
         level: warn
 
   # An appender named "network" that writes to a file with a custom pattern encoder
@@ -54,7 +53,7 @@ appenders:
         count: 5
         pattern: "log/base-node/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] [{X(node-public-key)},{X(node-id)}] {l:5} {m}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
