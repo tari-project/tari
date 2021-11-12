@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Payload, QuorumCertificate, TariDanPayload},
+    models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate, TariDanPayload},
     services::{
         infrastructure_services::NodeAddressable,
         BaseNodeClient,
@@ -30,7 +30,7 @@ use crate::{
         PayloadProcessor,
         PayloadProvider,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory, UnitOfWork},
+    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, UnitOfWork},
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -98,17 +98,25 @@ where TBaseNodeClient: BaseNodeClient
         }
 
         // read and create the genesis block
-        let chain_db = db_factory.create();
-        if chain_db.is_empty() {
+        let chain_db = db_factory.create()?;
+        if chain_db.is_empty()? {
             let mut tx = chain_db.new_unit_of_work();
 
-            let tx2 = tx.clone();
-            // let metadata = chain_db.metadata.read(&mut tx);
-            let payload = payload_provider.create_genesis_payload();
+            let state_db = db_factory.create_state_db()?;
+            let mut state_tx = state_db.new_unit_of_work();
 
-            payload_processor.process_payload(&payload, tx2).await?;
-            let genesis_qc = QuorumCertificate::genesis(payload);
-            chain_storage_service.save_node(genesis_qc.node(), tx.clone()).await?;
+            let initial_state = asset_definition.initial_state();
+            for schema in &initial_state.schemas {
+                for key_value in &schema.items {
+                    state_tx.set_value(schema.name.clone(), key_value.key.clone(), key_value.value.clone());
+                }
+            }
+            let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());
+            let genesis_qc = QuorumCertificate::genesis(node.hash().clone());
+            chain_storage_service.add_node(&node, tx.clone()).await?;
+            tx.commit_node(node.hash())?;
+            chain_storage_service.set_locked_qc(genesis_qc, tx.clone()).await?;
+            state_tx.commit()?;
             tx.commit()?;
         }
 

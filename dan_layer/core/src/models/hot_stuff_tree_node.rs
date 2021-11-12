@@ -29,14 +29,16 @@ pub struct HotStuffTreeNode<TPayload: Payload> {
     parent: TreeNodeHash,
     payload: TPayload,
     hash: TreeNodeHash,
+    height: u32,
 }
 
 impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
-    pub fn new(parent: TreeNodeHash, payload: TPayload) -> Self {
+    pub fn new(parent: TreeNodeHash, payload: TPayload, height: u32) -> Self {
         let mut s = HotStuffTreeNode {
             parent,
             payload,
             hash: TreeNodeHash(vec![]),
+            height,
         };
         s.hash = s.calculate_hash();
         s
@@ -47,19 +49,21 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             parent: TreeNodeHash(vec![0u8; 32]),
             payload,
             hash: TreeNodeHash(vec![]),
+            height: 0,
         };
         s.hash = s.calculate_hash();
         s
     }
 
-    pub fn from_parent(parent: &HotStuffTreeNode<TPayload>, payload: TPayload) -> HotStuffTreeNode<TPayload> {
-        Self::new(parent.calculate_hash(), payload)
+    pub fn from_parent(parent: TreeNodeHash, payload: TPayload, height: u32) -> HotStuffTreeNode<TPayload> {
+        Self::new(parent, payload, height)
     }
 
     pub fn calculate_hash(&self) -> TreeNodeHash {
         let result = Blake256::new()
             .chain(self.parent.0.as_slice())
             .chain(self.payload.consensus_hash())
+            .chain(self.height.to_le_bytes())
             .finalize();
         TreeNodeHash(result.to_vec())
     }
@@ -74,6 +78,10 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
 
     pub fn payload(&self) -> &TPayload {
         &self.payload
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
     }
 }
 

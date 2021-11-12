@@ -54,7 +54,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
-    models::{AssetDefinition, Committee},
+    models::{AssetDefinition, Committee, TariDanPayload},
     services::{
         ConcreteAssetProcessor,
         ConcreteCommitteeManager,
@@ -66,16 +66,10 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{
-        sqlite::SqliteStorageService,
-        AssetDataStore,
-        BackendAdapter,
-        DbFactory,
-        LmdbAssetStore,
-        SqliteDbFactory,
-    },
+    storage::{AssetDataStore, BackendAdapter, DbFactory, LmdbAssetStore},
     workers::ConsensusWorker,
 };
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
 use tari_p2p::{
     comms_connector::{pubsub_connector, SubscriptionFactory},
     initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
@@ -171,7 +165,7 @@ impl DanNode {
 
     async fn start_asset_worker<
         TMempoolService: MempoolService + Clone,
-        TBackendAdapter: BackendAdapter + Send + Sync,
+        TBackendAdapter: BackendAdapter<Payload = TariDanPayload> + Send + Sync,
         TDbFactory: DbFactory<TBackendAdapter> + Clone + Send + Sync,
     >(
         &self,

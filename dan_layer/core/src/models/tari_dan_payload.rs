@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload};
+use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload, StateRoot};
 use digest::Digest;
 use std::{
     fmt::{Debug, Formatter},
@@ -70,7 +70,11 @@ impl ConsensusHash for TariDanPayload {
     }
 }
 
-impl Payload for TariDanPayload {}
+impl Payload for TariDanPayload {
+    fn state_root(&self) -> StateRoot {
+        StateRoot::default()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CheckpointData {

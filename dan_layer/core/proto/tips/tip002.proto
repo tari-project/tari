@@ -1,0 +1,22 @@
+service Tip002 {
+  rpc Info(InfoRequest) returns InfoResponse;
+  rpc BalanceOf(BalanceOfRequest) returns BalanceOfResponse;
+    }
+
+   message InfoRequest {
+
+   }
+
+   message InfoResponse {
+      string symbol = 1;
+      byte decimals = 2;
+      uint256 total_supply =3;
+   }
+
+   message BalanceOfRequest {
+      uint256 owner = 1;
+   }
+
+   message BalanceOfResponse {
+      uint256 balance = 1;
+   }

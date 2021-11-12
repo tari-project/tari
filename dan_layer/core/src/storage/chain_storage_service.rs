@@ -33,9 +33,15 @@ use tokio::sync::RwLock;
 #[async_trait]
 pub trait ChainStorageService<TPayload: Payload> {
     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
-    async fn save_node<TUnitOfWork: UnitOfWork>(
+    async fn add_node<TUnitOfWork: UnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
+        db: TUnitOfWork,
+    ) -> Result<(), StorageError>;
+
+    async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
+        &self,
+        qc: QuorumCertificate,
         db: TUnitOfWork,
     ) -> Result<(), StorageError>;
 }

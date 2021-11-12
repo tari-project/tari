@@ -3,6 +3,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_client(true)
         .build_server(true)
         .format(false)
-        .compile(&["proto/base_node.proto", "proto/wallet.proto"], &["proto"])?;
+        .compile(
+            &[
+                "proto/base_node.proto",
+                "proto/wallet.proto",
+                "proto/validator_node.proto",
+            ],
+            &["proto"],
+        )?;
     Ok(())
 }

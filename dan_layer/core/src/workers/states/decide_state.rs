@@ -36,19 +36,19 @@ use crate::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         SigningService,
     },
+    storage::UnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
 
 // TODO: This is very similar to pre-commit, and commit state
-pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
     TOutboundService: OutboundService<TAddr, TPayload>,
-    TSigningService: SigningService<TAddr>,
 {
     node_id: TAddr,
     committee: Committee<TAddr>,
@@ -56,20 +56,16 @@ where
     phantom_outbound: PhantomData<TOutboundService>,
     ta: PhantomData<TAddr>,
     p_p: PhantomData<TPayload>,
-    p_s: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    commit_qc: Option<QuorumCertificate<TPayload>>,
-    _locked_qc: Option<QuorumCertificate<TPayload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+impl<TAddr, TPayload, TInboundConnectionService, TOutboundService>
+    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
     TOutboundService: OutboundService<TAddr, TPayload>,
     TAddr: NodeAddressable,
     TPayload: Payload,
-    TSigningService: SigningService<TAddr>,
 {
     pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
         Self {
@@ -80,19 +76,16 @@ where
             ta: PhantomData,
             p_p: PhantomData,
             received_new_view_messages: HashMap::new(),
-            commit_qc: None,
-            _locked_qc: None,
-            p_s: PhantomData,
         }
     }
 
-    pub async fn next_event(
+    pub async fn next_event<TUnitOfWork: UnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
-        _signing_service: &TSigningService,
+        unit_of_work: TUnitOfWork,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
@@ -101,6 +94,7 @@ where
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
+        let mut unit_of_work = unit_of_work;
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
@@ -113,7 +107,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader).await? {
+                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -161,7 +155,6 @@ where
             );
 
             if let Some(qc) = self.create_qc(current_view) {
-                self.commit_qc = Some(qc.clone());
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 return Ok(None); // Replica will move this on
             }
@@ -180,7 +173,7 @@ where
     async fn broadcast(
         &self,
         outbound: &mut TOutboundService,
-        commit_qc: QuorumCertificate<TPayload>,
+        commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
@@ -189,13 +182,13 @@ where
             .await
     }
 
-    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {
-        let mut node = None;
+    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
+        let mut node_hash = None;
         for message in self.received_new_view_messages.values() {
-            node = match node {
-                None => message.node().cloned(),
+            node_hash = match node_hash {
+                None => message.node_hash().cloned(),
                 Some(n) => {
-                    if let Some(m_node) = message.node() {
+                    if let Some(m_node) = message.node_hash() {
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
@@ -207,20 +200,21 @@ where
             };
         }
 
-        let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Commit, current_view.view_id, node, None);
+        let node_hash = node_hash.unwrap();
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Commit, current_view.view_id, node_hash, None);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }
         Some(qc)
     }
 
-    async fn process_replica_message(
+    async fn process_replica_message<TUnitOfWork: UnitOfWork>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
         from: &TAddr,
         view_leader: &TAddr,
+        unit_of_work: &mut TUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
@@ -241,33 +235,11 @@ where
                 return Ok(None);
             }
 
-            // self.locked_qc = Some(justify.clone());
-            // self.send_vote_to_leader(
-            //     justify.node(),
-            //     outbound,
-            //     view_leader,
-            //     current_view.view_id,
-            //     &signing_service,
-            // )
-            // .await?;
-
+            unit_of_work.commit_node(justify.node_hash());
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
             dbg!("received non justify message");
             Ok(None)
         }
-    }
-
-    async fn _send_vote_to_leader(
-        &self,
-        node: &HotStuffTreeNode<TPayload>,
-        outbound: &mut TOutboundService,
-        view_leader: &TAddr,
-        view_number: ViewId,
-        signing_service: &TSigningService,
-    ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::commit(Some(node.clone()), None, view_number);
-        message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
-        outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
 }

@@ -29,6 +29,7 @@ use crate::{
         HotStuffTreeNode,
         Payload,
         QuorumCertificate,
+        TreeNodeHash,
         View,
         ViewId,
     },
@@ -36,6 +37,7 @@ use crate::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         SigningService,
     },
+    storage::UnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
@@ -57,7 +59,6 @@ where
     p_p: PhantomData<TPayload>,
     p_s: PhantomData<TSigningService>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    prepare_qc: Option<QuorumCertificate<TPayload>>,
 }
 
 impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
@@ -78,19 +79,19 @@ where
             ta: PhantomData,
             p_p: PhantomData,
             received_new_view_messages: HashMap::new(),
-            prepare_qc: None,
             p_s: PhantomData,
         }
     }
 
-    pub async fn next_event(
+    pub async fn next_event<TUnitOfWork: UnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         signing_service: &TSigningService,
-    ) -> Result<(ConsensusWorkerStateEvent, Option<QuorumCertificate<TPayload>>), DigitalAssetError> {
+        unit_of_work: TUnitOfWork,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
@@ -98,6 +99,7 @@ where
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
+        let mut unit_of_work = unit_of_work;
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {
@@ -110,7 +112,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service).await? {
+                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -122,7 +124,7 @@ where
                                 }
                             }
         }
-        Ok((next_event_result, self.prepare_qc.clone()))
+        Ok(next_event_result)
     }
 
     async fn wait_for_message(
@@ -158,7 +160,6 @@ where
             );
 
             if let Some(qc) = self.create_qc(current_view) {
-                self.prepare_qc = Some(qc.clone());
                 self.broadcast(outbound, &self.committee, qc, current_view.view_id)
                     .await?;
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
@@ -186,7 +187,7 @@ where
         &self,
         outbound: &mut TOutboundService,
         committee: &Committee<TAddr>,
-        prepare_qc: QuorumCertificate<TPayload>,
+        prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
         let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
@@ -195,13 +196,13 @@ where
             .await
     }
 
-    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate<TPayload>> {
+    fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
         let mut node = None;
         for message in self.received_new_view_messages.values() {
             node = match node {
-                None => message.node().cloned(),
+                None => message.node_hash().cloned(),
                 Some(n) => {
-                    if let Some(m_node) = message.node() {
+                    if let Some(m_node) = message.node_hash() {
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
@@ -214,14 +215,14 @@ where
         }
 
         let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node.clone(), None);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }
         Some(qc)
     }
 
-    async fn process_replica_message(
+    async fn process_replica_message<TUnitOfWork: UnitOfWork>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
@@ -229,6 +230,7 @@ where
         view_leader: &TAddr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
+        unit_of_work: &mut TUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Prepare, current_view.view_id) {
@@ -249,9 +251,9 @@ where
                 return Ok(None);
             }
 
-            self.prepare_qc = Some(justify.clone());
+            unit_of_work.set_prepare_qc(justify);
             self.send_vote_to_leader(
-                justify.node(),
+                justify.node_hash().clone(),
                 outbound,
                 view_leader,
                 current_view.view_id,
@@ -267,13 +269,13 @@ where
 
     async fn send_vote_to_leader(
         &self,
-        node: &HotStuffTreeNode<TPayload>,
+        node: TreeNodeHash,
         outbound: &mut TOutboundService,
         view_leader: &TAddr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::pre_commit(Some(node.clone()), None, view_number);
+        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number);
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

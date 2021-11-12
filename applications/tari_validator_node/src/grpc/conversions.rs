@@ -19,16 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::grpc::validator_node_rpc as rpc;
+use tari_app_grpc::tari_rpc;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::models::SidechainMetadata;
 
-impl From<SidechainMetadata> for rpc::SidechainMetadata {
+pub struct _st(tari_rpc::SidechainMetadata);
+
+impl From<SidechainMetadata> for _st {
     fn from(source: SidechainMetadata) -> Self {
-        Self {
+        Self(tari_rpc::SidechainMetadata {
             asset_public_key: source.asset_public_key().as_bytes().to_vec(),
             committed_height: source.committed_height().into(),
             committed_hash: source.committed_hash().clone().into(),
-        }
+        })
     }
 }

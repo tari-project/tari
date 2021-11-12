@@ -34,7 +34,7 @@ use tokio::sync::RwLock;
 pub trait AssetProcessor {
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
-    fn execute_instruction<TUnitOfWork: UnitOfWork>(
+    fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
         db: TUnitOfWork,
@@ -48,7 +48,7 @@ pub struct ConcreteAssetProcessor<TInstructionLog> {
 }
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
-    fn execute_instruction<TUnitOfWork: UnitOfWork>(
+    fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
         db: TUnitOfWork,
@@ -75,7 +75,7 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
         }
     }
 
-    pub fn execute<TUnitOfWork: UnitOfWork>(
+    pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_id: TemplateId,
         method: String,

@@ -25,25 +25,21 @@ mod cmd_args;
 mod dan_node;
 mod grpc;
 mod p2p;
-use crate::{
-    dan_node::DanNode,
-    grpc::{
-        validator_node_grpc_server::ValidatorNodeGrpcServer,
-        validator_node_rpc::validator_node_server::ValidatorNodeServer,
-    },
-};
+use crate::{dan_node::DanNode, grpc::validator_node_grpc_server::ValidatorNodeGrpcServer};
 use futures::FutureExt;
 use log::*;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     process,
 };
+use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_dan_core::{
     services::{MempoolService, MempoolServiceHandle},
-    storage::{BackendAdapter, ChainStorageService, DbFactory, SqliteDbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory},
 };
+use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;

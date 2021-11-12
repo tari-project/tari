@@ -20,42 +20,42 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, HotStuffTreeNode, Payload, Signature, ViewId};
+use crate::models::{HotStuffMessageType, HotStuffTreeNode, Payload, Signature, TreeNodeHash, ViewId};
 
 #[derive(Debug, Clone)]
-pub struct QuorumCertificate<TPayload: Payload> {
+pub struct QuorumCertificate {
     message_type: HotStuffMessageType,
-    node: HotStuffTreeNode<TPayload>,
+    node_hash: TreeNodeHash,
     view_number: ViewId,
     signature: Option<Signature>,
 }
 
-impl<TPayload: Payload> QuorumCertificate<TPayload> {
+impl QuorumCertificate {
     pub fn new(
         message_type: HotStuffMessageType,
         view_number: ViewId,
-        node: HotStuffTreeNode<TPayload>,
+        node_hash: TreeNodeHash,
         signature: Option<Signature>,
     ) -> Self {
         Self {
             message_type,
-            node,
+            node_hash,
             view_number,
             signature,
         }
     }
 
-    pub fn genesis(payload: TPayload) -> Self {
+    pub fn genesis(node_hash: TreeNodeHash) -> Self {
         Self {
             message_type: HotStuffMessageType::Genesis,
-            node: HotStuffTreeNode::genesis(payload),
+            node_hash,
             view_number: 0.into(),
             signature: None,
         }
     }
 
-    pub fn node(&self) -> &HotStuffTreeNode<TPayload> {
-        &self.node
+    pub fn node_hash(&self) -> &TreeNodeHash {
+        &self.node_hash
     }
 
     pub fn view_number(&self) -> ViewId {

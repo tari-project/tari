@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 use tari_comms::types::CommsPublicKey;
 
-pub trait NodeAddressable: Eq + Hash + Clone + Debug + Send + Sync {}
+pub trait NodeAddressable: Eq + Hash + Clone + Debug + Send + Sync + Display {}
 
 impl NodeAddressable for String {}
 

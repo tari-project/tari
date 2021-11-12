@@ -1,0 +1,12 @@
+
+service Tip001 {
+  rpc ReadMetada(ReadMetadataRequest) returns ReadMetadataResponse;
+}
+
+message ReadMetadataRequest {
+
+}
+
+message ReadMetadataResponse {
+
+}

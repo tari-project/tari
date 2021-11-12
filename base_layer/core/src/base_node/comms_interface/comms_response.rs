@@ -55,6 +55,9 @@ pub enum NodeCommsResponse {
     FetchAssetRegistrationsResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
+    FetchAssetMetadataResponse {
+        output: Option<UtxoMinedInfo>,
+    },
 }
 
 impl Display for NodeCommsResponse {
@@ -84,6 +87,7 @@ impl Display for NodeCommsResponse {
             MmrNodes(_, _) => write!(f, "MmrNodes"),
             FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
             FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
+            FetchAssetMetadataResponse { .. } => write!(f, "FetchAssetMetadataResponse"),
         }
     }
 }

@@ -32,7 +32,7 @@ import {
   AppBar,
   Box,
   CssBaseline, Divider,
-  Drawer,
+  Drawer, IconButton,
   List,
   ListItem,
   ListItemIcon,
@@ -42,6 +42,7 @@ import {
 } from "@mui/material";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import CreateIcon from "@mui/icons-material/Create";
+import AddIcon from "@mui/icons-material/Add";
 import AppsIcon from "@mui/icons-material/Apps";
 import { ThemeProvider } from "@emotion/react";
 import Create from "./Create";
@@ -51,6 +52,10 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
+import AccountDashboard from "./AccountDashboard";
+import NewAccount from "./NewAccount";
+import {useEffect, useState} from "react";
+import binding from "./binding";
 
 const mdTheme = createTheme({
   palette: {
@@ -59,6 +64,20 @@ const mdTheme = createTheme({
     secondary: pink,
   },
 });
+
+function IconButtonLink(props) {
+  const { icon, to} = props;
+  const renderLink = React.useMemo(
+      () => React.forwardRef(function Link(itemProps, ref) {
+        return <RouterLink to={to} ref={ref} {...itemProps} role={undefined} />;
+      }),
+        [to]
+  )
+
+  return (
+      <IconButton edge="end" aria-label="add" component={renderLink} >{icon}</IconButton>
+  );
+}
 
 function ListItemLink(props) {
   const { icon, primary, to } = props;
@@ -88,6 +107,15 @@ ListItemLink.propTypes = {
 };
 
 function App() {
+  const [accounts, setAccounts] = useState([]);
+
+  useEffect(async () => {
+   let a = await binding.command_accounts_list();
+  console.log(a);
+  setAccounts(a);
+
+  });
+
   return (
     <div className="App">
       <Router>
@@ -108,6 +136,13 @@ function App() {
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
+                <ListSubheader ><ListItem disableGutters={true} secondaryAction={
+                  <IconButtonLink icon={<AddIcon />} to="/accounts/new">
+                  </IconButtonLink>
+                }>My Assets</ListItem></ListSubheader>
+                { accounts.map((item) => {
+                return (<ListItemLink primary={item.name || item.assetPublicKey} to={`/accounts/${item.asset_public_key}`}></ListItemLink>);
+              })}
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -126,6 +161,14 @@ function App() {
               sx={{ flexGrow: 1, height: "100vh", overflow: "auto" }}
             >
               <Switch>
+                <Route path="/accounts/new" >
+                  <NewAccount />
+                </Route>
+                <Route path="/accounts/:assetPubKey">
+                  <AccountDashboard />
+                </Route>
+
+
                 <Route path="/create">
                   <Create />
                 </Route>

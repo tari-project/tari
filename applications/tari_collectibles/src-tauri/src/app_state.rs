@@ -20,12 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_client::BaseNodeClient, settings::Settings, wallet_client::WalletClient};
+use crate::{
+  clients::{BaseNodeClient, GrpcValidatorNodeClient, ValidatorNodeClient, WalletClient},
+  settings::Settings,
+  storage::{
+    sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
+    StorageError,
+  },
+};
+use diesel::SqliteConnection;
 use std::sync::Arc;
+use tari_common_types::types::PublicKey;
 use tauri::async_runtime::RwLock;
 
 pub struct AppState {
   config: Settings,
+  db_factory: SqliteDbFactory,
 }
 
 #[derive(Clone)]
@@ -35,9 +45,11 @@ pub struct ConcurrentAppState {
 
 impl ConcurrentAppState {
   pub fn new() -> Self {
+    let settings = Settings::new();
     Self {
       inner: Arc::new(RwLock::new(AppState {
-        config: Settings::new(),
+        db_factory: SqliteDbFactory::new(settings.data_dir.as_path()),
+        config: settings,
       })),
     }
   }
@@ -51,5 +63,23 @@ impl ConcurrentAppState {
     let client =
       BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
     Ok(client)
+  }
+
+  pub async fn connect_validator_node_client(
+    &self,
+    _public_key: PublicKey,
+  ) -> Result<GrpcValidatorNodeClient, String> {
+    // todo: convert this GRPC to tari comms
+    let lock = self.inner.read().await;
+    let client = GrpcValidatorNodeClient::connect(format!(
+      "http://{}",
+      lock.config.validator_node_grpc_address
+    ))
+    .await?;
+    Ok(client)
+  }
+
+  pub async fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
+    self.inner.read().await.db_factory.create_db()
   }
 }

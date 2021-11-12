@@ -38,6 +38,8 @@ pub enum DigitalAssetError {
     MalformedMetadata(String),
     #[error("Could not convert between types:{0}")]
     ConversionError(String),
+    #[error("Branched to an unexpected logic path, this is most likely due to a bug:{reason}")]
+    InvalidLogicPath { reason: String },
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

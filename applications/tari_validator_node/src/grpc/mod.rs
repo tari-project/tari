@@ -22,7 +22,3 @@
 pub(crate) mod conversions;
 pub mod services;
 pub(crate) mod validator_node_grpc_server;
-
-pub mod validator_node_rpc {
-    tonic::include_proto!("tari.validator_node.rpc");
-}

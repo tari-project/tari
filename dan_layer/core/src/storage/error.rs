@@ -26,6 +26,8 @@ use tari_storage::lmdb_store::LMDBError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    #[error("Could not connect to storage:{reason}")]
+    ConnectionError { reason: String },
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
     #[error("LMDB: {0}")]
@@ -34,4 +36,12 @@ pub enum StorageError {
     LMDBError(#[from] LMDBError),
     #[error("Decode Error: {0}")]
     DecodeError(#[from] bytecodec::Error),
+    #[error("Query error:{reason}")]
+    QueryError { reason: String },
+    #[error("Migration error: {reason}")]
+    MigrationError { reason: String },
+    #[error("Invalid unit of work tracker type")]
+    InvalidUnitOfWorkTrackerType,
+    #[error("Item does not exist")]
+    NotFound,
 }

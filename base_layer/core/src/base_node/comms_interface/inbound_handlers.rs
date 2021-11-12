@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use crate::{
     base_node::comms_interface::{
         error::CommsInterfaceError,
@@ -43,6 +44,7 @@ use strum_macros::Display;
 use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -440,6 +442,13 @@ where T: BlockchainBackend + 'static
                     .filter(|o|!o.output.is_pruned())
                     .collect();
                 Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
+                let output = self
+                    .blockchain_db
+                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
+                    .await?;
+                Ok(NodeCommsResponse::FetchAssetMetadataResponse { output })
             },
         }
     }

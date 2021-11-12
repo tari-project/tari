@@ -40,7 +40,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory},
+    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StateDbUnitOfWorkImpl, UnitOfWork},
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
@@ -87,9 +87,7 @@ pub struct ConsensusWorker<
     timeout: Duration,
     node_id: TAddr,
     payload_provider: TPayloadProvider,
-    prepare_qc: Arc<QuorumCertificate<TPayload>>,
     events_publisher: TEventsPublisher,
-    locked_qc: Arc<QuorumCertificate<TPayload>>,
     signing_service: TSigningService,
     payload_processor: TPayloadProcessor,
     asset_definition: AssetDefinition,
@@ -97,6 +95,9 @@ pub struct ConsensusWorker<
     db_factory: TDbFactory,
     chain_storage_service: TChainStorageService,
     pd: PhantomData<TBackendAdapter>,
+    pd2: PhantomData<TPayload>,
+    // TODO: Make generic
+    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl>,
 }
 
 impl<
@@ -139,10 +140,9 @@ where
     TSigningService: SigningService<TAddr>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
-
     TBaseNodeClient: BaseNodeClient,
     // TODO: REmove this Send
-    TBackendAdapter: BackendAdapter + Send + Sync,
+    TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
     TDbFactory: DbFactory<TBackendAdapter> + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
@@ -162,7 +162,7 @@ where
         db_factory: TDbFactory,
         chain_storage_service: TChainStorageService,
     ) -> Self {
-        let prepare_qc = Arc::new(QuorumCertificate::genesis(payload_provider.create_genesis_payload()));
+        // let prepare_qc = Arc::new(QuorumCertificate::genesis(ash()));
 
         Self {
             inbound_connections,
@@ -172,8 +172,6 @@ where
             outbound_service,
             committee_manager,
             node_id,
-            locked_qc: prepare_qc.clone(),
-            prepare_qc,
             payload_provider,
             events_publisher,
             signing_service,
@@ -183,6 +181,8 @@ where
             db_factory,
             chain_storage_service,
             pd: PhantomData,
+            pd2: PhantomData,
+            state_db_unit_of_work: None,
         }
     }
 
@@ -251,72 +251,101 @@ where
                     .await
             },
             Prepare => {
-                let mut p = states::Prepare::new(self.node_id.clone(), self.locked_qc.clone(), self.db_factory.clone());
-                p.next_event(
-                    &self.get_current_view()?,
-                    self.timeout,
-                    self.committee_manager.current_committee()?,
-                    &mut self.inbound_connections,
-                    &mut self.outbound_service,
-                    &self.payload_provider,
-                    &self.signing_service,
-                    &mut self.payload_processor,
-                )
-                .await
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
+                let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
+                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
+                let res = p
+                    .next_event(
+                        &self.get_current_view()?,
+                        self.timeout,
+                        self.committee_manager.current_committee()?,
+                        &mut self.inbound_connections,
+                        &mut self.outbound_service,
+                        &self.payload_provider,
+                        &self.signing_service,
+                        &mut self.payload_processor,
+                        &self.chain_storage_service,
+                        unit_of_work.clone(),
+                        &mut state_tx,
+                    )
+                    .await?;
+                // Will only be committed in DECIDE
+                self.state_db_unit_of_work = Some(state_tx);
+                unit_of_work.commit()?;
+                Ok(res)
             },
             PreCommit => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                let (res, prepare_qc) = state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
+                        unit_of_work.clone(),
                     )
                     .await?;
-                if let Some(prepare_qc) = prepare_qc {
-                    self.prepare_qc = Arc::new(prepare_qc);
-                }
+                unit_of_work.commit()?;
                 Ok(res)
             },
 
             Commit => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                let (res, locked_qc) = state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
+                        unit_of_work.clone(),
                     )
                     .await?;
-                if let Some(locked_qc) = locked_qc {
-                    self.locked_qc = Arc::new(locked_qc);
-                }
+
+                unit_of_work.commit()?;
+
                 Ok(res)
             },
             Decide => {
+                let db = self.db_factory.create()?;
+                let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
-                state
+                let res = state
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
-                        &self.signing_service,
+                        unit_of_work.clone(),
                     )
-                    .await
+                    .await?;
+                unit_of_work.commit()?;
+                if let Some(mut state_tx) = self.state_db_unit_of_work.take() {
+                    state_tx.commit()?;
+                } else {
+                    // technically impossible
+                    error!(target: LOG_TARGET, "No state unit of work was present");
+                    return Err(DigitalAssetError::InvalidLogicPath {
+                        reason: "Tried to commit state after DECIDE, but no state tx was present".to_string(),
+                    });
+                }
+
+                Ok(res)
             },
             NextView => {
                 info!(
@@ -324,11 +353,12 @@ where
                     "Status: {} in mempool ",
                     self.payload_provider.get_payload_queue().await,
                 );
+                self.state_db_unit_of_work = None;
                 let mut state = states::NextViewState::new();
                 state
                     .next_event(
                         &self.get_current_view()?,
-                        self.prepare_qc.as_ref().clone(),
+                        &self.db_factory,
                         &mut self.outbound_service,
                         self.committee_manager.current_committee()?,
                         self.node_id.clone(),
@@ -352,7 +382,7 @@ where
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
-            (Starting, Initialized) => Prepare,
+            (Starting, Initialized) => NextView,
             (_, NotPartOfCommittee) => Idle,
             (Idle, TimedOut) => Starting,
             (_, TimedOut) => NextView,

@@ -20,53 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{BackendAdapter, ChainDbUnitOfWork, ChainStorageService, NewUnitOfWorkTracker, StorageError, UnitOfWork},
-};
-use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-pub struct SqliteStorageService {}
-
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
-    }
-
-    async fn save_node<TUnitOfWork: UnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
-        }
-        db.add_node(node.hash().clone(), node.parent().clone())?;
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
-pub struct SqliteBackendAdapter {}
-
-pub struct SqliteTransaction {}
-
-impl BackendAdapter for SqliteBackendAdapter {
-    type BackendTransaction = SqliteTransaction;
-
-    fn create_transaction(&self) -> Self::BackendTransaction {
-        SqliteTransaction {}
-    }
-
-    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
-        todo!()
-    }
-
-    fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), StorageError> {
-        todo!()
-    }
+use serde::Serialize;
+#[derive(Serialize)]
+pub struct Tip002Info {
+  symbol: String,
+  decimals: u8,
+  total_supply: u128, // TODO: Should be 256
 }
