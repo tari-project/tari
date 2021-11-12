@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-05-09 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-18 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
@@ -67,7 +67,7 @@ COPY --from=builder /tari_base_node/target/release/tari_base_node /usr/local/bin
 USER tari_base_node
 #RUN echo ${HOME} && ls -la /home
 RUN mkdir -p ~/.tari
-COPY --from=builder /tari_base_node/common/config/presets/tari_config_example.toml /home/tari_base_node/.tari/tari_config_example.toml
+COPY --from=builder /tari_base_node/common/config/presets/*.toml /home/tari_base_node/.tari
 COPY --from=builder /tari_base_node/common/logging/log4rs_sample_base_node.yml /home/tari_base_node/.tari/log4rs_base_node.yml
 
 # Keep the .tari directory in a volume by default

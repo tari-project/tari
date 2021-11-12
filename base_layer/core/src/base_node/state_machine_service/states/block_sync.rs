@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo, StatusInfo},
-        sync::BlockSynchronizer,
+        sync::{BlockSynchronizer, SyncPeer},
         BaseNodeStateMachine,
     },
     chain_storage::{BlockAddResult, BlockchainBackend},
@@ -32,24 +32,19 @@ use crate::{
 use log::*;
 use randomx_rs::RandomXFlag;
 use std::time::Instant;
-use tari_comms::PeerConnection;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BlockSync {
-    sync_peer: Option<PeerConnection>,
+    sync_peer: SyncPeer,
     is_synced: bool,
 }
 
 impl BlockSync {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+    pub fn new(sync_peer: SyncPeer) -> Self {
         Self {
-            sync_peer: Some(sync_peer),
+            sync_peer,
             is_synced: false,
         }
     }
@@ -62,7 +57,7 @@ impl BlockSync {
             shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
-            self.sync_peer.take(),
+            self.sync_peer.clone(),
             shared.sync_validators.block_body.clone(),
         );
 
@@ -77,7 +72,7 @@ impl BlockSync {
         let local_nci = shared.local_node_interface.clone();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
-        synchronizer.on_progress(move |block, remote_tip_height, sync_peers| {
+        synchronizer.on_progress(move |block, remote_tip_height, sync_peer| {
             let local_height = block.height();
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
                 block.block().clone().into(),
@@ -90,7 +85,7 @@ impl BlockSync {
                 state_info: StateInfo::BlockSync(BlockSyncInfo {
                     tip_height: remote_tip_height,
                     local_height,
-                    sync_peers: sync_peers.to_vec(),
+                    sync_peers: vec![sync_peer.clone()],
                 }),
                 randomx_vm_cnt,
                 randomx_vm_flags,
@@ -122,7 +117,16 @@ impl BlockSync {
 }
 
 impl From<HorizonStateSync> for BlockSync {
-    fn from(_: HorizonStateSync) -> Self {
-        BlockSync::new()
+    fn from(sync: HorizonStateSync) -> Self {
+        BlockSync::new(sync.into_sync_peer())
+    }
+}
+
+impl From<SyncPeer> for BlockSync {
+    fn from(sync_peer: SyncPeer) -> Self {
+        Self {
+            sync_peer,
+            is_synced: false,
+        }
     }
 }

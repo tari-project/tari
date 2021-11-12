@@ -76,7 +76,7 @@ impl ExtendBytes for User {
         self.last.append_raw_bytes(buf);
         self.email.append_raw_bytes(buf);
         self.male.append_raw_bytes(buf);
-        buf.extend_from_slice(&self.ip.to_string().as_bytes());
+        buf.extend_from_slice(self.ip.to_string().as_bytes());
     }
 }
 
@@ -181,16 +181,14 @@ fn transactions() {
     {
         let (users, db) = insert_all_users("transactions");
         // Test the `exists` and value retrieval functions
-        let res = db.with_read_transaction::<_, User>(|txn| {
+        db.with_read_transaction(|txn| {
             for user in users.iter() {
                 assert!(txn.exists(&user.id).unwrap());
                 let check: User = txn.get(&user.id).unwrap().unwrap();
                 assert_eq!(check, *user);
             }
-            Ok(None)
-        });
-        println!("{:?}", res);
-        assert!(res.unwrap().is_none());
+        })
+        .unwrap();
     }
     clean_up("transactions"); // In Windows file handles must be released before files can be deleted
 }
@@ -282,7 +280,7 @@ fn exists_and_delete() {
 fn lmdb_resize_on_create() {
     let db_env_name = "resize";
     {
-        let path = get_path(&db_env_name);
+        let path = get_path(db_env_name);
         std::fs::create_dir(&path).unwrap_or_default();
         let size_used_round_1: usize;
         const PRESET_SIZE: usize = 1;
@@ -297,11 +295,11 @@ fn lmdb_resize_on_create() {
                     512 * 1024,
                 ))
                 .set_max_number_of_databases(1)
-                .add_database(&db_name, db::CREATE)
+                .add_database(db_name, db::CREATE)
                 .build()
                 .unwrap();
             // Add some data that is `>= 2 * (PRESET_SIZE * 1024 * 1024)`
-            let db = env.get_handle(&db_name).unwrap();
+            let db = env.get_handle(db_name).unwrap();
             let users = load_users();
             for i in 0..100 {
                 db.insert(&i, &users).unwrap();
@@ -320,7 +318,7 @@ fn lmdb_resize_on_create() {
                 .set_path(&path)
                 .set_env_config(LMDBConfig::new(PRESET_SIZE * 1024 * 1024, 1024 * 1024, 512 * 1024))
                 .set_max_number_of_databases(1)
-                .add_database(&db_name, db::CREATE)
+                .add_database(db_name, db::CREATE)
                 .build()
                 .unwrap();
             // Ensure `mapsize` is automatically adjusted
@@ -333,14 +331,14 @@ fn lmdb_resize_on_create() {
             assert!(env_info.mapsize >= 2 * (PRESET_SIZE * 1024 * 1024));
         }
     }
-    clean_up(&db_env_name); // In Windows file handles must be released before files can be deleted
+    clean_up(db_env_name); // In Windows file handles must be released before files can be deleted
 }
 
 #[test]
 fn test_lmdb_resize_before_full() {
     let db_env_name = "resize_dynamic";
     {
-        let path = get_path(&db_env_name);
+        let path = get_path(db_env_name);
         std::fs::create_dir(&path).unwrap_or_default();
         let db_name = "test_full";
         {
@@ -349,10 +347,10 @@ fn test_lmdb_resize_before_full() {
                 .set_path(&path)
                 .set_env_config(LMDBConfig::new(1024 * 1024, 512 * 1024, 100 * 1024))
                 .set_max_number_of_databases(1)
-                .add_database(&db_name, db::CREATE)
+                .add_database(db_name, db::CREATE)
                 .build()
                 .unwrap();
-            let db = store.get_handle(&db_name).unwrap();
+            let db = store.get_handle(db_name).unwrap();
 
             // Add enough data to exceed our 1MB db
             let value = load_users();
@@ -374,5 +372,5 @@ fn test_lmdb_resize_before_full() {
             store.flush().unwrap();
         }
     }
-    clean_up(&db_env_name); // In Windows file handles must be released before files can be deleted
+    clean_up(db_env_name); // In Windows file handles must be released before files can be deleted
 }

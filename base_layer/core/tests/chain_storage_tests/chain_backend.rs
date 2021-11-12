@@ -38,8 +38,8 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     let consensus = ConsensusManagerBuilder::new(network).build();
     let mut db = create_test_db();
     let txs = vec![
-        (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
-        (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
+        (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
+        (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
     ];
     let orphan = create_orphan_block(10, txs, &consensus);
     let hash = orphan.hash();
@@ -84,8 +84,6 @@ fn lmdb_file_lock() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        if let Err(e) = std::fs::remove_dir_all(&temp_path) {
-            println!("\n{:?}\n", e)
-        }
+        std::fs::remove_dir_all(&temp_path).expect("Could not clear temp storage for db");
     }
 }

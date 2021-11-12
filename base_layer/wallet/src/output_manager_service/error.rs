@@ -22,7 +22,8 @@
 
 use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
-use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use tari_common::exit_codes::ExitCodes;
+use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction::TransactionError,
@@ -30,10 +31,9 @@ use tari_core::transactions::{
     CoinbaseBuildError,
 };
 use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
-use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
-use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -45,8 +45,6 @@ pub enum OutputManagerError {
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
@@ -61,6 +59,8 @@ pub enum OutputManagerError {
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
     IncompleteTransaction(&'static str),
+    #[error("Inconsistent data found: {0}")]
+    InconsistentDataError(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
     #[error("Funds are still pending. Unable to fulfil transaction right now.")]
@@ -106,9 +106,16 @@ pub enum OutputManagerError {
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
-    MasterSecretKeyMismatch,
+    MasterSeedMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Connectivity error: {source}")]
+    ConnectivityError {
+        #[from]
+        source: ConnectivityError,
+    },
+    #[error("Invalid message received:{0}")]
+    InvalidMessageError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -135,8 +142,6 @@ pub enum OutputManagerStorageError {
     OutputAlreadySpent,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("R2d2 error")]
     R2d2Error,
     #[error("Transaction error: `{0}`")]
@@ -157,6 +162,15 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Key Manager Error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
+}
+
+impl From<OutputManagerError> for ExitCodes {
+    fn from(err: OutputManagerError) -> Self {
+        log::error!(target: crate::error::LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
 }
 
 /// This error type is used to return OutputManagerError from inside a Output Manager Service protocol but also
@@ -176,5 +190,18 @@ impl OutputManagerProtocolError {
 impl From<OutputManagerProtocolError> for OutputManagerError {
     fn from(tspe: OutputManagerProtocolError) -> Self {
         tspe.error
+    }
+}
+
+pub trait OutputManagerProtocolErrorExt<TRes> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError>;
+}
+
+impl<TRes, TErr: Into<OutputManagerError>> OutputManagerProtocolErrorExt<TRes> for Result<TRes, TErr> {
+    fn for_protocol(self, id: u64) -> Result<TRes, OutputManagerProtocolError> {
+        match self {
+            Ok(r) => Ok(r),
+            Err(e) => Err(OutputManagerProtocolError::new(id, e.into())),
+        }
     }
 }

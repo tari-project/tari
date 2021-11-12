@@ -20,15 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
+use crate::stratum::{error::Error, stratum_statistics::stats, stratum_types as types, stream::Stream};
 
 use log::*;
 use std::{
     self,
     io::{BufRead, ErrorKind, Write},
-    sync::mpsc,
+    sync::{mpsc, Arc, RwLock},
     thread,
+    time::{Duration, Instant},
 };
+
+pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
+pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
 
 pub struct Controller {
     server_url: String,
@@ -40,6 +44,7 @@ pub struct Controller {
     pub tx: mpsc::Sender<types::client_message::ClientMessage>,
     miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
     last_request_id: String,
+    stats: Arc<RwLock<stats::Statistics>>,
 }
 
 // fn invalid_error_response() -> types::RpcError {
@@ -56,6 +61,7 @@ impl Controller {
         server_password: Option<String>,
         server_tls_enabled: Option<bool>,
         miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
+        stats: Arc<RwLock<stats::Statistics>>,
     ) -> Result<Controller, Error> {
         let (tx, rx) = mpsc::channel::<types::client_message::ClientMessage>();
         Ok(Controller {
@@ -68,6 +74,7 @@ impl Controller {
             rx,
             miner_tx,
             last_request_id: "".to_string(),
+            stats,
         })
     }
 
@@ -82,31 +89,31 @@ impl Controller {
 
     fn read_message(&mut self) -> Result<Option<String>, Error> {
         if self.stream.is_none() {
-            return Err(Error::ConnectionError("broken pipe".to_string()));
+            return Err(Error::Connection("broken pipe".to_string()));
         }
         let mut line = String::new();
         match self.stream.as_mut().unwrap().read_line(&mut line) {
             Ok(_) => {
                 // stream is not returning a proper error on disconnect
                 if line.is_empty() {
-                    return Err(Error::ConnectionError("broken pipe".to_string()));
+                    return Err(Error::Connection("broken pipe".to_string()));
                 }
                 Ok(Some(line))
             },
-            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::ConnectionError("broken pipe".to_string())),
+            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::Connection("broken pipe".to_string())),
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
             Err(e) => {
-                error!("Communication error with stratum server: {}", e);
-                Err(Error::ConnectionError("broken pipe".to_string()))
+                error!(target: LOG_TARGET, "Communication error with stratum server: {}", e);
+                Err(Error::Connection("broken pipe".to_string()))
             },
         }
     }
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
         if self.stream.is_none() {
-            return Err(Error::ConnectionError(String::from("No server connection")));
+            return Err(Error::Connection(String::from("No server connection")));
         }
-        debug!("sending request: {}", message);
+        debug!(target: LOG_TARGET_FILE, "sending request: {}", message);
         let _ = self.stream.as_mut().unwrap().write(message.as_bytes());
         let _ = self.stream.as_mut().unwrap().write(b"\n");
         let _ = self.stream.as_mut().unwrap().flush();
@@ -172,7 +179,10 @@ impl Controller {
     }
 
     fn send_message_submit(&mut self, job_id: u64, hash: String, nonce: u64) -> Result<(), Error> {
-        info!("Submitting Solution with hash {} and nonce {}", hash, nonce);
+        info!(
+            target: LOG_TARGET,
+            "Submitting share with hash {} and nonce {}", hash, nonce
+        );
         let params_in = types::submit_params::SubmitParams {
             id: self.last_request_id.to_string(),
             job_id,
@@ -211,30 +221,48 @@ impl Controller {
     }
 
     pub fn handle_request(&mut self, req: types::rpc_request::RpcRequest) -> Result<(), Error> {
-        debug!("Received request type: {}", req.method);
+        debug!(target: LOG_TARGET_FILE, "Received request type: {}", req.method);
         match req.method.as_str() {
             "job" => match req.params {
-                None => Err(Error::RequestError("No params in job request".to_owned())),
+                None => Err(Error::Request("No params in job request".to_owned())),
                 Some(params) => {
                     let job = serde_json::from_value::<types::job_params::JobParams>(params)?;
                     info!(
-                        "Got a new job for height {} with target difficulty {}",
-                        job.height, job.target
+                        target: LOG_TARGET,
+                        "Got a new job for height {} with target difficulty {}", job.height, job.target
                     );
                     self.send_miner_job(job)
                 },
             },
-            _ => Err(Error::RequestError("Unknown method".to_owned())),
+            _ => Err(Error::Request("Unknown method".to_owned())),
         }
     }
 
+    fn handle_error(&mut self, error: types::rpc_error::RpcError) {
+        if vec![-1, 24].contains(&error.code) {
+            // unauthorized
+            let _ = self.send_login();
+        } else if vec![21, 20, 22, 23, 25].contains(&error.code) {
+            // problem with template
+            let _ = self.send_message_get_job_template();
+        }
+    }
+
+    #[allow(clippy::cognitive_complexity)]
     pub fn handle_response(&mut self, res: types::rpc_response::RpcResponse) -> Result<(), Error> {
-        debug!("Received response with id: {}", res.id);
+        debug!(target: LOG_TARGET_FILE, "Received response with id: {}", res.id);
         match res.result {
             Some(result) => {
                 let login_response = serde_json::from_value::<types::login_response::LoginResponse>(result.clone());
                 if let Ok(st) = login_response {
-                    info!("Successful login to server, worker identifier is {}", st.id);
+                    info!(
+                        target: LOG_TARGET,
+                        "Successful login to server, worker identifier is {}", st.id
+                    );
+                    info!(
+                        target: LOG_TARGET,
+                        "Got a new job for height {} with target difficulty {}", st.job.height, st.job.target
+                    );
                     self.last_request_id = st.id;
                     let _ = self.send_miner_job(st.job);
                     return Ok(());
@@ -242,31 +270,42 @@ impl Controller {
                 let job_response = serde_json::from_value::<types::job_params::JobParams>(result.clone());
                 if let Ok(st) = job_response {
                     info!(
-                        "Got a new job for height {} with target difficulty {}",
-                        st.height, st.target
+                        target: LOG_TARGET,
+                        "Got a new job for height {} with target difficulty {}", st.height, st.target
                     );
                     let _ = self.send_miner_job(st);
                     return Ok(());
                 };
+                let submit_response = serde_json::from_value::<types::submit_response::SubmitResponse>(result.clone());
+                if let Ok(st) = submit_response {
+                    let error = st.error;
+                    if let Some(error) = error {
+                        // rejected share
+                        self.handle_error(error.clone());
+                        info!(target: LOG_TARGET, "Rejected");
+                        debug!(target: LOG_TARGET_FILE, "Share rejected: {:?}", error);
+                        let mut stats = self.stats.write().unwrap();
+                        stats.mining_stats.solution_stats.rejected += 1;
+                    } else {
+                        // accepted share
+                        info!(target: LOG_TARGET, "Accepted");
+                        debug!(target: LOG_TARGET_FILE, "Share accepted: {:?}", st.status);
+                    }
+                    return Ok(());
+                }
                 let rpc_response = serde_json::from_value::<types::rpc_response::RpcResponse>(result);
                 if let Ok(st) = rpc_response {
                     let error = st.error;
                     if let Some(error) = error {
-                        if vec![-1, 24].contains(&error.code) {
-                            // unauthorized
-                            let _ = self.send_login();
-                        } else if vec![21, 20, 22, 23, 25].contains(&error.code) {
-                            // problem with template
-                            let _ = self.send_message_get_job_template();
-                        }
-                    } else {
-                        info!("{:?}", st.result);
+                        self.handle_error(error);
                     }
                     return Ok(());
+                } else {
+                    debug!(target: LOG_TARGET_FILE, "RPC Response: {:?}", rpc_response);
                 };
             },
             None => {
-                error!("{:?}", res);
+                error!(target: LOG_TARGET, "RPC error: {:?}", res);
             },
         }
         Ok(())
@@ -274,12 +313,12 @@ impl Controller {
 
     #[allow(clippy::cognitive_complexity)]
     pub fn run(mut self) {
-        let server_read_interval = 1;
-        let server_retry_interval = 5;
-        let mut next_server_read = time::get_time().sec + server_read_interval;
-        let mut next_server_retry = time::get_time().sec;
+        let server_read_interval = Duration::from_secs(1);
+        let server_retry_interval = Duration::from_secs(5);
+        let mut next_server_read = Instant::now() + server_read_interval;
+        let mut next_server_retry = Instant::now();
         // Request the first job template
-        thread::sleep(std::time::Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(1));
         let mut was_disconnected = true;
         loop {
             // Check our connection status, and try to correct if possible
@@ -288,19 +327,20 @@ impl Controller {
                     let _ = self.send_miner_stop();
                 }
                 was_disconnected = true;
-                if time::get_time().sec > next_server_retry {
+                if Instant::now() > next_server_retry {
                     if self.try_connect().is_err() {
                         let status = format!(
                             "Connection Status: Can't establish server connection to {}. Will retry every {} seconds",
-                            self.server_url, server_retry_interval
+                            self.server_url,
+                            server_retry_interval.as_secs()
                         );
                         warn!("{}", status);
                         self.stream = None;
                     } else {
                         let status = format!("Connection Status: Connected to server at {}.", self.server_url);
-                        info!("{}", status);
+                        info!(target: LOG_TARGET, "{}", status);
                     }
-                    next_server_retry = time::get_time().sec + server_retry_interval;
+                    next_server_retry = Instant::now() + server_retry_interval;
                     if self.stream.is_none() {
                         thread::sleep(std::time::Duration::from_secs(1));
                         continue;
@@ -314,72 +354,73 @@ impl Controller {
                     let _ = self.send_miner_resume();
                 }
                 // read messages from server
-                if time::get_time().sec > next_server_read {
+                if Instant::now() > next_server_read {
                     match self.read_message() {
-                        Ok(message) => {
-                            if let Some(m) = message {
-                                // figure out what kind of message,
-                                // and dispatch appropriately
-                                debug!("Received message: {}", m);
-                                // Deserialize to see what type of object it is
-                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
-                                    // Is this a response or request?
-                                    if v["method"] == "job" {
-                                        // this is a request
-                                        match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
-                                            Err(e) => error!("Error parsing request {} : {:?}", m, e),
-                                            Ok(request) => {
-                                                if let Err(err) = self.handle_request(request) {
-                                                    error!("Error handling request {} : :{:?}", m, err)
-                                                }
-                                            },
-                                        }
-                                    } else {
-                                        // this is a response
-                                        match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
-                                            Err(e) => error!("Error parsing response {} : {:?}", m, e),
-                                            Ok(response) => {
-                                                if let Err(err) = self.handle_response(response) {
-                                                    error!("Error handling response {} : :{:?}", m, err)
-                                                }
-                                            },
-                                        }
+                        Ok(Some(m)) => {
+                            // figure out what kind of message,
+                            // and dispatch appropriately
+                            debug!(target: LOG_TARGET_FILE, "Received message: {}", m);
+                            // Deserialize to see what type of object it is
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
+                                // Is this a response or request?
+                                if v["method"] == "job" {
+                                    // this is a request
+                                    match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {} : {:?}", m, e),
+                                        Ok(request) => {
+                                            if let Err(err) = self.handle_request(request) {
+                                                error!(target: LOG_TARGET, "Error handling request {} : :{:?}", m, err)
+                                            }
+                                        },
                                     }
-                                    continue;
                                 } else {
-                                    error!("Error parsing message: {}", m)
+                                    // this is a response
+                                    match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {} : {:?}", m, e),
+                                        Ok(response) => {
+                                            if let Err(err) = self.handle_response(response) {
+                                                error!(target: LOG_TARGET, "Error handling response {} : :{:?}", m, err)
+                                            }
+                                        },
+                                    }
                                 }
+                                continue;
+                            } else {
+                                error!(target: LOG_TARGET, "Error parsing message: {}", m)
                             }
                         },
+                        Ok(None) => {
+                            // noop, nothing to read for this interval
+                        },
                         Err(e) => {
-                            error!("Error reading message: {:?}", e);
+                            error!(target: LOG_TARGET, "Error reading message: {:?}", e);
                             self.stream = None;
                             continue;
                         },
                     }
-                    next_server_read = time::get_time().sec + server_read_interval;
+                    next_server_read = Instant::now() + server_read_interval;
                 }
             }
 
             // Talk to the miner algorithm
             while let Some(message) = self.rx.try_iter().next() {
-                debug!("Client received message: {:?}", message);
+                debug!(target: LOG_TARGET_FILE, "Client received message: {:?}", message);
                 let result = match message {
                     types::client_message::ClientMessage::FoundSolution(job_id, hash, nonce) => {
                         self.send_message_submit(job_id, hash, nonce)
                     },
                     types::client_message::ClientMessage::KeepAlive => self.send_keepalive(),
                     types::client_message::ClientMessage::Shutdown => {
-                        debug!("Shutting down client controller");
+                        debug!(target: LOG_TARGET_FILE, "Shutting down client controller");
                         return;
                     },
                 };
                 if let Err(e) = result {
-                    error!("Mining Controller Error {:?}", e);
+                    error!(target: LOG_TARGET, "Mining Controller Error {:?}", e);
                     self.stream = None;
                 }
             }
-            thread::sleep(std::time::Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(10));
         } // loop
     }
 }

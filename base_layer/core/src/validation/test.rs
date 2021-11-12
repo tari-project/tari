@@ -27,15 +27,15 @@ use tari_crypto::{commitment::HomomorphicCommitment, script};
 use tari_common::configuration::Network;
 
 use crate::{
-    blocks::BlockHeader,
-    chain_storage::{BlockHeaderAccumulatedData, ChainBlock, ChainHeader, DbTransaction},
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
+    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    chain_storage::DbTransaction,
+    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     crypto::tari_utilities::Hashable,
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
-        helpers::{create_random_signature_from_s_key, create_utxo},
         tari_amount::{uT, MicroTari},
+        test_helpers::{create_random_signature_from_s_key, create_utxo},
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
@@ -45,7 +45,7 @@ use tari_common_types::types::Commitment;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {
-    let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let genesis = consensus_manager.get_genesis_block();
     let db = create_store_with_consensus(consensus_manager);
 
@@ -74,7 +74,7 @@ fn header_iter_fetch_in_chunks() {
         header.kernel_mmr_size = 2 + i;
         header.output_mmr_size = 4001 + i;
 
-        let chain_header = create_chain_header(header, &prev.accumulated_data());
+        let chain_header = create_chain_header(header, prev.accumulated_data());
         acc.push(chain_header);
         acc
     });
@@ -92,7 +92,6 @@ fn header_iter_fetch_in_chunks() {
 }
 
 #[test]
-// TODO: Fix this test with the new DB structure
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
     let consensus_manager = ConsensusManagerBuilder::new(Network::Weatherwax).build();
@@ -130,7 +129,7 @@ fn chain_balance_validation() {
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
-        .with_consensus_constants(constants)
+        .add_consensus_constants(constants)
         .build();
 
     let db = create_store_with_consensus(consensus_manager.clone());
@@ -138,7 +137,7 @@ fn chain_balance_validation() {
     let validator = ChainBalanceValidator::new(consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator
-        .validate(0, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 0, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
@@ -188,7 +187,7 @@ fn chain_balance_validation() {
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
     validator
-        .validate(1, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum)
         .unwrap();
 
     //---------------------------------- Try to inflate --------------------------------------------//
@@ -232,6 +231,6 @@ fn chain_balance_validation() {
     db.commit(txn).unwrap();
 
     validator
-        .validate(2, &utxo_sum, &kernel_sum, &*db.db_read_access().unwrap())
+        .validate(&*db.db_read_access().unwrap(), 2, &utxo_sum, &kernel_sum)
         .unwrap_err();
 }

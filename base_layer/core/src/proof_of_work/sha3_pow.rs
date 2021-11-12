@@ -77,7 +77,7 @@ pub mod test {
     fn mine_sha3(target_difficulty: Difficulty, header: &mut BlockHeader) -> u64 {
         header.nonce = 0;
         // We're mining over here!
-        while sha3_difficulty(&header) < target_difficulty {
+        while sha3_difficulty(header) < target_difficulty {
             header.nonce += 1;
         }
         header.nonce

@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.9.6"
+version = "0.21.0"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -10,18 +10,18 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.9", path = "../", features = ["rpc"] }
-tari_comms_rpc_macros = { version = "^0.9", path = "../rpc_macros" }
-tari_crypto = "0.11.1"
+tari_comms = { version = "^0.21", path = "../", features = ["rpc"] }
+tari_comms_rpc_macros = { version = "^0.21", path = "../rpc_macros" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_utilities = { version = "^0.3" }
-tari_shutdown = { version = "^0.9", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.9", path = "../../infrastructure/storage" }
+tari_shutdown = { version = "^0.21", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.21", path = "../../infrastructure/storage" }
 
 anyhow = "1.0.32"
 bitflags = "1.2.0"
 bytes = "0.5"
 chacha20 = "0.7.1"
-chrono = "0.4.9"
+chrono = { version = "0.4.19", default-features = false }
 diesel = { version = "1.4.7", features = ["sqlite", "serde_json", "chrono", "numeric"] }
 diesel_migrations = "1.4.0"
 libsqlite3-sys = { version = ">=0.8.0, <0.13.0", features = ["bundled"], optional = true }
@@ -36,14 +36,14 @@ serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["rt", "macros"] }
-tower = "0.3.1"
+tower = { version= "0.4.8", features=["full"] }
 ttl_cache = "0.5.1"
 
 # tower-filter dependencies
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.9", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.21", path = "../../infrastructure/test_utils" }
 
 env_logger = "0.7.0"
 futures-test = { version = "0.3.5" }
@@ -60,7 +60,7 @@ futures-util = "^0.3.1"
 lazy_static = "1.4.0"
 
 [build-dependencies]
-tari_common = { version = "^0.9", path = "../../common" }
+tari_common = { version = "^0.21", path = "../../common" }
 
 [features]
 test-mocks = []

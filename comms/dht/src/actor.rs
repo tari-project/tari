@@ -467,6 +467,7 @@ impl DhtActor {
                     .map(|p| p.node_id)
                     .collect())
             },
+            SelectedPeers(peers) => Ok(peers),
             Broadcast(exclude) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
@@ -560,7 +561,7 @@ impl DhtActor {
                 };
 
                 if connections.is_empty() {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Propagation requested but there are no node peer connections available"
                     );
@@ -641,7 +642,7 @@ impl DhtActor {
 
                 true
             })
-            .sort_by(PeerQuerySortBy::DistanceFrom(&node_id))
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
         let peers = peer_manager.perform_query(query).await?;

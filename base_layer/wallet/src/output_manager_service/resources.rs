@@ -20,35 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::output_manager_service::{
+    config::OutputManagerServiceConfig,
+    handle::OutputManagerEventSender,
+    storage::database::OutputManagerDatabase,
+    MasterKeyManager,
+};
 use std::sync::Arc;
-
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
 use tari_shutdown::ShutdownSignal;
 
-use crate::{
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::OutputManagerEventSender,
-        storage::database::{OutputManagerBackend, OutputManagerDatabase},
-        MasterKeyManager,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-};
-
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
-pub(crate) struct OutputManagerResources<TBackend>
-where TBackend: OutputManagerBackend + 'static
-{
+pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity> {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,
-    pub transaction_service: TransactionServiceHandle,
     pub factories: CryptoFactories,
-    pub base_node_public_key: Option<CommsPublicKey>,
     pub event_publisher: OutputManagerEventSender,
     pub master_key_manager: Arc<MasterKeyManager<TBackend>>,
     pub consensus_constants: ConsensusConstants,
-    pub connectivity_manager: ConnectivityRequester,
+    pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
 }

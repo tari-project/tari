@@ -28,7 +28,7 @@ pub struct VecChunkIter<Idx> {
     inner: NonOverlappingIntegerPairIter<Idx>,
 }
 
-impl<Idx: PartialOrd> VecChunkIter<Idx> {
+impl<Idx: PartialOrd + Copy> VecChunkIter<Idx> {
     pub fn new(start: Idx, end_exclusive: Idx, chunk_size: usize) -> Self {
         Self {
             inner: NonOverlappingIntegerPairIter::new(start, end_exclusive, chunk_size),
@@ -56,15 +56,21 @@ vec_chunk_impl!(usize);
 /// Iterator that produces non-overlapping integer pairs.
 pub struct NonOverlappingIntegerPairIter<Idx> {
     current: Idx,
+    current_end: Idx,
     end: Idx,
     size: usize,
 }
 
-impl<Idx: PartialOrd> NonOverlappingIntegerPairIter<Idx> {
+impl<Idx: PartialOrd + Copy> NonOverlappingIntegerPairIter<Idx> {
+    /// Create a new iterator that emits non-overlapping integers.
+    ///
+    /// ## Panics
+    /// Panics if start > end_exclusive
     pub fn new(start: Idx, end_exclusive: Idx, chunk_size: usize) -> Self {
         assert!(start <= end_exclusive, "`start` must be less than `end`");
         Self {
             current: start,
+            current_end: end_exclusive,
             end: end_exclusive,
             size: chunk_size,
         }
@@ -80,20 +86,72 @@ macro_rules! non_overlapping_iter_impl {
                 if self.size == 0 {
                     return None;
                 }
-
-                let next = cmp::min(self.current + self.size as $ty, self.end);
-
-                if self.current == next {
+                if self.current == <$ty>::MAX {
                     return None;
                 }
-                let chunk = (self.current, next - 1);
-                self.current = next;
+                if self.current == self.end {
+                    return None;
+                }
+                let size = self.size as $ty;
+                match self.current.checked_add(size) {
+                    Some(next) => {
+                        let next = cmp::min(next, self.end);
+
+                        if self.current == next {
+                            return None;
+                        }
+                        let chunk = (self.current, next - 1);
+                        self.current = next;
+                        Some(chunk)
+                    },
+                    None => {
+                        let chunk = (self.current, <$ty>::MAX - 1);
+                        self.current = <$ty>::MAX;
+                        Some(chunk)
+                    },
+                }
+            }
+        }
+        impl DoubleEndedIterator for NonOverlappingIntegerPairIter<$ty> {
+            fn next_back(&mut self) -> Option<Self::Item> {
+                if self.size == 0 || self.current_end == 0 {
+                    return None;
+                }
+                // Check if end will go beyond start
+                if self.current_end == self.current {
+                    return None;
+                }
+
+                let size = self.size as $ty;
+                // Is this the first iteration?
+                if self.end == self.current_end {
+                    let rem = (self.end - self.current) % size;
+
+                    // Would there be an overflow (if iterating from the forward to back)
+                    if self.current_end.saturating_sub(rem).checked_add(size).is_none() {
+                        self.current_end = self.current_end.saturating_sub(rem);
+                        let chunk = (self.current_end, <$ty>::MAX - 1);
+                        return Some(chunk);
+                    }
+
+                    if rem > 0 {
+                        self.current_end = self.end - rem;
+                        let chunk = (self.current_end, self.end - 1);
+                        return Some(chunk);
+                    }
+                }
+
+                let next = self.current_end.saturating_sub(size);
+                let chunk = (next, self.current_end - 1);
+                self.current_end = next;
                 Some(chunk)
             }
         }
     };
 }
 
+non_overlapping_iter_impl!(u8);
+non_overlapping_iter_impl!(u16);
 non_overlapping_iter_impl!(u32);
 non_overlapping_iter_impl!(u64);
 non_overlapping_iter_impl!(usize);
@@ -101,6 +159,7 @@ non_overlapping_iter_impl!(usize);
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::{rngs::OsRng, Rng};
     #[test]
     fn zero_size() {
         let mut iter = NonOverlappingIntegerPairIter::new(10u32, 10, 0);
@@ -134,19 +193,26 @@ mod test {
 
     #[test]
     fn chunk_size_not_multiple_of_end() {
-        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 11, 3);
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 10, 3);
         assert_eq!(iter.next().unwrap(), (0, 2));
         assert_eq!(iter.next().unwrap(), (3, 5));
         assert_eq!(iter.next().unwrap(), (6, 8));
-        assert_eq!(iter.next().unwrap(), (9, 10));
+        assert_eq!(iter.next().unwrap(), (9, 9));
         assert!(iter.next().is_none());
 
-        let mut iter = VecChunkIter::new(0u32, 11, 3);
+        let mut iter = VecChunkIter::new(0u32, 10, 3);
         assert_eq!(iter.next().unwrap(), vec![0, 1, 2]);
         assert_eq!(iter.next().unwrap(), vec![3, 4, 5]);
         assert_eq!(iter.next().unwrap(), vec![6, 7, 8]);
-        assert_eq!(iter.next().unwrap(), vec![9, 10]);
+        assert_eq!(iter.next().unwrap(), vec![9]);
         assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 16, 5);
+        assert_eq!(iter.next().unwrap(), (0, 4));
+        assert_eq!(iter.next().unwrap(), (5, 9));
+        assert_eq!(iter.next().unwrap(), (10, 14));
+        assert_eq!(iter.next().unwrap(), (15, 15));
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
@@ -163,5 +229,72 @@ mod test {
         assert_eq!(iter.next().unwrap(), vec![16, 17, 18]);
         assert_eq!(iter.next().unwrap(), vec![19, 20]);
         assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn overflow() {
+        let mut iter = NonOverlappingIntegerPairIter::new(250u8, 255, 3);
+        assert_eq!(iter.next().unwrap(), (250, 252));
+        assert_eq!(iter.next().unwrap(), (253, 254));
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn double_ended() {
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 9, 3).rev();
+        assert_eq!(iter.next().unwrap(), (6, 8));
+        assert_eq!(iter.next().unwrap(), (3, 5));
+        assert_eq!(iter.next().unwrap(), (0, 2));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 10, 3).rev();
+        assert_eq!(iter.next().unwrap(), (9, 9));
+        assert_eq!(iter.next().unwrap(), (6, 8));
+        assert_eq!(iter.next().unwrap(), (3, 5));
+        assert_eq!(iter.next().unwrap(), (0, 2));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 16, 5).rev();
+        assert_eq!(iter.next().unwrap(), (15, 15));
+        assert_eq!(iter.next().unwrap(), (10, 14));
+        assert_eq!(iter.next().unwrap(), (5, 9));
+        assert_eq!(iter.next().unwrap(), (0, 4));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(1001u32, 4000, 1000).rev();
+        assert_eq!(iter.next().unwrap(), (3001, 3999));
+        assert_eq!(iter.next().unwrap(), (2001, 3000));
+        assert_eq!(iter.next().unwrap(), (1001, 2000));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(254u8, u8::MAX, 1000).rev();
+        assert_eq!(iter.next().unwrap(), (254, 254));
+        assert!(iter.next().is_none());
+
+        let mut iter = NonOverlappingIntegerPairIter::new(255u8, u8::MAX, 1000).rev();
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn iterator_symmetry() {
+        let size = OsRng.gen_range(3usize..=10);
+        let rand_start = OsRng.gen::<u8>();
+        let rand_end = OsRng.gen::<u8>().saturating_add(rand_start);
+
+        // If the iterator never ends, we have the params used
+        println!(
+            "iterator_symmetry: rand_start = {}, rand_end = {}, size = {}",
+            rand_start, rand_end, size
+        );
+        let iter_rev = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size).rev();
+        let iter = NonOverlappingIntegerPairIter::new(rand_start, rand_end, size);
+
+        let collect1 = iter.collect::<Vec<_>>();
+        let collect2 = iter_rev.collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>();
+        assert_eq!(
+            collect1, collect2,
+            "Failed with rand_start = {}, rand_end = {}, size = {}",
+            rand_start, rand_end, size
+        );
     }
 }

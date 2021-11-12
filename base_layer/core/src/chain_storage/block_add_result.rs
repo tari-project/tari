@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainBlock;
+use crate::blocks::ChainBlock;
 use std::{fmt, sync::Arc};
 use tari_crypto::tari_utilities::hex::Hex;
 
@@ -46,6 +46,14 @@ impl BlockAddResult {
         matches!(self, BlockAddResult::Ok(_))
     }
 
+    pub fn is_chain_reorg(&self) -> bool {
+        matches!(self, BlockAddResult::ChainReorg { .. })
+    }
+
+    pub fn is_orphaned(&self) -> bool {
+        matches!(self, BlockAddResult::OrphanBlock)
+    }
+
     pub fn assert_added(&self) -> ChainBlock {
         match self {
             BlockAddResult::ChainReorg { added, removed } => panic!(
@@ -60,10 +68,7 @@ impl BlockAddResult {
     }
 
     pub fn assert_orphaned(&self) {
-        match self {
-            BlockAddResult::OrphanBlock => (),
-            _ => panic!("Result was not orphaned"),
-        }
+        assert!(self.is_orphaned(), "Result was not orphaned");
     }
 
     pub fn assert_reorg(&self, num_added: usize, num_removed: usize) {

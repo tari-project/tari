@@ -1,8 +1,10 @@
-const fs = require("fs/promises");
+const fs = require("fs").promises;
 const yargs = require("yargs");
 const path = require("path");
 const helpers = require("./helpers");
 const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
+
+const NETWORK = "WEATHERWAX";
 
 const SyncType = {
   Archival: "Archival",
@@ -18,8 +20,9 @@ async function main() {
       choices: [SyncType.Archival, SyncType.Pruned],
     })
     .option("force-sync-peer", {
-      type: "number",
-      description: "Enable force sync to peer_seeds i-th node.",
+      type: "string",
+      description:
+        "Pubkey and address string (formatted: `{pubkey}::{address}) of a the force sync peer.",
     })
     .option("log", {
       alias: "l",
@@ -30,11 +33,17 @@ async function main() {
     .help()
     .alias("help", "h").argv;
   try {
-    const { blockHeight, timeDiffMinutes, blockRate, forcedSyncPeer } =
-      await run(argv);
+    const options = {
+      ...argv,
+      forceSyncPeers: (argv.forceSyncPeers || "")
+        .split(",")
+        .map((s) => s.trim()),
+    };
+    const { blockHeight, timeDiffMinutes, blockRate } = await run(argv);
 
+    const { forcedSyncPeer, syncType } = argv;
     console.log(
-      `${argv.syncType} sync ${
+      `${syncType} sync ${
         forcedSyncPeer ? "forced to " + forcedSyncPeer : ""
       } to block height ${blockHeight} took ${timeDiffMinutes} minutes for a rate of ${blockRate} blocks/min`
     );
@@ -44,30 +53,25 @@ async function main() {
 }
 
 async function run(options) {
-  let forcedSyncPeer;
   const baseNode = new BaseNodeProcess("compile", true);
   await baseNode.init();
 
+  // Bypass tor for outbound TCP (faster but less private)
+  process.env[`TARI_BASE_NODE__${NETWORK}__TOR_PROXY_BYPASS_FOR_OUTBOUND_TCP`] =
+    "true";
   // Set pruning horizon in config file if `pruned` command line arg is present
   if (options.syncType === SyncType.Pruned) {
-    process.env.TARI_BASE_NODE__WEATHERWAX__PRUNING_HORIZON = 1000;
+    process.env[`TARI_BASE_NODE__${NETWORK}__PRUNING_HORIZON`] = 1000;
   }
 
-  // Check if we have a forced peer index.
-  if (options.forceSyncPeer !== undefined) {
-    const config = (
-      await fs.readFile(baseNode.baseDir + "/config/config.toml")
-    ).toString();
-    const peer = Array.from(
-      config.match(/\npeer_seeds = \[(.*?)\]/s)[1].matchAll(/\n[^#]*"(.*?)"/g),
-      (m) => m[1]
-    )[options.forceSyncPeer];
-    if (peer === undefined) {
-      // Check if index is within bounds of peer_seeds from config.
-      throw "Forced index out of bounds";
+  if (options.forceSyncPeer) {
+    let forcedSyncPeersStr = options.forceSyncPeer;
+    if (Array.isArray(options.forceSyncPeer)) {
+      forcedSyncPeersStr = options.forceSyncPeer.join(",");
     }
-    process.env.TARI_BASE_NODE__WEATHERWAX__FORCE_SYNC_PEERS = [peer];
-    forcedSyncPeer = peer;
+    console.log(`Force sync peer set to ${forcedSyncPeersStr}`);
+    process.env[`TARI_BASE_NODE__${NETWORK}__FORCE_SYNC_PEERS`] =
+      forcedSyncPeersStr;
   }
 
   await baseNode.start();
@@ -105,7 +109,6 @@ async function run(options) {
       blockRate: blockRate.toFixed(2),
       timeDiffMinutes: timeDiffMinutes.toFixed(2),
       blockHeight: syncResult.height,
-      forcedSyncPeer,
     };
   } catch (err) {
     await baseNode.stop();

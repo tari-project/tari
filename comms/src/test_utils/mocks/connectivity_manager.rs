@@ -57,10 +57,10 @@ pub struct ConnectivityManagerMockState {
 #[derive(Debug, Default)]
 struct State {
     calls: Vec<String>,
+    dialed_peers: Vec<NodeId>,
     active_conns: HashMap<NodeId, PeerConnection>,
     pending_conns: HashMap<NodeId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
     selected_connections: Vec<PeerConnection>,
-    managed_peers: Vec<NodeId>,
     connectivity_status: ConnectivityStatus,
 }
 
@@ -96,15 +96,33 @@ impl ConnectivityManagerMockState {
         .await
     }
 
+    pub async fn get_dialed_peers(&self) -> Vec<NodeId> {
+        self.with_state(|state| state.dialed_peers.clone()).await
+    }
+
+    pub async fn take_dialed_peers(&self) -> Vec<NodeId> {
+        self.with_state(|state| state.dialed_peers.drain(..).collect()).await
+    }
+
+    pub async fn clear_dialed_peers(&self) {
+        self.with_state(|state| {
+            state.dialed_peers.clear();
+        })
+        .await
+    }
+
+    pub async fn add_dialed_peer(&self, node_id: NodeId) {
+        self.with_state(|state| {
+            state.dialed_peers.push(node_id);
+        })
+        .await
+    }
+
     pub async fn set_connectivity_status(&self, status: ConnectivityStatus) {
         self.with_state(|state| {
             state.connectivity_status = status;
         })
         .await
-    }
-
-    pub async fn get_managed_peers(&self) -> Vec<NodeId> {
-        self.with_state(|state| state.managed_peers.clone()).await
     }
 
     #[allow(dead_code)]
@@ -113,16 +131,7 @@ impl ConnectivityManagerMockState {
     }
 
     pub async fn expect_dial_peer(&self, peer: &NodeId) {
-        let is_found = self
-            .with_state(|state| {
-                let peer_str = peer.to_string();
-                state
-                    .calls
-                    .iter()
-                    .any(|s| s.contains("DialPeer") && s.contains(&peer_str))
-            })
-            .await;
-
+        let is_found = self.with_state(|state| state.dialed_peers.contains(peer)).await;
         assert!(is_found, "expected call to dial peer {} but no dial was found", peer);
     }
 
@@ -144,7 +153,7 @@ impl ConnectivityManagerMockState {
         self.with_state(|state| {
             let peer = conn.peer_node_id();
             state.active_conns.insert(peer.clone(), conn.clone());
-            if let Some(replies) = state.pending_conns.remove(&peer) {
+            if let Some(replies) = state.pending_conns.remove(peer) {
                 replies.into_iter().for_each(|reply| {
                     reply.send(Ok(conn.clone())).unwrap();
                 });
@@ -204,11 +213,13 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer {
-                node_id,
-                reply_tx,
-                tracing_id: _,
-            } => {
+            DialPeer { node_id, reply_tx } => {
+                self.state.add_dialed_peer(node_id.clone()).await;
+                // No reply, no reason to do anything in the mock
+                if reply_tx.is_none() {
+                    return;
+                }
+                let reply_tx = reply_tx.unwrap();
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
                 self.state
                     .with_state(|state| match state.pending_conns.get_mut(&node_id) {
@@ -232,30 +243,6 @@ impl ConnectivityManagerMock {
                 self.state
                     .with_state(|state| {
                         reply.send(state.connectivity_status).unwrap();
-                    })
-                    .await;
-            },
-            AddManagedPeers(peers) => {
-                // TODO: we should not have to implement behaviour of the actor in the mock
-                //       but should rather have a _good_ way to check the call to the mock
-                //       was made with the correct arguments.
-                self.state
-                    .with_state(|state| {
-                        let managed_peers = &mut state.managed_peers;
-                        for peer in peers {
-                            if !managed_peers.contains(&peer) {
-                                managed_peers.push(peer.clone());
-                            }
-                        }
-                    })
-                    .await
-            },
-            RemovePeer(node_id) => {
-                self.state
-                    .with_state(|state| {
-                        if let Some(pos) = state.managed_peers.iter().position(|n| n == &node_id) {
-                            state.managed_peers.remove(pos);
-                        }
                     })
                     .await;
             },

@@ -26,6 +26,7 @@ use crate::{
     message::MessageExt,
     proto,
     protocol::{
+        rpc,
         rpc::{
             body::ClientStreaming,
             message::{BaseRequest, RpcMessageFlags},
@@ -34,11 +35,13 @@ use crate::{
             Response,
             RpcError,
             RpcStatus,
+            RPC_CHUNKING_MAX_CHUNKS,
         },
         ProtocolId,
     },
     runtime::task,
-    Substream,
+    stream_id,
+    stream_id::StreamId,
 };
 use bytes::Bytes;
 use futures::{
@@ -61,6 +64,7 @@ use std::{
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, Mutex},
     time,
 };
@@ -75,12 +79,20 @@ pub struct RpcClient {
 }
 
 impl RpcClient {
+    pub fn builder<T>() -> RpcClientBuilder<T>
+    where T: NamedProtocolService {
+        RpcClientBuilder::new().with_protocol_id(T::PROTOCOL_NAME.into())
+    }
+
     /// Create a new RpcClient using the given framed substream and perform the RPC handshake.
-    pub async fn connect(
+    pub async fn connect<TSubstream>(
         config: RpcClientConfig,
-        framed: CanonicalFraming<Substream>,
+        framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
-    ) -> Result<Self, RpcError> {
+    ) -> Result<Self, RpcError>
+    where
+        TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static,
+    {
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
@@ -185,9 +197,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
     }
 }
 
-impl<TClient> RpcClientBuilder<TClient>
-where TClient: From<RpcClient> + NamedProtocolService
-{
+impl<TClient> RpcClientBuilder<TClient> {
     pub fn new() -> Self {
         Default::default()
     }
@@ -226,20 +236,28 @@ where TClient: From<RpcClient> + NamedProtocolService
         self.protocol_id = Some(protocol_id);
         self
     }
+}
 
+impl<TClient> RpcClientBuilder<TClient>
+where TClient: From<RpcClient> + NamedProtocolService
+{
     /// Negotiates and establishes a session to the peer's RPC service
-    pub async fn connect(self, framed: CanonicalFraming<Substream>) -> Result<TClient, RpcError> {
+    pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
+    where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static {
         RpcClient::connect(
             self.config,
             framed,
-            self.protocol_id.as_ref().cloned().unwrap_or_default(),
+            self.protocol_id
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| ProtocolId::from_static(TClient::PROTOCOL_NAME)),
         )
         .await
         .map(Into::into)
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct RpcClientConfig {
     pub deadline: Option<Duration>,
     pub deadline_grace_period: Duration,
@@ -343,10 +361,10 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
     }
 }
 
-struct RpcClientWorker {
+struct RpcClientWorker<TSubstream> {
     config: RpcClientConfig,
     request_rx: mpsc::Receiver<ClientRequest>,
-    framed: CanonicalFraming<Substream>,
+    framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
     // sent determines the byte size. A u16 will be more than enough for the purpose
     next_request_id: u16,
@@ -356,11 +374,13 @@ struct RpcClientWorker {
     shutdown_signal: ShutdownSignal,
 }
 
-impl RpcClientWorker {
+impl<TSubstream> RpcClientWorker<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
+{
     pub(self) fn new(
         config: RpcClientConfig,
         request_rx: mpsc::Receiver<ClientRequest>,
-        framed: CanonicalFraming<Substream>,
+        framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
         shutdown_signal: ShutdownSignal,
@@ -381,8 +401,8 @@ impl RpcClientWorker {
         String::from_utf8_lossy(&self.protocol_id)
     }
 
-    fn stream_id(&self) -> yamux::StreamId {
-        self.framed.get_ref().id()
+    fn stream_id(&self) -> stream_id::Id {
+        self.framed.stream_id()
     }
 
     #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
@@ -489,7 +509,8 @@ impl RpcClientWorker {
             self.protocol_name(),
             start.elapsed()
         );
-        let resp = match self.read_reply().await {
+        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, 0);
+        let resp = match reader.read_ack().await {
             Ok(resp) => resp,
             Err(RpcError::ReplyTimeout) => {
                 debug!(
@@ -529,7 +550,7 @@ impl RpcClientWorker {
         Ok(())
     }
 
-    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply))]
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_size = request.message.len()))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -542,7 +563,7 @@ impl RpcClientWorker {
             method,
             deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
             flags: 0,
-            message: request.message.to_vec(),
+            payload: request.message.to_vec(),
         };
 
         debug!(target: LOG_TARGET, "Sending request: {}", req);
@@ -555,34 +576,46 @@ impl RpcClientWorker {
                 "Client request was cancelled before request was sent"
             );
         }
-        self.framed.send(req.to_encoded_bytes().into()).await?;
 
         let (response_tx, response_rx) = mpsc::channel(10);
         if let Err(mut rx) = reply.send(response_rx) {
             event!(Level::WARN, "Client request was cancelled after request was sent");
             warn!(
                 target: LOG_TARGET,
-                "Client request was cancelled after request was sent"
+                "Client request was cancelled after request was sent. This means that you are making an RPC request \
+                 and then immediately dropping the response! (protocol = {})",
+                self.protocol_name(),
             );
             rx.close();
-            // RPC is strictly request/response
-            // If the client drops the RpcClient request at this point after the, we have two options:
-            // 1. Obey the protocol: receive the response
-            // 2. Error out and immediately close the session (seems brittle and may be unexpected)
-            // Option 1 has the disadvantage when receiving large/many streamed responses, however if all client handles
-            // have been dropped, then read_reply will exit early the stream will close and the server-side
-            // can exit early
+            return Ok(());
+        }
+
+        if let Err(err) = self.send_request(req).await {
+            warn!(target: LOG_TARGET, "{}", err);
+            let _ = response_tx.send(Err(err.into()));
+            return Ok(());
         }
 
         loop {
-            let resp = match self.read_reply().await {
+            if self.shutdown_signal.is_triggered() {
+                debug!(
+                    target: LOG_TARGET,
+                    "[{}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream early",
+                    self.protocol_name(),
+                    self.stream_id(),
+                    request_id
+                );
+                break;
+            }
+
+            let resp = match self.read_response(request_id).await {
                 Ok(resp) => {
                     let latency = start.elapsed();
                     event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
                         "Received response ({} byte(s)) from request #{} (protocol = {}, method={}) in {:.0?}",
-                        resp.message.len(),
+                        resp.payload.len(),
                         request_id,
                         self.protocol_name(),
                         method,
@@ -617,12 +650,19 @@ impl RpcClientWorker {
                     break;
                 },
                 Err(err) => {
-                    event!(Level::ERROR, "Errored:{}", err);
+                    event!(
+                        Level::WARN,
+                        "Request {} (method={}) returned an error after {:.0?}: {}",
+                        request_id,
+                        method,
+                        start.elapsed(),
+                        err
+                    );
                     return Err(err);
                 },
             };
 
-            match Self::convert_to_result(resp, request_id) {
+            match Self::convert_to_result(resp) {
                 Ok(Ok(resp)) => {
                     // The consumer may drop the receiver before all responses are received.
                     // We just ignore that as we still want obey the protocol and receive messages until the FIN flag or
@@ -632,10 +672,20 @@ impl RpcClientWorker {
                         warn!(
                             target: LOG_TARGET,
                             "(stream={}) Response receiver was dropped before the response/stream could complete for \
-                             protocol {}, the stream will continue until completed",
-                            self.framed.get_ref().id(),
+                             protocol {}, interrupting the stream. ",
+                            self.stream_id(),
                             self.protocol_name()
                         );
+                        let req = proto::rpc::RpcRequest {
+                            request_id: request_id as u32,
+                            method,
+                            deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
+                            flags: RpcMessageFlags::FIN.bits().into(),
+                            payload: vec![],
+                        };
+
+                        self.send_request(req).await?;
+                        break;
                     } else {
                         let _ = response_tx.send(Ok(resp)).await;
                     }
@@ -665,27 +715,46 @@ impl RpcClientWorker {
         Ok(())
     }
 
-    async fn read_reply(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
-        // Wait until the timeout, allowing an extra grace period to account for latency
-        let next_msg_fut = match self.config.timeout_with_grace_period() {
-            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
-            None => Either::Right(self.framed.next().map(Ok)),
-        };
-
-        let result = tokio::select! {
-            biased;
-            _ = &mut self.shutdown_signal => {
-                return Err(RpcError::ClientClosed);
-            }
-            result = next_msg_fut => result,
-        };
-
-        match result {
-            Ok(Some(Ok(resp))) => Ok(proto::rpc::RpcResponse::decode(resp)?),
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::ReplyTimeout),
+    async fn send_request(&mut self, req: proto::rpc::RpcRequest) -> Result<(), RpcError> {
+        let payload = req.to_encoded_bytes();
+        if payload.len() > rpc::max_request_size() {
+            return Err(RpcError::MaxRequestSizeExceeded {
+                got: payload.len(),
+                expected: rpc::max_request_size(),
+            });
         }
+        self.framed.send(payload.into()).await?;
+        Ok(())
+    }
+
+    async fn read_response(&mut self, request_id: u16) -> Result<proto::rpc::RpcResponse, RpcError> {
+        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
+
+        let mut num_ignored = 0;
+        let resp = loop {
+            match reader.read_response().await {
+                Ok(resp) => break resp,
+                Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
+                    if actual.saturating_add(1) == request_id =>
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Possible delayed response received for previous request {}", actual
+                    );
+                    num_ignored += 1;
+
+                    // Be lenient for a number of messages that may have been buffered to come through for the previous
+                    // request.
+                    const MAX_ALLOWED_IGNORED: usize = 5;
+                    if num_ignored > MAX_ALLOWED_IGNORED {
+                        return Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected });
+                    }
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        };
+        Ok(resp)
     }
 
     fn next_request_id(&mut self) -> u16 {
@@ -695,25 +764,7 @@ impl RpcClientWorker {
         next_id
     }
 
-    fn convert_to_result(
-        resp: proto::rpc::RpcResponse,
-        request_id: u16,
-    ) -> Result<Result<Response<Bytes>, RpcStatus>, RpcError> {
-        let resp_id = u16::try_from(resp.request_id)
-            .map_err(|_| RpcStatus::protocol_error(format!("invalid request_id: must be less than {}", u16::MAX)))?;
-
-        let flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
-        if flags.contains(RpcMessageFlags::ACK) {
-            return Err(RpcError::UnexpectedAckResponse);
-        }
-
-        if resp_id != request_id {
-            return Err(RpcError::ResponseIdDidNotMatchRequest {
-                expected: request_id,
-                actual: resp.request_id as u16,
-            });
-        }
-
+    fn convert_to_result(resp: proto::rpc::RpcResponse) -> Result<Result<Response<Bytes>, RpcStatus>, RpcError> {
         let status = RpcStatus::from(&resp);
         if !status.is_ok() {
             return Ok(Err(status));
@@ -721,7 +772,7 @@ impl RpcClientWorker {
 
         let resp = Response {
             flags: resp.flags(),
-            message: resp.message.into(),
+            payload: resp.payload.into(),
         };
 
         Ok(Ok(resp))
@@ -735,4 +786,95 @@ pub enum ClientRequest {
     },
     GetLastRequestLatency(oneshot::Sender<Option<Duration>>),
     SendPing(oneshot::Sender<Result<Duration, RpcStatus>>),
+}
+
+struct RpcResponseReader<'a, TSubstream> {
+    framed: &'a mut CanonicalFraming<TSubstream>,
+    config: RpcClientConfig,
+    request_id: u16,
+}
+
+impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin
+{
+    pub fn new(framed: &'a mut CanonicalFraming<TSubstream>, config: RpcClientConfig, request_id: u16) -> Self {
+        Self {
+            framed,
+            config,
+            request_id,
+        }
+    }
+
+    pub async fn read_response(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
+        let mut resp = self.next().await?;
+        self.check_response(&resp)?;
+        let mut chunk_count = 1;
+        let mut last_chunk_flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
+        let mut last_chunk_size = resp.payload.len();
+        loop {
+            trace!(
+                target: LOG_TARGET,
+                "Chunk {} received (flags={:?}, {} bytes, {} total)",
+                chunk_count,
+                last_chunk_flags,
+                last_chunk_size,
+                resp.payload.len()
+            );
+            if !last_chunk_flags.is_more() {
+                return Ok(resp);
+            }
+
+            if chunk_count >= RPC_CHUNKING_MAX_CHUNKS {
+                return Err(RpcError::ExceededMaxChunkCount {
+                    expected: RPC_CHUNKING_MAX_CHUNKS,
+                });
+            }
+
+            let msg = self.next().await?;
+            last_chunk_flags = RpcMessageFlags::from_bits_truncate(msg.flags as u8);
+            last_chunk_size = msg.payload.len();
+            self.check_response(&resp)?;
+            resp.payload.extend(msg.payload);
+            chunk_count += 1;
+        }
+    }
+
+    pub async fn read_ack(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
+        let resp = self.next().await?;
+        Ok(resp)
+    }
+
+    fn check_response(&self, resp: &proto::rpc::RpcResponse) -> Result<(), RpcError> {
+        let resp_id = u16::try_from(resp.request_id)
+            .map_err(|_| RpcStatus::protocol_error(format!("invalid request_id: must be less than {}", u16::MAX)))?;
+
+        let flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
+        if flags.contains(RpcMessageFlags::ACK) {
+            return Err(RpcError::UnexpectedAckResponse);
+        }
+
+        if resp_id != self.request_id {
+            return Err(RpcError::ResponseIdDidNotMatchRequest {
+                expected: self.request_id,
+                actual: resp.request_id as u16,
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn next(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
+        // Wait until the timeout, allowing an extra grace period to account for latency
+        let next_msg_fut = match self.config.timeout_with_grace_period() {
+            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
+            None => Either::Right(self.framed.next().map(Ok)),
+        };
+
+        match next_msg_fut.await {
+            Ok(Some(Ok(resp))) => Ok(proto::rpc::RpcResponse::decode(resp)?),
+            Ok(Some(Err(err))) => Err(err.into()),
+            Ok(None) => Err(RpcError::ServerClosedRequest),
+            Err(_) => Err(RpcError::ReplyTimeout),
+        }
+    }
 }

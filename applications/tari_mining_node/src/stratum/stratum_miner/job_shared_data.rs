@@ -26,24 +26,13 @@ use tari_core::blocks::BlockHeader;
 
 pub type JobSharedDataType = Arc<RwLock<JobSharedData>>;
 
+#[derive(Default)]
 pub struct JobSharedData {
     pub job_id: u64,
     pub height: u64,
     pub header: Option<BlockHeader>,
     pub difficulty: u64,
     pub solutions: Vec<Solution>,
-}
-
-impl Default for JobSharedData {
-    fn default() -> JobSharedData {
-        JobSharedData {
-            job_id: 0,
-            height: 0,
-            header: None,
-            difficulty: 0,
-            solutions: Vec::new(),
-        }
-    }
 }
 
 impl JobSharedData {

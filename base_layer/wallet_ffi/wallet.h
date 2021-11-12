@@ -57,6 +57,8 @@ struct TariContact;
 
 struct TariCompletedTransactions;
 
+struct TariBalance;
+
 struct TariCompletedTransaction;
 
 struct TariPendingOutboundTransactions;
@@ -160,6 +162,9 @@ void private_key_destroy(struct TariPrivateKey *pk);
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
+
+// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char *language, int *error_out);
 
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int *error_out);
@@ -421,15 +426,11 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
 /// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
 /// be conducted. The outcome of the discovery process is relayed via this callback
-/// `callback_utxo_validation_complete` - The callback function pointer matching the function signature. This is called
-/// when a UTXO validation process is completed. The request_key is used to identify which request this
+/// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
-/// `callback_stxo_validation_complete` - The callback function pointer matching the function signature. This is called
-/// when a STXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
-/// `callback_invalid_txo_validation_complete` - The callback function pointer matching the function signature. This is
-/// called when a invalid TXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
+/// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
@@ -469,13 +470,15 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *),
-                                 void (*callback_utxo_validation_complete)(unsigned long long, unsigned char),
-                                 void (*callback_stxo_validation_complete)(unsigned long long, unsigned char),
-                                 void (*callback_invalid_txo_validation_complete)(unsigned long long, unsigned char),
+                                 void (*callback_txo_validation_complete)(unsigned long long, unsigned char),
+                                 void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_saf_message_received)(),
                                  bool *recovery_in_progress,
                                  int *error_out);
+
+// Gets the balance
+struct TariBalance *wallet_get_balance(struct TariWallet *wallet, int *error_out);
 
 // Signs a message
 char *wallet_sign_message(struct TariWallet *wallet, const char *msg, int *error_out);
@@ -492,14 +495,17 @@ bool wallet_upsert_contact(struct TariWallet *wallet, struct TariContact *contac
 // Removes a TariContact form the TariWallet
 bool wallet_remove_contact(struct TariWallet *wallet, struct TariContact *contact, int *error_out);
 
-// Gets the available balance from a TariWallet
-unsigned long long wallet_get_available_balance(struct TariWallet *wallet, int *error_out);
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_available(struct TariBalance *balance, int *error_out);
 
-// Gets the incoming balance from a TariWallet
-unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet, int *error_out);
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_time_locked(struct TariBalance *balance, int *error_out);
 
-// Gets the outgoing balance from a TariWallet
-unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet, int *error_out);
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int *error_out);
+
+// Gets the available balance from a TariBalance
+unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
 
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);
@@ -548,13 +554,7 @@ struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct T
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int *error_out);
 
 // This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs (UTXOs).
-unsigned long long wallet_start_utxo_validation(struct TariWallet *wallet, int *error_out);
-
-// This function will tell the wallet to query the set base node to confirm the status of spent transaction outputs (STXOs).
-unsigned long long wallet_start_stxo_validation(struct TariWallet *wallet, int *error_out);
-
-// This function will tell the wallet to query the set base node to confirm the status of invalid transaction outputs.
-unsigned long long wallet_start_invalid_txo_validation(struct TariWallet *wallet, int *error_out);
+unsigned long long wallet_start_txo_validation(struct TariWallet *wallet, int *error_out);
 
 //This function will tell the wallet to query the set base node to confirm the status of mined transactions.
 unsigned long long wallet_start_transaction_validation(struct TariWallet *wallet, int *error_out);
@@ -706,6 +706,9 @@ bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
+
+// Frees memory for a TariBalance
+void balance_destroy(struct TariBalance *balance);
 
 // This function will produce a partial backup of the specified wallet database file (full file path must be provided.
 // This backup will be written to the provided file (full path must include the filename and extension) and will include

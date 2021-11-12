@@ -51,8 +51,8 @@ use tari_core::{
         state_machine_service::states::{PeerMetadata, StatusInfo},
         LocalNodeCommsInterface,
     },
-    blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
+    blocks::{BlockHeader, ChainHeader},
+    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
@@ -77,6 +77,7 @@ pub enum StatusOutput {
 pub struct CommandHandler {
     executor: runtime::Handle,
     config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     dht_metrics_collector: MetricsCollectorHandle,
@@ -96,6 +97,7 @@ impl CommandHandler {
         Self {
             executor,
             config: ctx.config(),
+            consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
@@ -120,6 +122,7 @@ impl CommandHandler {
         let mut metrics = self.dht_metrics_collector.clone();
         let mut rpc_server = self.rpc_server.clone();
         let config = self.config.clone();
+        let consensus_rules = self.consensus_rules.clone();
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
@@ -128,14 +131,9 @@ impl CommandHandler {
             status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
-
-            let last_header = node
-                .get_headers(vec![metadata.height_of_longest_chain()])
-                .await
-                .unwrap()
-                .pop()
-                .unwrap();
-            let last_block_time = DateTime::<Utc>::from(last_header.timestamp);
+            let height = metadata.height_of_longest_chain();
+            let last_header = node.get_header(height).await.unwrap().unwrap();
+            let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
             status_line.add_field(
                 "Tip",
                 format!(
@@ -145,6 +143,7 @@ impl CommandHandler {
                 ),
             );
 
+            let constants = consensus_rules.consensus_constants(metadata.height_of_longest_chain());
             let mempool_stats = mempool.get_mempool_stats().await.unwrap();
             status_line.add_field(
                 "Mempool",
@@ -155,7 +154,7 @@ impl CommandHandler {
                     if mempool_stats.total_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.total_weight / 19500
+                        1 + mempool_stats.total_weight / constants.get_max_block_transaction_weight()
                     },
                 ),
             );
@@ -406,12 +405,16 @@ impl CommandHandler {
         });
     }
 
-    pub fn get_peer(&self, node_id: NodeId) {
+    pub fn get_peer(&self, partial: Vec<u8>, original_str: String) {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_by_node_id(&node_id).await {
-                Ok(peer) => {
+            match peer_manager.find_all_starts_with(&partial).await {
+                Ok(peers) if peers.is_empty() => {
+                    println!("No peer matching '{}'", original_str);
+                },
+                Ok(peers) => {
+                    let peer = peers.first().unwrap();
                     let eid = EmojiId::from_pubkey(&peer.public_key);
                     println!("Emoji ID: {}", eid);
                     println!("Public Key: {}", peer.public_key);
@@ -537,7 +540,7 @@ impl CommandHandler {
     }
 
     pub fn dial_peer(&self, dest_node_id: NodeId) {
-        let mut connectivity = self.connectivity.clone();
+        let connectivity = self.connectivity.clone();
 
         self.executor.spawn(async move {
             let start = Instant::now();
@@ -697,7 +700,7 @@ impl CommandHandler {
                         "Age",
                         "Role",
                         "User Agent",
-                        "Chain Height",
+                        "Info",
                     ]);
                     for conn in conns {
                         let peer = peer_manager
@@ -705,14 +708,10 @@ impl CommandHandler {
                             .await
                             .expect("Unexpected peer database error or peer not found");
 
-                        let chain_height = if let Some(metadata) = peer
+                        let chain_height = peer
                             .get_metadata(1)
                             .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                        {
-                            Some(format!("Height = #{}", metadata.metadata.height_of_longest_chain()))
-                        } else {
-                            None
-                        };
+                            .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
 
                         table.add_row(row![
                             peer.node_id,
@@ -730,7 +729,11 @@ impl CommandHandler {
                             Some(peer.user_agent)
                                 .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
                                 .unwrap(),
-                            chain_height.unwrap_or_default(),
+                            format!(
+                                "substreams: {}{}",
+                                conn.substream_count(),
+                                chain_height.map(|s| format!(", {}", s)).unwrap_or_default()
+                            ),
                         ]);
                     }
 
@@ -862,21 +865,20 @@ impl CommandHandler {
                 io::stdout().flush().unwrap();
                 // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
                 if height > horizon_height {
-                    match node.get_blocks(vec![height]).await {
-                        Err(_err) => {
+                    match node.get_block(height).await {
+                        Err(err) => {
+                            // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
+                            // logging it.
+                            error!(target: LOG_TARGET, "{}", err);
                             missing_blocks.push(height);
                         },
-                        Ok(mut data) => match data.pop() {
-                            // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                            // logging it.
-                            Some(_historical_block) => {},
-                            None => missing_blocks.push(height),
-                        },
+                        Ok(Some(_)) => {},
+                        Ok(None) => missing_blocks.push(height),
                     };
                 }
                 height -= 1;
-                let next_header = node.get_headers(vec![height]).await;
-                if next_header.is_err() {
+                let next_header = node.get_header(height).await.ok().flatten();
+                if next_header.is_none() {
                     // this header is missing, so we stop here and need to ask for this header
                     missing_headers.push(height);
                 };
@@ -913,34 +915,30 @@ impl CommandHandler {
                 print!("{}", height);
                 io::stdout().flush().unwrap();
 
-                let block = match node.get_blocks(vec![height]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
+                let block = match node.get_block(height).await {
+                    Err(err) => {
+                        println!("Error in db, could not get block: {}", err);
                         break;
                     },
-                    Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                        // logging it.
-                        Some(historical_block) => historical_block,
-                        None => {
-                            println!("Error in db, could not get block");
-                            break;
-                        },
+                    // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                    // logging it.
+                    Ok(Some(historical_block)) => historical_block,
+                    Ok(None) => {
+                        println!("Error in db, block not found at height {}", height);
+                        break;
                     },
                 };
-                let prev_block = match node.get_blocks(vec![height - 1]).await {
-                    Err(_err) => {
-                        println!("Error in db, could not get block");
+                let prev_block = match node.get_block(height - 1).await {
+                    Err(err) => {
+                        println!("Error in db, could not get block: {}", err);
                         break;
                     },
-                    Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                        // logging it.
-                        Some(historical_block) => historical_block,
-                        None => {
-                            println!("Error in db, could not get block");
-                            break;
-                        },
+                    // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                    // logging it.
+                    Ok(Some(historical_block)) => historical_block,
+                    Ok(None) => {
+                        println!("Error in db, block not found at height {}", height - 1);
+                        break;
                     },
                 };
                 height -= 1;
@@ -996,7 +994,7 @@ impl CommandHandler {
         pow_algo: Option<PowAlgorithm>,
     ) {
         let db = self.blockchain_db.clone();
-        let network = self.config.network;
+        let consensus_rules = self.consensus_rules.clone();
         self.executor.spawn(async move {
             let mut output = try_or_print!(File::create(&filename));
 
@@ -1012,7 +1010,6 @@ impl CommandHandler {
 
             let start_height = cmp::max(start_height, 1);
             let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
-            let consensus_rules = ConsensusManager::builder(network).build();
 
             writeln!(
                 output,

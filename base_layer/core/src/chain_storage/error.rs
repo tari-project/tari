@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
+use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
 use lmdb_zero::error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
@@ -51,8 +51,6 @@ pub enum ChainStorageError {
     DataInconsistencyDetected { function: &'static str, details: String },
     #[error("There appears to be a critical error on the back end: {0}. Check the logs for more information.")]
     CriticalError(String),
-    #[error("A full block cannot be constructed from the historical block because it contains pruned TXOs")]
-    HistoricalBlockContainsPrunedTxos,
     #[error("Could not insert {table}: {error}")]
     InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
@@ -114,6 +112,10 @@ pub enum ChainStorageError {
     DbResizeRequired,
     #[error("DB transaction was too large ({0} operations)")]
     DbTransactionTooLarge(usize),
+    #[error("DB needs to be resynced: {0}")]
+    DatabaseResyncRequired(&'static str),
+    #[error("Block error: {0}")]
+    BlockError(#[from] BlockError),
 }
 
 impl ChainStorageError {

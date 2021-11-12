@@ -34,9 +34,9 @@ use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
+        comms_interface::OutboundNodeCommsInterface,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, Validators},
@@ -194,7 +194,11 @@ impl BaseNodeBuilder {
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
         let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
         let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
-        let mempool = Mempool::new(self.mempool_config.unwrap_or_default(), Arc::new(mempool_validator));
+        let mempool = Mempool::new(
+            self.mempool_config.unwrap_or_default(),
+            consensus_manager.clone(),
+            Arc::new(mempool_validator),
+        );
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
             node_identity,

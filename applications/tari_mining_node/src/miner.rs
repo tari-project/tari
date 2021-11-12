@@ -33,6 +33,8 @@ use std::{
 use tari_app_grpc::{conversions::timestamp, tari_rpc::BlockHeader};
 use thread::JoinHandle;
 
+pub const LOG_TARGET: &str = "tari_mining_node::miner::standalone";
+
 // Identify how often mining thread is reporting / checking context
 // ~400_000 hashes per second
 const REPORTING_FREQUENCY: u64 = 3_000_000;
@@ -107,27 +109,27 @@ impl Stream for Miner {
     type Item = MiningReport;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        trace!("Polling Miner");
+        trace!(target: LOG_TARGET, "Polling Miner");
         // First poll would start all the threads passing async context waker
         if self.threads.is_empty() && self.num_threads > 0 {
             debug!(
-                "Starting {} mining threads for target difficulty {}",
-                self.num_threads, self.target_difficulty
+                target: LOG_TARGET,
+                "Starting {} mining threads for target difficulty {}", self.num_threads, self.target_difficulty
             );
-            self.start_threads(&ctx);
+            self.start_threads(ctx);
             return Poll::Pending;
         } else if self.num_threads == 0 {
-            error!("Cannot mine: no mining threads");
+            error!(target: LOG_TARGET, "Cannot mine: no mining threads");
             return Poll::Ready(None);
         } else if self.channels.is_empty() {
-            debug!("Finished mining");
+            debug!(target: LOG_TARGET, "Finished mining");
             return Poll::Ready(None);
         }
 
         // Non blocking select from all miner's receiver channels
         let mut sel = Select::new();
         for rx in self.channels.iter() {
-            sel.recv(&rx);
+            sel.recv(rx);
         }
         let report = match sel.try_select() {
             Ok(oper) => {
@@ -167,14 +169,14 @@ pub fn mining_task(
     let mut hasher = BlockHeaderSha3::new(header).unwrap();
     hasher.random_nonce();
     // We're mining over here!
-    info!("Mining thread {} started", miner);
+    info!(target: LOG_TARGET, "Mining thread {} started", miner);
     // Mining work
     loop {
         let difficulty = hasher.difficulty();
         if difficulty >= target_difficulty {
             debug!(
-                "Miner {} found nonce {} with matching difficulty {}",
-                miner, hasher.nonce, difficulty
+                target: LOG_TARGET,
+                "Miner {} found nonce {} with matching difficulty {}", miner, hasher.nonce, difficulty
             );
             if let Err(err) = sender.try_send(MiningReport {
                 miner,
@@ -186,10 +188,10 @@ pub fn mining_task(
                 header: Some(hasher.into_header()),
                 target_difficulty,
             }) {
-                error!("Miner {} failed to send report: {}", miner, err);
+                error!(target: LOG_TARGET, "Miner {} failed to send report: {}", miner, err);
             }
             waker.wake();
-            info!("Mining thread {} stopped", miner);
+            info!(target: LOG_TARGET, "Mining thread {} stopped", miner);
             return;
         }
         if hasher.nonce % REPORTING_FREQUENCY == 0 {
@@ -204,12 +206,12 @@ pub fn mining_task(
                 target_difficulty,
             });
             waker.clone().wake();
-            trace!("Reporting from {} result {:?}", miner, res);
+            trace!(target: LOG_TARGET, "Reporting from {} result {:?}", miner, res);
             if let Err(TrySendError::Disconnected(_)) = res {
-                info!("Mining thread {} disconnected", miner);
+                info!(target: LOG_TARGET, "Mining thread {} disconnected", miner);
                 return;
             }
-            hasher.set_timestamp(timestamp().seconds as u64);
+            hasher.set_forward_timestamp(timestamp().seconds as u64);
         }
         hasher.inc_nonce();
     }

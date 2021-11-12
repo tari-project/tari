@@ -53,8 +53,8 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
+    store_forward::SafConfig,
     Dht,
-    DhtBuilder,
     DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -437,7 +437,7 @@ pub async fn do_store_and_forward_message_propagation(
             .outbound_requester()
             .closest_broadcast(
                 node_identity.node_id().clone(),
-                OutboundEncryption::EncryptFor(Box::new(node_identity.public_key().clone())),
+                OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
                 vec![],
                 OutboundDomainMessage::new(123i32, secret_message.clone()),
             )
@@ -717,7 +717,7 @@ impl TestNode {
             loop {
                 match conn_man_event_sub.recv().await {
                     Ok(event) => {
-                        events_tx.send(logger(event)).await.unwrap();
+                        let _ = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(err) => log::error!("{}", err),
@@ -902,7 +902,7 @@ async fn setup_comms_dht(
         .with_listener_address(node_identity.public_address())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
-        .with_min_connectivity(0.3)
+        .with_min_connectivity(1)
         .with_peer_storage(storage,None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
@@ -911,26 +911,29 @@ async fn setup_comms_dht(
         comms.peer_manager().add_peer(peer).await.unwrap();
     }
 
-    let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
-        outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
-    )
-    .with_config(DhtConfig {
-        saf_auto_request,
-        auto_join: false,
-        discovery_request_timeout: Duration::from_secs(15),
-        num_neighbouring_nodes,
-        num_random_nodes,
-        propagation_factor,
-        network_discovery: Default::default(),
-        ..DhtConfig::default_local_test()
-    })
-    .build()
-    .await
-    .unwrap();
+    let dht = Dht::builder()
+        .with_config(DhtConfig {
+            saf_config: SafConfig {
+                auto_request: saf_auto_request,
+                ..Default::default()
+            },
+            auto_join: false,
+            discovery_request_timeout: Duration::from_secs(15),
+            num_neighbouring_nodes,
+            num_random_nodes,
+            propagation_factor,
+            network_discovery: Default::default(),
+            ..DhtConfig::default_local_test()
+        })
+        .with_outbound_sender(outbound_tx)
+        .build(
+            comms.node_identity(),
+            comms.peer_manager(),
+            comms.connectivity(),
+            comms.shutdown_signal(),
+        )
+        .await
+        .unwrap();
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let pipeline = pipeline::Builder::new()

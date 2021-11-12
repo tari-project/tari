@@ -13,7 +13,7 @@ class InterfaceFFI {
   static void = ref.types.void;
   static bool = ref.types.bool;
   static int = ref.types.int;
-  static ulonglong = ref.types.ulonglong;
+  static ulonglong = ref.types.uint64; // Note: 'ref.types.ulonglong' has a memory alignment problem
   static uchar = ref.types.uchar;
   static uint = ref.types.uint;
   static string = ref.types.CString;
@@ -111,6 +111,10 @@ class InterfaceFFI {
       private_key_from_hex: [this.ptr, [this.string, this.intPtr]],
       private_key_destroy: [this.void, [this.ptr]],
       seed_words_create: [this.ptr, []],
+      seed_words_get_mnemonic_word_list_for_language: [
+        this.ptr,
+        [this.string, this.intPtr],
+      ],
       seed_words_get_length: [this.uint, [this.ptr, this.intPtr]],
       seed_words_get_at: [this.stringPtr, [this.ptr, this.uint, this.intPtr]],
       seed_words_push_word: [this.uchar, [this.ptr, this.string, this.intPtr]],
@@ -286,11 +290,11 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
-          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
       ],
+      wallet_get_balance: [this.ptr, [this.ptr, this.intPtr]],
       wallet_sign_message: [
         this.stringPtr,
         [this.ptr, this.string, this.intPtr],
@@ -305,15 +309,10 @@ class InterfaceFFI {
       ],
       wallet_upsert_contact: [this.bool, [this.ptr, this.ptr, this.intPtr]],
       wallet_remove_contact: [this.bool, [this.ptr, this.ptr, this.intPtr]],
-      wallet_get_available_balance: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_get_pending_incoming_balance: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
-      wallet_get_pending_outgoing_balance: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
+      balance_get_available: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_time_locked: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_pending_incoming: [this.ulonglong, [this.ptr, this.intPtr]],
+      balance_get_pending_outgoing: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_get_fee_estimate: [
         this.ulonglong,
         [
@@ -383,12 +382,7 @@ class InterfaceFFI {
           this.intPtr,
         ],
       ],
-      wallet_start_utxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_stxo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
-      wallet_start_invalid_txo_validation: [
-        this.ulonglong,
-        [this.ptr, this.intPtr],
-      ],
+      wallet_start_txo_validation: [this.ulonglong, [this.ptr, this.intPtr]],
       wallet_start_transaction_validation: [
         this.ulonglong,
         [this.ptr, this.intPtr],
@@ -433,6 +427,7 @@ class InterfaceFFI {
         [this.ptr, this.ptr, this.ptr, this.intPtr],
       ],
       wallet_destroy: [this.void, [this.ptr]],
+      balance_destroy: [this.void, [this.ptr]],
       file_partial_backup: [this.void, [this.string, this.string, this.intPtr]],
       log_debug_message: [this.void, [this.string]],
       get_emoji_set: [this.ptr, []],
@@ -660,6 +655,19 @@ class InterfaceFFI {
   //region SeedWords
   static seedWordsCreate() {
     return this.fn.seed_words_create();
+  }
+
+  static seedWordsGetMnemonicWordListForLanguage(language) {
+    let error = this.initError();
+    let result = this.fn.seed_words_get_mnemonic_word_list_for_language(
+      language,
+      error
+    );
+    this.checkErrorResult(
+      error,
+      `seed_words_get_mnemonic_word_list_for_language`
+    );
+    return result;
   }
 
   static seedWordsGetLength(ptr) {
@@ -1123,14 +1131,11 @@ class InterfaceFFI {
   static createCallbackTransactionCancellation(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
   }
-  static createCallbackUtxoValidationComplete(fn) {
+  static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
-  static createCallbackStxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
-  }
-  static createCallbackInvalidTxoValidationComplete(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
+  static createCallbackBalanceUpdated(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
   }
   static createCallbackTransactionValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
@@ -1163,9 +1168,8 @@ class InterfaceFFI {
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
-    callback_utxo_validation_complete,
-    callback_stxo_validation_complete,
-    callback_invalid_txo_validation_complete,
+    callback_txo_validation_complete,
+    callback_balance_updated,
     callback_transaction_validation_complete,
     callback_saf_message_received
   ) {
@@ -1188,15 +1192,21 @@ class InterfaceFFI {
       callback_direct_send_result,
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
-      callback_utxo_validation_complete,
-      callback_stxo_validation_complete,
-      callback_invalid_txo_validation_complete,
+      callback_txo_validation_complete,
+      callback_balance_updated,
       callback_transaction_validation_complete,
       callback_saf_message_received,
       recovery_in_progress,
       error
     );
     this.checkErrorResult(error, `walletCreate`);
+    return result;
+  }
+
+  static walletGetBalance(ptr) {
+    let error = this.initError();
+    let result = this.fn.wallet_get_balance(ptr, error);
+    this.checkErrorResult(error, `walletGetBalance`);
     return result;
   }
 
@@ -1253,24 +1263,31 @@ class InterfaceFFI {
     return result;
   }
 
-  static walletGetAvailableBalance(ptr) {
+  static balanceGetAvailable(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_get_available_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetAvailableBalance`);
+    let result = this.fn.balance_get_available(ptr, error);
+    this.checkErrorResult(error, `balanceGetAvailable`);
     return result;
   }
 
-  static walletGetPendingIncomingBalance(ptr) {
+  static balanceGetTimeLocked(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_get_pending_incoming_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetPendingIncomingBalance`);
+    let result = this.fn.balance_get_available(ptr, error);
+    this.checkErrorResult(error, `balanceGetTimeLocked`);
     return result;
   }
 
-  static walletGetPendingOutgoingBalance(ptr) {
+  static balanceGetPendingIncoming(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_get_pending_outgoing_balance(ptr, error);
-    this.checkErrorResult(error, `walletGetPendingOutgoingBalance`);
+    let result = this.fn.balance_get_pending_incoming(ptr, error);
+    this.checkErrorResult(error, `balanceGetPendingIncoming`);
+    return result;
+  }
+
+  static balanceGetPendingOutgoing(ptr) {
+    let error = this.initError();
+    let result = this.fn.balance_get_pending_outgoing(ptr, error);
+    this.checkErrorResult(error, `balanceGetPendingOutgoing`);
     return result;
   }
 
@@ -1426,24 +1443,10 @@ class InterfaceFFI {
     return result;
   }
 
-  static walletStartUtxoValidation(ptr) {
+  static walletStartTxoValidation(ptr) {
     let error = this.initError();
-    let result = this.fn.wallet_start_utxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartUtxoValidation`);
-    return result;
-  }
-
-  static walletStartStxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_stxo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartStxoValidation`);
-    return result;
-  }
-
-  static walletStartInvalidTxoValidation(ptr) {
-    let error = this.initError();
-    let result = this.fn.wallet_start_invalid_txo_validation(ptr, error);
-    this.checkErrorResult(error, `walletStartInvalidUtxoValidation`);
+    let result = this.fn.wallet_start_txo_validation(ptr, error);
+    this.checkErrorResult(error, `walletStartTxoValidation`);
     return result;
   }
 
@@ -1564,6 +1567,10 @@ class InterfaceFFI {
 
   static walletDestroy(ptr) {
     this.fn.wallet_destroy(ptr);
+  }
+
+  static balanceDestroy(ptr) {
+    this.fn.balance_destroy(ptr);
   }
   //endregion
 }

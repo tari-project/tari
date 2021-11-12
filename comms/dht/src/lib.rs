@@ -1,3 +1,5 @@
+#![feature(map_entry_replace)]
+#![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -88,7 +90,7 @@
 //!        .build()
 //!        .unwrap();
 //! let peer_manager = comms.start().unwrap().peer_manager();
-//! let dht = DhtBuilder::new(node_identity, peer_manager).finish();
+//! let dht = Dht::builder().build(node_identity, peer_manager)?;
 //!
 //! let inbound_pipeline = ServicePipeline::new(
 //!    comms_in_rx,
@@ -135,7 +137,6 @@ pub use connectivity::MetricsCollectorHandle;
 mod config;
 pub use config::DhtConfig;
 
-mod consts;
 mod crypt;
 
 mod dht;
@@ -158,6 +159,9 @@ mod logging_middleware;
 mod proto;
 mod rpc;
 mod schema;
+
+mod version;
+pub use version::DhtProtocolVersion;
 
 pub mod broadcast_strategy;
 pub mod domain_message;

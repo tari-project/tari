@@ -23,16 +23,20 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
-
-use tari_common_types::types::PublicKey;
+use rand::rngs::OsRng;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
 };
+use tari_crypto::{
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    tari_utilities::hex::Hex,
+};
 
 use crate::output_manager_service::{
-    error::OutputManagerError,
+    error::{OutputManagerError, OutputManagerStorageError},
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
@@ -91,13 +95,17 @@ where TBackend: OutputManagerBackend + 'static
             })
             .map(
                 |(output, features, script, sender_offset_public_key, metadata_signature)| {
+                    // Todo we need to look here that we might want to fail a specific output and not recover it as this
+                    // will only work if the script is a Nop script. If this is not a Nop script the recovered input
+                    // will not be spendable.
+                    let script_key = PrivateKey::random(&mut OsRng);
                     UnblindedOutput::new(
                         output.committed_value,
                         output.blinding_factor.clone(),
                         features,
                         script,
-                        inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                        output.blinding_factor,
+                        inputs!(PublicKey::from_secret_key(&script_key)),
+                        script_key,
                         sender_offset_public_key,
                         metadata_signature,
                     )
@@ -110,7 +118,18 @@ where TBackend: OutputManagerBackend + 'static
                 .await?;
 
             let db_output = DbUnblindedOutput::from_unblinded_output(output.clone(), &self.factories)?;
-            self.db.add_unspent_output(db_output).await?;
+            let output_hex = db_output.commitment.to_hex();
+            if let Err(e) = self.db.add_unspent_output(db_output).await {
+                match e {
+                    OutputManagerStorageError::DuplicateOutput => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
+                        );
+                    },
+                    _ => return Err(OutputManagerError::from(e)),
+                }
+            }
 
             trace!(
                 target: LOG_TARGET,

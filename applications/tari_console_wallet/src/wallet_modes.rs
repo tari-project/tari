@@ -30,10 +30,9 @@ use crate::{
 };
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common::{ConfigBootstrap, GlobalConfig};
-use tari_comms::peer_manager::Peer;
+use std::{fs, io::Stdout, path::PathBuf};
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -214,7 +213,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         ..
     } = config;
     let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address));
+    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address.clone()));
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
@@ -223,7 +222,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     base_node_config.base_node_custom = base_node_custom.clone();
     if let Some(peer) = base_node_custom {
         base_node_selected = peer;
-    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer())? {
+    } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
     }
 
@@ -286,21 +285,21 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
     let WalletModeConfig {
         global_config, handle, ..
     } = config;
-    println!("Starting grpc server");
+    info!(target: LOG_TARGET, "Starting grpc server");
     let grpc = WalletGrpcServer::new(wallet);
     handle
         .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
-    println!("Shutting down");
+    info!(target: LOG_TARGET, "Shutting down");
     Ok(())
 }
 
-async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: SocketAddr) -> Result<(), String> {
+async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr) -> Result<(), String> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_console_wallet_address);
-
+    let socket = multiaddr_to_socketaddr(&grpc_console_wallet_address).map_err(|e| e.to_string())?;
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc))
-        .serve(grpc_console_wallet_address)
+        .serve(socket)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
     info!(target: LOG_TARGET, "Stopping GRPC");

@@ -24,8 +24,8 @@ use rand::{CryptoRng, Rng};
 use std::{fmt::Debug, thread, time::Duration};
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     tari_amount::MicroTari,
+    test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
     transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 use tari_crypto::{
@@ -86,7 +86,7 @@ pub fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput) {
     let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), TestParamsHelpers::new(), val);
     (
-        utxo.as_transaction_input(&factory)
+        utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
         utxo,
     )
@@ -105,8 +105,26 @@ pub fn make_input_with_features<R: Rng + CryptoRng>(
         value,
     );
     (
-        utxo.as_transaction_input(&factory)
+        utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
         utxo,
     )
+}
+
+/// This macro unlocks a Mutex or RwLock. If the lock is
+/// poisoned (i.e. panic while unlocked) the last value
+/// before the panic is used.
+macro_rules! acquire_lock {
+    ($e:expr, $m:ident) => {
+        match $e.$m() {
+            Ok(lock) => lock,
+            Err(poisoned) => {
+                log::warn!(target: "wallet", "Lock has been POISONED and will be silently recovered");
+                poisoned.into_inner()
+            },
+        }
+    };
+    ($e:expr) => {
+        acquire_lock!($e, lock)
+    };
 }

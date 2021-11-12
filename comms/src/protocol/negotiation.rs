@@ -91,7 +91,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         Err(ProtocolError::ProtocolOutboundNegotiationFailed(
             selected_protocols
                 .iter()
-                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .map(|b| String::from_utf8_lossy(b).to_string())
                 .collect::<Vec<_>>()
                 .join(", "),
         ))
@@ -184,12 +184,12 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             .map_err(|_| ProtocolError::ProtocolIdTooLong)?;
         self.socket.write(&len_byte).await?;
         self.socket.write(&flags.bits().to_be_bytes()).await?;
-        self.socket.write_all(&protocol).await?;
+        self.socket.write_all(protocol).await?;
         self.socket.flush().await?;
         trace!(
             target: LOG_TARGET,
             "Wrote frame '{}' ({} byte(s) Flags={:?})",
-            String::from_utf8_lossy(&protocol),
+            String::from_utf8_lossy(protocol),
             len_byte[0],
             flags
         );

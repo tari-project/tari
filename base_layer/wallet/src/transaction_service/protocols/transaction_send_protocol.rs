@@ -20,25 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    config::TransactionRoutingMechanism,
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::{TransactionEvent, TransactionServiceResponse},
-    service::TransactionServiceResources,
-    storage::{
-        database::TransactionBackend,
-        models::{CompletedTransaction, OutboundTransaction, TransactionDirection, TransactionStatus},
-    },
-    tasks::{
-        send_finalized_transaction::send_finalized_transaction_message,
-        send_transaction_cancelled::send_transaction_cancelled_message,
-        wait_on_dial::wait_on_dial,
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        config::TransactionRoutingMechanism,
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::{TransactionEvent, TransactionServiceResponse},
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, OutboundTransaction},
+        },
+        tasks::{
+            send_finalized_transaction::send_finalized_transaction_message,
+            send_transaction_cancelled::send_transaction_cancelled_message,
+            wait_on_dial::wait_on_dial,
+        },
+        utc::utc_duration_since,
     },
 };
 use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -66,9 +71,7 @@ pub enum TransactionSendProtocolStage {
     WaitForReply,
 }
 
-pub struct TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
-{
+pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     id: u64,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
@@ -76,18 +79,20 @@ where TBackend: TransactionBackend + 'static
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
-    resources: TransactionServiceResources<TBackend>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<TBackend> TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + 'static
+impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
+where
+    TBackend: TransactionBackend + 'static,
+    TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
         id: u64,
-        resources: TransactionServiceResources<TBackend>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
@@ -321,16 +326,8 @@ where TBackend: TransactionBackend + 'static
         }
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(outbound_tx.timestamp)
-            .to_std()
-            .map_err(|_| {
-                TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                )
-            })?;
+        let elapsed_time = utc_duration_since(&outbound_tx.timestamp)
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
             .resources
@@ -351,16 +348,8 @@ where TBackend: TransactionBackend + 'static
         let resend = match outbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
-                    .map_err(|_| {
-                        TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
-                        )
-                    })?;
+                let elapsed_time = utc_duration_since(&timestamp)
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
         };
@@ -371,7 +360,7 @@ where TBackend: TransactionBackend + 'static
                     outbound_tx
                         .sender_protocol
                         .get_single_round_message()
-                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?,
                 )
                 .await
             {
@@ -384,7 +373,7 @@ where TBackend: TransactionBackend + 'static
                 .db
                 .increment_send_count(self.id)
                 .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
         }
 
         let mut shutdown = self.resources.shutdown_signal.clone();
@@ -638,21 +627,19 @@ where TBackend: TransactionBackend + 'static
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     // now wait for discovery to complete
                     match rx.await {
-                        Ok(send_msg_response) => {
-                            if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
-                                );
-                                direct_send_result = wait_on_dial(
-                                    send_states,
-                                    self.id,
-                                    self.dest_pubkey.clone(),
-                                    "Transaction",
-                                    self.resources.config.direct_send_timeout,
-                                )
-                                .await;
-                            }
+                        Ok(SendMessageResponse::Queued(send_states)) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
+                            );
+                            direct_send_result = wait_on_dial(
+                                send_states,
+                                self.id,
+                                self.dest_pubkey.clone(),
+                                "Transaction",
+                                self.resources.config.direct_send_timeout,
+                            )
+                            .await;
                         },
                         Err(e) => {
                             warn!(
@@ -660,6 +647,10 @@ where TBackend: TransactionBackend + 'static
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
                         },
+                        _ => warn!(
+                            target: LOG_TARGET,
+                            "Empty message received waiting for Discovery to complete TxId: {}", self.id,
+                        ),
                     }
                 },
             },
@@ -692,7 +683,7 @@ where TBackend: TransactionBackend + 'static
             .outbound_message_service
             .closest_broadcast(
                 NodeId::from_public_key(&self.dest_pubkey),
-                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
+                OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
                 OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
             )

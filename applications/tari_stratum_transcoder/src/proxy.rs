@@ -44,6 +44,7 @@ use std::{
 };
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::blocks::{Block, NewBlockTemplate};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tracing::{debug, error};
@@ -58,14 +59,18 @@ pub struct StratumTranscoderProxyConfig {
     pub transcoder_host_address: SocketAddr,
 }
 
-impl From<GlobalConfig> for StratumTranscoderProxyConfig {
-    fn from(config: GlobalConfig) -> Self {
-        Self {
+impl TryFrom<GlobalConfig> for StratumTranscoderProxyConfig {
+    type Error = std::io::Error;
+
+    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
+        let grpc_base_node_address = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+        let grpc_console_wallet_address = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
+        Ok(Self {
             network: config.network,
-            grpc_base_node_address: config.grpc_base_node_address,
-            grpc_console_wallet_address: config.grpc_console_wallet_address,
+            grpc_base_node_address,
+            grpc_console_wallet_address,
             transcoder_host_address: config.transcoder_host_address,
-        }
+        })
     }
 }
 
@@ -83,8 +88,8 @@ impl StratumTranscoderProxyService {
     ) -> Self {
         Self {
             inner: InnerService {
-                config,
-                http_client,
+                _config: config,
+                _http_client: http_client,
                 base_node_client,
                 wallet_client,
             },
@@ -129,8 +134,8 @@ impl Service<Request<Body>> for StratumTranscoderProxyService {
 
 #[derive(Debug, Clone)]
 struct InnerService {
-    config: StratumTranscoderProxyConfig,
-    http_client: reqwest::Client,
+    _config: StratumTranscoderProxyConfig,
+    _http_client: reqwest::Client,
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
     wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
 }

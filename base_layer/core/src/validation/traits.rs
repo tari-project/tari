@@ -21,26 +21,28 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainBackend, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock},
+    chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
     transactions::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
+use async_trait::async_trait;
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated
-pub trait BlockSyncBodyValidation<B: BlockchainBackend>: Send + Sync {
-    fn validate_body(&self, block: &Block, backend: &B) -> Result<(), ValidationError>;
+#[async_trait]
+pub trait BlockSyncBodyValidation: Send + Sync {
+    async fn validate_body(&self, block: Block) -> Result<Block, ValidationError>;
 }
 
 /// A validator that validates a body after it has been determined to be a valid orphan
 pub trait PostOrphanBodyValidation<B>: Send + Sync {
     fn validate_body_for_valid_orphan(
         &self,
-        block: &ChainBlock,
         backend: &B,
+        block: &ChainBlock,
         metadata: &ChainMetadata,
     ) -> Result<(), ValidationError>;
 }
@@ -65,9 +67,9 @@ pub trait HeaderValidation<TBackend: BlockchainBackend>: Send + Sync {
 pub trait FinalHorizonStateValidation<B>: Send + Sync {
     fn validate(
         &self,
+        backend: &B,
         height: u64,
         total_utxo_sum: &Commitment,
         total_kernel_sum: &Commitment,
-        backend: &B,
     ) -> Result<(), ValidationError>;
 }

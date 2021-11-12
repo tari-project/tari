@@ -19,16 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    output_manager_service::TxId,
-    transaction_service::{
-        config::TransactionRoutingMechanism,
-        error::TransactionServiceError,
-        tasks::wait_on_dial::wait_on_dial,
-    },
+use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
+    error::TransactionServiceError,
+    tasks::wait_on_dial::wait_on_dial,
 };
 use log::*;
 use std::time::Duration;
+use tari_common_types::transaction::TxId;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -167,21 +165,19 @@ pub async fn send_finalized_transaction_message_direct(
                 }
                 // now wait for discovery to complete
                 match rx.await {
-                    Ok(send_msg_response) => {
-                        if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery of {} completed for TxID: {}", destination_public_key, tx_id
-                            );
-                            direct_send_result = wait_on_dial(
-                                send_states,
-                                tx_id,
-                                destination_public_key.clone(),
-                                "Finalized Transaction",
-                                direct_send_timeout,
-                            )
-                            .await;
-                        }
+                    Ok(SendMessageResponse::Queued(send_states)) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Discovery of {} completed for TxID: {}", destination_public_key, tx_id
+                        );
+                        direct_send_result = wait_on_dial(
+                            send_states,
+                            tx_id,
+                            destination_public_key.clone(),
+                            "Finalized Transaction",
+                            direct_send_timeout,
+                        )
+                        .await;
                     },
                     Err(e) => {
                         warn!(
@@ -189,6 +185,10 @@ pub async fn send_finalized_transaction_message_direct(
                             "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
                         );
                     },
+                    _ => warn!(
+                        target: LOG_TARGET,
+                        "Empty response received waiting for Discovery to complete TxId: {}", tx_id
+                    ),
                 }
             },
         },
@@ -215,7 +215,7 @@ async fn send_transaction_finalized_message_store_and_forward(
     match outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_pubkey),
-            OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
+            OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
             OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
         )

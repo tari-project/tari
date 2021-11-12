@@ -23,17 +23,43 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    transactions::{
+        aggregated_body::AggregateBody,
+        crypto_factories::CryptoFactories,
+        tari_amount::{uT, MicroTari},
+        transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+        weight::TransactionWeight,
+    },
+};
+use blake2::Digest;
+use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
-    ops::Add,
+    io,
+    io::{Read, Write},
+    ops::{Add, Shl},
 };
-
-use blake2::Digest;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
+use tari_common_types::types::{
+    BlindingFactor,
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+    Signature,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -51,32 +77,10 @@ use tari_crypto::{
 };
 use thiserror::Error;
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    crypto_factories::CryptoFactories,
-    tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-};
-use tari_common_types::types::{
-    BlindingFactor,
-    Challenge,
-    ComSignature,
-    Commitment,
-    CommitmentFactory,
-    HashDigest,
-    MessageHash,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
-    Signature,
-};
-
-// Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
+// Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
 pub const MAX_TRANSACTION_OUTPUTS: usize = 500;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
-pub const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(100);
 
 //--------------------------------------        Output features   --------------------------------------------------//
 
@@ -107,9 +111,24 @@ pub struct OutputFeatures {
 }
 
 impl OutputFeatures {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
+    /// The version number to use in consensus encoding. In future, this value could be dynamic.
+    const CONSENSUS_ENCODING_VERSION: u8 = 0;
+
+    /// Encodes output features using deprecated bincode encoding
+    pub fn to_v1_bytes(&self) -> Vec<u8> {
+        // unreachable panic: serialized_size is infallible because it uses DefaultOptions
+        let encode_size = bincode::serialized_size(self).expect("unreachable");
+        let mut buf = Vec::with_capacity(encode_size as usize);
+        // unreachable panic: Vec's Write impl is infallible
+        bincode::serialize_into(&mut buf, self).expect("unreachable");
+        buf
+    }
+
+    /// Encodes output features using consensus encoding
+    pub fn to_consensus_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.consensus_encode_exact_size());
+        // unreachable panic: Vec's Write impl is infallible
+        self.consensus_encode(&mut buf).expect("unreachable");
         buf
     }
 
@@ -126,6 +145,43 @@ impl OutputFeatures {
             maturity,
             ..OutputFeatures::default()
         }
+    }
+}
+
+impl ConsensusEncoding for OutputFeatures {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = writer.write_varint(Self::CONSENSUS_ENCODING_VERSION)?;
+        written += writer.write_varint(self.maturity)?;
+        written += self.flags.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+impl ConsensusEncodingSized for OutputFeatures {
+    fn consensus_encode_exact_size(&self) -> usize {
+        Self::CONSENSUS_ENCODING_VERSION.required_space() +
+            self.flags.consensus_encode_exact_size() +
+            self.maturity.required_space()
+    }
+}
+
+impl ConsensusDecoding for OutputFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        // Changing the order of these operations is consensus breaking
+        let version = reader.read_varint::<u8>()?;
+        if version != Self::CONSENSUS_ENCODING_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid version. Expected {} but got {}",
+                    Self::CONSENSUS_ENCODING_VERSION,
+                    version
+                ),
+            ));
+        }
+        // Decode safety: read_varint will stop reading the varint after 10 bytes
+        let maturity = reader.read_varint()?;
+        let flags = OutputFlags::consensus_decode(reader)?;
+        Ok(Self { flags, maturity })
     }
 }
 
@@ -165,6 +221,33 @@ bitflags! {
     pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
+    }
+}
+
+impl ConsensusEncoding for OutputFlags {
+    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        writer.write(&self.bits.to_le_bytes())
+    }
+}
+
+impl ConsensusEncodingSized for OutputFlags {
+    fn consensus_encode_exact_size(&self) -> usize {
+        1
+    }
+}
+
+impl ConsensusDecoding for OutputFlags {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        // SAFETY: we have 3 options here:
+        // 1. error if unsupported flags are used, meaning that every new flag will be a hard fork
+        // 2. truncate unsupported flags, means different hashes will be produced for the same block
+        // 3. ignore unsupported flags, which could be set at any time and persisted to the blockchain.
+        //   Once those flags are defined at some point in the future, depending on the functionality of the flag,
+        //   a consensus rule may be needed that ignores flags prior to a given block height.
+        // Option 3 is used here
+        Ok(unsafe { OutputFlags::from_bits_unchecked(u8::from_le_bytes(buf)) })
     }
 }
 
@@ -281,6 +364,12 @@ impl UnblindedOutput {
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput {
             features: self.features.clone(),
@@ -295,12 +384,7 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 
@@ -309,6 +393,12 @@ impl UnblindedOutput {
         factories: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> Result<TransactionOutput, TransactionError> {
+        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
+        {
+            return Err(TransactionError::ValidationError(
+                "Value provided is outside the range allowed by the range proof".into(),
+            ));
+        }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
         let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
@@ -330,13 +420,13 @@ impl UnblindedOutput {
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
+    }
+
+    pub fn metadata_byte_size(&self) -> usize {
+        self.features.consensus_encode_exact_size() +
+            ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
     }
 }
 
@@ -459,10 +549,10 @@ impl TransactionInput {
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
         let challenge = TransactionInput::build_script_challenge(
-            &self.script_signature.public_nonce(),
+            self.script_signature.public_nonce(),
             &self.script,
             &self.input_data,
-            &public_script_key,
+            public_script_key,
             &self.commitment,
         );
         if self
@@ -485,11 +575,16 @@ impl TransactionInput {
         Ok(key)
     }
 
+    /// Returns true if this input is mature at the given height, otherwise false
+    pub fn is_mature_at(&self, block_height: u64) -> bool {
+        self.features.maturity <= block_height
+    }
+
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(self.features.to_bytes())
+            .chain(self.features.to_v1_bytes())
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .finalize()
@@ -501,7 +596,7 @@ impl TransactionInput {
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(self.features.to_bytes())
+            .chain(self.features.to_v1_bytes())
             .chain(self.commitment.as_bytes())
             .chain(self.script.as_bytes())
             .chain(self.sender_offset_public_key.as_bytes())
@@ -602,7 +697,7 @@ impl TransactionOutput {
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
-            &self.metadata_signature.public_nonce(),
+            self.metadata_signature.public_nonce(),
             &self.commitment,
         );
         if !self.metadata_signature.verify_challenge(
@@ -684,7 +779,8 @@ impl TransactionOutput {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())
             .chain(script.as_bytes())
-            .chain(features.to_bytes())
+            // TODO: Use consensus encoded bytes #testnet_reset
+            .chain(features.to_v1_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
             .finalize()
@@ -709,11 +805,11 @@ impl TransactionOutput {
             Some(partial_nonce) => &nonce_commitment + partial_nonce,
         };
         let value = PrivateKey::from(value.as_u64());
-        let commitment = PedersenCommitmentFactory::default().commit(&spending_key, &value);
+        let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            &script,
-            &output_features,
-            &sender_offset_public_key,
+            script,
+            output_features,
+            sender_offset_public_key,
             &nonce_commitment,
             &commitment,
         );
@@ -745,7 +841,7 @@ impl TransactionOutput {
             spending_key,
             script,
             output_features,
-            &sender_offset_public_key,
+            sender_offset_public_key,
             Some(partial_commitment_nonce),
             None,
         )
@@ -791,7 +887,8 @@ impl TransactionOutput {
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(self.features.to_bytes())
+            // TODO: use consensus encoding #testnet_reset
+            .chain(self.features.to_v1_bytes())
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this
             .chain(self.script.as_bytes())
@@ -918,7 +1015,7 @@ impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
@@ -933,6 +1030,83 @@ pub struct TransactionKernel {
     /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
     /// excess of the sender.
     pub excess_sig: Signature,
+}
+
+impl TransactionKernel {
+    pub fn is_coinbase(&self) -> bool {
+        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+    }
+
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
+        let excess = self.excess.as_public_key();
+        let r = self.excess_sig.get_public_nonce();
+        let m = TransactionMetadata {
+            lock_height: self.lock_height,
+            fee: self.fee,
+        };
+        let c = build_challenge(r, &m);
+        if self.excess_sig.verify_challenge(excess, &c) {
+            Ok(())
+        } else {
+            Err(TransactionError::InvalidSignatureError(
+                "Verifying kernel signature".to_string(),
+            ))
+        }
+    }
+
+    /// This method was used to sort kernels. It has been replaced, and will be removed in future
+    pub fn deprecated_cmp(&self, other: &Self) -> Ordering {
+        self.features
+            .cmp(&other.features)
+            .then(self.fee.cmp(&other.fee))
+            .then(self.lock_height.cmp(&other.lock_height))
+            .then(self.excess.cmp(&other.excess))
+            .then(self.excess_sig.cmp(&other.excess_sig))
+    }
+}
+
+impl Hashable for TransactionKernel {
+    /// Produce a canonical hash for a transaction kernel. The hash is given by
+    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    fn hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(&[self.features.bits])
+            .chain(u64::from(self.fee).to_le_bytes())
+            .chain(self.lock_height.to_le_bytes())
+            .chain(self.excess.as_bytes())
+            .chain(self.excess_sig.get_public_nonce().as_bytes())
+            .chain(self.excess_sig.get_signature().as_bytes())
+            .finalize()
+            .to_vec()
+    }
+}
+
+impl Display for TransactionKernel {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            fmt,
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
+            self.fee,
+            self.lock_height,
+            self.features,
+            self.excess.to_hex(),
+            self.excess_sig
+                .to_json()
+                .unwrap_or_else(|_| "Failed to serialize signature".into()),
+        )
+    }
+}
+
+impl PartialOrd for TransactionKernel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.excess_sig.partial_cmp(&other.excess_sig)
+    }
+}
+
+impl Ord for TransactionKernel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.excess_sig.cmp(&other.excess_sig)
+    }
 }
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
@@ -1007,59 +1181,9 @@ impl Default for KernelBuilder {
     }
 }
 
-impl TransactionKernel {
-    pub fn verify_signature(&self) -> Result<(), TransactionError> {
-        let excess = self.excess.as_public_key();
-        let r = self.excess_sig.get_public_nonce();
-        let m = TransactionMetadata {
-            lock_height: self.lock_height,
-            fee: self.fee,
-        };
-        let c = build_challenge(r, &m);
-        if self.excess_sig.verify_challenge(excess, &c) {
-            Ok(())
-        } else {
-            Err(TransactionError::InvalidSignatureError(
-                "Verifying kernel signature".to_string(),
-            ))
-        }
-    }
-}
-
-impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel. The hash is given by
-    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(&[self.features.bits])
-            .chain(u64::from(self.fee).to_le_bytes())
-            .chain(self.lock_height.to_le_bytes())
-            .chain(self.excess.as_bytes())
-            .chain(self.excess_sig.get_public_nonce().as_bytes())
-            .chain(self.excess_sig.get_signature().as_bytes())
-            .finalize()
-            .to_vec()
-    }
-}
-
-impl Display for TransactionKernel {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let msg = format!(
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\n",
-            self.fee,
-            self.lock_height,
-            self.features,
-            self.excess.to_hex(),
-            self.excess_sig
-                .to_json()
-                .unwrap_or_else(|_| "Failed to serialize signature".into()),
-        );
-        fmt.write_str(&msg)
-    }
-}
-
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
+#[derive(Default)]
 pub struct KernelSum {
     pub sum: Commitment,
     pub fees: MicroTari,
@@ -1092,12 +1216,10 @@ impl Transaction {
         kernels: Vec<TransactionKernel>,
         offset: BlindingFactor,
         script_offset: BlindingFactor,
-    ) -> Transaction {
-        let mut body = AggregateBody::new(inputs, outputs, kernels);
-        body.sort();
-        Transaction {
+    ) -> Self {
+        Self {
             offset,
-            body,
+            body: AggregateBody::new(inputs, outputs, kernels),
             script_offset,
         }
     }
@@ -1125,23 +1247,18 @@ impl Transaction {
         )
     }
 
-    pub fn get_body(&self) -> &AggregateBody {
+    pub fn body(&self) -> &AggregateBody {
         &self.body
     }
 
     /// Returns the byte size or weight of a transaction
-    pub fn calculate_weight(&self) -> u64 {
-        self.body.calculate_weight()
-    }
-
-    /// Returns the total fee allocated to each byte of the transaction
-    pub fn calculate_ave_fee_per_gram(&self) -> f64 {
-        (self.body.get_total_fee().0 as f64) / self.calculate_weight() as f64
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+        self.body.calculate_weight(transaction_weight)
     }
 
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
-        self.body.inputs().iter().fold(std::u64::MAX, |min_maturity, input| {
+        self.body.inputs().iter().fold(u64::MAX, |min_maturity, input| {
             min(min_maturity, input.features.maturity)
         })
     }
@@ -1294,24 +1411,23 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
+    use crate::{
+        transactions::{
+            tari_amount::T,
+            test_helpers,
+            test_helpers::{TestParams, UtxoTestParams},
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
     use rand::{self, rngs::OsRng};
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
         script,
         script::ExecutionStack,
     };
-
-    use crate::{
-        transactions::{
-            helpers,
-            helpers::{TestParams, UtxoTestParams},
-            tari_amount::T,
-            transaction::OutputFeatures,
-        },
-        txn_schema,
-    };
-    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
 
     use super::*;
 
@@ -1372,7 +1488,9 @@ mod test {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionError::ValidationError("Range proof could not be verified".to_string())
+                TransactionError::ValidationError(
+                    "Value provided is outside the range allowed by the range proof".to_string()
+                )
             ),
         }
 
@@ -1482,7 +1600,7 @@ mod test {
             offset_pub_key,
         );
 
-        let mut kernel = helpers::create_test_kernel(0.into(), 0);
+        let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add time locks
@@ -1518,7 +1636,7 @@ mod test {
 
     #[test]
     fn test_validate_internal_consistency() {
-        let (tx, _, _) = helpers::create_tx(5000.into(), 15.into(), 1, 2, 1, 4);
+        let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
         assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
@@ -1527,7 +1645,7 @@ mod test {
     #[test]
     #[allow(clippy::identity_op)]
     fn check_cut_through() {
-        let (tx, _, outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2);
 
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 2);
@@ -1537,7 +1655,7 @@ mod test {
         assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-        let (tx2, _outputs, _) = helpers::spend_utxos(schema);
+        let (tx2, _outputs, _) = test_helpers::spend_utxos(schema);
 
         assert_eq!(tx2.body.inputs().len(), 1);
         assert_eq!(tx2.body.outputs().len(), 3);
@@ -1575,7 +1693,7 @@ mod test {
 
     #[test]
     fn check_duplicate_inputs_outputs() {
-        let (tx, _, _outputs) = helpers::create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        let (tx, _, _outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2);
         assert!(!tx.body.contains_duplicated_outputs());
         assert!(!tx.body.contains_duplicated_inputs());
 
@@ -1594,11 +1712,11 @@ mod test {
 
     #[test]
     fn inputs_not_malleable() {
-        let (mut inputs, outputs) = helpers::create_unblinded_txos(5000.into(), 1, 1, 2, 15.into());
+        let (mut inputs, outputs) = test_helpers::create_unblinded_txos(5000.into(), 1, 1, 2, 15.into());
         let mut stack = inputs[0].input_data.clone();
         inputs[0].script = script!(Drop Nop);
         inputs[0].input_data.push(StackItem::Hash([0; 32])).unwrap();
-        let mut tx = helpers::create_transaction_with(1, 15.into(), inputs, outputs);
+        let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs);
 
         stack
             .push(StackItem::Hash(*b"Pls put this on tha tari network"))
@@ -1673,5 +1791,52 @@ mod test {
         assert_eq!(full_rewind_result.committed_value, v);
         assert_eq!(&full_rewind_result.proof_message, proof_message);
         assert_eq!(full_rewind_result.blinding_factor, test_params.spend_key);
+    }
+    mod output_features {
+        use super::*;
+
+        #[test]
+        fn consensus_encode_minimal() {
+            let features = OutputFeatures::with_maturity(0);
+            let mut buf = Vec::new();
+            let written = features.consensus_encode(&mut buf).unwrap();
+            assert_eq!(buf.len(), 3);
+            assert_eq!(written, 3);
+        }
+
+        #[test]
+        fn consensus_encode_decode() {
+            let features = OutputFeatures::create_coinbase(u64::MAX);
+            let known_size = features.consensus_encode_exact_size();
+            let mut buf = Vec::with_capacity(known_size);
+            assert_eq!(known_size, 12);
+            let written = features.consensus_encode(&mut buf).unwrap();
+            assert_eq!(buf.len(), 12);
+            assert_eq!(written, 12);
+            let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
+            assert_eq!(features, decoded_features);
+        }
+
+        #[test]
+        fn consensus_decode_bad_flags() {
+            let data = [0x00u8, 0x00, 0x02];
+            let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
+            // Assert the flag data is preserved
+            assert_eq!(features.flags.bits & 0x02, 0x02);
+        }
+
+        #[test]
+        fn consensus_decode_bad_maturity() {
+            let data = [0x00u8, 0xFF];
+            let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+        }
+
+        #[test]
+        fn consensus_decode_attempt_maturity_overflow() {
+            let data = [0x00u8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+            let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        }
     }
 }

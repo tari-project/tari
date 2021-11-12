@@ -15,7 +15,7 @@ pub struct RandomXVMInstance {
     // The cache and dataset for the VM need to be stored together with it since they are not
     // mix and match.
     instance: Arc<Mutex<(RandomXVM, RandomXCache, Option<RandomXDataset>)>>,
-    flags: RandomXFlag,
+    _flags: RandomXFlag,
 }
 
 impl RandomXVMInstance {
@@ -48,7 +48,7 @@ impl RandomXVMInstance {
 
         Ok(Self {
             instance: Arc::new(Mutex::new((vm, cache, None))),
-            flags,
+            _flags: flags,
         })
     }
 
@@ -140,7 +140,7 @@ impl RandomXFactoryInner {
             }
         }
 
-        let vm = RandomXVMInstance::create(&key, self.flags)?;
+        let vm = RandomXVMInstance::create(key, self.flags)?;
 
         self.vms.insert(Vec::from(key), (Instant::now(), vm.clone()));
 

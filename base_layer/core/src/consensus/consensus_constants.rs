@@ -21,9 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consensus::{network::NetworkConsensus, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
+    consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::tari_amount::{uT, MicroTari, T},
+    transactions::{
+        tari_amount::{uT, MicroTari, T},
+        weight::TransactionWeight,
+    },
 };
 use chrono::{DateTime, Duration, Utc};
 use std::{collections::HashMap, ops::Add};
@@ -35,7 +38,7 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
     effective_from_height: u64,
-    /// The min height maturity a coinbase utxo must have
+    /// The min absolute height maturity a coinbase utxo must have
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
@@ -62,6 +65,8 @@ pub struct ConsensusConstants {
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
     faucet_value: MicroTari,
+    /// Transaction Weight params
+    transaction_weight: TransactionWeight,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -127,7 +132,11 @@ impl ConsensusConstants {
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
     pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - WEIGHT_PER_OUTPUT - KERNEL_WEIGHT
+        self.max_block_transaction_weight - self.coinbase_weight()
+    }
+
+    pub fn coinbase_weight(&self) -> u64 {
+        self.transaction_weight.calculate(1, 0, 1, 0)
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -178,9 +187,13 @@ impl ConsensusConstants {
         }
     }
 
-    // This is the maximum age a monero merge mined seed can be reused
+    /// The maximum age a monero merge mined seed can be reused
     pub fn max_randomx_seed_height(&self) -> u64 {
         self.max_randomx_seed_height
+    }
+
+    pub fn transaction_weight(&self) -> &TransactionWeight {
+        &self.transaction_weight
     }
 
     pub fn localnet() -> Vec<Self> {
@@ -209,16 +222,17 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
+            max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 
     pub fn ridcully() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -242,9 +256,10 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
+            max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
         }]
     }
 
@@ -277,7 +292,7 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let mut algos2 = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // setting sha3/monero to 40/60 split
         algos2.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -302,9 +317,10 @@ impl ConsensusConstants {
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 100.into(),
-                max_randomx_seed_height: std::u64::MAX,
+                max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos,
                 faucet_value: (5000 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
             },
             ConsensusConstants {
                 effective_from_height: 1400,
@@ -317,16 +333,17 @@ impl ConsensusConstants {
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 100.into(),
-                max_randomx_seed_height: std::u64::MAX,
+                max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos2,
                 faucet_value: (5000 * 4000) * T,
+                transaction_weight: TransactionWeight::v1(),
             },
         ]
     }
 
     pub fn weatherwax() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -350,15 +367,16 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
+            max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
         }]
     }
 
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -374,17 +392,21 @@ impl ConsensusConstants {
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
-            blockchain_version: 1,
+            blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
-            max_block_transaction_weight: 19500,
+            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+            // weightings
+            max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
+            max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 
@@ -415,9 +437,10 @@ impl ConsensusConstants {
             emission_initial: 10_000_000.into(),
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
+            max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
+            transaction_weight: TransactionWeight::v2(),
         }]
     }
 }

@@ -14,6 +14,7 @@
   - [RFC-0150: Wallets](RFC-0150_Wallets.md)
   - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
   - [RFC-0152: Emoji ID](RFC-0152_EmojiId.md)
+  - [RFC-0153: Staged Wallet Security](RFC-0153_StagedWalletSecurity.md)
   - [RFC-0160: Block Binary Serialization](RFC-0160_BlockSerialization.md)
   - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
     - [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
@@ -25,6 +26,7 @@
     - [RFC-0201: TariScript](RFC-0201_TariScript.md)
     - [RFC-0202: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
     - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
+    - [RFC-0240: Atomic swap](RFC-0240_AtomicSwap.md)
     - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
     - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)
 - [RFC-0300: The Digital Assets Network](RFC-0300_DAN.md)
@@ -35,6 +37,7 @@
     - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
     - [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
   - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
+  - [RFC-0360: NFT sale using MimbleWimble Invoice](RFC-0360_NFTInvoices.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
 

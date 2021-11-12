@@ -20,21 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utxo_scanner_service::error::UtxoScannerError;
 use std::time::Duration;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
-
-#[derive(Debug)]
-pub enum UtxoScannerRequest {
-    SetBaseNodePublicKey(CommsPublicKey),
-}
-
-pub enum UtxoScannerResponse {
-    BaseNodePublicKeySet,
-}
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
@@ -69,29 +58,15 @@ pub enum UtxoScannerEvent {
 
 #[derive(Clone)]
 pub struct UtxoScannerHandle {
-    handle: SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
     event_sender: broadcast::Sender<UtxoScannerEvent>,
 }
 
 impl UtxoScannerHandle {
-    pub fn new(
-        handle: SenderService<UtxoScannerRequest, Result<UtxoScannerResponse, UtxoScannerError>>,
-        event_sender: broadcast::Sender<UtxoScannerEvent>,
-    ) -> Self {
-        UtxoScannerHandle { handle, event_sender }
+    pub fn new(event_sender: broadcast::Sender<UtxoScannerEvent>) -> Self {
+        UtxoScannerHandle { event_sender }
     }
 
     pub fn get_event_receiver(&mut self) -> broadcast::Receiver<UtxoScannerEvent> {
         self.event_sender.subscribe()
-    }
-
-    pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), UtxoScannerError> {
-        match self
-            .handle
-            .call(UtxoScannerRequest::SetBaseNodePublicKey(public_key))
-            .await??
-        {
-            UtxoScannerResponse::BaseNodePublicKeySet => Ok(()),
-        }
     }
 }

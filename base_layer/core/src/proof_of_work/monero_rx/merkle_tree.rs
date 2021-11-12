@@ -396,7 +396,7 @@ mod test {
 
             let num_transactions = VarInt(tx_hashes.len() as u64);
 
-            let tx_root = tree_hash(&tx_hashes).unwrap();
+            let tx_root = tree_hash(tx_hashes).unwrap();
             let mut blob = Vec::new();
             blob.extend(serialize(&header));
             blob.extend_from_slice(tx_root.as_bytes());
@@ -426,7 +426,7 @@ mod test {
                 .map(|hash| Hash::from_str(hash).unwrap())
                 .collect::<Vec<_>>();
 
-            let tx_root = tree_hash(&tx_hashes).unwrap();
+            let tx_root = tree_hash(tx_hashes).unwrap();
             let mut blob = Vec::new();
             blob.extend(serialize(&header));
             blob.extend_from_slice(tx_root.as_bytes());
@@ -481,15 +481,15 @@ mod test {
             .collect::<Vec<_>>();
 
             let expected_root = cn_fast_hash2(&tx_hashes[0], &tx_hashes[1]);
-            let proof = create_merkle_proof(&tx_hashes, &tx_hashes[0]).unwrap();
+            let proof = create_merkle_proof(tx_hashes, &tx_hashes[0]).unwrap();
             assert_eq!(proof.branch()[0], tx_hashes[1]);
             assert_eq!(proof.calculate_root(&tx_hashes[0]), expected_root);
 
-            let proof = create_merkle_proof(&tx_hashes, &tx_hashes[1]).unwrap();
+            let proof = create_merkle_proof(tx_hashes, &tx_hashes[1]).unwrap();
             assert_eq!(proof.branch()[0], tx_hashes[0]);
             assert_eq!(proof.calculate_root(&tx_hashes[1]), expected_root);
 
-            assert!(create_merkle_proof(&tx_hashes, &Hash::null_hash()).is_none());
+            assert!(create_merkle_proof(tx_hashes, &Hash::null_hash()).is_none());
         }
 
         #[test]
@@ -560,10 +560,10 @@ mod test {
             .map(|hash| Hash::from_str(hash).unwrap())
             .collect::<Vec<_>>();
 
-            let expected_root = tree_hash(&tx_hashes).unwrap();
+            let expected_root = tree_hash(tx_hashes).unwrap();
 
             let hash = Hash::from_str("fa58575f7d1d377709f1621fac98c758860ca6dc5f2262be9ce5fd131c370d1a").unwrap();
-            let proof = create_merkle_proof(&tx_hashes, &hash).unwrap();
+            let proof = create_merkle_proof(tx_hashes, &hash).unwrap();
 
             assert_eq!(proof.depth, 4);
             assert_eq!(proof.path_bitmap, 0b00001111);
@@ -596,9 +596,9 @@ mod test {
             assert_eq!(proof.depth, 16);
             assert_eq!(proof.path_bitmap, 0b1111_1111_1111_1111);
 
-            assert_eq!(proof.calculate_root(&hash), expected_root);
+            assert_eq!(proof.calculate_root(hash), expected_root);
 
-            assert!(!proof.branch().contains(&hash));
+            assert!(!proof.branch().contains(hash));
             assert!(!proof.branch().contains(&expected_root));
         }
     }

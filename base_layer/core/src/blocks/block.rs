@@ -23,21 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-};
-
-use log::*;
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::Hashable;
-use thiserror::Error;
-
-use tari_common_types::types::BlockHash;
-
 use crate::{
     blocks::BlockHeader,
-    chain_storage::MmrTree,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     tari_utilities::hex::Hex,
@@ -48,6 +35,15 @@ use crate::{
         CryptoFactories,
     },
 };
+use log::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
+use tari_common_types::types::BlockHash;
+use tari_crypto::tari_utilities::Hashable;
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
@@ -61,7 +57,7 @@ pub enum BlockValidationError {
     MismatchedMmrRoots,
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
     MismatchedMmrSize {
-        mmr_tree: MmrTree,
+        mmr_tree: String,
         expected: u64,
         actual: u64,
     },
@@ -79,6 +75,10 @@ pub struct Block {
 impl Block {
     pub fn new(header: BlockHeader, body: AggregateBody) -> Self {
         Self { header, body }
+    }
+
+    pub fn version(&self) -> u16 {
+        self.header.version
     }
 
     /// This function will calculate the total fees contained in a block
@@ -239,7 +239,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort();
+        block.body.sort(block.header.version);
         block
     }
 }

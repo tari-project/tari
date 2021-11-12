@@ -177,6 +177,10 @@ impl BodyBytes {
     pub fn into_vec(self) -> Vec<u8> {
         self.0.map(|bytes| bytes.to_vec()).unwrap_or_else(Vec::new)
     }
+
+    pub fn into_bytes(self) -> Option<Bytes> {
+        self.0
+    }
 }
 
 #[allow(clippy::from_over_into)]
@@ -186,10 +190,9 @@ impl Into<Bytes> for BodyBytes {
     }
 }
 
-#[allow(clippy::from_over_into)]
-impl Into<Vec<u8>> for BodyBytes {
-    fn into(self) -> Vec<u8> {
-        self.into_vec()
+impl From<BodyBytes> for Vec<u8> {
+    fn from(body: BodyBytes) -> Self {
+        body.into_vec()
     }
 }
 

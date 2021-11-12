@@ -23,7 +23,8 @@
 use super::dns::DnsClientError;
 use crate::dns::{default_trust_anchor, DnsClient};
 use anyhow::anyhow;
-use std::{net::SocketAddr, str::FromStr};
+use std::str::FromStr;
+use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures},
@@ -42,7 +43,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect_secure(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect_secure(name_server, default_trust_anchor()).await?;
         Ok(Self { client })
     }
@@ -51,7 +52,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect(name_server).await?;
         Ok(Self { client })
     }
@@ -90,7 +91,7 @@ impl FromStr for SeedPeer {
         let mut parts = s.split("::").map(|s| s.trim());
         let public_key = parts
             .next()
-            .and_then(|s| CommsPublicKey::from_hex(&s).ok())
+            .and_then(|s| CommsPublicKey::from_hex(s).ok())
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
         let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
         if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
@@ -142,7 +143,7 @@ mod test {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
                           onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
 
-            let seed = SeedPeer::from_str(&sample).unwrap();
+            let seed = SeedPeer::from_str(sample).unwrap();
             assert_eq!(
                 seed.public_key.to_hex(),
                 "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a"
@@ -184,7 +185,7 @@ mod test {
 
     mod peer_seed_resolver {
         use super::*;
-        use crate::dns::mock;
+        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
         use trust_dns_client::{
             proto::{
                 op::Query,
@@ -198,9 +199,12 @@ mod test {
         #[tokio::test]
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver {
-                client: DnsClient::connect("1.1.1.1:53".parse().unwrap()).await.unwrap(),
+                client: DnsClient::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
+                    .await
+                    .unwrap(),
             };
             let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
+            println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }
 

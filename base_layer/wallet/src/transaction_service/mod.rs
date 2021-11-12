@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -36,7 +37,8 @@ use futures::{Stream, StreamExt};
 use log::*;
 use tokio::sync::broadcast;
 
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
+use crate::connectivity_service::WalletConnectivityHandle;
+use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
@@ -63,6 +65,7 @@ pub mod protocols;
 pub mod service;
 pub mod storage;
 pub mod tasks;
+mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
@@ -208,7 +211,8 @@ where
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
-            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
+            let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
             let result = TransactionService::new(
                 config,
@@ -222,11 +226,12 @@ where
                 transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
-                connectivity_manager,
+                connectivity,
                 publisher,
                 node_identity,
                 factories,
                 handles.get_shutdown_signal(),
+                base_node_service_handle,
             )
             .start()
             .await;

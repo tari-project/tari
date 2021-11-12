@@ -40,6 +40,8 @@ function update_versions {
    base_layer/p2p
    base_layer/service_framework
    base_layer/wallet
+   base_layer/wallet_ffi
+   base_layer/tari_stratum_ffi
    common
    comms
    comms/dht

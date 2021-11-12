@@ -21,16 +21,23 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::Block,
-    chain_storage::BlockchainDatabase,
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{BlockchainDatabase, ChainStorageError},
+    consensus::ConsensusManager,
+    proof_of_work::Difficulty,
     tari_utilities::Hashable,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
+        BlockSpec,
     },
-    transactions::transaction::{Transaction, UnblindedOutput},
+    transactions::{
+        tari_amount::T,
+        transaction::{Transaction, UnblindedOutput},
+    },
 };
 use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
@@ -38,14 +45,14 @@ fn setup() -> BlockchainDatabase<TempDatabase> {
 }
 
 fn create_next_block(prev_block: &Block, transactions: Vec<Arc<Transaction>>) -> (Arc<Block>, UnblindedOutput) {
-    let (mut block, output) = create_block(
-        1,
-        prev_block.header.height + 1,
-        transactions.into_iter().map(|t| (&*t).clone()).collect(),
+    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let (block, output) = create_block(
+        &rules,
+        prev_block,
+        BlockSpec::new()
+            .with_transactions(transactions.into_iter().map(|t| (&*t).clone()).collect())
+            .finish(),
     );
-    block.header.prev_hash = prev_block.hash();
-    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
-    block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
     (Arc::new(block), output)
 }
 
@@ -156,6 +163,12 @@ mod fetch_headers {
     fn it_returns_genesis() {
         let db = setup();
         let headers = db.fetch_headers(0..).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(0..0).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(0..=0).unwrap();
+        assert_eq!(headers.len(), 1);
+        let headers = db.fetch_headers(..).unwrap();
         assert_eq!(headers.len(), 1);
     }
 
@@ -342,8 +355,8 @@ mod add_block {
         chain_storage::ChainStorageError,
         crypto::tari_utilities::hex::Hex,
         transactions::{
-            helpers::{schema_to_transaction, TransactionSchema},
             tari_amount::T,
+            test_helpers::{schema_to_transaction, TransactionSchema},
             transaction::OutputFeatures,
         },
         txn_schema,
@@ -360,7 +373,7 @@ mod add_block {
             schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![500 * T])]);
         let mut prev_utxo = tx_outputs[0].clone();
 
-        let (block, _) = create_next_block(&prev_block, txns);
+        let (block, _) = create_next_block(prev_block, txns);
         db.add_block(block.clone()).unwrap().assert_added();
 
         let prev_block = block;
@@ -370,7 +383,7 @@ mod add_block {
             from: vec![outputs[1].clone()],
             to: vec![],
             to_outputs: vec![prev_utxo.clone()],
-            fee: 25.into(),
+            fee: 5.into(),
             lock_height: 0,
             features: Default::default(),
             script: tari_crypto::script![Nop],
@@ -395,7 +408,7 @@ mod add_block {
             from: vec![outputs[1].clone()],
             to: vec![],
             to_outputs: vec![prev_utxo],
-            fee: 25.into(),
+            fee: 5.into(),
             lock_height: 0,
             features: Default::default(),
             script: tari_crypto::script![Nop],
@@ -426,6 +439,44 @@ mod fetch_total_size_stats {
         let db = setup();
         let stats = db.fetch_total_size_stats().unwrap();
         // Returns one per db
-        assert_eq!(stats.sizes().len(), 19);
+        assert_eq!(stats.sizes().len(), 20);
+    }
+}
+
+mod prepare_new_block {
+    use super::*;
+
+    #[test]
+    fn it_errors_for_genesis_block() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
+        let err = db.prepare_new_block(template).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+    }
+
+    #[test]
+    fn it_errors_for_non_tip_template() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let next_block = BlockHeader::from_previous(genesis.header());
+        let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        // This would cause a panic if the sanity checks were not there
+        template.header.height = 100;
+        let err = db.prepare_new_block(template.clone()).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+        template.header.height = 1;
+        template.header.prev_hash[0] += 1;
+        let err = db.prepare_new_block(template).unwrap_err();
+        assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
+    }
+    #[test]
+    fn it_prepares_the_first_block() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let next_block = BlockHeader::from_previous(genesis.header());
+        let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let block = db.prepare_new_block(template).unwrap();
+        assert_eq!(block.header.height, 1);
     }
 }

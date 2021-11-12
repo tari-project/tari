@@ -32,7 +32,11 @@ use crate::{
 use aes_gcm::{
     aead::{generic_array::GenericArray, Aead},
     Aes256Gcm,
-    Error as AeadError,
+    NewAead,
+};
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
 };
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
@@ -41,20 +45,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::PeerFeatures,
-    tor::TorIdentity,
-    types::{CommsPublicKey, CommsSecretKey},
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
+use tari_crypto::tari_utilities::{
+    hex::{from_hex, Hex},
+    message_format::MessageFormat,
 };
-use tari_crypto::{
-    keys::PublicKey,
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        message_format::MessageFormat,
-        ByteArray,
-    },
-};
+use tari_key_manager::cipher_seed::CipherSeed;
+use tokio::time::Instant;
 
 const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 
@@ -65,8 +62,11 @@ pub struct WalletSqliteDatabase {
     cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Result<Self, WalletStorageError> {
-        check_db_encryption_status(&database_connection, cipher.clone())?;
+    pub fn new(
+        database_connection: WalletDbConnection,
+        passphrase: Option<String>,
+    ) -> Result<Self, WalletStorageError> {
+        let cipher = check_db_encryption_status(&database_connection, passphrase)?;
 
         Ok(Self {
             database_connection,
@@ -74,45 +74,38 @@ impl WalletSqliteDatabase {
         })
     }
 
-    fn set_master_secret_key(
-        &self,
-        secret_key: &CommsSecretKey,
-        conn: &SqliteConnection,
-    ) -> Result<(), WalletStorageError> {
+    fn set_master_seed(&self, seed: &CipherSeed, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
 
         match cipher.as_ref() {
             None => {
-                WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), secret_key.to_hex()).set(&conn)?;
-                let public_key = CommsPublicKey::from_secret_key(&secret_key);
-                WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
+                let seed_bytes = seed.encipher(None)?;
+                WalletSettingSql::new(DbKey::MasterSeed.to_string(), seed_bytes.to_hex()).set(conn)?;
             },
             Some(cipher) => {
-                let public_key = CommsPublicKey::from_secret_key(&secret_key);
-                WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
-                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, secret_key.to_vec())
-                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
-                WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), ciphertext_integral_nonce.to_hex())
-                    .set(&conn)?;
+                let seed_bytes = seed.encipher(None)?;
+                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(cipher, seed_bytes)
+                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+                WalletSettingSql::new(DbKey::MasterSeed.to_string(), ciphertext_integral_nonce.to_hex()).set(conn)?;
             },
         }
 
         Ok(())
     }
 
-    fn get_master_secret_key(&self, conn: &SqliteConnection) -> Result<Option<CommsSecretKey>, WalletStorageError> {
+    fn get_master_seed(&self, conn: &SqliteConnection) -> Result<Option<CipherSeed>, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(key_str) = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)? {
-            let secret_key = match cipher.as_ref() {
-                None => CommsSecretKey::from_hex(key_str.as_str())?,
+        if let Some(seed_str) = WalletSettingSql::get(DbKey::MasterSeed.to_string(), conn)? {
+            let seed = match cipher.as_ref() {
+                None => CipherSeed::from_enciphered_bytes(&from_hex(seed_str.as_str())?, None)?,
                 Some(cipher) => {
-                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(key_str.as_str())?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
-                    CommsSecretKey::from_bytes(decrypted_key_bytes.as_slice())?
+                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(cipher, from_hex(seed_str.as_str())?)
+                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+                    CipherSeed::from_enciphered_bytes(&decrypted_key_bytes, None)?
                 },
             };
 
-            Ok(Some(secret_key))
+            Ok(Some(seed))
         } else {
             Ok(None)
         }
@@ -122,7 +115,7 @@ impl WalletSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.decrypt(cipher)
-                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
         }
         Ok(())
     }
@@ -131,13 +124,13 @@ impl WalletSqliteDatabase {
         let cipher = acquire_read_lock!(self.cipher);
         if let Some(cipher) = cipher.as_ref() {
             o.encrypt(cipher)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
         }
         Ok(())
     }
 
     fn get_comms_address(&self, conn: &SqliteConnection) -> Result<Option<Multiaddr>, WalletStorageError> {
-        if let Some(key_str) = WalletSettingSql::get(DbKey::CommsAddress.to_string(), &conn)? {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::CommsAddress.to_string(), conn)? {
             Ok(Some(
                 Multiaddr::from_str(key_str.as_str())
                     .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?,
@@ -148,7 +141,7 @@ impl WalletSqliteDatabase {
     }
 
     fn get_comms_features(&self, conn: &SqliteConnection) -> Result<Option<PeerFeatures>, WalletStorageError> {
-        if let Some(key_str) = WalletSettingSql::get(DbKey::CommsFeatures.to_string(), &conn)? {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::CommsFeatures.to_string(), conn)? {
             let features = u64::from_str(&key_str).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             let peer_features = PeerFeatures::from_bits(features);
             Ok(peer_features)
@@ -164,13 +157,13 @@ impl WalletSqliteDatabase {
             .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
         match cipher.as_ref() {
             None => {
-                WalletSettingSql::new(DbKey::TorId.to_string(), tor_string).set(&conn)?;
+                WalletSettingSql::new(DbKey::TorId.to_string(), tor_string).set(conn)?;
             },
             Some(cipher) => {
                 let bytes = bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, bytes)
-                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
-                WalletSettingSql::new(DbKey::TorId.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
+                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(cipher, bytes)
+                    .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+                WalletSettingSql::new(DbKey::TorId.to_string(), ciphertext_integral_nonce.to_hex()).set(conn)?;
             },
         }
 
@@ -179,14 +172,14 @@ impl WalletSqliteDatabase {
 
     fn get_tor_id(&self, conn: &SqliteConnection) -> Result<Option<DbValue>, WalletStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        if let Some(key_str) = WalletSettingSql::get(DbKey::TorId.to_string(), &conn)? {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::TorId.to_string(), conn)? {
             let id = match cipher.as_ref() {
                 None => {
                     TorIdentity::from_json(&key_str).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
                 },
                 Some(cipher) => {
-                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(&key_str)?)
-                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
+                    let decrypted_key_bytes = decrypt_bytes_integral_nonce(cipher, from_hex(&key_str)?)
+                        .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
                     bincode::deserialize(&decrypted_key_bytes)
                         .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?
                 },
@@ -199,12 +192,12 @@ impl WalletSqliteDatabase {
 
     fn set_chain_metadata(&self, chain: ChainMetadata, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
         let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-        WalletSettingSql::new(DbKey::BaseNodeChainMetadata.to_string(), bytes.to_hex()).set(&conn)?;
+        WalletSettingSql::new(DbKey::BaseNodeChainMetadata.to_string(), bytes.to_hex()).set(conn)?;
         Ok(())
     }
 
     fn get_chain_metadata(&self, conn: &SqliteConnection) -> Result<Option<ChainMetadata>, WalletStorageError> {
-        if let Some(key_str) = WalletSettingSql::get(DbKey::BaseNodeChainMetadata.to_string(), &conn)? {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::BaseNodeChainMetadata.to_string(), conn)? {
             let chain_metadata = bincode::deserialize(&from_hex(&key_str)?)
                 .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             Ok(Some(chain_metadata))
@@ -214,15 +207,21 @@ impl WalletSqliteDatabase {
     }
 
     fn insert_key_value_pair(&self, kvp: DbKeyValuePair) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
+        let kvp_text;
         match kvp {
-            DbKeyValuePair::MasterSecretKey(sk) => {
-                self.set_master_secret_key(&sk, &(*conn))?;
+            DbKeyValuePair::MasterSeed(seed) => {
+                kvp_text = "MasterSeed";
+                self.set_master_seed(&seed, &(*conn))?;
             },
             DbKeyValuePair::TorId(node_id) => {
+                kvp_text = "TorId";
                 self.set_tor_id(node_id, &(*conn))?;
             },
             DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
+                kvp_text = "BaseNodeChainMetadata";
                 self.set_chain_metadata(metadata, &(*conn))?;
             },
             DbKeyValuePair::ClientKeyValue(k, v) => {
@@ -238,28 +237,46 @@ impl WalletSqliteDatabase {
                 self.encrypt_if_necessary(&mut client_key_value)?;
 
                 client_key_value.set(&conn)?;
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - insert_key_value_pair 'ClientKeyValue': lock {} + db_op {} = {} ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
 
                 return Ok(value_to_return.map(|v| DbValue::ClientValue(v.value)));
             },
             DbKeyValuePair::CommsAddress(ca) => {
+                kvp_text = "CommsAddress";
                 WalletSettingSql::new(DbKey::CommsAddress.to_string(), ca.to_string()).set(&conn)?;
             },
             DbKeyValuePair::CommsFeatures(cf) => {
+                kvp_text = "CommsFeatures";
                 WalletSettingSql::new(DbKey::CommsFeatures.to_string(), cf.bits().to_string()).set(&conn)?;
             },
         }
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - insert_key_value_pair '{}': lock {} + db_op {} = {} ms",
+            kvp_text,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
         Ok(None)
     }
 
     fn remove_key(&self, k: DbKey) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
         match k {
-            DbKey::MasterSecretKey => {
-                let _ = WalletSettingSql::clear(DbKey::MasterSecretKey.to_string(), &conn)?;
+            DbKey::MasterSeed => {
+                let _ = WalletSettingSql::clear(DbKey::MasterSeed.to_string(), &conn)?;
             },
-            DbKey::MasterPublicKey => return Err(WalletStorageError::OperationNotSupported),
-            DbKey::ClientKey(k) => {
-                if ClientKeyValueSql::clear(&k, &conn)? {
+            DbKey::ClientKey(ref k) => {
+                if ClientKeyValueSql::clear(k, &conn)? {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
@@ -275,24 +292,38 @@ impl WalletSqliteDatabase {
             DbKey::TorId => {
                 let _ = WalletSettingSql::clear(DbKey::TorId.to_string(), &conn)?;
             },
+            DbKey::PassphraseHash => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
+            DbKey::EncryptionSalt => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
         };
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - remove_key '{}': lock {} + db_op {} = {} ms",
+            k,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
         Ok(None)
+    }
+
+    pub fn cipher(&self) -> Option<Aes256Gcm> {
+        let cipher = acquire_read_lock!(self.cipher);
+        (*cipher).clone()
     }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
+        let acquire_lock = start.elapsed();
 
         let result = match key {
-            DbKey::MasterSecretKey => self.get_master_secret_key(&conn)?.map(DbValue::MasterSecretKey),
-            DbKey::MasterPublicKey => {
-                if let Some(key_str) = WalletSettingSql::get(key.to_string(), &conn)? {
-                    Some(DbValue::MasterPublicKey(CommsPublicKey::from_hex(key_str.as_str())?))
-                } else {
-                    None
-                }
-            },
+            DbKey::MasterSeed => self.get_master_seed(&conn)?.map(DbValue::MasterSeed),
             DbKey::ClientKey(k) => match ClientKeyValueSql::get(k, &conn)? {
                 None => None,
                 Some(mut v) => {
@@ -304,7 +335,17 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::TorId => self.get_tor_id(&conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&conn)?.map(DbValue::CommsFeatures),
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&conn)?.map(DbValue::BaseNodeChainMetadata),
+            DbKey::PassphraseHash => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::PassphraseHash),
+            DbKey::EncryptionSalt => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::EncryptionSalt),
         };
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
+            key,
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
         Ok(result)
     }
@@ -316,28 +357,59 @@ impl WalletBackend for WalletSqliteDatabase {
         }
     }
 
-    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
+    fn apply_encryption(&self, passphrase: String) -> Result<Aes256Gcm, WalletStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
         if current_cipher.is_some() {
             return Err(WalletStorageError::AlreadyEncrypted);
         }
 
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
-        let secret_key_str = match WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)? {
-            None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSecretKey)),
+        let acquire_lock = start.elapsed();
+
+        // Check if there is an existing passphrase applied
+        let db_passphrase_hash = WalletSettingSql::get(DbKey::PassphraseHash.to_string(), &conn)?;
+        let db_encryption_salt = WalletSettingSql::get(DbKey::EncryptionSalt.to_string(), &conn)?;
+        if db_encryption_salt.is_some() || db_passphrase_hash.is_some() {
+            return Err(WalletStorageError::AlreadyEncrypted);
+        }
+
+        let argon2 = Argon2::default();
+        let passphrase_salt = SaltString::generate(&mut OsRng);
+
+        let passphrase_hash = argon2
+            .hash_password_simple(passphrase.as_bytes(), &passphrase_salt)
+            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
+            .to_string();
+        let encryption_salt = SaltString::generate(&mut OsRng);
+
+        let derived_encryption_key = argon2
+            .hash_password_simple(passphrase.as_bytes(), encryption_salt.as_str())
+            .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
+            .hash
+            .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
+        let key = GenericArray::from_slice(derived_encryption_key.as_bytes());
+        let cipher = Aes256Gcm::new(key);
+
+        WalletSettingSql::new(DbKey::PassphraseHash.to_string(), passphrase_hash).set(&conn)?;
+        WalletSettingSql::new(DbKey::EncryptionSalt.to_string(), encryption_salt.as_str().to_string()).set(&conn)?;
+
+        let master_seed_str = match WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)? {
+            None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSeed)),
             Some(sk) => sk,
         };
-        // If this fails then the database is already encrypted.
-        let secret_key = CommsSecretKey::from_hex(&secret_key_str).map_err(|_| WalletStorageError::AlreadyEncrypted)?;
-        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, secret_key.to_vec())
-            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
-        WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
+        let master_seed_bytes = from_hex(master_seed_str.as_str())?;
+        // Sanity check that the decrypted bytes are a valid CipherSeed
+        let _master_seed = CipherSeed::from_enciphered_bytes(&master_seed_bytes, None)?;
+        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, master_seed_bytes)
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
+        WalletSettingSql::new(DbKey::MasterSeed.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
 
         // Encrypt all the client values
         let mut client_key_values = ClientKeyValueSql::index(&conn)?;
         for ckv in client_key_values.iter_mut() {
             ckv.encrypt(&cipher)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
             ckv.set(&conn)?;
         }
 
@@ -347,13 +419,20 @@ impl WalletBackend for WalletSqliteDatabase {
             let tor = TorIdentity::from_json(&v).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             let bytes = bincode::serialize(&tor).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, bytes)
-                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
             WalletSettingSql::new(DbKey::TorId.to_string(), ciphertext_integral_nonce.to_hex()).set(&conn)?;
         }
 
-        (*current_cipher) = Some(cipher);
+        (*current_cipher) = Some(cipher.clone());
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
-        Ok(())
+        Ok(cipher)
     }
 
     fn remove_encryption(&self) -> Result<(), WalletStorageError> {
@@ -363,22 +442,28 @@ impl WalletBackend for WalletSqliteDatabase {
         } else {
             return Ok(());
         };
+        let start = Instant::now();
         let conn = self.database_connection.acquire_lock();
-        let secret_key_str = match WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)? {
-            None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSecretKey)),
+        let acquire_lock = start.elapsed();
+        let master_seed_str = match WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)? {
+            None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSeed)),
             Some(sk) => sk,
         };
 
-        let secret_key_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(secret_key_str.as_str())?)
-            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
-        let decrypted_key = CommsSecretKey::from_bytes(secret_key_bytes.as_slice())?;
-        WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), decrypted_key.to_hex()).set(&conn)?;
+        let master_seed_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(master_seed_str.as_str())?)
+            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
+        // Sanity check that the decrypted bytes are a valid CipherSeed
+        let _master_seed = CipherSeed::from_enciphered_bytes(&master_seed_bytes, None)?;
+        WalletSettingSql::new(DbKey::MasterSeed.to_string(), master_seed_bytes.to_hex()).set(&conn)?;
+
+        let _ = WalletSettingSql::clear(DbKey::PassphraseHash.to_string(), &conn)?;
+        let _ = WalletSettingSql::clear(DbKey::EncryptionSalt.to_string(), &conn)?;
 
         // Decrypt all the client values
         let mut client_key_values = ClientKeyValueSql::index(&conn)?;
         for ckv in client_key_values.iter_mut() {
             ckv.decrypt(&cipher)
-                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
             ckv.set(&conn)?;
         }
 
@@ -386,7 +471,7 @@ impl WalletBackend for WalletSqliteDatabase {
         let key_str = WalletSettingSql::get(DbKey::TorId.to_string(), &conn)?;
         if let Some(v) = key_str {
             let decrypted_key_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(v.as_str())?)
-                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e.to_string())))?;
+                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
             let tor_id: TorIdentity = bincode::deserialize(&decrypted_key_bytes)
                 .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             let tor_string = tor_id
@@ -397,6 +482,13 @@ impl WalletBackend for WalletSqliteDatabase {
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
 
         Ok(())
     }
@@ -409,13 +501,46 @@ impl WalletBackend for WalletSqliteDatabase {
 /// Master Public Key that is stored in the db
 fn check_db_encryption_status(
     database_connection: &WalletDbConnection,
-    cipher: Option<Aes256Gcm>,
-) -> Result<(), WalletStorageError> {
+    passphrase: Option<String>,
+) -> Result<Option<Aes256Gcm>, WalletStorageError> {
+    let start = Instant::now();
     let conn = database_connection.acquire_lock();
-    let secret_key = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)?;
-    let db_public_key = WalletSettingSql::get(DbKey::MasterPublicKey.to_string(), &conn)?;
+    let acquire_lock = start.elapsed();
 
-    if cipher.is_some() && secret_key.is_none() {
+    let db_passphrase_hash = WalletSettingSql::get(DbKey::PassphraseHash.to_string(), &conn)?;
+    let db_encryption_salt = WalletSettingSql::get(DbKey::EncryptionSalt.to_string(), &conn)?;
+
+    let cipher = match (passphrase, db_passphrase_hash, db_encryption_salt) {
+        (Some(_), None, _) => {
+            error!(
+                target: LOG_TARGET,
+                "Passphrase is provided but database is not encrypted"
+            );
+            return Err(WalletStorageError::InvalidPassphrase);
+        },
+        (Some(passphrase), Some(db_passphrase_hash), Some(encryption_salt)) => {
+            let argon2 = Argon2::default();
+            let stored_hash =
+                PasswordHash::new(&db_passphrase_hash).map_err(|e| WalletStorageError::AeadError(e.to_string()))?;
+            if let Err(e) = argon2.verify_password(passphrase.as_bytes(), &stored_hash) {
+                error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
+                return Err(WalletStorageError::InvalidPassphrase);
+            }
+
+            let derived_encryption_key = argon2
+                .hash_password_simple(passphrase.as_bytes(), encryption_salt.as_str())
+                .map_err(|e| WalletStorageError::AeadError(e.to_string()))?
+                .hash
+                .ok_or_else(|| WalletStorageError::AeadError("Problem generating encryption key hash".to_string()))?;
+            let key = GenericArray::from_slice(derived_encryption_key.as_bytes());
+            Some(Aes256Gcm::new(key))
+        },
+        _ => None,
+    };
+
+    let secret_seed = WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)?;
+
+    if cipher.is_some() && secret_seed.is_none() {
         error!(
             target: LOG_TARGET,
             "Cipher is provided but there is no Master Secret Key in DB to decrypt"
@@ -423,9 +548,9 @@ fn check_db_encryption_status(
         return Err(WalletStorageError::InvalidEncryptionCipher);
     }
 
-    if let Some(sk) = secret_key {
-        let master_secret_key = match CommsSecretKey::from_hex(sk.as_str()) {
-            Ok(sk) => {
+    if let Some(sk) = secret_seed {
+        match CipherSeed::from_enciphered_bytes(&from_hex(sk.as_str())?, None) {
+            Ok(_sk) => {
                 // This means the key was unencrypted
                 if cipher.is_some() {
                     error!(
@@ -434,7 +559,6 @@ fn check_db_encryption_status(
                     );
                     return Err(WalletStorageError::InvalidEncryptionCipher);
                 }
-                sk
             },
             Err(_) => {
                 // This means the secret key was encrypted. Try decrypt
@@ -448,16 +572,16 @@ fn check_db_encryption_status(
                     let nonce = GenericArray::from_slice(sk_bytes.as_slice());
 
                     let decrypted_key = cipher_inner.decrypt(nonce, data.as_ref()).map_err(|e| {
-                        error!(target: LOG_TARGET, "Incorrect password ({})", e);
-                        WalletStorageError::IncorrectPassword
+                        error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
+                        WalletStorageError::InvalidPassphrase
                     })?;
-                    CommsSecretKey::from_bytes(decrypted_key.as_slice()).map_err(|_| {
+                    let _ = CipherSeed::from_enciphered_bytes(&decrypted_key, None).map_err(|_| {
                         error!(
                             target: LOG_TARGET,
-                            "Decrypted Master Secret Key cannot be parsed into a RistrettoSecretKey"
+                            "Decrypted Master Secret Key cannot be parsed into a Cipher Seed"
                         );
                         WalletStorageError::InvalidEncryptionCipher
-                    })?
+                    })?;
                 } else {
                     error!(
                         target: LOG_TARGET,
@@ -467,45 +591,22 @@ fn check_db_encryption_status(
                 }
             },
         };
-
-        if let Some(pk_hex) = db_public_key {
-            let db_master_public_key = CommsPublicKey::from_hex(pk_hex.as_str())?;
-            let public_key = CommsPublicKey::from_secret_key(&master_secret_key);
-            if public_key != db_master_public_key {
-                if cipher.is_some() {
-                    error!(
-                        target: LOG_TARGET,
-                        "Cipher is provided but does not decrypt the stored Master Secret Key that produces the \
-                         stored Comms Public Key."
-                    );
-                    return Err(WalletStorageError::InvalidEncryptionCipher);
-                } else {
-                    // If the db is not encrypted then update the stored public key to keep it in sync.
-                    WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
-                }
-            }
-        } else {
-            if cipher.is_some() {
-                // This means the database was not in the correct state for a Cipher to be provided.
-                error!(
-                    target: LOG_TARGET,
-                    "Cipher is provided but Master Public Key is not present in the database"
-                );
-                return Err(WalletStorageError::InvalidEncryptionCipher);
-            }
-            // Due to migration the associated public key is not stored and should be
-            let public_key_hex = CommsPublicKey::from_secret_key(&master_secret_key).to_hex();
-            WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key_hex).set(&conn)?;
-        }
     }
+    trace!(
+        target: LOG_TARGET,
+        "sqlite profile - check_db_encryption_status: lock {} + db_op {} = {} ms",
+        acquire_lock.as_millis(),
+        (start.elapsed() - acquire_lock).as_millis(),
+        start.elapsed().as_millis()
+    );
 
-    Ok(())
+    Ok(cipher)
 }
 
 /// A Sql version of the wallet setting key-value table
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
 #[table_name = "wallet_settings"]
-struct WalletSettingSql {
+pub(crate) struct WalletSettingSql {
     key: String,
     value: String,
 }
@@ -587,18 +688,18 @@ impl ClientKeyValueSql {
 
 impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
     #[allow(unused_assignments)]
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
-        let encrypted_value = encrypt_bytes_integral_nonce(&cipher, self.clone().value.as_bytes().to_vec())?;
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
+        let encrypted_value = encrypt_bytes_integral_nonce(cipher, self.value.as_bytes().to_vec())?;
         self.value = encrypted_value.to_hex();
         Ok(())
     }
 
     #[allow(unused_assignments)]
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let decrypted_value =
-            decrypt_bytes_integral_nonce(&cipher, from_hex(self.value.as_str()).map_err(|_| aes_gcm::Error)?)?;
+            decrypt_bytes_integral_nonce(cipher, from_hex(self.value.as_str()).map_err(|e| e.to_string())?)?;
         self.value = from_utf8(decrypted_value.as_slice())
-            .map_err(|_| AeadError)?
+            .map_err(|e| e.to_string())?
             .to_string();
         Ok(())
     }
@@ -611,16 +712,8 @@ mod test {
         sqlite_db::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, Aead, NewAead},
-        Aes256Gcm,
-    };
-    use rand::{rngs::OsRng, RngCore};
-    use tari_comms::types::{CommsPublicKey, CommsSecretKey};
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        tari_utilities::{hex::Hex, ByteArray},
-    };
+    use tari_crypto::tari_utilities::hex::Hex;
+    use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -630,105 +723,67 @@ mod test {
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
-        let secret_key1 = CommsSecretKey::random(&mut OsRng);
-        let public_key1 = CommsPublicKey::from_secret_key(&secret_key1);
+        let secret_seed1 = CipherSeed::new();
+
         {
             let conn = connection.acquire_lock();
-            WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), secret_key1.to_hex())
-                .set(&conn)
-                .unwrap();
+            WalletSettingSql::new(
+                DbKey::MasterSeed.to_string(),
+                secret_seed1.encipher(None).unwrap().to_hex(),
+            )
+            .set(&conn)
+            .unwrap();
         }
 
         let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
 
-        if let DbValue::MasterSecretKey(sk) = db.fetch(&DbKey::MasterSecretKey).unwrap().unwrap() {
-            assert_eq!(sk, secret_key1);
+        if let DbValue::MasterSeed(sk) = db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
+            assert_eq!(sk, secret_seed1);
         } else {
             panic!("Should be a Master Secret Key");
         };
-        if let DbValue::MasterPublicKey(pk) = db.fetch(&DbKey::MasterPublicKey).unwrap().unwrap() {
-            assert_eq!(pk, public_key1);
-        } else {
-            panic!("Should be a Master Public Key");
-        };
 
-        let secret_key2 = CommsSecretKey::random(&mut OsRng);
-        let public_key2 = CommsPublicKey::from_secret_key(&secret_key2);
+        let secret_seed2 = CipherSeed::new();
+
         {
             let conn = connection.acquire_lock();
-            db.set_master_secret_key(&secret_key2, &conn).unwrap();
+            db.set_master_seed(&secret_seed2, &conn).unwrap();
         }
-        if let DbValue::MasterPublicKey(pk) = db.fetch(&DbKey::MasterPublicKey).unwrap().unwrap() {
-            assert_eq!(pk, public_key2);
+
+        if let DbValue::MasterSeed(sk) = db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
+            assert_eq!(sk, secret_seed2);
         } else {
-            panic!("Should be a Master Public Key");
+            panic!("Should be a Master Secret Key");
         };
     }
 
     #[test]
-    pub fn test_encrypted_secret_public_key_validation_during_startup() {
+    pub fn test_encrypted_seed_validation_during_startup() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
+        let passphrase = "an example very very secret key.".to_string();
 
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
 
-        let secret_key = CommsSecretKey::random(&mut OsRng);
+        let seed = CipherSeed::new();
         {
             let conn = connection.acquire_lock();
-            WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), secret_key.to_hex())
+            WalletSettingSql::new(DbKey::MasterSeed.to_string(), seed.encipher(None).unwrap().to_hex())
                 .set(&conn)
                 .unwrap();
         }
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
-
-        // encrypt the private key
-        let secret_key_bytes = secret_key.to_vec();
-        let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
-        let nonce_ga = GenericArray::from_slice(&nonce);
-        let mut ciphertext = cipher
-            .encrypt(nonce_ga, secret_key_bytes.as_ref())
-            .expect("encryption failure!");
-
-        let mut ciphertext_integral_nonce = nonce.to_vec();
-
-        ciphertext_integral_nonce.append(&mut ciphertext);
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(passphrase.clone())).is_err());
 
         {
-            let conn = connection.acquire_lock();
-            WalletSettingSql::new(DbKey::MasterSecretKey.to_string(), ciphertext_integral_nonce.to_hex())
-                .set(&conn)
-                .unwrap();
+            let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
+            db.apply_encryption(passphrase.clone()).unwrap();
         }
 
         assert!(WalletSqliteDatabase::new(connection.clone(), None).is_err());
-        // No public key to compare against
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
-
-        // insert incorrect public key
-        let incorrect_public_key = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut OsRng));
-        {
-            let conn = connection.acquire_lock();
-            WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), incorrect_public_key.to_hex())
-                .set(&conn)
-                .unwrap();
-        }
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
-
-        // insert correct public key
-        let public_key = CommsPublicKey::from_secret_key(&secret_key);
-        {
-            let conn = connection.acquire_lock();
-            WalletSettingSql::new(DbKey::MasterPublicKey.to_string(), public_key.to_hex())
-                .set(&conn)
-                .unwrap();
-        }
-        assert!(WalletSqliteDatabase::new(connection, Some(cipher)).is_ok());
+        assert!(WalletSqliteDatabase::new(connection, Some(passphrase)).is_ok());
     }
 
     #[test]
@@ -739,7 +794,7 @@ mod test {
         let db_path = format!("{}/{}", db_folder, db_name);
         let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
-        let secret_key = CommsSecretKey::random(&mut OsRng);
+        let seed = CipherSeed::new();
         let key_values = vec![
             ClientKeyValueSql::new("key1".to_string(), "value1".to_string()),
             ClientKeyValueSql::new("key2".to_string(), "value2".to_string()),
@@ -748,25 +803,24 @@ mod test {
         let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
         {
             let conn = connection.acquire_lock();
-            db.set_master_secret_key(&secret_key, &conn).unwrap();
+            db.set_master_seed(&seed, &conn).unwrap();
             for kv in key_values.iter() {
                 kv.set(&conn).unwrap();
             }
         }
 
-        let read_secret_key1 = match db.fetch(&DbKey::MasterSecretKey).unwrap().unwrap() {
-            DbValue::MasterSecretKey(sk) => sk,
+        let read_seed1 = match db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
+            DbValue::MasterSeed(sk) => sk,
             _ => {
                 panic!("Should be able to read Key");
             },
         };
-        assert_eq!(secret_key, read_secret_key1);
+        assert_eq!(seed, read_seed1);
 
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
-        db.apply_encryption(cipher).unwrap();
-        let read_secret_key2 = match db.fetch(&DbKey::MasterSecretKey).unwrap().unwrap() {
-            DbValue::MasterSecretKey(sk) => sk,
+        let passphrase = "an example very very secret key.".to_string();
+        db.apply_encryption(passphrase).unwrap();
+        let read_seed2 = match db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
+            DbValue::MasterSeed(sk) => sk,
             _ => {
                 panic!("Should be able to read Key");
             },
@@ -783,36 +837,28 @@ mod test {
             }
         }
 
-        assert_eq!(secret_key, read_secret_key2);
+        assert_eq!(seed, read_seed2);
         {
             let conn = connection.acquire_lock();
-            let secret_key_str = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)
+            let secret_key_str = WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)
                 .unwrap()
                 .unwrap();
             assert!(secret_key_str.len() > 64);
-            db.set_master_secret_key(&secret_key, &conn).unwrap();
-            let secret_key_str = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)
+            db.set_master_seed(&seed, &conn).unwrap();
+            let secret_key_str = WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)
                 .unwrap()
                 .unwrap();
             assert!(secret_key_str.len() > 64);
         }
 
         db.remove_encryption().unwrap();
-        let read_secret_key3 = match db.fetch(&DbKey::MasterSecretKey).unwrap().unwrap() {
-            DbValue::MasterSecretKey(sk) => sk,
+        let read_seed3 = match db.fetch(&DbKey::MasterSeed).unwrap().unwrap() {
+            DbValue::MasterSeed(sk) => sk,
             _ => {
                 panic!("Should be able to read Key");
             },
         };
-        assert_eq!(secret_key, read_secret_key3);
-
-        {
-            let conn = connection.acquire_lock();
-            let secret_key_str = WalletSettingSql::get(DbKey::MasterSecretKey.to_string(), &conn)
-                .unwrap()
-                .unwrap();
-            assert_eq!(secret_key_str.len(), 64);
-        }
+        assert_eq!(seed, read_seed3);
 
         for kv in key_values.iter() {
             match db.fetch(&DbKey::ClientKey(kv.key.clone())).unwrap().unwrap() {

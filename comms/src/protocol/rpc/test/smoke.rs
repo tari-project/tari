@@ -24,6 +24,7 @@ use crate::{
     framing,
     multiplexing::Yamux,
     protocol::{
+        rpc,
         rpc::{
             context::RpcCommsBackend,
             error::HandshakeRejectReason,
@@ -43,7 +44,6 @@ use crate::{
             RpcError,
             RpcServer,
             RpcStatusCode,
-            RPC_MAX_FRAME_SIZE,
         },
         ProtocolEvent,
         ProtocolId,
@@ -62,6 +62,7 @@ use tari_test_utils::unpack_enum;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
+    time,
 };
 
 pub(super) async fn setup_service<T: GreetingRpc>(
@@ -192,8 +193,8 @@ async fn request_response_errors_and_streaming() {
     match err {
         // Because of the race between closing the request stream and sending on that stream in the above call
         // We can either get "this client was closed" or "the request you made was cancelled".
-        // If we delay some small time, we'll always get the former (but arbitrary delays cause flakiness and should be
-        // avoided)
+        // If we delay some small time, we'll probably always get the former (but arbitrary delays cause flakiness and
+        // should be avoided)
         RpcError::ClientClosed | RpcError::RequestCancelled => {},
         err => panic!("Unexpected error {:?}", err),
     }
@@ -248,21 +249,26 @@ async fn response_too_big() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
 
-    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
-    let mut client = GreetingClient::builder().connect(framed).await.unwrap();
+    let framed = framing::canonical(socket, rpc::max_response_size());
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
 
     // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
     let err = client
-        .reply_with_msg_of_size(RPC_MAX_FRAME_SIZE as u64)
+        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 + 1)
         .await
         .unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
     unpack_enum!(RpcStatusCode::MalformedResponse = status.status_code());
 
     // Check that the exact frame size boundary works and that the session is still going
-    // Take off 14 bytes for the RpcResponse overhead (i.e request_id + status + flags + msg field + vec_char(len(msg)))
-    let max_size = RPC_MAX_FRAME_SIZE - 14;
-    let _ = client.reply_with_msg_of_size(max_size as u64).await.unwrap();
+    let _ = client
+        .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 - 9)
+        .await
+        .unwrap();
 }
 
 #[runtime::test]
@@ -270,7 +276,7 @@ async fn ping_latency() {
     let (mut muxer, _outbound, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
     let socket = muxer.incoming_mut().next().await.unwrap();
 
-    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
+    let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder().connect(framed).await.unwrap();
 
     let latency = client.ping().await.unwrap();
@@ -384,7 +390,7 @@ async fn stream_still_works_after_cancel() {
     // Request was sent
     assert_eq!(service_impl.call_count(), 1);
 
-    // Subsequent call still works, after waiting for the previous one
+    // Subsequent call still works
     let resp = client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
@@ -397,4 +403,51 @@ async fn stream_still_works_after_cancel() {
     resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
         r.unwrap();
     });
+}
+
+#[runtime::test]
+async fn stream_interruption_handling() {
+    let service_impl = GreetingService::default();
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 10000,
+            item_size: 100,
+            delay_ms: 100,
+        })
+        .await
+        .unwrap();
+
+    let _ = resp.next().await.unwrap().unwrap();
+    // Drop it before the stream is finished
+    drop(resp);
+
+    // Subsequent call still works, without waiting
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 1,
+        })
+        .await
+        .unwrap();
+
+    let next_fut = resp.next();
+    tokio::pin!(next_fut);
+    // Allow 10 seconds, if the previous stream is still streaming, it will take a while for this stream to start and
+    // the timeout will expire
+    time::timeout(Duration::from_secs(10), next_fut)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
 }

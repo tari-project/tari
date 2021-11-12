@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::service::OnlineStatus;
-use crate::connectivity_service::{error::WalletConnectivityError, watch::Watch};
+use crate::{connectivity_service::WalletConnectivityInterface, util::watch::Watch};
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
+    types::CommsPublicKey,
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -53,10 +54,21 @@ impl WalletConnectivityHandle {
             online_status_rx,
         }
     }
+}
 
-    pub async fn set_base_node(&mut self, base_node_peer: Peer) -> Result<(), WalletConnectivityError> {
-        self.base_node_watch.broadcast(Some(base_node_peer));
-        Ok(())
+#[async_trait::async_trait]
+impl WalletConnectivityInterface for WalletConnectivityHandle {
+    fn set_base_node(&mut self, base_node_peer: Peer) {
+        if let Some(peer) = self.base_node_watch.borrow().as_ref() {
+            if peer.public_key == base_node_peer.public_key {
+                return;
+            }
+        }
+        self.base_node_watch.send(Some(base_node_peer));
+    }
+
+    fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<Peer>> {
+        self.base_node_watch.get_receiver()
     }
 
     /// Obtain a BaseNodeWalletRpcClient.
@@ -65,7 +77,7 @@ impl WalletConnectivityHandle {
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeWalletRpcClient RPC session.
-    pub async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
+    async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         // Under what conditions do the (1) mpsc channel and (2) oneshot channel error?
         // (1) when the receiver has been dropped
@@ -88,7 +100,7 @@ impl WalletConnectivityHandle {
     /// node/nodes. It will block until this happens. The ONLY other time it will return is if the node is
     /// shutting down, where it will return None. Use this function whenever no work can be done without a
     /// BaseNodeSyncRpcClient RPC session.
-    pub async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
+    async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(WalletConnectivityRequest::ObtainBaseNodeSyncRpcClient(reply_tx))
@@ -98,19 +110,27 @@ impl WalletConnectivityHandle {
         reply_rx.await.ok()
     }
 
-    pub fn get_connectivity_status(&mut self) -> OnlineStatus {
+    fn get_connectivity_status(&mut self) -> OnlineStatus {
         *self.online_status_rx.borrow()
     }
 
-    pub fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
+    fn get_connectivity_status_watch(&self) -> watch::Receiver<OnlineStatus> {
         self.online_status_rx.clone()
     }
 
-    pub fn get_current_base_node_peer(&self) -> Option<Peer> {
+    fn get_current_base_node_peer(&self) -> Option<Peer> {
         self.base_node_watch.borrow().clone()
     }
 
-    pub fn get_current_base_node_id(&self) -> Option<NodeId> {
+    fn get_current_base_node_peer_public_key(&self) -> Option<CommsPublicKey> {
+        self.base_node_watch.borrow().as_ref().map(|p| p.public_key.clone())
+    }
+
+    fn get_current_base_node_id(&self) -> Option<NodeId> {
         self.base_node_watch.borrow().as_ref().map(|p| p.node_id.clone())
+    }
+
+    fn is_base_node_set(&self) -> bool {
+        self.base_node_watch.borrow().is_some()
     }
 }

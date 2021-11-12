@@ -20,19 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
-
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
 use digest::Digest;
 use log::*;
-use rand::rngs::OsRng;
+use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_crypto::{
     common::Blake256,
-    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script,
     script::{ExecutionStack, TariScript},
@@ -50,10 +43,13 @@ use tari_comms::{
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    CryptoFactories,
+use tari_core::{
+    consensus::NetworkConsensus,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+        CryptoFactories,
+    },
 };
 use tari_key_manager::key_manager::KeyManager;
 use tari_p2p::{
@@ -68,7 +64,7 @@ use tari_shutdown::ShutdownSignal;
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
@@ -76,7 +72,6 @@ use crate::{
         handle::OutputManagerHandle,
         storage::{database::OutputManagerBackend, models::KnownOneSidedPaymentScript},
         OutputManagerServiceInitializer,
-        TxId,
     },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
@@ -87,19 +82,16 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
+use tari_common_types::transaction::TxId;
+use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W>
-where
-    T: WalletBackend + 'static,
-    U: TransactionBackend + 'static,
-    V: OutputManagerBackend + 'static,
-    W: ContactsBackend + 'static,
-{
+pub struct Wallet<T, U, V, W> {
+    pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
@@ -131,11 +123,10 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-        recovery_master_key: Option<CommsSecretKey>,
-    ) -> Result<Wallet<T, U, V, W>, WalletError> {
-        let master_secret_key =
-            read_or_create_master_secret_key(recovery_master_key, &mut wallet_database.clone()).await?;
-        let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
+        recovery_seed: Option<CipherSeed>,
+    ) -> Result<Self, WalletError> {
+        let master_seed = read_or_create_master_seed(recovery_seed, &mut wallet_database.clone()).await?;
+        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
 
         let node_identity = Arc::new(NodeIdentity::new(
             comms_secret_key,
@@ -148,7 +139,7 @@ where
 
         let bn_service_db = wallet_database.clone();
 
-        let factories = config.clone().factories;
+        let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
@@ -179,7 +170,7 @@ where
                 output_manager_backend,
                 factories.clone(),
                 config.network,
-                master_secret_key,
+                master_seed,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -252,7 +243,8 @@ where
             .set_node_features(comms.node_identity().features())
             .await?;
 
-        Ok(Wallet {
+        Ok(Self {
+            network: config.network,
             comms,
             dht_service: dht,
             store_and_forward_requester,
@@ -274,7 +266,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.clone().wait_until_shutdown().await;
+        self.comms.to_owned().wait_until_shutdown().await;
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
@@ -301,29 +293,13 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-
-        self.transaction_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.output_manager_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.utxo_scanner_service
-            .set_base_node_public_key(peer.public_key.clone())
-            .await?;
-
-        self.base_node_service.set_base_node_peer(peer).await?;
+        self.wallet_connectivity.set_base_node(peer);
 
         Ok(())
     }
 
-    pub async fn get_base_node_peer(&mut self) -> Result<Option<Peer>, WalletError> {
-        self.base_node_service
-            .get_base_node_peer()
-            .await
-            .map_err(WalletError::BaseNodeServiceError)
+    pub async fn get_base_node_peer(&mut self) -> Option<Peer> {
+        self.wallet_connectivity.get_current_base_node_peer()
     }
 
     pub async fn check_for_update(&self) -> Option<String> {
@@ -501,11 +477,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
-        let key = GenericArray::from_slice(passphrase_hash.as_slice());
-        let cipher = Aes256Gcm::new(key);
-
-        self.db.apply_encryption(cipher.clone()).await?;
+        let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
         self.transaction_service.apply_encryption(cipher).await?;
         Ok(())
@@ -528,30 +500,29 @@ where
     }
 }
 
-async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
-    recovery_master_key: Option<CommsSecretKey>,
+async fn read_or_create_master_seed<T: WalletBackend + 'static>(
+    recovery_seed: Option<CipherSeed>,
     db: &mut WalletDatabase<T>,
-) -> Result<CommsSecretKey, WalletError> {
-    let db_master_secret_key = db.get_master_secret_key().await?;
+) -> Result<CipherSeed, WalletError> {
+    let db_master_seed = db.get_master_seed().await?;
 
-    let master_secret_key = match recovery_master_key {
-        None => match db_master_secret_key {
+    let master_seed = match recovery_seed {
+        None => match db_master_seed {
             None => {
-                let secret_key = CommsSecretKey::random(&mut OsRng);
-                db.set_master_secret_key(secret_key.clone()).await?;
-                secret_key
+                let seed = CipherSeed::new();
+                db.set_master_seed(seed.clone()).await?;
+                seed
             },
-            Some(secret_key) => secret_key,
+            Some(seed) => seed,
         },
-        Some(recovery_key) => {
-            if db_master_secret_key.is_none() {
-                db.set_master_secret_key(recovery_key.clone()).await?;
-                recovery_key
+        Some(recovery_seed) => {
+            if db_master_seed.is_none() {
+                db.set_master_seed(recovery_seed.clone()).await?;
+                recovery_seed
             } else {
                 error!(
                     target: LOG_TARGET,
-                    "Attempted recovery would overwrite the existing wallet database master secret key, causing a \
-                     `MasterSecretKeyMismatch` error."
+                    "Attempted recovery would overwrite the existing wallet database master seed"
                 );
                 let msg = "Wallet already exists! Move the existing wallet database file.".to_string();
                 return Err(WalletError::WalletRecoveryError(msg));
@@ -559,12 +530,12 @@ async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
         },
     };
 
-    Ok(master_secret_key)
+    Ok(master_seed)
 }
 
-fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSecretKey, WalletError> {
+fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-        master_secret_key.clone(),
+        master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );

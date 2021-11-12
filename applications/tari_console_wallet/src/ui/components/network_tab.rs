@@ -250,7 +250,7 @@ impl NetworkTab {
         let (public_address, style) = match self.base_node_edit_mode {
             BaseNodeInputMode::PublicKey => (self.address_field.clone(), Style::default()),
             BaseNodeInputMode::Address => (self.address_field.clone(), Style::default().fg(Color::Magenta)),
-            _ => (display_address(&peer), Style::default()),
+            _ => (display_address(peer), Style::default()),
         };
 
         let address_input = Paragraph::new(public_address)
@@ -416,15 +416,13 @@ impl<B: Backend> Component<B> for NetworkTab {
                 }
             },
             'b' => {
-                if app_state.get_custom_base_node().is_some() {
-                    self.confirmation_dialog = true;
-                } else {
-                    self.base_node_list_state
-                        .set_num_items(app_state.get_base_node_list().len());
-                    self.base_node_edit_mode = BaseNodeInputMode::Selection;
-                    self.base_node_list_state.select(Some(0));
-                    self.detailed_base_node = app_state.get_base_node_list().get(0).map(|(_, peer)| peer.clone());
-                }
+                self.base_node_list_state
+                    .set_num_items(app_state.get_base_node_list().len());
+                self.base_node_edit_mode = BaseNodeInputMode::Selection;
+                self.base_node_list_state.select_first();
+                if let Some(index) = self.base_node_list_state.selected() {
+                    self.detailed_base_node = app_state.get_base_node_list().get(index).map(|(_, peer)| peer.clone());
+                };
             },
             's' => {
                 // set the currently selected base node as a custom base node

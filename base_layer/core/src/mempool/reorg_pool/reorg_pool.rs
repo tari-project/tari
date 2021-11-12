@@ -29,10 +29,7 @@ use crate::{
     transactions::transaction::Transaction,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 use tari_common::configuration::seconds;
 use tari_common_types::types::Signature;
 
@@ -61,93 +58,56 @@ impl Default for ReorgPoolConfig {
 /// from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
 /// oldest transactions will be removed to make space for incoming transactions.
 pub struct ReorgPool {
-    pool_storage: Arc<RwLock<ReorgPoolStorage>>,
+    pool_storage: ReorgPoolStorage,
 }
 
 impl ReorgPool {
     /// Create a new ReorgPool with the specified configuration
     pub fn new(config: ReorgPoolConfig) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(ReorgPoolStorage::new(config))),
+            pool_storage: ReorgPoolStorage::new(config),
         }
     }
 
     /// Insert a set of new transactions into the ReorgPool. Published transactions will have a limited Time-to-live in
     /// the ReorgPool and will be discarded once the Time-to-live threshold has been reached.
-    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), ReorgPoolError> {
-        self.pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .insert_txs(transactions);
+    pub fn insert_txs(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), ReorgPoolError> {
+        self.pool_storage.insert_txs(transactions);
         Ok(())
     }
 
     /// Insert a new transaction into the ReorgPool. Published transactions will have a limited Time-to-live in
     /// the ReorgPool and will be discarded once the Time-to-live threshold has been reached.
-    pub fn _insert(&self, transaction: Arc<Transaction>) -> Result<(), ReorgPoolError> {
-        self.pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .insert(transaction);
+    pub fn _insert(&mut self, transaction: Arc<Transaction>) -> Result<(), ReorgPoolError> {
+        self.pool_storage.insert(transaction);
         Ok(())
     }
 
     /// Check if a transaction is stored in the ReorgPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, ReorgPoolError> {
-        Ok(self
-            .pool_storage
-            .read()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .has_tx_with_excess_sig(excess_sig))
+        Ok(self.pool_storage.has_tx_with_excess_sig(excess_sig))
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions can be
     /// resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
-        &self,
+        &mut self,
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: &[Arc<Block>],
     ) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
         Ok(self
             .pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks))
     }
 
     /// Returns the total number of published transactions stored in the ReorgPool
-    pub fn len(&self) -> Result<usize, ReorgPoolError> {
-        Ok(self
-            .pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .len())
+    pub fn len(&mut self) -> Result<usize, ReorgPoolError> {
+        Ok(self.pool_storage.len())
     }
 
     /// Returns all transaction stored in the ReorgPool.
-    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
-        Ok(self
-            .pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .snapshot())
-    }
-
-    /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self) -> Result<u64, ReorgPoolError> {
-        Ok(self
-            .pool_storage
-            .write()
-            .map_err(|e| ReorgPoolError::BackendError(e.to_string()))?
-            .calculate_weight())
-    }
-}
-
-impl Clone for ReorgPool {
-    fn clone(&self) -> Self {
-        ReorgPool {
-            pool_storage: self.pool_storage.clone(),
-        }
+    pub fn snapshot(&mut self) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
+        Ok(self.pool_storage.snapshot())
     }
 }
 
@@ -172,7 +132,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
 
-        let reorg_pool = ReorgPool::new(ReorgPoolConfig {
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 3,
             tx_ttl: Duration::from_millis(50),
         });
@@ -228,7 +188,7 @@ mod test {
         let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(60), lock: 5500, inputs: 2, outputs: 1).0);
 
-        let reorg_pool = ReorgPool::new(ReorgPoolConfig {
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig {
             storage_capacity: 5,
             tx_ttl: Duration::from_millis(50),
         });

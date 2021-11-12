@@ -2,17 +2,12 @@ use std::collections::HashMap;
 
 use crate::ui::{
     components::{balance::Balance, Component},
-    state::AppState,
+    state::{AppState, CompletedTransactionInfo},
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
 use chrono::{DateTime, Local};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_wallet::transaction_service::storage::models::{
-    CompletedTransaction,
-    TransactionDirection,
-    TransactionStatus,
-};
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -28,7 +23,7 @@ pub struct TransactionsTab {
     selected_tx_list: SelectedTransactionList,
     pending_list_state: WindowedListState,
     completed_list_state: WindowedListState,
-    detailed_transaction: Option<CompletedTransaction>,
+    detailed_transaction: Option<CompletedTransactionInfo>,
     error_message: Option<String>,
     confirmation_dialog: bool,
 }
@@ -197,16 +192,11 @@ impl TransactionsTab {
                     app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
-                let maturity = if let Some(output) = t.transaction.body.outputs().first() {
-                    output.features.maturity
-                } else {
-                    0
-                };
                 let color = match (t.cancelled, chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,
                     // not mature yet
-                    (_, Some(height)) if maturity > height => Color::Yellow,
+                    (_, Some(height)) if t.maturity > height => Color::Yellow,
                     // default
                     _ => Color::Green,
                 };
@@ -218,8 +208,10 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
-            let status = if t.cancelled && t.status == TransactionStatus::Coinbase {
+            let status = if (t.cancelled || !t.valid) && t.status == TransactionStatus::Coinbase {
                 "Abandoned".to_string()
+            } else if t.cancelled && t.status == TransactionStatus::Rejected {
+                "Rejected".to_string()
             } else if t.cancelled {
                 "Cancelled".to_string()
             } else if !t.valid {
@@ -326,8 +318,24 @@ impl TransactionsTab {
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = Span::styled(format!("{}", tx.amount), Style::default().fg(Color::White));
-            let fee = Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White));
-            let status_msg = if tx.cancelled {
+            let fee_details = if tx.is_coinbase {
+                Span::raw("")
+            } else {
+                Span::styled(
+                    format!(
+                        " (weight: {}g, #inputs: {}, #outputs: {})",
+                        tx.weight, tx.inputs_count, tx.outputs_count
+                    ),
+                    Style::default().fg(Color::Gray),
+                )
+            };
+            let fee = Spans::from(vec![
+                Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
+                fee_details,
+            ]);
+            let status_msg = if tx.cancelled && tx.status == TransactionStatus::Rejected {
+                "Rejected".to_string()
+            } else if tx.cancelled {
                 "Cancelled".to_string()
             } else if !tx.valid {
                 "Invalid".to_string()
@@ -341,12 +349,7 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
-            let excess_hex = if tx.transaction.body.kernels().is_empty() {
-                "".to_string()
-            } else {
-                tx.transaction.body.kernels()[0].excess_sig.get_signature().to_hex()
-            };
-            let excess = Span::styled(excess_hex.as_str(), Style::default().fg(Color::White));
+            let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(&tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && !tx.cancelled {
                 format!("{} required confirmations met", required_confirmations)
@@ -366,15 +369,8 @@ impl TransactionsTab {
                     .unwrap_or_else(|| "N/A".to_string()),
                 Style::default().fg(Color::White),
             );
-            let maturity = tx
-                .transaction
-                .body
-                .outputs()
-                .first()
-                .map(|o| o.features.maturity)
-                .unwrap_or_else(|| 0);
-            let maturity = if maturity > 0 {
-                format!("Spendable at Block #{}", maturity)
+            let maturity = if tx.maturity > 0 {
+                format!("Spendable at Block #{}", tx.maturity)
             } else {
                 "N/A".to_string()
             };

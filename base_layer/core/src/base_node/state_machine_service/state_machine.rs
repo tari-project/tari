@@ -22,7 +22,7 @@
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
-        comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
             states,
             states::{BaseNodeState, HorizonSyncConfig, StateEvent, StateInfo, StatusInfo, SyncPeerConfig, SyncStatus},
@@ -44,7 +44,7 @@ use tokio::sync::{broadcast, watch};
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
     pub horizon_sync_config: HorizonSyncConfig,
@@ -54,6 +54,23 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
+    pub block_sync_validation_concurrency: usize,
+}
+
+impl Default for BaseNodeStateMachineConfig {
+    fn default() -> Self {
+        Self {
+            block_sync_config: Default::default(),
+            horizon_sync_config: Default::default(),
+            sync_peer_config: Default::default(),
+            orphan_db_clean_out_threshold: 0,
+            pruning_horizon: 0,
+            max_randomx_vms: 0,
+            blocks_behind_before_considered_lagging: 0,
+            bypass_range_proof_verification: false,
+            block_sync_validation_concurrency: 8,
+        }
+    }
 }
 
 /// A Tari full node, aka Base Node.
@@ -66,7 +83,6 @@ pub struct BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) _outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
     pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -87,7 +103,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
-        outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -102,7 +117,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db,
             local_node_interface,
-            _outbound_nci: outbound_nci,
             connectivity,
             peer_manager,
             metadata_event_stream,
@@ -124,22 +138,20 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (Listening(s), InitialSync) => HeaderSync(s.into()),
-            (HeaderSync(_), HeadersSynchronized(conn)) => {
-                if self.config.pruning_horizon > 0 {
-                    HorizonStateSync(states::HorizonStateSync::with_peer(conn))
-                } else {
-                    BlockSync(states::BlockSync::with_peer(conn))
-                }
-            },
+            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
-            (HeaderSync(s), NetworkSilence) => Listening(s.into()),
+            (HeaderSync(s), Continue | NetworkSilence) => Listening(s.into()),
+            (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
+
+            (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
+            (DecideNextSync(s), Continue) => Listening(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
+
+            (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
             (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
-            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
-            (Listening(_), FallenBehind(LaggingBehindHorizon(_, sync_peers))) => HeaderSync(sync_peers.into()),
+
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
@@ -226,6 +238,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         match state {
             Starting(s) => s.next_event(shared_state).await,
             HeaderSync(s) => s.next_event(shared_state).await,
+            DecideNextSync(s) => s.next_event(shared_state).await,
             HorizonStateSync(s) => s.next_event(shared_state).await,
             BlockSync(s) => s.next_event(shared_state).await,
             Listening(s) => s.next_event(shared_state).await,

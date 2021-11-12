@@ -29,7 +29,6 @@ use std::time::Duration;
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
-        chain_metadata_service::PeerChainMetadata,
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
         state_machine_service::{
@@ -69,7 +68,7 @@ async fn test_listening_lagging() {
         .build();
     let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -89,7 +88,6 @@ async fn test_listening_lagging() {
     let mut alice_state_machine = BaseNodeStateMachine::new(
         alice_node.blockchain_db.clone().into(),
         alice_node.local_nci.clone(),
-        alice_node.outbound_nci.clone(),
         alice_node.comms.connectivity(),
         alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
@@ -112,7 +110,7 @@ async fn test_listening_lagging() {
     let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_block_merkle_roots(chain_block(&prev_block.block(), vec![], &consensus_manager))
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager))
         .unwrap();
     prev_block.header.output_mmr_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -127,10 +125,7 @@ async fn test_listening_lagging() {
         .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
         .unwrap();
 
-    match next_event {
-        StateEvent::InitialSync => {},
-        _ => panic!(),
-    }
+    assert!(matches!(next_event, StateEvent::FallenBehind(_)));
 }
 
 #[tokio::test]
@@ -148,7 +143,6 @@ async fn test_event_channel() {
     let state_machine = BaseNodeStateMachine::new(
         db.into(),
         node.local_nci.clone(),
-        node.outbound_nci.clone(),
         node.comms.connectivity(),
         node.comms.peer_manager(),
         mock.subscription(),
@@ -163,19 +157,16 @@ async fn test_event_channel() {
 
     task::spawn(state_machine.run());
 
-    let PeerChainMetadata {
-        node_id,
-        chain_metadata,
-    } = random_peer_metadata(10, 5_000);
-    mock.publish_chain_metadata(&node_id, &chain_metadata)
-        .await
-        .expect("Could not publish metadata");
+    let peer_chain_metadata = random_peer_metadata(10, 5_000);
+    mock.publish_chain_metadata(
+        peer_chain_metadata.node_id(),
+        peer_chain_metadata.claimed_chain_metadata(),
+    )
+    .await
+    .expect("Could not publish metadata");
     let event = state_change_event_subscriber.recv().await;
     assert_eq!(*event.unwrap(), StateEvent::Initialized);
     let event = state_change_event_subscriber.recv().await;
     let event = event.unwrap();
-    match event.as_ref() {
-        StateEvent::InitialSync => (),
-        _ => panic!("Unexpected state was found:{:?}", event),
-    }
+    assert!(matches!(*event, StateEvent::FallenBehind(_)));
 }

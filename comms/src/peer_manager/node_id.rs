@@ -41,21 +41,20 @@ use tari_crypto::tari_utilities::{
 };
 use thiserror::Error;
 
-const NODE_ID_ARRAY_SIZE: usize = 13; // 104-bit as per RFC-0151
-type NodeIdArray = [u8; NODE_ID_ARRAY_SIZE];
+type NodeIdArray = [u8; NodeId::BYTE_SIZE];
 
 pub type NodeDistance = XorDistance; // or HammingDistance
 
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
-    #[error("Incorrect byte count (expected {} bytes)", NODE_ID_ARRAY_SIZE)]
+    #[error("Incorrect byte count (expected {} bytes)", NodeId::BYTE_SIZE)]
     IncorrectByteCount,
     #[error("Invalid digest output size")]
     InvalidDigestOutputSize,
 }
 
 //------------------------------------- XOR Metric -----------------------------------------------//
-const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = NODE_ID_ARRAY_SIZE;
+const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = NodeId::BYTE_SIZE;
 type NodeXorDistanceArray = [u8; NODE_XOR_DISTANCE_ARRAY_SIZE];
 
 #[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
@@ -145,7 +144,7 @@ impl HammingDistance {
 
     /// Returns the maximum distance.
     pub const fn max_distance() -> Self {
-        Self([NODE_ID_ARRAY_SIZE as u8 * 8; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
+        Self([NodeId::BYTE_SIZE as u8 * 8; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
     }
 }
 
@@ -172,7 +171,7 @@ impl PartialEq for HammingDistance {
 
 /// Calculate the Exclusive OR between the node_id x and y.
 fn xor(x: &NodeIdArray, y: &NodeIdArray) -> NodeIdArray {
-    let mut nd = [0u8; NODE_ID_ARRAY_SIZE];
+    let mut nd = [0u8; NodeId::BYTE_SIZE];
     for i in 0..nd.len() {
         nd[i] = x[i] ^ y[i];
     }
@@ -224,6 +223,9 @@ impl fmt::Display for NodeDistance {
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
+    /// 104-bit/13 byte as per RFC-0151
+    pub const BYTE_SIZE: usize = 13;
+
     /// Construct a new node id on the origin
     pub fn new() -> Self {
         Default::default()
@@ -232,9 +234,9 @@ impl NodeId {
     /// Derive a node id from a public key: node_id=hash(public_key)
     pub fn from_key<K: ByteArray>(key: &K) -> Self {
         let bytes = key.as_bytes();
-        let mut buf = [0u8; NODE_ID_ARRAY_SIZE];
-        VarBlake2b::new(NODE_ID_ARRAY_SIZE)
-            .expect("NODE_ID_ARRAY_SIZE is invalid")
+        let mut buf = [0u8; NodeId::BYTE_SIZE];
+        VarBlake2b::new(NodeId::BYTE_SIZE)
+            .expect("NodeId::NODE_ID_ARRAY_SIZE is invalid")
             .chain(bytes)
             .finalize_variable(|hash| {
                 // Safety: output size and buf size are equal
@@ -250,7 +252,7 @@ impl NodeId {
 
     /// Calculate the distance between the current node id and the provided node id using the XOR metric
     pub fn distance(&self, node_id: &NodeId) -> NodeDistance {
-        NodeDistance::from_node_ids(&self, &node_id)
+        NodeDistance::from_node_ids(self, node_id)
     }
 
     /// Find and return the indices of the K nearest neighbours from the provided node id list
@@ -347,13 +349,19 @@ impl TryFrom<&[u8]> for NodeId {
 
     /// Construct a node id from 32 bytes
     fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= NODE_ID_ARRAY_SIZE {
-            let mut bytes = [0; NODE_ID_ARRAY_SIZE];
-            bytes.copy_from_slice(&elements[0..NODE_ID_ARRAY_SIZE]);
+        if elements.len() >= NodeId::BYTE_SIZE {
+            let mut bytes = [0; NodeId::BYTE_SIZE];
+            bytes.copy_from_slice(&elements[0..NodeId::BYTE_SIZE]);
             Ok(NodeId(bytes))
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
+    }
+}
+
+impl From<CommsPublicKey> for NodeId {
+    fn from(pk: CommsPublicKey) -> Self {
+        NodeId::from_public_key(&pk)
     }
 }
 
@@ -430,7 +438,7 @@ mod test {
         assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
         // Ensure node id is different to original public key
         let mut pk_array: [u8; 32] = [0; 32];
-        pk_array.copy_from_slice(&pk.as_bytes());
+        pk_array.copy_from_slice(pk.as_bytes());
         assert_ne!(node_id.0.to_vec(), pk_array.to_vec());
     }
 
@@ -577,7 +585,7 @@ mod test {
         let hamming_dist = HammingDistance::from_node_ids(&node_id1, &node_id2);
         assert_eq!(hamming_dist, HammingDistance([18]));
 
-        let node_max = NodeId::from_bytes(&[255; NODE_ID_ARRAY_SIZE]).unwrap();
+        let node_max = NodeId::from_bytes(&[255; NodeId::BYTE_SIZE]).unwrap();
         let node_min = NodeId::default();
 
         let hamming_dist = HammingDistance::from_node_ids(&node_max, &node_min);

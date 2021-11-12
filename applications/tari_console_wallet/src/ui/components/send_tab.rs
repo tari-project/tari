@@ -8,7 +8,6 @@ use crate::{
     utils::formatting::display_compressed_string,
 };
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_wallet::types::DEFAULT_FEE_PER_GRAM;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -40,19 +39,19 @@ pub struct SendTab {
 }
 
 impl SendTab {
-    pub fn new() -> Self {
+    pub fn new(app_state: &AppState) -> Self {
         Self {
             balance: Balance::new(),
             send_input_mode: SendInputMode::None,
             edit_contact_mode: ContactInputMode::None,
             show_contacts: false,
             show_edit_contact: false,
-            to_field: "".to_string(),
-            amount_field: "".to_string(),
-            fee_field: u64::from(DEFAULT_FEE_PER_GRAM).to_string(),
-            message_field: "".to_string(),
-            alias_field: "".to_string(),
-            public_key_field: "".to_string(),
+            to_field: String::new(),
+            amount_field: String::new(),
+            fee_field: app_state.get_default_fee_per_gram().as_u64().to_string(),
+            message_field: String::new(),
+            alias_field: String::new(),
+            public_key_field: String::new(),
             error_message: None,
             success_message: None,
             contacts_list_state: WindowedListState::new(),
@@ -101,7 +100,7 @@ impl SendTab {
             Spans::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to send normal a transaction, "),
+                Span::raw(" to send a normal transaction, "),
                 Span::styled("O", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a one-sided transaction."),
             ]),
@@ -307,14 +306,11 @@ impl SendTab {
                 self.confirmation_dialog = None;
                 return KeyHandled::Handled;
             } else if 'y' == c {
-                let one_sided_transaction = matches!(
-                    self.confirmation_dialog,
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend)
-                );
+                let one_sided_transaction =
+                    matches!(self.confirmation_dialog, Some(ConfirmationDialogType::OneSidedSend));
                 match self.confirmation_dialog {
                     None => (),
-                    Some(ConfirmationDialogType::ConfirmNormalSend) |
-                    Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+                    Some(ConfirmationDialogType::NormalSend) | Some(ConfirmationDialogType::OneSidedSend) => {
                         if 'y' == c {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
@@ -371,7 +367,7 @@ impl SendTab {
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
-                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
+                                self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
@@ -380,7 +376,7 @@ impl SendTab {
                             return KeyHandled::Handled;
                         }
                     },
-                    Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                    Some(ConfirmationDialogType::DeleteContact) => {
                         if 'y' == c {
                             if let Some(c) = self
                                 .contacts_list_state
@@ -494,7 +490,7 @@ impl SendTab {
         if self.show_contacts {
             match c {
                 'd' => {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmDeleteContact);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::DeleteContact);
                     return KeyHandled::Handled;
                 },
                 '\n' => {
@@ -589,7 +585,7 @@ impl<B: Backend> Component<B> for SendTab {
 
         match self.confirmation_dialog {
             None => (),
-            Some(ConfirmationDialogType::ConfirmNormalSend) => {
+            Some(ConfirmationDialogType::NormalSend) => {
                 draw_dialog(
                     f,
                     area,
@@ -600,7 +596,7 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::ConfirmOneSidedSend) => {
+            Some(ConfirmationDialogType::OneSidedSend) => {
                 draw_dialog(
                     f,
                     area,
@@ -611,7 +607,7 @@ impl<B: Backend> Component<B> for SendTab {
                     9,
                 );
             },
-            Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+            Some(ConfirmationDialogType::DeleteContact) => {
                 draw_dialog(
                     f,
                     area,
@@ -705,9 +701,9 @@ impl<B: Backend> Component<B> for SendTab {
                 };
 
                 if matches!(c, 'o') {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmOneSidedSend);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::OneSidedSend);
                 } else {
-                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmNormalSend);
+                    self.confirmation_dialog = Some(ConfirmationDialogType::NormalSend);
                 }
             },
             _ => {},
@@ -778,7 +774,7 @@ pub enum ContactInputMode {
 
 #[derive(PartialEq, Debug)]
 pub enum ConfirmationDialogType {
-    ConfirmNormalSend,
-    ConfirmOneSidedSend,
-    ConfirmDeleteContact,
+    NormalSend,
+    OneSidedSend,
+    DeleteContact,
 }

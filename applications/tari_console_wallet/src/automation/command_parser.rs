@@ -23,7 +23,6 @@
 use crate::automation::{commands::WalletCommand, error::ParseError};
 
 use chrono::{DateTime, Utc};
-use chrono_english::{parse_date_string, Dialect};
 use core::str::SplitWhitespace;
 use std::{
     fmt::{Display, Formatter},
@@ -216,11 +215,10 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     // start time utc or 'now'
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
-    let now = Utc::now();
     let start_time = if start_time != "now" {
-        parse_date_string(&start_time, now, Dialect::Uk).map_err(ParseError::Date)?
+        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
     } else {
-        now
+        Utc::now()
     };
     parsed_args.push(ParsedArgument::Date(start_time));
 

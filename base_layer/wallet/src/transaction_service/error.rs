@@ -22,19 +22,23 @@
 
 use crate::{
     error::WalletStorageError,
-    output_manager_service::{error::OutputManagerError, TxId},
-    transaction_service::storage::database::DbKey,
+    output_manager_service::error::OutputManagerError,
+    transaction_service::{
+        storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
+        utc::NegativeDurationError,
+    },
 };
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
-use time::OutOfRangeError;
 use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Debug, Error)]
@@ -79,6 +83,8 @@ pub enum TransactionServiceError {
     DiscoveryProcessFailed(TxId),
     #[error("Invalid Completed Transaction provided")]
     InvalidCompletedTransaction,
+    #[error("Attempted to broadcast a coinbase transaction. TxId `{0}`")]
+    AttemptedToBroadcastCoinbaseTransaction(TxId),
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
     #[error("Error sending data to Protocol via registered channels")]
@@ -108,7 +114,9 @@ pub enum TransactionServiceError {
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
-    ConversionError(String),
+    ConversionError(#[from] TransactionConversionError),
+    #[error("duration::NegativeDurationError: {0}")]
+    DurationOutOfRange(#[from] NegativeDurationError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
     #[error("Broadcast recv error: `{0}`")]
@@ -145,6 +153,25 @@ pub enum TransactionServiceError {
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
     WalletRecoveryInProgress,
+    #[error("Connectivity error: {source}")]
+    ConnectivityError {
+        #[from]
+        source: ConnectivityError,
+    },
+    #[error("Base Node is not synced")]
+    BaseNodeNotSynced,
+}
+
+#[derive(Debug, Error)]
+pub enum TransactionKeyError {
+    #[error("Invalid source Publickey")]
+    Source(ByteArrayError),
+    #[error("Invalid destination PublicKey")]
+    Destination(ByteArrayError),
+    #[error("Invalid transaction signature nonce")]
+    SignatureNonce(ByteArrayError),
+    #[error("Invalid transaction signature key")]
+    SignatureKey(ByteArrayError),
 }
 
 #[derive(Debug, Error)]
@@ -162,9 +189,15 @@ pub enum TransactionStorageError {
     #[error("Transaction is already present in the database")]
     TransactionAlreadyExists,
     #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
+    TransactionKeyError(#[from] TransactionKeyError),
+    #[error("Transaction direction error: `{0}`")]
+    TransactionDirectionError(#[from] TransactionDirectionError),
     #[error("Error converting a type: `{0}`")]
-    ConversionError(String),
+    NegativeDurationError(#[from] NegativeDurationError),
+    #[error("Error converting a type: `{0}`")]
+    ConversionError(#[from] TransactionConversionError),
+    #[error("Completed transaction conversion error: `{0}`")]
+    CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
     #[error("R2d2 error")]
@@ -183,6 +216,8 @@ pub enum TransactionStorageError {
     AeadError(String),
     #[error("Transaction (TxId: '{0}') is not mined")]
     TransactionNotMined(TxId),
+    #[error("Conversion error: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also
@@ -202,5 +237,18 @@ impl TransactionServiceProtocolError {
 impl From<TransactionServiceProtocolError> for TransactionServiceError {
     fn from(tspe: TransactionServiceProtocolError) -> Self {
         tspe.error
+    }
+}
+
+pub trait TransactionServiceProtocolErrorExt<TRes> {
+    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+}
+
+impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
+    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+        match self {
+            Ok(r) => Ok(r),
+            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+        }
     }
 }

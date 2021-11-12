@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
+use crate::{blocks::BlockError, chain_storage::ChainStorageError, validation::ValidationError};
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -42,13 +42,16 @@ pub enum BlockHeaderSyncError {
     #[error("Sync failed for all peers")]
     SyncFailedAllPeers,
     #[error("Peer sent a found hash index that was out of range (Expected less than {0}, Found: {1})")]
-    FoundHashIndexOutOfRange(u32, u32),
+    FoundHashIndexOutOfRange(u64, u64),
     #[error("Failed to ban peer: {0}")]
     FailedToBan(ConnectivityError),
     #[error("Connectivity Error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error("Peer could not send a stronger chain than the local chain")]
-    WeakerChain,
+    #[error(
+        "Peer could not provide a stronger chain than the local chain. Claimed was {claimed} but validated was \
+         {actual} (local: {local})"
+    )]
+    WeakerChain { claimed: u128, actual: u128, local: u128 },
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
     #[error("Unable to locate start hash `{0}`")]
@@ -63,4 +66,15 @@ pub enum BlockHeaderSyncError {
     InvalidProtocolResponse(String),
     #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
     ChainLinkBroken { actual: String, expected: String },
+    #[error("Block error: {0}")]
+    BlockError(#[from] BlockError),
+    #[error(
+        "Peer claimed a stronger chain than they were able to provide. Claimed {claimed}, Actual: {actual:?}, local: \
+         {local}"
+    )]
+    PeerSentInaccurateChainMetadata {
+        claimed: u128,
+        actual: Option<u128>,
+        local: u128,
+    },
 }

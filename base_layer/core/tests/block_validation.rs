@@ -35,21 +35,9 @@ use rand::{rngs::OsRng, RngCore};
 use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
-    blocks::{Block, BlockHeaderValidationError, BlockValidationError},
-    chain_storage::{
-        BlockHeaderAccumulatedData,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        ChainBlock,
-        ChainStorageError,
-        Validators,
-    },
-    consensus::{
-        consensus_constants::PowAlgorithmConstants,
-        ConsensusConstantsBuilder,
-        ConsensusManager,
-        ConsensusManagerBuilder,
-    },
+    blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
+    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,
@@ -61,8 +49,8 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
-        helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         tari_amount::{uT, T},
+        test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
         transaction::OutputFeatures,
         CryptoFactories,
     },
@@ -87,7 +75,7 @@ mod helpers;
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
-    let rules = ConsensusManagerBuilder::new(network).build();
+    let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
         BodyOnlyValidator::default(),
@@ -137,9 +125,7 @@ fn test_monero_blocks() {
             target_time: 200,
         })
         .build();
-    let cm = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(cc)
-        .build();
+    let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
     let header_validator = HeaderValidator::new(cm.clone());
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
@@ -147,20 +133,20 @@ fn test_monero_blocks() {
     );
     let block_0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);
-    let mut block_1 = db.prepare_block_merkle_roots(block_1_t).unwrap();
+    let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
 
     // Now we have block 1, lets add monero data to it
     add_monero_data(&mut block_1, seed1);
     let cb_1 = db.add_block(Arc::new(block_1)).unwrap().assert_added();
     // Now lets add a second faulty block using the same seed hash
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, &factories);
-    let mut block_2 = db.prepare_block_merkle_roots(block_2_t).unwrap();
+    let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
 
     add_monero_data(&mut block_2, seed1);
     let cb_2 = db.add_block(Arc::new(block_2)).unwrap().assert_added();
     // Now lets add a third faulty block using the same seed hash. This should fail.
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, &factories);
-    let mut block_3 = db.prepare_block_merkle_roots(block_3_t).unwrap();
+    let mut block_3 = db.prepare_new_block(block_3_t).unwrap();
     let mut block_3_broken = block_3.clone();
     add_monero_data(&mut block_3_broken, seed1);
     match db.add_block(Arc::new(block_3_broken)) {
@@ -181,7 +167,9 @@ fn test_monero_blocks() {
 }
 
 fn add_monero_data(tblock: &mut Block, seed_key: &str) {
-    let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+    let blocktemplate_blob =
+"0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+.to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
     let hash = tblock.header.merged_mining_hash();
@@ -202,8 +190,8 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     tblock.header.pow.pow_data = serialized;
 }
 
-#[test]
-fn inputs_are_not_malleable() {
+#[tokio::test]
+async fn inputs_are_not_malleable() {
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 
@@ -245,10 +233,14 @@ fn inputs_are_not_malleable() {
     input_mut.input_data = malicious_input.input_data;
     input_mut.script_signature = malicious_input.script_signature;
 
-    let validator = BlockValidator::new(blockchain.consensus_manager().clone(), true, CryptoFactories::default());
-    let err = validator
-        .validate_body(&block, &*blockchain.store().db_read_access().unwrap())
-        .unwrap_err();
+    let validator = BlockValidator::new(
+        blockchain.store().clone().into(),
+        blockchain.consensus_manager().clone(),
+        CryptoFactories::default(),
+        true,
+        10,
+    );
+    let err = validator.validate_body(block).await.unwrap_err();
 
     // All validations pass, except the Input MMR.
     assert!(matches!(
@@ -267,7 +259,7 @@ fn test_orphan_validator() {
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
@@ -289,26 +281,30 @@ fn test_orphan_validator() {
     // we have created the blockchain, lets create a second valid block
 
     let (tx01, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (tx02, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (tx03, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[3].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[3].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (tx04, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features:
+OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
     assert!(orphan_validator.validate(&new_block).is_ok());
 
     // lets break the block weight
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone(), tx03], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break the sorting
@@ -316,12 +312,12 @@ fn test_orphan_validator() {
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
     let outputs = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break spend rules
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // let break coinbase value
@@ -337,7 +333,7 @@ fn test_orphan_validator() {
         coinbase_kernel,
         &rules,
     );
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // let break coinbase lock height
@@ -353,14 +349,14 @@ fn test_orphan_validator() {
         coinbase_kernel,
         &rules,
     );
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 
     // lets break accounting
     let (mut template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate(&new_block).is_err());
 }
 
@@ -382,7 +378,7 @@ fn test_orphan_body_validation() {
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
@@ -405,13 +401,15 @@ fn test_orphan_body_validation() {
     // we have created the blockchain, lets create a second valid block
 
     let (tx01, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (tx02, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -434,11 +432,11 @@ fn test_orphan_body_validation() {
     let metadata = db.get_chain_metadata().unwrap();
     // this block should be okay
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_ok());
 
     // lets break the chain sequence
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     new_block.header.height = 3;
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -459,11 +457,11 @@ fn test_orphan_body_validation() {
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets have unknown inputs;
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     let test_params1 = TestParams::new();
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
@@ -477,7 +475,6 @@ fn test_orphan_body_validation() {
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -499,16 +496,15 @@ fn test_orphan_body_validation() {
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // lets check duplicate txos
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
@@ -530,11 +526,11 @@ fn test_orphan_body_validation() {
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 
     // check mmr roots
-    let mut new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.output_mr = Vec::new();
     new_block.header.nonce = OsRng.next_u64();
 
@@ -557,7 +553,7 @@ fn test_orphan_body_validation() {
     let chain_block = ChainBlock::try_construct(Arc::new(new_block), accumulated_data).unwrap();
     let metadata = db.get_chain_metadata().unwrap();
     assert!(body_only_validator
-        .validate_body_for_valid_orphan(&chain_block, &*db.db_read_access().unwrap(), &metadata)
+        .validate_body_for_valid_orphan(&*db.db_read_access().unwrap(), &chain_block, &metadata)
         .is_err());
 }
 
@@ -579,7 +575,7 @@ fn test_header_validation() {
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
@@ -601,13 +597,15 @@ fn test_header_validation() {
     // we have created the blockchain, lets create a second valid block
 
     let (tx01, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (tx02, _, _) = spend_utxos(
-        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
+OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
     find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
@@ -621,7 +619,7 @@ fn test_header_validation() {
         .is_ok());
 
     // Lets break ftl rules
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
     new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
@@ -635,7 +633,7 @@ fn test_header_validation() {
         .is_err());
 
     // lets break the median rules
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
     new_block.header.timestamp = genesis.header().timestamp.checked_sub(100.into()).unwrap();
@@ -649,7 +647,7 @@ fn test_header_validation() {
         .is_err());
 
     // lets break difficulty
-    let mut new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
     let mut result = header_validator
@@ -676,8 +674,8 @@ fn test_header_validation() {
     assert!(result);
 }
 
-#[test]
-fn test_block_sync_body_validator() {
+#[tokio::test]
+async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Weatherwax;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -686,16 +684,17 @@ fn test_block_sync_body_validator() {
     let (genesis, outputs) = create_genesis_block_with_utxos(&factories, &[T, T, T], &consensus_constants);
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let validator = BlockValidator::new(rules.clone(), false, factories.clone());
+
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
+
     let db = BlockchainDatabase::new(
         backend,
         rules.clone(),
@@ -705,6 +704,8 @@ fn test_block_sync_body_validator() {
         false,
     )
     .unwrap();
+    let validator = BlockValidator::new(db.clone().into(), rules.clone(), factories.clone(), false, 2);
+
     // we have created the blockchain, lets create a second valid block
 
     let (tx01, _, _) = spend_utxos(
@@ -720,40 +721,32 @@ fn test_block_sync_body_validator() {
         txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let new_block = db.prepare_new_block(template).unwrap();
     // this block should be okay
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_ok());
+    validator.validate_body(new_block).await.unwrap();
 
     // lets break the block weight
     let (template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone(), tx03], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap_err();
 
     // lets break spend rules
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx04.clone()], &rules, &factories);
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap_err();
 
     // lets break the sorting
     let (mut template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
     let output = vec![template.body.outputs()[1].clone(), template.body.outputs()[2].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), output, template.body.kernels().clone());
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap_err();
 
     // lets have unknown inputs;
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     let test_params1 = TestParams::new();
     let test_params2 = TestParams::new();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
@@ -767,22 +760,16 @@ fn test_block_sync_body_validator() {
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    validator.validate_body(new_block).await.unwrap_err();
 
     // lets check duplicate txos
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
-    let mut new_block = db.prepare_block_merkle_roots(template.clone()).unwrap();
+    let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let inputs = vec![new_block.body.inputs()[0].clone(), new_block.body.inputs()[0].clone()];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
-    new_block.body.sort();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    validator.validate_body(new_block).await.unwrap_err();
 
     // let break coinbase value
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -797,10 +784,8 @@ fn test_block_sync_body_validator() {
         coinbase_kernel,
         &rules,
     );
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap_err();
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
@@ -815,26 +800,20 @@ fn test_block_sync_body_validator() {
         coinbase_kernel,
         &rules,
     );
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap();
 
     // lets break accounting
     let (mut template, _) =
         chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);
     let outputs = vec![template.body.outputs()[1].clone(), tx04.body.outputs()[1].clone()];
     template.body = AggregateBody::new(template.body.inputs().clone(), outputs, template.body.kernels().clone());
-    let new_block = db.prepare_block_merkle_roots(template).unwrap();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    let new_block = db.prepare_new_block(template).unwrap();
+    validator.validate_body(new_block).await.unwrap_err();
 
     // lets the mmr root
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01, tx02], &rules, &factories);
-    let mut new_block = db.prepare_block_merkle_roots(template).unwrap();
+    let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.output_mr = Vec::new();
-    assert!(validator
-        .validate_body(&new_block, &*db.db_read_access().unwrap())
-        .is_err());
+    validator.validate_body(new_block).await.unwrap_err();
 }

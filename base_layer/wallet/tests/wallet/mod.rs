@@ -20,16 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{panic, path::Path, sync::Arc, time::Duration};
-
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
-use digest::Digest;
 use rand::rngs::OsRng;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 use tari_crypto::{
-    common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
@@ -44,16 +37,17 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsPublicKey,
 };
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::transactions::{
-    helpers::{create_unblinded_output, TestParams},
     tari_amount::{uT, MicroTari},
+    test_helpers::{create_unblinded_output, TestParams},
     transaction::OutputFeatures,
     CryptoFactories,
 };
-use tari_p2p::{initialization::CommsConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_key_manager::cipher_seed::CipherSeed;
+use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_wallet::{
@@ -101,11 +95,11 @@ async fn create_wallet(
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
     passphrase: Option<String>,
-    recovery_master_key: Option<CommsSecretKey>,
+    recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: NETWORK,
         node_identity: Arc::new(node_identity.clone()),
         transport_type: TransportType::Memory {
@@ -119,7 +113,10 @@ async fn create_wallet(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
-            saf_auto_request: true,
+            saf_config: SafConfig {
+                auto_request: true,
+                ..Default::default()
+            },
             ..Default::default()
         },
         allow_test_addresses: true,
@@ -170,7 +167,7 @@ async fn create_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_master_key,
+        recovery_seed,
     )
     .await
 }
@@ -188,7 +185,7 @@ async fn test_wallet() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -200,7 +197,7 @@ async fn test_wallet() {
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
     let bob_wallet = create_wallet(
-        &bob_db_tempdir.path(),
+        bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
@@ -321,30 +318,21 @@ async fn test_wallet() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let passphrase_hash = Blake256::new()
-        .chain("wrong passphrase".to_string().as_bytes())
-        .finalize();
-    let key = GenericArray::from_slice(passphrase_hash.as_slice());
-    let cipher = Aes256Gcm::new(key);
-    let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
+    let result = WalletSqliteDatabase::new(connection.clone(), Some("wrong passphrase".to_string()));
 
     if let Err(err) = result {
-        assert!(matches!(err, WalletStorageError::IncorrectPassword));
+        assert!(matches!(err, WalletStorageError::InvalidPassphrase));
     } else {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let passphrase_hash = Blake256::new()
-        .chain("It's turtles all the way down".to_string().as_bytes())
-        .finalize();
-    let key = GenericArray::from_slice(passphrase_hash.as_slice());
-    let cipher = Aes256Gcm::new(key);
-    let db = WalletSqliteDatabase::new(connection, Some(cipher)).expect("Should be able to instantiate db with cipher");
+    let db = WalletSqliteDatabase::new(connection, Some("It's turtles all the way down".to_string()))
+        .expect("Should be able to instantiate db with cipher");
     drop(db);
 
     let mut shutdown_a = Shutdown::new();
     let mut alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -370,7 +358,7 @@ async fn test_wallet() {
     // Test the partial db backup in this test so that we can work with the data generated during the test
     let mut shutdown_a = Shutdown::new();
     let alice_wallet = create_wallet(
-        &alice_db_tempdir.path(),
+        alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
@@ -386,11 +374,9 @@ async fn test_wallet() {
         .join("alice_db_backup")
         .with_extension("sqlite3");
 
-    alice_wallet
-        .db
-        .set_master_secret_key(alice_identity.secret_key().clone())
-        .await
-        .unwrap();
+    let alice_seed = CipherSeed::new();
+
+    alice_wallet.db.set_master_seed(alice_seed).await.unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
@@ -402,16 +388,16 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_private_key = wallet_db.get_master_secret_key().await.unwrap();
-    assert!(master_private_key.is_some());
+    let master_seed = wallet_db.get_master_seed().await.unwrap();
+    assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
         "Could not open Sqlite
     db",
     );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_secret_key = backup_wallet_db.get_master_secret_key().await.unwrap();
-    assert!(master_secret_key.is_none());
+    let master_seed = backup_wallet_db.get_master_seed().await.unwrap();
+    assert!(master_seed.is_none());
 
     shutdown_b.trigger();
 
@@ -425,14 +411,14 @@ async fn test_do_not_overwrite_master_key() {
 
     // create a wallet and shut it down
     let mut shutdown = Shutdown::new();
-    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    let recovery_seed = CipherSeed::new();
     let wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key),
+        Some(recovery_seed),
     )
     .await
     .unwrap();
@@ -441,14 +427,14 @@ async fn test_do_not_overwrite_master_key() {
 
     // try to use a new master key to create a wallet using the existing wallet database
     let shutdown = Shutdown::new();
-    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    let recovery_seed = CipherSeed::new();
     match create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key.clone()),
+        Some(recovery_seed.clone()),
     )
     .await
     {
@@ -459,12 +445,12 @@ async fn test_do_not_overwrite_master_key() {
     // make sure we can create a new wallet with recovery key if the db file does not exist
     let dir = tempdir().unwrap();
     let _wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key),
+        Some(recovery_seed),
     )
     .await
     .unwrap();
@@ -477,7 +463,7 @@ async fn test_sign_message() {
 
     let shutdown = Shutdown::new();
     let mut wallet = create_wallet(
-        &dir.path(),
+        dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
@@ -535,7 +521,7 @@ fn test_store_and_forward_send_tx() {
 
     let mut alice_wallet = alice_runtime
         .block_on(create_wallet(
-            &alice_db_tempdir.path(),
+            alice_db_tempdir.path(),
             "alice_db",
             factories.clone(),
             shutdown_a.to_signal(),
@@ -546,7 +532,7 @@ fn test_store_and_forward_send_tx() {
 
     let bob_wallet = bob_runtime
         .block_on(create_wallet(
-            &bob_db_tempdir.path(),
+            bob_db_tempdir.path(),
             "bob_db",
             factories.clone(),
             shutdown_b.to_signal(),
@@ -558,7 +544,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories.clone(),
             shutdown_c.to_signal(),
@@ -614,7 +600,7 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime
         .block_on(create_wallet(
-            &carol_db_tempdir.path(),
+            carol_db_tempdir.path(),
             "carol_db",
             factories,
             shutdown_c2.to_signal(),
@@ -685,7 +671,7 @@ async fn test_import_utxo() {
     );
     let temp_dir = tempdir().unwrap();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: Network::Weatherwax,
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {

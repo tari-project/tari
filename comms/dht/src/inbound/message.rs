@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    consts::DHT_MAJOR_VERSION,
-    envelope::{DhtMessageFlags, DhtMessageHeader},
-};
+use crate::envelope::{DhtMessageFlags, DhtMessageHeader};
+use digest::Digest;
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -32,13 +30,20 @@ use std::{
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::Peer,
-    types::CommsPublicKey,
+    types::{Challenge, CommsPublicKey},
 };
+
+fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
+    Challenge::new()
+        .chain(&message.dht_header.origin_mac)
+        .chain(&message.body)
+        .finalize()
+        .to_vec()
+}
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
     pub tag: MessageTag,
-    pub version: u32,
     pub source_peer: Arc<Peer>,
     pub dht_header: DhtMessageHeader,
     /// True if forwarded via store and forward, otherwise false
@@ -50,7 +55,6 @@ impl DhtInboundMessage {
     pub fn new(tag: MessageTag, dht_header: DhtMessageHeader, source_peer: Arc<Peer>, body: Vec<u8>) -> Self {
         Self {
             tag,
-            version: DHT_MAJOR_VERSION,
             dht_header,
             source_peer,
             is_saf_message: false,
@@ -68,8 +72,8 @@ impl Display for DhtInboundMessage {
             self.body.len(),
             self.dht_header.message_type,
             self.source_peer,
-            self.dht_header,
             self.dedup_hit_count,
+            self.dht_header,
             self.tag,
         )
     }
@@ -79,7 +83,6 @@ impl Display for DhtInboundMessage {
 #[derive(Debug, Clone)]
 pub struct DecryptedDhtMessage {
     pub tag: MessageTag,
-    pub version: u32,
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
     pub source_peer: Arc<Peer>,
@@ -90,12 +93,17 @@ pub struct DecryptedDhtMessage {
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
     pub dedup_hit_count: u32,
+    pub hash: Vec<u8>,
 }
 
 impl DecryptedDhtMessage {
     /// Returns true if this message has been received before, otherwise false if this is the first time
     pub fn is_duplicate(&self) -> bool {
         self.dedup_hit_count > 1
+    }
+
+    pub fn major_version(&self) -> u32 {
+        self.dht_header.version.as_major()
     }
 }
 
@@ -106,8 +114,8 @@ impl DecryptedDhtMessage {
         message: DhtInboundMessage,
     ) -> Self {
         Self {
+            hash: hash_inbound_message(&message),
             tag: message.tag,
-            version: message.version,
             source_peer: message.source_peer,
             authenticated_origin,
             dht_header: message.dht_header,
@@ -121,8 +129,8 @@ impl DecryptedDhtMessage {
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
+            hash: hash_inbound_message(&message),
             tag: message.tag,
-            version: message.version,
             source_peer: message.source_peer,
             authenticated_origin: None,
             dht_header: message.dht_header,
@@ -193,7 +201,7 @@ impl Display for DecryptedDhtMessage {
             f,
             "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, is_saf_stored = \
              {:?}, source_peer = {}, tag = {}",
-            self.version,
+            self.major_version(),
             self.authenticated_origin
                 .as_ref()
                 .map(ToString::to_string)

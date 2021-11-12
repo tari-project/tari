@@ -6,7 +6,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "1024"]
-use crate::{recovery::get_private_key_from_seed_words, wallet_modes::WalletModeConfig};
+use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
 use init::{
     boot,
     change_password,
@@ -22,9 +22,9 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use std::{env, process};
-use tari_app_utilities::{consts, initialization::init_configuration, utilities::ExitCodes};
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap};
-use tari_common_types::types::PrivateKey;
+use tari_app_utilities::{consts, initialization::init_configuration};
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
@@ -48,7 +48,7 @@ fn main() {
             eprintln!("{:?}", exit_code);
             error!(
                 target: LOG_TARGET,
-                "Exiting with code ({}): {:?}",
+                "Exiting with code ({:?}): {:?}",
                 exit_code.as_i32(),
                 exit_code
             );
@@ -64,6 +64,10 @@ fn main_inner() -> Result<(), ExitCodes> {
         .expect("Failed to build a runtime!");
 
     let (bootstrap, global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+
+    if bootstrap.tracing_enabled {
+        enable_tracing();
+    }
 
     info!(
         target: LOG_TARGET,
@@ -85,13 +89,12 @@ fn main_inner() -> Result<(), ExitCodes> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&bootstrap, &global_config)?;
 
-    let recovery_master_key: Option<PrivateKey> = get_recovery_master_key(boot_mode, &bootstrap)?;
+    let recovery_seed: Option<CipherSeed> = get_recovery_seed(boot_mode, &bootstrap)?;
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
     }
 
-    enable_tracing_if_specified(&bootstrap);
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
     let seed_words_file_name = bootstrap.seed_words_file_name.clone();
@@ -109,7 +112,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         &global_config,
         arg_password,
         seed_words_file_name,
-        recovery_master_key,
+        recovery_seed,
         shutdown_signal,
     ))?;
 
@@ -162,12 +165,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_recovery_master_key(
-    boot_mode: WalletBoot,
-    bootstrap: &ConfigBootstrap,
-) -> Result<Option<PrivateKey>, ExitCodes> {
+fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitCodes> {
     if matches!(boot_mode, WalletBoot::Recovery) {
-        let private_key = if bootstrap.seed_words.is_some() {
+        let seed = if bootstrap.seed_words.is_some() {
             let seed_words: Vec<String> = bootstrap
                 .seed_words
                 .clone()
@@ -175,31 +175,31 @@ fn get_recovery_master_key(
                 .split_whitespace()
                 .map(|v| v.to_string())
                 .collect();
-            get_private_key_from_seed_words(seed_words)?
+            get_seed_from_seed_words(seed_words)?
         } else {
             prompt_private_key_from_seed_words()?
         };
-        Ok(Some(private_key))
+        Ok(Some(seed))
     } else {
         Ok(None)
     }
 }
 
-fn enable_tracing_if_specified(bootstrap: &ConfigBootstrap) {
-    if bootstrap.tracing_enabled {
-        // To run: docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 \
-        // jaegertracing/all-in-one:latest
-        global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-        let tracer = opentelemetry_jaeger::new_pipeline()
-            .with_service_name("tari::console_wallet")
-            .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
-            // TODO: uncomment when using tokio 1
-            // .install_batch(opentelemetry::runtime::Tokio)
-            .install_simple()
-            .unwrap();
-        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-        let subscriber = Registry::default().with(telemetry);
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Tracing could not be set. Try running without `--tracing-enabled`");
-    }
+fn enable_tracing() {
+    // To run:
+    // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    // To view the UI after starting the container (default):
+    // http://localhost:16686
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_service_name("tari::console_wallet")
+        .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
+        // TODO: uncomment when using tokio 1
+        // .install_batch(opentelemetry::runtime::Tokio)
+        .install_simple()
+        .unwrap();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Tracing could not be set. Try running without `--tracing-enabled`");
 }

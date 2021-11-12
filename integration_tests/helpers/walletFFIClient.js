@@ -4,6 +4,7 @@ const CommsConfig = require("./ffi/commsConfig");
 const Wallet = require("./ffi/wallet");
 const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
+const { sleep } = require("./util");
 
 class WalletFFIClient {
   name;
@@ -53,13 +54,14 @@ class WalletFFIClient {
     this.start(seed_words_text, pass_phrase);
   }
 
-  getStxoValidationStatus() {
-    return this.wallet.getStxoValidationStatus();
+  getTxoValidationStatus() {
+    return this.wallet.getTxoValidationStatus();
   }
 
-  getUtxoValidationStatus() {
-    return this.wallet.getUtxoValidationStatus();
+  getTxValidationStatus() {
+    return this.wallet.getTxValidationStatus();
   }
+
   identify() {
     return this.wallet.getPublicKey();
   }
@@ -72,6 +74,10 @@ class WalletFFIClient {
     return this.wallet.getBalance();
   }
 
+  pollBalance() {
+    return this.wallet.pollBalance();
+  }
+
   addBaseNodePeer(public_key_hex, address) {
     return this.wallet.addBaseNodePeer(public_key_hex, address);
   }
@@ -82,6 +88,10 @@ class WalletFFIClient {
 
   getContactList() {
     return this.wallet.getContacts();
+  }
+
+  getMnemonicWordListForLanguage(language) {
+    return SeedWords.getMnemonicWordListForLanguage(language);
   }
 
   getCompletedTxs() {
@@ -112,19 +122,21 @@ class WalletFFIClient {
     this.wallet.applyEncryption(passphrase);
   }
 
-  startStxoValidation() {
-    this.wallet.startStxoValidation();
+  startTxoValidation() {
+    this.wallet.startTxoValidation();
   }
 
-  startUtxoValidation() {
-    this.wallet.startUtxoValidation();
+  startTxValidation() {
+    this.wallet.startTxValidation();
   }
 
   getCounters() {
     return this.wallet.getCounters();
   }
   resetCounters() {
-    this.wallet.clearCallbackCounters();
+    if (this.wallet) {
+      this.wallet.clearCallbackCounters();
+    }
   }
 
   sendTransaction(destination, amount, fee_per_gram, message) {
@@ -167,18 +179,32 @@ class WalletFFIClient {
     return this.wallet.cancelPendingTransaction(tx_id);
   }
 
-  stop() {
-    if (this.wallet) {
-      this.wallet.destroy();
-    }
+  async stop() {
     if (this.comms_config) {
-      this.comms_config.destroy();
+      //      console.log("walletFFI destroy comms_config ...");
+      await this.comms_config.destroy();
+      this.comms_config = undefined;
+      //      console.log("walletFFI destroy comms_config ... done!");
+      await sleep(100);
     }
     if (this.transport) {
-      this.transport.destroy();
+      //      console.log("walletFFI destroy transport ...");
+      await this.transport.destroy();
+      this.transport = undefined;
+      //      console.log("walletFFI destroy transport ... done!");
+      await sleep(100);
     }
     if (this.seed_words) {
-      this.seed_words.destroy();
+      //      console.log("walletFFI destroy seed_words ...");
+      await this.seed_words.destroy();
+      this.seed_words = undefined;
+      //      console.log("walletFFI destroy seed_words ... done!");
+    }
+    if (this.wallet) {
+      //      console.log("walletFFI destroy wallet ...");
+      await this.wallet.destroy();
+      this.wallet = undefined;
+      //      console.log("walletFFI destroy wallet ... done!");
     }
   }
 }

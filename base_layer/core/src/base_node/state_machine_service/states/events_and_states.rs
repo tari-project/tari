@@ -23,6 +23,7 @@
 use crate::base_node::{
     state_machine_service::states::{
         BlockSync,
+        DecideNextSync,
         HeaderSync,
         HorizonStateSync,
         Listening,
@@ -31,17 +32,18 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::SyncPeers,
+    sync::SyncPeer,
 };
 use randomx_rs::RandomXFlag;
 use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{peer_manager::NodeId, PeerConnection};
+use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug)]
 pub enum BaseNodeState {
     Starting(Starting),
     HeaderSync(HeaderSync),
+    DecideNextSync(DecideNextSync),
     HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSync),
     // The best network chain metadata
@@ -54,9 +56,10 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    InitialSync,
-    HeadersSynchronized(PeerConnection),
+    HeadersSynchronized(SyncPeer),
     HeaderSyncFailed,
+    ProceedToHorizonSync(SyncPeer),
+    ProceedToBlockSync(SyncPeer),
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
     BlocksSynchronized,
@@ -81,9 +84,7 @@ impl<E: std::error::Error> From<E> for StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, SyncPeers),
-    // We are behind the pruning horizon.
-    LaggingBehindHorizon(ChainMetadata, SyncPeers),
+    Lagging(ChainMetadata, Vec<SyncPeer>),
     UpToDate,
 }
 
@@ -108,13 +109,6 @@ impl Display for SyncStatus {
                 m.height_of_longest_chain(),
                 m.accumulated_difficulty(),
             ),
-            LaggingBehindHorizon(m, v) => write!(
-                f,
-                "Lagging behind pruning horizon ({} peer(s), Network height: #{}, Difficulty: {})",
-                v.len(),
-                m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
-            ),
             UpToDate => f.write_str("UpToDate"),
         }
     }
@@ -124,19 +118,20 @@ impl Display for StateEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use StateEvent::*;
         match self {
-            Initialized => f.write_str("Initialized"),
-            InitialSync => f.write_str("InitialSync"),
-            BlocksSynchronized => f.write_str("Synchronised Blocks"),
-            HeadersSynchronized(conn) => write!(f, "Headers Synchronized from peer `{}`", conn.peer_node_id()),
-            HeaderSyncFailed => f.write_str("Header Synchronization Failed"),
-            HorizonStateSynchronized => f.write_str("Horizon State Synchronized"),
-            HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failed"),
-            BlockSyncFailed => f.write_str("Block Synchronization Failed"),
+            Initialized => write!(f, "Initialized"),
+            BlocksSynchronized => write!(f, "Synchronised Blocks"),
+            HeadersSynchronized(peer) => write!(f, "Headers Synchronized from peer `{}`", peer),
+            HeaderSyncFailed => write!(f, "Header Synchronization Failed"),
+            ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
+            ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
+            HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),
+            HorizonStateSyncFailure => write!(f, "Horizon State Synchronization Failed"),
+            BlockSyncFailed => write!(f, "Block Synchronization Failed"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
-            NetworkSilence => f.write_str("Network Silence"),
-            Continue => f.write_str("Continuing"),
+            NetworkSilence => write!(f, "Network Silence"),
+            Continue => write!(f, "Continuing"),
             FatalError(e) => write!(f, "Fatal Error - {}", e),
-            UserQuit => f.write_str("User Termination"),
+            UserQuit => write!(f, "User Termination"),
         }
     }
 }
@@ -147,6 +142,7 @@ impl Display for BaseNodeState {
         let s = match self {
             Starting(_) => "Initializing",
             HeaderSync(_) => "Synchronizing block headers",
+            DecideNextSync(_) => "Deciding next sync",
             HorizonStateSync(_) => "Synchronizing horizon state",
             BlockSync(_) => "Synchronizing blocks",
             Listening(_) => "Listening",
@@ -191,14 +187,7 @@ impl StateInfo {
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
-            BlockSync(info) => format!(
-                "Syncing blocks: ({}) {}",
-                info.sync_peers
-                    .first()
-                    .map(|n| n.short_str())
-                    .unwrap_or_else(|| "".to_string()),
-                info.sync_progress_string()
-            ),
+            BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
             Listening(_) => "Listening".to_string(),
             BlockSyncStarting => "Starting block sync".to_string(),
         }
@@ -276,7 +265,7 @@ pub struct BlockSyncInfo {
 }
 
 impl BlockSyncInfo {
-    /// Creates a new blockSyncInfo
+    /// Creates a new BlockSyncInfo
     pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<NodeId>) -> BlockSyncInfo {
         BlockSyncInfo {
             tip_height,
@@ -287,7 +276,12 @@ impl BlockSyncInfo {
 
     pub fn sync_progress_string(&self) -> String {
         format!(
-            "{}/{} ({:.0}%)",
+            "({}) {}/{} ({:.0}%)",
+            self.sync_peers
+                .iter()
+                .map(|n| n.short_str())
+                .collect::<Vec<_>>()
+                .join(", "),
             self.local_height,
             self.tip_height,
             (self.local_height as f64 / self.tip_height as f64 * 100.0)
@@ -297,10 +291,6 @@ impl BlockSyncInfo {
 
 impl Display for BlockSyncInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        writeln!(f, "Syncing from the following peers:")?;
-        for peer in &self.sync_peers {
-            writeln!(f, "{}", peer)?;
-        }
         writeln!(f, "Syncing {}", self.sync_progress_string())
     }
 }

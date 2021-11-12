@@ -87,7 +87,7 @@ async function waitFor(
         if (i > 1) {
           console.log("waiting for process...", timeOut, i, value);
         }
-        break;
+        return true;
       }
       if (i % skipLog === 0 && i > 1) {
         console.log("waiting for process...", timeOut, i, value);
@@ -105,31 +105,36 @@ async function waitFor(
       await sleep(timeOut);
     }
   }
+  return false;
 }
 
 async function waitForIterate(testFn, toBe, sleepMs, maxIterations = 500) {
   let count = 0;
-  let val = testFn();
-  while (!(val === toBe)) {
-    val = testFn();
+  let val = await Promise.resolve(testFn());
+  while (val !== toBe) {
+    val = await Promise.resolve(testFn());
     if (count >= maxIterations) {
       break;
     }
     count++;
     await sleep(sleepMs);
+    process.stdout.write(".");
   }
+  return val;
 }
 
-async function waitForPredicate(predicate, timeOut, sleep_ms = 500) {
-  const now = new Date();
-  while (new Date() - now < timeOut) {
+async function waitForPredicate(predicate, timeOut, sleepMs = 500) {
+  let elapsed = 0;
+  while (elapsed < timeOut) {
     const val = await predicate();
     if (val) {
       return val;
     }
-    await sleep(sleep_ms);
+    await sleep(sleepMs);
+    elapsed += sleepMs;
+    process.stdout.write(".");
   }
-  throw new Error(`Predicate was not true after ${timeOut} ms`);
+  throw new Error(`Predicate was not truthy after ${timeOut} ms`);
 }
 
 function dec2hex(n) {

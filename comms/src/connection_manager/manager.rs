@@ -58,12 +58,12 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(PeerConnection),
-    PeerDisconnected(Box<NodeId>),
-    PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
+    PeerDisconnected(NodeId),
+    PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Substreams
-    NewInboundSubstream(Box<NodeId>, ProtocolId, Substream),
+    NewInboundSubstream(NodeId, ProtocolId, Substream),
 }
 
 impl fmt::Display for ConnectionManagerEvent {
@@ -350,14 +350,10 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer {
-                node_id,
-                reply_tx,
-                tracing_id: _tracing,
-            } => {
+            DialPeer { node_id, reply_tx } => {
+                let tracing_id = tracing::Span::current().id();
                 let span = span!(Level::TRACE, "connection_manager::handle_request");
-                // This causes a panic for some reason?
-                // span.follows_from(tracing_id);
+                span.follows_from(tracing_id);
                 self.dial_peer(node_id, reply_tx).instrument(span).await
             },
             CancelDial(node_id) => {
@@ -403,7 +399,7 @@ where
                 );
                 let notify_fut = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream));
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
                     Ok(Err(err)) => {
                         error!(

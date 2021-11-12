@@ -82,7 +82,7 @@ where T: WalletBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
 
-            let service = BaseNodeService::new(
+            let result = BaseNodeService::new(
                 config,
                 request_stream,
                 wallet_connectivity,
@@ -90,10 +90,13 @@ where T: WalletBackend + 'static
                 handles.get_shutdown_signal(),
                 db,
             )
-            .start();
-            futures::pin_mut!(service);
-            let _ = service.await;
-            info!(target: LOG_TARGET, "Wallet Base Node Service shutdown");
+            .start()
+            .await;
+
+            info!(
+                target: LOG_TARGET,
+                "Wallet Base Node Service shutdown with result {:?}", result
+            );
         });
 
         Ok(())

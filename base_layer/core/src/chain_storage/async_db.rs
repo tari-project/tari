@@ -21,21 +21,28 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{
-        accumulated_data::BlockHeaderAccumulatedData,
+    blocks::{
+        Block,
         BlockAccumulatedData,
+        BlockHeader,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        CompleteDeletedBitmap,
+        DeletedBitmap,
+        HistoricalBlock,
+        NewBlockTemplate,
+    },
+    chain_storage::{
+        blockchain_database::MmrRoots,
+        utxo_mined_info::UtxoMinedInfo,
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
-        ChainBlock,
-        ChainHeader,
         ChainStorageError,
-        CompleteDeletedBitmap,
         DbBasicStats,
         DbTotalSizeStats,
         DbTransaction,
-        HistoricalBlock,
         HorizonData,
         MmrTree,
         PrunedOutput,
@@ -145,6 +152,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(PrunedOutput, bool)>>, "fetch_utxos");
 
+    make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
+
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
     //---------------------------------- Kernel --------------------------------------------//
@@ -153,13 +162,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
 
     //---------------------------------- MMR --------------------------------------------//
-    make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "prepare_block_merkle_roots");
+    make_async_fn!(prepare_new_block(template: NewBlockTemplate) -> Block, "prepare_new_block");
 
     make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_size");
 
-    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
-
-    make_async_fn!(rewind_to_hash(hash: BlockHash) -> Vec<Arc<ChainBlock>>, "rewind_to_hash");
+    make_async_fn!(calculate_mmr_roots(block: Block) -> (Block, MmrRoots), "calculate_mmr_roots");
 
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
@@ -187,6 +194,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(fetch_last_header() -> BlockHeader, "fetch_last_header");
+
+    make_async_fn!(fetch_last_chain_header() -> ChainHeader, "fetch_last_chain_header");
 
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
 
@@ -219,6 +228,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- Misc. --------------------------------------------//
 
+    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
+
+    make_async_fn!(rewind_to_hash(hash: BlockHash) -> Vec<Arc<ChainBlock>>, "rewind_to_hash");
+
     make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
 
     make_async_fn!(fetch_target_difficulty_for_next_block(pow_algo: PowAlgorithm, current_block_hash: HashOutput) -> TargetDifficultyWindow, "fetch_target_difficulty");
@@ -228,6 +241,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
 
     make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
+
+    make_async_fn!(fetch_deleted_bitmap_at_tip() -> DeletedBitmap, "fetch_deleted_bitmap_at_tip");
+
+    make_async_fn!(fetch_header_hash_by_deleted_mmr_positions(mmr_positions: Vec<u32>) -> Vec<Option<(u64, HashOutput)>>, "fetch_headers_of_deleted_positions");
 
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 

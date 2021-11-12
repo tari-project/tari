@@ -22,12 +22,8 @@
 
 // This file is used to store the genesis block
 use crate::{
-    blocks::{block::Block, BlockHeader},
+    blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{PowAlgorithm, ProofOfWork},
-};
-
-use crate::{
-    chain_storage::{BlockHeaderAccumulatedData, ChainBlock},
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -36,11 +32,25 @@ use crate::{
 };
 use chrono::DateTime;
 use std::sync::Arc;
+use tari_common::configuration::Network;
 use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
 };
+
+/// Returns the genesis block for the selected network.
+pub fn get_genesis_block(network: Network) -> ChainBlock {
+    use Network::*;
+    match network {
+        MainNet => get_mainnet_genesis_block(),
+        Ridcully => get_ridcully_genesis_block(),
+        Stibbons => get_stibbons_genesis_block(),
+        Weatherwax => get_weatherwax_genesis_block(),
+        LocalNet => get_weatherwax_genesis_block(),
+        Igor => get_igor_genesis_block(),
+    }
+}
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
     unimplemented!()
@@ -159,7 +169,7 @@ pub fn get_stibbons_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     Block {
         header: BlockHeader {
             version: 0,
@@ -226,7 +236,7 @@ pub fn get_weatherwax_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("07 Jul 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
@@ -336,7 +346,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(1);
     Block {
         header: BlockHeader {
             version: 0,
@@ -419,7 +429,7 @@ pub fn get_igor_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort();
+    body.sort(2);
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("27 Aug 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;

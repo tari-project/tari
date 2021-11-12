@@ -33,7 +33,11 @@ mod utils;
 
 use crate::{
     miner::MiningReport,
-    stratum::{stratum_controller::controller::Controller, stratum_miner::miner::StratumMiner},
+    stratum::{
+        stratum_controller::controller::Controller,
+        stratum_miner::miner::StratumMiner,
+        stratum_statistics::stats::Statistics,
+    },
 };
 use errors::{err_empty, MinerError};
 use miner::Miner;
@@ -42,17 +46,28 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
+        RwLock,
     },
     thread,
     time::Instant,
 };
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
-use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader, GlobalConfig};
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCodes, ExitCodes::ConfigError},
+    ConfigBootstrap,
+    DefaultConfigLoader,
+    GlobalConfig,
+};
 use tari_core::blocks::BlockHeader;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
+
+pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
 
 /// Application entry point
 fn main() {
@@ -61,7 +76,7 @@ fn main() {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => {
             eprintln!("Fatal error: {:?}", exit_code);
-            error!("Exiting with code: {:?}", exit_code);
+            error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
             std::process::exit(exit_code.as_i32())
         },
     }
@@ -74,27 +89,38 @@ async fn main_inner() -> Result<(), ExitCodes> {
     config.num_mining_threads = global.num_mining_threads;
     config.validate_tip_timeout_sec = global.validate_tip_timeout_sec;
     config.mining_worker_name = global.mining_worker_name.clone();
-    debug!("{:?}", bootstrap);
-    debug!("{:?}", config);
+    config.mining_wallet_address = global.mining_wallet_address.clone();
+    config.mining_pool_address = global.mining_pool_address.clone();
+    debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);
+    debug!(target: LOG_TARGET_FILE, "{:?}", config);
 
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
+        let _ = RistrettoPublicKey::from_hex(&miner_address)
+            .map_err(|_| ConfigError("Miner is not configured with a valid wallet address.".to_string()))?;
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", &config.mining_worker_name);
         }
-        let mut mc = Controller::new().unwrap_or_else(|e| {
+        let stats = Arc::new(RwLock::new(Statistics::default()));
+        let mut mc = Controller::new(stats.clone()).unwrap_or_else(|e| {
+            debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
             panic!("Error loading mining controller: {}", e);
         });
-        let cc = stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
-            .unwrap_or_else(|e| {
-                panic!("Error loading stratum client controller: {:?}", e);
-            });
+        let cc =
+            stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone(), stats.clone())
+                .unwrap_or_else(|e| {
+                    debug!(
+                        target: LOG_TARGET_FILE,
+                        "Error loading stratum client controller: {:?}", e
+                    );
+                    panic!("Error loading stratum client controller: {:?}", e);
+                });
         let miner_stopped = Arc::new(AtomicBool::new(false));
         let client_stopped = Arc::new(AtomicBool::new(false));
 
         mc.set_client_tx(cc.tx.clone());
-        let mut miner = StratumMiner::new(config);
+        let mut miner = StratumMiner::new(config, stats);
         if let Err(e) = miner.start_solvers() {
             println!("Error. Please check logs for further info.");
             println!("Error details:");
@@ -107,7 +133,7 @@ async fn main_inner() -> Result<(), ExitCodes> {
             .name("mining_controller".to_string())
             .spawn(move || {
                 if let Err(e) = mc.run(miner) {
-                    error!("Error. Please check logs for further info: {:?}", e);
+                    error!(target: LOG_TARGET, "Error. Please check logs for further info: {:?}", e);
                     return;
                 }
                 miner_stopped_internal.store(true, Ordering::Relaxed);
@@ -131,19 +157,21 @@ async fn main_inner() -> Result<(), ExitCodes> {
         Ok(())
     } else {
         config.mine_on_tip_only = global.mine_on_tip_only;
-        debug!("mine_on_tip_only is {}", config.mine_on_tip_only);
-
+        debug!(
+            target: LOG_TARGET_FILE,
+            "mine_on_tip_only is {}", config.mine_on_tip_only
+        );
         let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
 
         let mut blocks_found: u64 = 0;
         loop {
-            debug!("Starting new mining cycle");
+            debug!(target: LOG_TARGET_FILE, "Starting new mining cycle");
             match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &bootstrap).await {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
-                    error!("Connection error: {:?}", err);
+                    error!(target: LOG_TARGET, "Connection error: {:?}", err);
                     loop {
-                        debug!("Holding for {:?}", config.wait_timeout());
+                        debug!(target: LOG_TARGET_FILE, "Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
                         match connect(&config, &global).await {
                             Ok((nc, wc)) => {
@@ -152,22 +180,28 @@ async fn main_inner() -> Result<(), ExitCodes> {
                                 break;
                             },
                             Err(err) => {
-                                error!("Connection error: {:?}", err);
+                                error!(target: LOG_TARGET, "Connection error: {:?}", err);
                                 continue;
                             },
                         }
                     }
                 },
                 Err(MinerError::MineUntilHeightReached(h)) => {
-                    info!("Prescribed blockchain height {} reached. Aborting ...", h);
+                    info!(
+                        target: LOG_TARGET,
+                        "Prescribed blockchain height {} reached. Aborting ...", h
+                    );
                     return Ok(());
                 },
                 Err(MinerError::MinerLostBlock(h)) => {
-                    info!("Height {} already mined by other node. Restarting ...", h);
+                    info!(
+                        target: LOG_TARGET,
+                        "Height {} already mined by other node. Restarting ...", h
+                    );
                 },
                 Err(err) => {
-                    error!("Error: {:?}", err);
-                    debug!("Holding for {:?}", config.wait_timeout());
+                    error!(target: LOG_TARGET, "Error: {:?}", err);
+                    debug!(target: LOG_TARGET_FILE, "Holding for {:?}", config.wait_timeout());
                     sleep(config.wait_timeout()).await;
                 },
                 Ok(submitted) => {
@@ -189,12 +223,12 @@ async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
 ) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_addr(&global);
-    info!("Connecting to base node at {}", base_node_addr);
-    let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
-    let wallet_addr = config.wallet_addr(&global);
-    info!("Connecting to wallet at {}", wallet_addr);
-    let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
+    let base_node_addr = config.base_node_addr(global)?;
+    info!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
+    let node_conn = BaseNodeClient::connect(base_node_addr).await?;
+    let wallet_addr = config.wallet_addr(global)?;
+    info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
+    let wallet_conn = WalletClient::connect(wallet_addr).await?;
 
     Ok((node_conn, wallet_conn))
 }
@@ -247,7 +281,6 @@ async fn mining_cycle(
 
     // 4. Initialize miner and start receiving mining statuses in the loop
     let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
-    let template_time = Instant::now();
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
     while let Some(report) = reports.next().await {
@@ -257,8 +290,8 @@ async fn mining_cycle(
                 if report.difficulty < min_diff {
                     submit = false;
                     debug!(
-                        "Mined difficulty {} below minimum difficulty {}. Not submitting.",
-                        report.difficulty, min_diff
+                        target: LOG_TARGET_FILE,
+                        "Mined difficulty {} below minimum difficulty {}. Not submitting.", report.difficulty, min_diff
                     );
                 }
             }
@@ -266,8 +299,10 @@ async fn mining_cycle(
                 if report.difficulty > max_diff {
                     submit = false;
                     debug!(
+                        target: LOG_TARGET_FILE,
                         "Mined difficulty {} greater than maximum difficulty {}. Not submitting.",
-                        report.difficulty, max_diff
+                        report.difficulty,
+                        max_diff
                     );
                 }
             }
@@ -275,8 +310,11 @@ async fn mining_cycle(
                 // Mined a block fitting the difficulty
                 let block_header = BlockHeader::try_from(header.clone()).map_err(MinerError::Conversion)?;
                 info!(
+                    target: LOG_TARGET,
                     "Miner {} found block header {} with difficulty {:?}",
-                    report.miner, block_header, report.difficulty,
+                    report.miner,
+                    block_header,
+                    report.difficulty,
                 );
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
@@ -285,12 +323,12 @@ async fn mining_cycle(
                 block_submitted = true;
                 break;
             } else {
-                display_report(&report, config, template_time).await;
+                display_report(&report, config).await;
             }
         } else {
-            display_report(&report, config, template_time).await;
+            display_report(&report, config).await;
         }
-        if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_timeout_sec() {
+        if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_interval() {
             validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
             reporting_timeout = Instant::now();
         }
@@ -300,22 +338,17 @@ async fn mining_cycle(
     Ok(block_submitted)
 }
 
-async fn display_report(report: &MiningReport, config: &MinerConfig, template_time: Instant) {
+async fn display_report(report: &MiningReport, config: &MinerConfig) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
-    let estimated_time = report.target_difficulty as f64 / (hashrate * config.num_mining_threads as f64 * 1000000.0);
-    let remaining = estimated_time as i32 - template_time.elapsed().as_secs() as i32;
     debug!(
-        "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {}, Estimated block in \
-         approx. {}m{}s (+/- Ave. {:.0}s)",
+        target: LOG_TARGET_FILE,
+        "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
         hashrate * config.num_mining_threads as f64,
         config.num_mining_threads,
         report.height,
         report.target_difficulty,
-        remaining / 60,
-        remaining % 60,
-        estimated_time,
     );
 }
 

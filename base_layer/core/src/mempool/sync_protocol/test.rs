@@ -21,17 +21,19 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    consensus::ConsensusManager,
     mempool::{
         async_mempool,
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction},
+    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
     validation::mocks::MockValidator,
 };
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::{fmt, io, iter::repeat_with, sync::Arc};
+use tari_common::configuration::Network;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventTx},
     framing,
@@ -51,7 +53,7 @@ use tokio::{
 
 pub fn create_transactions(n: usize) -> Vec<Transaction> {
     repeat_with(|| {
-        let (transaction, _, _) = create_tx(5000 * uT, 15 * uT, 1, 2, 1, 4);
+        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 4);
         transaction
     })
     .take(n)
@@ -59,7 +61,11 @@ pub fn create_transactions(n: usize) -> Vec<Transaction> {
 }
 
 fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
-    let mempool = Mempool::new(Default::default(), Arc::new(MockValidator::new(true)));
+    let mempool = Mempool::new(
+        Default::default(),
+        ConsensusManager::builder(Network::LocalNet).build(),
+        Arc::new(MockValidator::new(true)),
+    );
 
     let transactions = create_transactions(n);
     for txn in &transactions {
@@ -147,13 +153,13 @@ async fn synchronise() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 8);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     let transactions = get_snapshot(&mempool1);
     assert_eq!(transactions.len(), 8);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 }
 
 #[tokio::test]
@@ -182,13 +188,13 @@ async fn duplicate_set() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     let transactions = get_snapshot(&mempool1);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 }
 
 #[tokio::test]
@@ -219,8 +225,8 @@ async fn responder() {
 
     let transactions = get_snapshot(&mempool2);
     assert_eq!(transactions.len(), 3);
-    assert!(transactions1.iter().all(|txn| transactions.contains(&txn)));
-    assert!(transactions2.iter().all(|txn| transactions.contains(&txn)));
+    assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
+    assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
     // We cannot be sure that the mempool1 contains all the transactions at this point because the initiator protocol
     // can complete before the responder has inserted the final transaction. There is currently no mechanism to know

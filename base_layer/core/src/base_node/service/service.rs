@@ -36,7 +36,7 @@ use crate::{
     blocks::{Block, NewBlock},
     chain_storage::BlockchainBackend,
     proto as shared_protos,
-    proto::{base_node as proto, base_node::base_node_service_request::Request},
+    proto::base_node as proto,
 };
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -400,7 +400,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
     let message = proto::BaseNodeServiceResponse {
         request_key: inner_msg.request_key,
-        response: Some(response.into()),
+        response: Some(response.try_into().map_err(BaseNodeServiceError::InvalidResponse)?),
         is_synced,
     };
 
@@ -501,7 +501,7 @@ async fn handle_outbound_request(
     let request_key = generate_request_key(&mut OsRng);
     let service_request = proto::BaseNodeServiceRequest {
         request_key,
-        request: Some(request.into()),
+        request: Some(request.try_into().map_err(CommsInterfaceError::ApiError)?),
     };
 
     let mut send_msg_params = SendMessageParams::new();
@@ -533,39 +533,14 @@ async fn handle_outbound_request(
             // Wait for matching responses to arrive
             waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
-            if let Some(r) = service_request.request.clone() {
-                match r {
-                    Request::FetchMatchingBlocks(_) |
-                    Request::FetchBlocksWithHashes(_) |
-                    Request::FetchBlocksWithKernels(_) |
-                    Request::FetchBlocksWithUtxos(_) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Timeout for service request FetchBlocks... ({}) set at {:?}",
-                            request_key,
-                            config.fetch_blocks_timeout
-                        );
-                        spawn_request_timeout(timeout_sender, request_key, config.fetch_blocks_timeout)
-                    },
-                    Request::FetchMatchingUtxos(_) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Timeout for service request FetchMatchingUtxos ({}) set at {:?}",
-                            request_key,
-                            config.fetch_utxos_timeout
-                        );
-                        spawn_request_timeout(timeout_sender, request_key, config.fetch_utxos_timeout)
-                    },
-                    _ => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Timeout for service request ... ({}) set at {:?}",
-                            request_key,
-                            config.service_request_timeout
-                        );
-                        spawn_request_timeout(timeout_sender, request_key, config.service_request_timeout)
-                    },
-                };
+            if service_request.request.is_some() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Timeout for service request ... ({}) set at {:?}",
+                    request_key,
+                    config.service_request_timeout
+                );
+                spawn_request_timeout(timeout_sender, request_key, config.service_request_timeout)
             };
             // Log messages
             let msg_tag = send_states[0].tag;

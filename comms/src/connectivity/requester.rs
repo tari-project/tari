@@ -31,6 +31,7 @@ use crate::{
     peer_manager::NodeId,
     PeerConnection,
 };
+use futures::{future, stream::FuturesUnordered, Stream};
 use log::*;
 use std::{
     fmt,
@@ -40,9 +41,9 @@ use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
     time,
 };
+use tracing;
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
-use tracing;
 
 pub type ConnectivityEventRx = broadcast::Receiver<ConnectivityEvent>;
 pub type ConnectivityEventTx = broadcast::Sender<ConnectivityEvent>;
@@ -50,10 +51,8 @@ pub type ConnectivityEventTx = broadcast::Sender<ConnectivityEvent>;
 #[derive(Debug, Clone)]
 pub enum ConnectivityEvent {
     PeerDisconnected(NodeId),
-    ManagedPeerDisconnected(NodeId),
     PeerConnected(PeerConnection),
     PeerConnectFailed(NodeId),
-    ManagedPeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     PeerOffline(NodeId),
     PeerConnectionWillClose(NodeId, ConnectionDirection),
@@ -69,10 +68,8 @@ impl fmt::Display for ConnectivityEvent {
         use ConnectivityEvent::*;
         match self {
             PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id),
-            ManagedPeerDisconnected(node_id) => write!(f, "ManagedPeerDisconnected({})", node_id),
             PeerConnected(node_id) => write!(f, "PeerConnected({})", node_id),
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
-            ManagedPeerConnectFailed(node_id) => write!(f, "ManagedPeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
             PeerConnectionWillClose(node_id, direction) => {
@@ -91,12 +88,9 @@ pub enum ConnectivityRequest {
     WaitStarted(oneshot::Sender<()>),
     DialPeer {
         node_id: NodeId,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
-        tracing_id: Option<tracing::span::Id>,
+        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     },
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
-    AddManagedPeers(Vec<NodeId>),
-    RemovePeer(NodeId),
     SelectConnections(
         ConnectivitySelection,
         oneshot::Sender<Result<Vec<PeerConnection>, ConnectivityError>>,
@@ -126,16 +120,16 @@ impl ConnectivityRequester {
         self.event_tx.clone()
     }
 
+    /// Dial a single peer
     #[tracing::instrument(skip(self))]
-    pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
+    pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
             let (reply_tx, reply_rx) = oneshot::channel();
             self.sender
                 .send(ConnectivityRequest::DialPeer {
                     node_id: peer.clone(),
-                    reply_tx,
-                    tracing_id: tracing::Span::current().id(),
+                    reply_tx: Some(reply_tx),
                 })
                 .await
                 .map_err(|_| ConnectivityError::ActorDisconnected)?;
@@ -156,20 +150,30 @@ impl ConnectivityRequester {
         }
     }
 
-    pub async fn add_managed_peers(&mut self, peers: Vec<NodeId>) -> Result<(), ConnectivityError> {
-        self.sender
-            .send(ConnectivityRequest::AddManagedPeers(peers))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        Ok(())
+    /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
+    #[tracing::instrument(skip(self, peers))]
+    pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
+        &self,
+        peers: I,
+    ) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + '_ {
+        peers
+            .into_iter()
+            .map(|peer| self.dial_peer(peer))
+            .collect::<FuturesUnordered<_>>()
     }
 
-    pub async fn remove_peer(&mut self, peer: NodeId) -> Result<(), ConnectivityError> {
-        self.sender
-            .send(ConnectivityRequest::RemovePeer(peer))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        Ok(())
+    /// Send a request to dial many peers without waiting for the response.
+    #[tracing::instrument(skip(self, peers))]
+    pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
+        future::join_all(peers.into_iter().map(|peer| {
+            self.sender.send(ConnectivityRequest::DialPeer {
+                node_id: peer,
+                reply_tx: None,
+            })
+        }))
+        .await
+        .into_iter()
+        .try_for_each(|result| result.map_err(|_| ConnectivityError::ActorDisconnected))
     }
 
     pub async fn select_connections(

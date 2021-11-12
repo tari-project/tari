@@ -152,7 +152,7 @@ async fn smoke() {
     let listen_event = event_rx.recv().await.unwrap();
     {
         unpack_enum!(ConnectionManagerEvent::NewInboundSubstream(node_id, proto, in_stream) = listen_event);
-        assert_eq!(&*node_id, node_identity2.node_id());
+        assert_eq!(&node_id, node_identity2.node_id());
         assert_eq!(proto, expected_proto);
 
         let mut buf = [0u8; 5];

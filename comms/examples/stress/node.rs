@@ -32,7 +32,7 @@ use tari_comms::{
     protocol::{messaging::MessagingProtocolExtension, ProtocolNotification, Protocols},
     tor,
     tor::{HsFlags, TorIdentity},
-    transports::{SocksConfig, TcpWithTorTransport},
+    transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
     CommsBuilder,
     CommsNode,
     NodeIdentity,
@@ -69,7 +69,7 @@ pub async fn create(
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
         .unwrap();
-    let peer_database = datastore.get_handle(&"peerdb").unwrap();
+    let peer_database = datastore.get_handle("peerdb").unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
 
     let mut protocols = Protocols::new();
@@ -123,7 +123,7 @@ pub async fn create(
             .spawn_with_transport(TcpWithTorTransport::with_tor_socks_proxy(SocksConfig {
                 proxy_address: TOR_SOCKS_ADDR.parse().unwrap(),
                 authentication: Default::default(),
-                proxy_bypass_addresses: vec![],
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
             }))
             .await
             .unwrap()
@@ -144,6 +144,7 @@ pub async fn create(
         builder
             .with_listener_address(hs_ctl.proxied_address())
             .build()?
+            .with_hidden_service_controller(hs_ctl)
             .add_protocol_extensions(protocols.into())
             .add_protocol_extension(MessagingProtocolExtension::new(
                 event_tx,

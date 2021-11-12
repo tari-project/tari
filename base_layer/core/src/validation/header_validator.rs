@@ -35,7 +35,7 @@ impl HeaderValidator {
         }
 
         let height = block_header.height - 1;
-        let min_height = height.saturating_sub(
+        let min_height = block_header.height.saturating_sub(
             self.rules
                 .consensus_constants(block_header.height)
                 .get_median_timestamp_count() as u64,
@@ -63,7 +63,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
-        check_timestamp_ftl(&header, &self.rules)?;
+        check_timestamp_ftl(header, &self.rules)?;
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         trace!(
             target: LOG_TARGET,

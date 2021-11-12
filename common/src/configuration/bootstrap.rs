@@ -49,7 +49,7 @@
 
 use super::{
     error::ConfigError,
-    utils::{install_default_config_file, load_configuration},
+    utils::{config_installer, load_configuration},
 };
 use crate::{
     dir_utils,
@@ -116,8 +116,10 @@ pub struct ConfigBootstrap {
     /// This will clean out the orphans db at startup
     #[structopt(long, alias = "clean_orphans_db")]
     pub clean_orphans_db: bool,
-    /// Supply the password for the console wallet
-    #[structopt(long)]
+    /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
+    /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
+    /// possible.
+    #[structopt(long, env = "TARI_WALLET_PASSWORD")]
     pub password: Option<String>,
     /// Change the password for the console wallet
     #[structopt(long, alias = "update-password")]
@@ -267,7 +269,7 @@ impl ConfigBootstrap {
                     "Installing new config file at {}",
                     self.config.to_str().unwrap_or("[??]")
                 );
-                install_configuration(&self.config, install_default_config_file);
+                install_configuration(application_type, &self.config, config_installer);
             }
         }
 
@@ -282,25 +284,7 @@ impl ConfigBootstrap {
                     "Installing new logfile configuration at {}",
                     self.log_config.to_str().unwrap_or("[??]")
                 );
-                match application_type {
-                    ApplicationType::BaseNode => {
-                        install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
-                    },
-                    ApplicationType::ConsoleWallet => {
-                        install_configuration(&self.log_config, logging::install_default_wallet_logfile_config)
-                    },
-                    ApplicationType::MergeMiningProxy => install_configuration(
-                        &self.log_config,
-                        logging::install_default_merge_mining_proxy_logfile_config,
-                    ),
-                    ApplicationType::StratumTranscoder => install_configuration(
-                        &self.log_config,
-                        logging::install_default_stratum_transcoder_logfile_config,
-                    ),
-                    ApplicationType::MiningNode => {
-                        install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
-                    },
-                }
+                install_configuration(application_type, &self.log_config, logging::log_config_installer)
             }
         };
         Ok(())
@@ -309,7 +293,7 @@ impl ConfigBootstrap {
     /// Set up application-level logging using the Log4rs configuration file
     /// based on supplied CLI arguments
     pub fn initialize_logging(&self) -> Result<(), ConfigError> {
-        if initialize_logging(&self.log_config) {
+        if initialize_logging(&self.log_config, &self.base_path) {
             Ok(())
         } else {
             Err(ConfigError::new("Failed to initialize logging", None))
@@ -330,11 +314,11 @@ pub fn prompt(question: &str) -> bool {
     input == "y" || input.is_empty()
 }
 
-pub fn install_configuration<F>(path: &Path, installer: F)
-where F: Fn(&Path) -> Result<(), std::io::Error> {
-    if let Err(e) = installer(path) {
+pub fn install_configuration<F>(application_type: ApplicationType, path: &Path, installer: F)
+where F: Fn(ApplicationType, &Path) -> Result<(), std::io::Error> {
+    if let Err(e) = installer(application_type, path) {
         println!(
-            "We could not install a new configuration file in {}: {}",
+            "Failed to install a new configuration file in {}: {}",
             path.to_str().unwrap_or("?"),
             e.to_string()
         )
@@ -501,7 +485,7 @@ mod test {
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
         let mut bootstrap =
-            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create-id"])
+            ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", data_path.as_str(), "--init", "--create-id"])
                 .expect("failed to process arguments");
 
         // Initialize bootstrap dirs
@@ -512,16 +496,6 @@ mod test {
         let log_config_exists = std::path::Path::new(&bootstrap.log_config).exists();
         // Load and apply configuration file
         let cfg = load_configuration(&bootstrap);
-
-        // Change current dir to test dir so logging can be initialized there and test data can be cleaned up
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        if std::env::set_current_dir(&dir).is_err() {
-            println!(
-                "Logging initialized in {}, could not initialize in {}.",
-                &current_dir.display(),
-                &dir.display()
-            );
-        };
 
         // Initialize logging
         let logging_initialized = bootstrap.initialize_logging().is_ok();
@@ -534,16 +508,6 @@ mod test {
         let log_other_file_exists = std::path::Path::new(&bootstrap.base_path)
             .join("log/base-node/other.log")
             .exists();
-
-        // Change back to current dir
-        if std::env::set_current_dir(&current_dir).is_err() {
-            println!(
-                "Working directory could not be changed back to {} after logging has been initialized. New working \
-                 directory is {}",
-                &current_dir.display(),
-                &std::env::current_dir().unwrap_or_default().display()
-            );
-        };
 
         // Cleanup test data
         if std::path::Path::new(&data_path.as_str()).exists() {

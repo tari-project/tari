@@ -1,0 +1,203 @@
+########################################################################################################################
+#                                                                                                                      #
+#                                          Wallet Configuration Options                                                #
+#                                                                                                                      #
+########################################################################################################################
+
+[wallet]
+# Override common.network for wallet
+# network = "weatherwax"
+
+# The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
+#  a) have backed up your seed phrase and
+#  b) know what you are doing!
+wallet_db_file = "wallet/wallet.dat"
+console_wallet_db_file = "wallet/console-wallet.dat"
+
+# Console wallet password
+# Should you wish to start your console wallet without typing in your password, the following options are available:
+# 1. Start the console wallet with the --password=secret argument, or
+# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 3. Set the "password" key in this [wallet] section of the config
+# password = "secret"
+
+# WalletNotify
+# Allows you to execute a script or program when these transaction events are received by the console wallet:
+# - transaction received
+# - transaction sent
+# - transaction cancelled
+# - transaction mined but unconfirmed
+# - transaction mined and confirmed
+# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
+# notify = "/path/to/script"
+
+# This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
+# are needed for wallets with many (>1000) TXOs to be validated.
+base_node_query_timeout = 180
+# The amount of seconds added to the current time (Utc) which will then be used to check if the message has
+# expired or not when processing the message (default = 10800).
+#saf_expiry_duration = 10800
+# This is the number of block confirmations required for a transaction to be considered completely mined and
+# confirmed. (default = 3)
+#transaction_num_confirmations_required = 3
+# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
+transaction_broadcast_monitoring_timeout = 180
+# This is the timeout period that will be used for chain monitoring tasks (default = 60)
+#transaction_chain_monitoring_timeout = 60
+# This is the timeout period that will be used for sending transactions directly (default = 20)
+transaction_direct_send_timeout = 180
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
+transaction_broadcast_send_timeout = 180
+# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
+transaction_event_channel_size = 25000
+# This is the size of the event channel used to communicate base node events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+base_node_event_channel_size = 3500
+# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
+output_manager_event_channel_size = 3500
+# This is the size of the event channel used to communicate base node update events to the wallet. A busy console
+# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>300) (default = 50).
+base_node_update_publisher_channel_size = 500
+# If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
+# the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
+# transactions (default = true).
+#prevent_fee_gt_amount = false
+# This option specifies the transaction routing mechanism as being directly between wallets, making
+# use of store and forward or using any combination of these.
+# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
+#transaction_routing_mechanism = "DirectAndStoreAndForward"
+
+# UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
+scan_for_utxo_interval = 180
+
+# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
+# for sent transactions.
+# The stages are:
+# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
+# - "Negotiated" - The recipient replied and the transaction was negotiated.
+# - "Broadcast" - The transaction was broadcast to the base node mempool.
+# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
+# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
+
+# The default values are: "Broadcast", 300
+#command_send_wait_stage = "Broadcast"
+#command_send_wait_timeout = 300
+
+# The base nodes that the wallet should use for service requests and tracking chain state.
+# base_node_service_peers = ["public_key::net_address", ...]
+# base_node_service_peers = ["e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141"]
+
+# Configuration for the wallet's base node service
+# The refresh interval, defaults to 10 seconds
+base_node_service_refresh_interval = 30
+# The maximum age of service requests in seconds, requests older than this are discarded
+base_node_service_request_max_age = 180
+
+#[base_node.transport.tor]
+#control_address = "/ip4/127.0.0.1/tcp/9051"
+#control_auth_type = "none" # or "password"
+# Required for control_auth_type = "password"
+#control_auth_password = "super-secure-password"
+
+# Wallet configuration options for weatherwax
+[wallet.weatherwax]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+# tor_proxy_bypass_for_outbound_tcp = false;
+
+# Wallet configuration options for igor
+[wallet.igor]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+#tor_onion_port = 18141
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+# tor_proxy_bypass_for_outbound_tcp = false;
+

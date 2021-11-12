@@ -7,23 +7,30 @@ const PendingInboundTransactions = require("./pendingInboundTransactions");
 const PendingOutboundTransactions = require("./pendingOutboundTransactions");
 const Contact = require("./contact");
 const Contacts = require("./contacts");
+const Balance = require("./balance");
 
 const utf8 = require("utf8");
 
+class WalletBalance {
+  available = 0;
+  timeLocked = 0;
+  pendingIn = 0;
+  pendingOut = 0;
+}
+
 class Wallet {
   ptr;
+  balance = new WalletBalance();
   log_path = "";
   receivedTransaction = 0;
   receivedTransactionReply = 0;
   transactionBroadcast = 0;
   transactionMined = 0;
   saf_messages = 0;
-
-  utxo_validation_complete = false;
-  utxo_validation_result = 0;
-  stxo_validation_complete = false;
-  stxo_validation_result = 0;
-
+  txo_validation_complete = false;
+  txo_validation_result = 0;
+  tx_validation_complete = false;
+  tx_validation_result = 0;
   callback_received_transaction;
   callback_received_transaction_reply;
   callback_received_finalized_transaction;
@@ -33,24 +40,22 @@ class Wallet {
   callback_direct_send_result;
   callback_store_and_forward_send_result;
   callback_transaction_cancellation;
-  callback_utxo_validation_complete;
-  callback_stxo_validation_complete;
-  callback_invalid_txo_validation_complete;
+  callback_balance_updated;
   callback_transaction_validation_complete;
   callback_saf_message_received;
   recoveryProgressCallback;
 
-  getUtxoValidationStatus() {
+  getTxoValidationStatus() {
     return {
-      utxo_validation_complete: this.utxo_validation_complete,
-      utxo_validation_result: this.utxo_validation_result,
+      txo_validation_complete: this.txo_validation_complete,
+      txo_validation_result: this.txo_validation_result,
     };
   }
 
-  getStxoValidationStatus() {
+  getTxValidationStatus() {
     return {
-      stxo_validation_complete: this.stxo_validation_complete,
-      stxo_validation_result: this.stxo_validation_result,
+      tx_validation_complete: this.tx_validation_complete,
+      tx_validation_result: this.tx_validation_result,
     };
   }
 
@@ -120,18 +125,13 @@ class Wallet {
       InterfaceFFI.createCallbackTransactionCancellation(
         this.onTransactionCancellation
       );
-    this.callback_utxo_validation_complete =
-      InterfaceFFI.createCallbackUtxoValidationComplete(
-        this.onUtxoValidationComplete
+    this.callback_txo_validation_complete =
+      InterfaceFFI.createCallbackTxoValidationComplete(
+        this.onTxoValidationComplete
       );
-    this.callback_stxo_validation_complete =
-      InterfaceFFI.createCallbackStxoValidationComplete(
-        this.onStxoValidationComplete
-      );
-    this.callback_invalid_txo_validation_complete =
-      InterfaceFFI.createCallbackInvalidTxoValidationComplete(
-        this.onInvalidTxoValidationComplete
-      );
+    this.callback_balance_updated = InterfaceFFI.createCallbackBalanceUpdated(
+      this.onBalanceUpdated
+    );
     this.callback_transaction_validation_complete =
       InterfaceFFI.createCallbackTransactionValidationComplete(
         this.onTransactionValidationComplete
@@ -177,9 +177,8 @@ class Wallet {
       this.callback_direct_send_result,
       this.callback_store_and_forward_send_result,
       this.callback_transaction_cancellation,
-      this.callback_utxo_validation_complete,
-      this.callback_stxo_validation_complete,
-      this.callback_invalid_txo_validation_complete,
+      this.callback_txo_validation_complete,
+      this.callback_balance_updated,
       this.callback_transaction_validation_complete,
       this.callback_saf_message_received
     );
@@ -268,36 +267,37 @@ class Wallet {
     );
   };
 
-  onUtxoValidationComplete = (request_key, validation_results) => {
+  onTxoValidationComplete = (request_key, validation_results) => {
     console.log(
-      `${new Date().toISOString()} callbackUtxoValidationComplete(${request_key},${validation_results})`
+      `${new Date().toISOString()} callbackTxoValidationComplete(${request_key},${validation_results})`
     );
-    this.utxo_validation_complete = true;
-    this.utxo_validation_result = validation_results;
+    this.txo_validation_complete = true;
+    this.txo_validation_result = validation_results;
   };
 
-  onStxoValidationComplete = (request_key, validation_results) => {
+  onBalanceUpdated = (ptr) => {
+    let b = new Balance();
+    b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
     console.log(
-      `${new Date().toISOString()} callbackStxoValidationComplete(${request_key},${validation_results})`
+      `${new Date().toISOString()} callbackBalanceUpdated: available = ${
+        this.balance.available
+      },  time locked = ${this.balance.timeLocked}  pending incoming = ${
+        this.balance.pendingIn
+      } pending outgoing = ${this.balance.pendingOut}`
     );
-    this.stxo_validation_complete = true;
-    this.stxo_validation_result = validation_results;
-  };
-
-  onInvalidTxoValidationComplete = (request_key, validation_results) => {
-    console.log(
-      `${new Date().toISOString()} callbackInvalidTxoValidationComplete(${request_key},${validation_results})`
-    );
-    //this.invalidtxo_validation_complete = true;
-    //this.invalidtxo_validation_result = validation_results;
+    b.destroy();
   };
 
   onTransactionValidationComplete = (request_key, validation_results) => {
     console.log(
       `${new Date().toISOString()} callbackTransactionValidationComplete(${request_key},${validation_results})`
     );
-    //this.transaction_validation_complete = true;
-    //this.transaction_validation_result = validation_results;
+    this.tx_validation_complete = true;
+    this.tx_validation_result = validation_results;
   };
 
   onSafMessageReceived = () => {
@@ -337,6 +337,22 @@ class Wallet {
     return result;
   }
 
+  getBalance() {
+    return this.balance;
+  }
+
+  pollBalance() {
+    let b = new Balance();
+    let ptr = InterfaceFFI.walletGetBalance(this.ptr);
+    b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
+    b.destroy();
+    return this.balance;
+  }
+
   getEmojiId() {
     let ptr = InterfaceFFI.walletGetPublicKey(this.ptr);
     let pk = new PublicKey();
@@ -344,21 +360,6 @@ class Wallet {
     let result = pk.getEmojiId();
     pk.destroy();
     return result;
-  }
-
-  getBalance() {
-    let available = InterfaceFFI.walletGetAvailableBalance(this.ptr);
-    let pendingIncoming = InterfaceFFI.walletGetPendingIncomingBalance(
-      this.ptr
-    );
-    let pendingOutgoing = InterfaceFFI.walletGetPendingOutgoingBalance(
-      this.ptr
-    );
-    return {
-      pendingIn: pendingIncoming,
-      pendingOut: pendingOutgoing,
-      available: available,
-    };
   }
 
   addBaseNodePeer(public_key_hex, address) {
@@ -431,12 +432,12 @@ class Wallet {
     return InterfaceFFI.walletCancelPendingTransaction(this.ptr, tx_id);
   }
 
-  startUtxoValidation() {
-    return InterfaceFFI.walletStartUtxoValidation(this.ptr);
+  startTxoValidation() {
+    return InterfaceFFI.walletStartTxoValidation(this.ptr);
   }
 
-  startStxoValidation() {
-    return InterfaceFFI.walletStartStxoValidation(this.ptr);
+  startTxValidation() {
+    return InterfaceFFI.walletStartTransactionValidation(this.ptr);
   }
 
   destroy() {
@@ -452,9 +453,8 @@ class Wallet {
         this.callback_direct_send_result =
         this.callback_store_and_forward_send_result =
         this.callback_transaction_cancellation =
-        this.callback_utxo_validation_complete =
-        this.callback_stxo_validation_complete =
-        this.callback_invalid_txo_validation_complete =
+        this.callback_txo_validation_complete =
+        this.callback_balance_updated =
         this.callback_transaction_validation_complete =
         this.callback_saf_message_received =
         this.recoveryProgressCallback =

@@ -20,19 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::DhtOutboundError;
+use crate::{
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
+    outbound::DhtOutboundError,
+    version::DhtProtocolVersion,
+};
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
     ChaCha20,
     Key,
     Nonce,
 };
+use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
 use std::mem::size_of;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
-    tari_utilities::ByteArray,
+    tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
 
 pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> PK
@@ -51,7 +56,7 @@ pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8
     let mut cipher_text = cipher_text.to_vec();
 
     let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(&key, &nonce);
+    let mut cipher = ChaCha20::new(key, nonce);
 
     cipher.apply_keystream(cipher_text.as_mut_slice());
 
@@ -65,7 +70,7 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>
     let nonce_ga = Nonce::from_slice(&nonce);
 
     let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(&key, &nonce_ga);
+    let mut cipher = ChaCha20::new(key, nonce_ga);
 
     // Cloning the plain text to avoid a caller thinking we have encrypted in place and losing the integral nonce added
     // below
@@ -76,6 +81,45 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>
     let mut ciphertext_integral_nonce = nonce.to_vec();
     ciphertext_integral_nonce.append(&mut plain_text_clone);
     Ok(ciphertext_integral_nonce)
+}
+
+pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Challenge {
+    create_origin_mac_challenge_parts(
+        header.version,
+        &header.destination,
+        &header.message_type,
+        header.flags,
+        header.expires,
+        header.ephemeral_public_key.as_ref(),
+        body,
+    )
+}
+
+pub fn create_origin_mac_challenge_parts(
+    protocol_version: DhtProtocolVersion,
+    destination: &NodeDestination,
+    message_type: &DhtMessageType,
+    flags: DhtMessageFlags,
+    expires: Option<EpochTime>,
+    ephemeral_public_key: Option<&CommsPublicKey>,
+    body: &[u8],
+) -> Challenge {
+    let mut mac_challenge = Challenge::new();
+    // TODO: #testnet_reset remove conditional
+    if protocol_version.as_major() > 1 {
+        mac_challenge.update(&protocol_version.to_bytes());
+        mac_challenge.update(destination.to_inner_bytes().as_slice());
+        mac_challenge.update(&(*message_type as i32).to_le_bytes());
+        mac_challenge.update(&flags.bits().to_le_bytes());
+        if let Some(t) = expires {
+            mac_challenge.update(&t.as_u64().to_le_bytes());
+        }
+        if let Some(e_pk) = ephemeral_public_key.as_ref() {
+            mac_challenge.update(e_pk.as_bytes());
+        }
+    }
+    mac_challenge.update(&body);
+    mac_challenge
 }
 
 #[cfg(test)]

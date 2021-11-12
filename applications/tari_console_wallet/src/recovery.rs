@@ -24,9 +24,9 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
-use tari_app_utilities::utilities::ExitCodes;
-use tari_common_types::types::PrivateKey;
-use tari_key_manager::mnemonic::to_secretkey;
+use tari_common::exit_codes::ExitCodes;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_key_manager::mnemonic::Mnemonic;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     storage::sqlite_db::WalletSqliteDatabase,
@@ -35,12 +35,13 @@ use tari_wallet::{
 };
 
 use crate::wallet_modes::PeerConfig;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
 /// Prompt the user to input their seed words in a single line.
-pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
+pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitCodes> {
     debug!(target: LOG_TARGET, "Prompting for seed words.");
     let mut rl = Editor::<()>::new();
 
@@ -51,8 +52,8 @@ pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
         let input = rl.readline(">> ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
         let seed_words: Vec<String> = input.split_whitespace().map(str::to_string).collect();
 
-        match to_secretkey(&seed_words) {
-            Ok(key) => break Ok(key),
+        match CipherSeed::from_mnemonic(&seed_words, None) {
+            Ok(seed) => break Ok(seed),
             Err(e) => {
                 debug!(target: LOG_TARGET, "MnemonicError parsing seed words: {}", e);
                 println!("Failed to parse seed words! Did you type them correctly?");
@@ -62,14 +63,14 @@ pub fn prompt_private_key_from_seed_words() -> Result<PrivateKey, ExitCodes> {
     }
 }
 
-/// Return secret key matching the seed words.
-pub fn get_private_key_from_seed_words(seed_words: Vec<String>) -> Result<PrivateKey, ExitCodes> {
-    debug!(target: LOG_TARGET, "Return secret key matching the provided seed words");
-    match to_secretkey(&seed_words) {
-        Ok(key) => Ok(key),
+/// Return seed matching the seed words.
+pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, ExitCodes> {
+    debug!(target: LOG_TARGET, "Return seed derived from the provided seed words");
+    match CipherSeed::from_mnemonic(&seed_words, None) {
+        Ok(seed) => Ok(seed),
         Err(e) => {
             let err_msg = format!("MnemonicError parsing seed words: {}", e);
-            debug!(target: LOG_TARGET, "{}", err_msg);
+            warn!(target: LOG_TARGET, "{}", err_msg);
             Err(ExitCodes::RecoveryError(err_msg))
         },
     }
@@ -89,13 +90,19 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let peer_manager = wallet.comms.peer_manager();
     let mut peer_public_keys = Vec::with_capacity(peers.len());
     for peer in peers {
+        debug!(
+            target: LOG_TARGET,
+            "Peer added: {} (NodeId: {})",
+            peer.public_key.to_hex(),
+            peer.node_id.to_hex()
+        );
         peer_public_keys.push(peer.public_key.clone());
         peer_manager.add_peer(peer).await?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
-        .with_retry_limit(10)
+        .with_retry_limit(3)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();
@@ -106,7 +113,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     loop {
         match event_stream.recv().await {
             Ok(UtxoScannerEvent::ConnectingToBaseNode(peer)) => {
-                print!("Connecting to base node {}... ", peer);
+                println!("Connecting to base node {}... ", peer);
             },
             Ok(UtxoScannerEvent::ConnectedToBaseNode(_, latency)) => {
                 println!("OK (latency = {:.2?})", latency);

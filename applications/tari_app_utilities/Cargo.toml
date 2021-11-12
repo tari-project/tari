@@ -1,16 +1,15 @@
 [package]
 name = "tari_app_utilities"
-version = "0.9.6"
+version = "0.21.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
 [dependencies]
 tari_comms = { path = "../../comms" }
-tari_crypto = "0.11.1"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_wallet = { path = "../../base_layer/wallet", optional = true }
 
 config = { version = "0.9.3" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
@@ -28,13 +27,8 @@ tonic = "0.5.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.9"
 default-features = false
 features = ["transactions"]
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-
-[features]
-# TODO: This crate is supposed to hold common logic. Move code from this feature into the crate that is more specific to the wallet
-wallet = ["tari_wallet"]

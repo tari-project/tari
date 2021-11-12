@@ -62,7 +62,6 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
@@ -71,8 +70,8 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        helpers::schema_to_transaction,
         tari_amount::{uT, T},
+        test_helpers::schema_to_transaction,
         transaction::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
@@ -83,6 +82,7 @@ use crate::helpers::{
     block_builders::{chain_block, create_genesis_block_with_coinbase_value},
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
+use tari_core::blocks::ChainBlock;
 
 mod helpers;
 
@@ -182,7 +182,7 @@ async fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block0.block(), vec![tx1.clone()], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
     base_node
@@ -229,7 +229,7 @@ async fn test_base_node_wallet_rpc() {
     // Now we will Mine block 2 so that we can see 1 confirmation on tx1
     let mut block2 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block1, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![], &consensus_manager))
         .unwrap();
 
     block2.header.output_mmr_size += 1;

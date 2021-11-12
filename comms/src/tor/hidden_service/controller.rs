@@ -29,6 +29,7 @@ use crate::{
             commands::{AddOnionFlag, AddOnionResponse},
             TorControlEvent,
         },
+        hidden_service::TorProxyOpts,
         Authentication,
         HiddenService,
         HsFlags,
@@ -42,7 +43,7 @@ use crate::{
 };
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tari_shutdown::OptionalShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};
@@ -75,7 +76,7 @@ pub struct HiddenServiceController {
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
     is_authenticated: bool,
-    proxy_bypass_addresses: Vec<Multiaddr>,
+    proxy_opts: TorProxyOpts,
     shutdown_signal: OptionalShutdownSignal,
 }
 
@@ -89,7 +90,7 @@ impl HiddenServiceController {
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
-        proxy_bypass_addresses: Vec<Multiaddr>,
+        proxy_opts: TorProxyOpts,
         shutdown_signal: OptionalShutdownSignal,
     ) -> Self {
         Self {
@@ -102,7 +103,7 @@ impl HiddenServiceController {
             hs_flags,
             identity,
             is_authenticated: false,
-            proxy_bypass_addresses,
+            proxy_opts,
             shutdown_signal,
         }
     }
@@ -119,7 +120,7 @@ impl HiddenServiceController {
         Ok(SocksTransport::new(SocksConfig {
             proxy_address: socks_addr,
             authentication: self.socks_auth.clone(),
-            proxy_bypass_addresses: self.proxy_bypass_addresses.clone(),
+            proxy_bypass_predicate: Arc::new(self.proxy_opts.to_bypass_predicate()),
         }))
     }
 

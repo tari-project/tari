@@ -22,14 +22,12 @@
 
 use futures::future::Either;
 use log::*;
-use thiserror::Error;
+use std::sync::Arc;
 use tokio::{runtime, runtime::Runtime};
 
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::{NodeId, PeerManagerError},
-    protocol::rpc::RpcError,
+    peer_manager::NodeId,
     socks,
     tor,
     tor::TorIdentity,
@@ -42,128 +40,9 @@ use tari_p2p::transport::{TorConfig, TransportType};
 
 use crate::identity_management::load_from_json;
 use tari_common_types::emoji::EmojiId;
+use tari_comms::transports::predicate::FalsePredicate;
 
 pub const LOG_TARGET: &str = "tari::application";
-
-/// Enum to show failure information
-#[derive(Debug, Clone, Error)]
-pub enum ExitCodes {
-    #[error("There is an error in the wallet configuration: {0}")]
-    ConfigError(String),
-    #[error("The application exited because an unknown error occurred. Check the logs for details.")]
-    UnknownError,
-    #[error("The application exited because an interface error occurred. Check the logs for details.")]
-    InterfaceError,
-    #[error("The application exited. {0}")]
-    WalletError(String),
-    #[error("The wallet was not able to start the GRPC server. {0}")]
-    GrpcError(String),
-    #[error("The application did not accept the command input: {0}")]
-    InputError(String),
-    #[error("Invalid command: {0}")]
-    CommandError(String),
-    #[error("IO error: {0}")]
-    IOError(String),
-    #[error("Recovery failed: {0}")]
-    RecoveryError(String),
-    #[error("The wallet exited because of an internal network error: {0}")]
-    NetworkError(String),
-    #[error("The wallet exited because it received a message it could not interpret: {0}")]
-    ConversionError(String),
-    #[error("Your password was incorrect.")]
-    IncorrectPassword,
-    #[error("Your application is encrypted but no password was provided.")]
-    NoPassword,
-    #[error("Tor connection is offline")]
-    TorOffline,
-}
-
-impl ExitCodes {
-    pub fn as_i32(&self) -> i32 {
-        match self {
-            Self::ConfigError(_) => 101,
-            Self::UnknownError => 102,
-            Self::InterfaceError => 103,
-            Self::WalletError(_) => 104,
-            Self::GrpcError(_) => 105,
-            Self::InputError(_) => 106,
-            Self::CommandError(_) => 107,
-            Self::IOError(_) => 108,
-            Self::RecoveryError(_) => 109,
-            Self::NetworkError(_) => 110,
-            Self::ConversionError(_) => 111,
-            Self::IncorrectPassword | Self::NoPassword => 112,
-            Self::TorOffline => 113,
-        }
-    }
-}
-
-impl From<tari_common::ConfigError> for ExitCodes {
-    fn from(err: tari_common::ConfigError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError(err.to_string())
-    }
-}
-
-impl From<ConnectivityError> for ExitCodes {
-    fn from(err: ConnectivityError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::NetworkError(err.to_string())
-    }
-}
-
-impl From<RpcError> for ExitCodes {
-    fn from(err: RpcError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::NetworkError(err.to_string())
-    }
-}
-
-#[cfg(feature = "wallet")]
-mod wallet {
-    use super::*;
-    use tari_wallet::{
-        error::{WalletError, WalletStorageError},
-        output_manager_service::error::OutputManagerError,
-    };
-
-    impl From<WalletError> for ExitCodes {
-        fn from(err: WalletError) -> Self {
-            error!(target: LOG_TARGET, "{}", err);
-            Self::WalletError(err.to_string())
-        }
-    }
-
-    impl From<OutputManagerError> for ExitCodes {
-        fn from(err: OutputManagerError) -> Self {
-            error!(target: LOG_TARGET, "{}", err);
-            Self::WalletError(err.to_string())
-        }
-    }
-
-    impl From<WalletStorageError> for ExitCodes {
-        fn from(err: WalletStorageError) -> Self {
-            use WalletStorageError::*;
-            match err {
-                NoPasswordError => ExitCodes::NoPassword,
-                IncorrectPassword => ExitCodes::IncorrectPassword,
-                e => ExitCodes::WalletError(e.to_string()),
-            }
-        }
-    }
-}
-
-impl From<PeerManagerError> for ExitCodes {
-    fn from(err: PeerManagerError) -> Self {
-        ExitCodes::NetworkError(err.to_string())
-    }
-}
-
-impl ExitCodes {
-    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
-        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
-    }
-}
 
 /// Creates a transport type from the given configuration
 ///
@@ -185,7 +64,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
-                proxy_bypass_addresses: vec![],
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
             }),
         },
         CommsTransport::TorHiddenService {
@@ -195,6 +74,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             auth,
             onion_port,
             tor_proxy_bypass_addresses,
+            tor_proxy_bypass_for_outbound_tcp,
         } => {
             let identity = Some(&config.base_node_tor_identity_file)
                 .filter(|p| p.exists())
@@ -227,6 +107,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
                 tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
             })
         },
         CommsTransport::Socks5 {
@@ -237,7 +118,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             socks_config: SocksConfig {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
-                proxy_bypass_addresses: vec![],
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
             },
             listener_address,
         },

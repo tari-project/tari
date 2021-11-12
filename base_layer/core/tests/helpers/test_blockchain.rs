@@ -94,7 +94,7 @@ impl TestBlockchain {
             &CryptoFactories::default(),
         );
 
-        let mut new_block = self.store.prepare_block_merkle_roots(template).unwrap();
+        let mut new_block = self.store.prepare_new_block(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, block.difficulty.unwrap_or(1).into());
 
@@ -136,7 +136,7 @@ impl TestBlockchain {
 
     pub fn tip(&self) -> &BlockProxy {
         let tip = self.store.fetch_tip_header().unwrap();
-        self.get_block_by_hash(&tip.hash()).unwrap()
+        self.get_block_by_hash(tip.hash()).unwrap()
     }
 
     pub fn get_block(&self, name: &str) -> Option<&BlockProxy> {

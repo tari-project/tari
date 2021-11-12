@@ -24,11 +24,14 @@ use crate::{
     config::MinerConfig,
     difficulty::BlockHeaderSha3,
     stratum,
-    stratum::stratum_miner::{
-        control_message::ControlMessage,
-        job_shared_data::{JobSharedData, JobSharedDataType},
-        solution::Solution,
-        solver_instance::SolverInstance,
+    stratum::{
+        stratum_miner::{
+            control_message::ControlMessage,
+            job_shared_data::{JobSharedData, JobSharedDataType},
+            solution::Solution,
+            solver_instance::SolverInstance,
+        },
+        stratum_statistics::stats::Statistics,
     },
 };
 use log::*;
@@ -37,11 +40,19 @@ use std::{
     sync::{mpsc, Arc, RwLock},
     thread,
     time,
+    time::{Duration, SystemTime},
 };
 use tari_core::{
     blocks::BlockHeader,
     crypto::tari_utilities::{hex::Hex, Hashable},
 };
+
+pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
+pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
+
+fn calculate_sols(elapsed: Duration) -> f64 {
+    1.0 / ((elapsed.as_secs() * 1_000_000_000 + elapsed.subsec_nanos() as u64) as f64 / 1_000_000_000.0)
+}
 
 pub struct StratumMiner {
     config: MinerConfig,
@@ -49,10 +60,11 @@ pub struct StratumMiner {
     control_txs: Vec<mpsc::Sender<ControlMessage>>,
     solver_loop_txs: Vec<mpsc::Sender<ControlMessage>>,
     solver_stopped_rxs: Vec<mpsc::Receiver<ControlMessage>>,
+    stats: Arc<RwLock<Statistics>>,
 }
 
 impl StratumMiner {
-    pub fn new(config: MinerConfig) -> StratumMiner {
+    pub fn new(config: MinerConfig, stats: Arc<RwLock<Statistics>>) -> StratumMiner {
         let threads = config.num_mining_threads;
         StratumMiner {
             config,
@@ -60,6 +72,7 @@ impl StratumMiner {
             control_txs: vec![],
             solver_loop_txs: vec![],
             solver_stopped_rxs: vec![],
+            stats,
         }
     }
 
@@ -70,19 +83,20 @@ impl StratumMiner {
         control_rx: mpsc::Receiver<ControlMessage>,
         solver_loop_rx: mpsc::Receiver<ControlMessage>,
         solver_stopped_tx: mpsc::Sender<ControlMessage>,
+        statistics: Arc<RwLock<Statistics>>,
     ) {
         let stop_handle = thread::spawn(move || loop {
             while let Some(message) = control_rx.iter().next() {
                 match message {
                     ControlMessage::Stop => {
-                        info!("Stopping Solvers");
+                        debug!(target: LOG_TARGET_FILE, "Stopping Solvers");
                         return;
                     },
                     ControlMessage::Pause => {
-                        info!("Pausing Solvers");
+                        debug!(target: LOG_TARGET_FILE, "Pausing Solvers");
                     },
                     ControlMessage::Resume => {
-                        info!("Resuming Solvers");
+                        debug!(target: LOG_TARGET_FILE, "Resuming Solvers");
                     },
                     _ => {},
                 };
@@ -90,16 +104,23 @@ impl StratumMiner {
         });
 
         let mut paused = true;
+        let mut timer = SystemTime::now();
         loop {
             if let Some(message) = solver_loop_rx.try_iter().next() {
-                debug!("solver_thread - solver_loop_rx got msg: {:?}", message);
+                debug!(
+                    target: LOG_TARGET_FILE,
+                    "solver_thread - solver_loop_rx got msg: {:?}", message
+                );
                 match message {
                     ControlMessage::Stop => break,
                     ControlMessage::Pause => {
                         paused = true;
                         solver.solver_reset = true;
                     },
-                    ControlMessage::Resume => paused = false,
+                    ControlMessage::Resume => {
+                        paused = false;
+                        timer = SystemTime::now();
+                    },
                     _ => {},
                 }
             }
@@ -115,7 +136,6 @@ impl StratumMiner {
                     let height = { shared_data.read().unwrap().height };
                     let job_id = { shared_data.read().unwrap().job_id };
                     let target_difficulty = { shared_data.read().unwrap().difficulty };
-
                     let mut hasher = BlockHeaderSha3::new(tari_app_grpc::tari_rpc::BlockHeader::from(header)).unwrap();
 
                     if solver.solver_reset {
@@ -127,18 +147,21 @@ impl StratumMiner {
                         hasher.inc_nonce();
                         solver.current_nonce = hasher.nonce;
                     }
-
+                    let mut stats = statistics.write().unwrap();
                     let difficulty = hasher.difficulty();
+                    stats.mining_stats.add_hash();
                     if difficulty >= target_difficulty {
                         let block_header: BlockHeader = BlockHeader::try_from(hasher.into_header()).unwrap();
                         info!(
-                            "Miner found block header with hash {}, nonce {} and difficulty {:?}",
+                            target: LOG_TARGET,
+                            "Miner found share with hash {}, nonce {} and difficulty {:?}",
                             block_header.hash().to_hex(),
                             solver.current_nonce,
                             difficulty
                         );
                         debug!(
-                            "Miner found block header with hash {}, difficulty {:?} and data {:?}",
+                            target: LOG_TARGET_FILE,
+                            "Miner found share with hash {}, difficulty {:?} and data {:?}",
                             block_header.hash().to_hex(),
                             difficulty,
                             block_header
@@ -154,6 +177,11 @@ impl StratumMiner {
                                 hash: block_header.hash().to_hex(),
                                 nonce: block_header.nonce,
                             });
+                            if let Ok(elapsed) = timer.elapsed() {
+                                let sols = calculate_sols(elapsed);
+                                stats.mining_stats.add_sols(sols);
+                            }
+                            timer = SystemTime::now();
                         }
                     }
                     solver.solutions = Solution::default();
@@ -169,8 +197,10 @@ impl StratumMiner {
     }
 
     pub fn start_solvers(&mut self) -> Result<(), stratum::error::Error> {
+        let mut stats = self.stats.write().unwrap();
+        stats.mining_stats.solvers = self.config.num_mining_threads;
         let num_solvers = self.config.num_mining_threads;
-        info!("Spawning {} solvers", num_solvers);
+        info!(target: LOG_TARGET, "Spawning {} solvers", num_solvers);
         let mut solvers = Vec::with_capacity(num_solvers);
         while solvers.len() < solvers.capacity() {
             solvers.push(SolverInstance::new()?);
@@ -183,8 +213,9 @@ impl StratumMiner {
             self.control_txs.push(control_tx);
             self.solver_loop_txs.push(solver_tx);
             self.solver_stopped_rxs.push(solver_stopped_rx);
+            let stats = self.stats.clone();
             thread::spawn(move || {
-                StratumMiner::solver_thread(s, i, sd, control_rx, solver_rx, solver_stopped_tx);
+                StratumMiner::solver_thread(s, i, sd, control_rx, solver_rx, solver_stopped_tx, stats);
             });
         }
         Ok(())
@@ -197,8 +228,8 @@ impl StratumMiner {
         blob: String,
         difficulty: u64,
     ) -> Result<(), stratum::error::Error> {
-        let header_hex = hex::decode(blob)
-            .map_err(|_| stratum::error::Error::JsonError("Blob is not a valid hex value".to_string()))?;
+        let header_hex =
+            hex::decode(blob).map_err(|_| stratum::error::Error::Json("Blob is not a valid hex value".to_string()))?;
         let header: BlockHeader = serde_json::from_str(&String::from_utf8_lossy(&header_hex).to_string())?;
 
         let mut sd = self.shared_data.write().unwrap();
@@ -216,6 +247,10 @@ impl StratumMiner {
         sd.difficulty = difficulty;
         sd.header = Some(header);
         if paused {
+            info!(
+                target: LOG_TARGET,
+                "Hashing in progress... height: {}, target difficulty: {}", height, difficulty
+            );
             self.resume_solvers();
         }
         Ok(())
@@ -239,7 +274,7 @@ impl StratumMiner {
         for t in self.solver_loop_txs.iter() {
             let _ = t.send(ControlMessage::Stop);
         }
-        debug!("Stop message sent");
+        debug!(target: LOG_TARGET_FILE, "Stop message sent");
     }
 
     pub fn pause_solvers(&self) {
@@ -249,7 +284,7 @@ impl StratumMiner {
         for t in self.solver_loop_txs.iter() {
             let _ = t.send(ControlMessage::Pause);
         }
-        debug!("Pause message sent");
+        debug!(target: LOG_TARGET_FILE, "Pause message sent");
     }
 
     pub fn resume_solvers(&self) {
@@ -259,16 +294,13 @@ impl StratumMiner {
         for t in self.solver_loop_txs.iter() {
             let _ = t.send(ControlMessage::Resume);
         }
-        debug!("Resume message sent");
+        debug!(target: LOG_TARGET_FILE, "Resume message sent");
     }
 
     pub fn wait_for_solver_shutdown(&self) {
         for r in self.solver_stopped_rxs.iter() {
-            while let Some(message) = r.iter().next() {
-                if let ControlMessage::SolverStopped(i) = message {
-                    debug!("Solver stopped: {}", i);
-                    break;
-                }
+            if let Some(ControlMessage::SolverStopped(i)) = r.iter().next() {
+                debug!(target: LOG_TARGET_FILE, "Solver stopped: {}", i);
             }
         }
     }

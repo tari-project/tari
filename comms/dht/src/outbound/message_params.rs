@@ -40,7 +40,7 @@ use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKe
 /// let dest_public_key = CommsPublicKey::default();
 /// let params = SendMessageParams::new()
 ///   .random(5)
-///   .with_encryption(OutboundEncryption::EncryptFor(Box::new(dest_public_key)))
+///   .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
 ///   .finish();
 /// ```
 #[derive(Debug, Clone)]
@@ -146,6 +146,12 @@ impl SendMessageParams {
                 node_id,
                 connected_only: true,
             }));
+        self
+    }
+
+    /// Set broadcast_strategy to SelectedPeers. Messages are queued for all selected peers.
+    pub fn selected_peers(&mut self, peers: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::SelectedPeers(peers);
         self
     }
 

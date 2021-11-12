@@ -20,34 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make tokio::select! work
-#![recursion_limit = "512"]
-#![feature(shrink_to)]
-// #![cfg_attr(not(debug_assertions), deny(unused_variables))]
-// #![cfg_attr(not(debug_assertions), deny(unused_imports))]
-// #![cfg_attr(not(debug_assertions), deny(dead_code))]
-// #![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-// #![deny(unused_must_use)]
-// #![deny(unreachable_patterns)]
-// #![deny(unknown_lints)]
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 
 #[macro_use]
 extern crate bitflags;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod consensus;
 #[cfg(feature = "base_node")]
 pub mod iterators;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod proof_of_work;
 #[cfg(feature = "base_node")]
 pub mod validation;
 
 #[cfg(any(test, feature = "base_node"))]
+#[macro_use]
 pub mod test_helpers;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]

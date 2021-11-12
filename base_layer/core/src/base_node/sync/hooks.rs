@@ -22,44 +22,49 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::chain_storage::ChainBlock;
+use crate::blocks::ChainBlock;
 use std::sync::Arc;
 use tari_comms::peer_manager::NodeId;
 
 #[derive(Default)]
 pub(super) struct Hooks {
-    on_progress_header: Vec<Box<dyn FnMut(Option<(u64, u64)>, &[NodeId]) + Send + Sync>>,
-    on_progress_block: Vec<Box<dyn FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync>>,
+    on_starting: Vec<Box<dyn FnMut() + Send + Sync>>,
+    on_progress_header: Vec<Box<dyn FnMut(u64, u64, &NodeId) + Send + Sync>>,
+    on_progress_block: Vec<Box<dyn FnMut(Arc<ChainBlock>, u64, &NodeId) + Send + Sync>>,
     on_complete: Vec<Box<dyn FnMut(Arc<ChainBlock>) + Send + Sync>>,
     on_rewind: Vec<Box<dyn FnMut(Vec<Arc<ChainBlock>>) + Send + Sync>>,
 }
 
 impl Hooks {
+    pub fn add_on_starting_hook<H>(&mut self, hook: H)
+    where H: FnMut() + Send + Sync + 'static {
+        self.on_starting.push(Box::new(hook));
+    }
+
+    pub fn call_on_starting_hook(&mut self) {
+        self.on_starting.iter_mut().for_each(|f| (*f)());
+    }
+
     pub fn add_on_progress_header_hook<H>(&mut self, hook: H)
-    where H: FnMut(Option<(u64, u64)>, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(u64, u64, &NodeId) + Send + Sync + 'static {
         self.on_progress_header.push(Box::new(hook));
     }
 
-    pub fn call_on_progress_header_hooks(&mut self, height_vs_remote: Option<(u64, u64)>, sync_peers: &[NodeId]) {
+    pub fn call_on_progress_header_hooks(&mut self, local_height: u64, remote_height: u64, sync_peer: &NodeId) {
         self.on_progress_header
             .iter_mut()
-            .for_each(|f| (*f)(height_vs_remote, sync_peers));
+            .for_each(|f| (*f)(local_height, remote_height, sync_peer));
     }
 
     pub fn add_on_progress_block_hook<H>(&mut self, hook: H)
-    where H: FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(Arc<ChainBlock>, u64, &NodeId) + Send + Sync + 'static {
         self.on_progress_block.push(Box::new(hook));
     }
 
-    pub fn call_on_progress_block_hooks(
-        &mut self,
-        block: Arc<ChainBlock>,
-        remote_tip_height: u64,
-        sync_peers: &[NodeId],
-    ) {
+    pub fn call_on_progress_block_hooks(&mut self, block: Arc<ChainBlock>, remote_tip_height: u64, sync_peer: &NodeId) {
         self.on_progress_block
             .iter_mut()
-            .for_each(|f| (*f)(block.clone(), remote_tip_height, sync_peers));
+            .for_each(|f| (*f)(block.clone(), remote_tip_height, sync_peer));
     }
 
     pub fn add_on_complete_hook<H>(&mut self, hook: H)

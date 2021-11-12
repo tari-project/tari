@@ -1,14 +1,13 @@
 @stratum-transcoder
 Feature: Stratum Transcoder
 
-  @critical
+  @critical @flaky @broken
   Scenario: Transcoder Functionality Test
     Given I have a seed node NODE
     And I have wallet WALLET1 connected to all seed nodes
     And I have wallet WALLET2 connected to all seed nodes
     And I have wallet WALLET3 connected to all seed nodes
     And I have wallet WALLET4 connected to all seed nodes
-    And I wait 10 seconds
     # For funds
     And I have a merge mining proxy FUNDS connected to NODE and WALLET1 with default config
     When I merge mine 10 blocks via FUNDS
@@ -36,6 +35,10 @@ Feature: Stratum Transcoder
     When I call getbalance from stratum transcoder PROXY
     Then I get a valid getbalance response from stratum transcoder PROXY
     When I call transfer from stratum transcoder PROXY using the public key of WALLET2, WALLET3 and amount 1000 uT each
+    # Flaky here, sometimes the transaction fails on CI and is_success is returned as false.
+    # While this is correct behaviour on the part of the transcoder where we are expecting
+    # the transaction to succeed to be able to check balances later in the test.
+    # Will need to check logs in base node and wallet to determine why the transaction failed.
     Then I get a valid transfer response from stratum transcoder PROXY
     # For mined transactions
     When I merge mine 5 blocks via FUNDS

@@ -26,9 +26,9 @@ use std::{
     path::PathBuf,
     process::{Command, Output},
 };
+use tari_common_types::transaction::TxId;
 use tari_core::tari_utilities::hex::Hex;
 use tari_wallet::{
-    output_manager_service::TxId,
     transaction_service::storage::models::{
         CompletedTransaction,
         InboundTransaction,
@@ -166,20 +166,17 @@ impl Notifier {
 
             self.handle.spawn(async move {
                 match transaction_service.get_any_transaction(tx_id).await {
-                    Ok(option_tx) => {
-                        if let Some(wallet_tx) = option_tx {
-                            let args = match wallet_tx {
-                                WalletTransaction::Completed(tx) => args_from_complete(&tx, CANCELLED, None),
-                                WalletTransaction::PendingInbound(tx) => args_from_inbound(&tx, CANCELLED),
-                                WalletTransaction::PendingOutbound(tx) => args_from_outbound(&tx, CANCELLED),
-                            };
-                            let result = Command::new(program).args(&args).output();
-                            log(result);
-                        } else {
-                            error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id);
-                        }
+                    Ok(Some(wallet_tx)) => {
+                        let args = match wallet_tx {
+                            WalletTransaction::Completed(tx) => args_from_complete(&tx, CANCELLED, None),
+                            WalletTransaction::PendingInbound(tx) => args_from_inbound(&tx, CANCELLED),
+                            WalletTransaction::PendingOutbound(tx) => args_from_outbound(&tx, CANCELLED),
+                        };
+                        let result = Command::new(program).args(&args).output();
+                        log(result);
                     },
                     Err(e) => error!(target: LOG_TARGET, "Transaction service error: {}", e),
+                    _ => error!(target: LOG_TARGET, "Transaction not found tx_id: {}", tx_id),
                 }
             });
         } else {

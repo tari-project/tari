@@ -20,9 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionDirection, runtime};
+use crate::{
+    connection_manager::ConnectionDirection,
+    runtime,
+    stream_id,
+    stream_id::StreamId,
+    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
+};
 use futures::{task::Context, Stream};
-use std::{future::Future, io, pin::Pin, sync::Arc, task::Poll};
+use std::{future::Future, io, pin::Pin, task::Poll};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
@@ -32,9 +38,6 @@ use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompat
 use tracing::{self, debug, error, event, Level};
 use yamux::Mode;
 
-type IncomingRx = mpsc::Receiver<yamux::Stream>;
-type IncomingTx = mpsc::Sender<yamux::Stream>;
-
 // Reexport
 pub use yamux::ConnectionError;
 
@@ -43,7 +46,7 @@ const LOG_TARGET: &str = "comms::multiplexing::yamux";
 pub struct Yamux {
     control: Control,
     incoming: IncomingSubstreams,
-    substream_counter: SubstreamCounter,
+    substream_counter: AtomicRefCounter,
 }
 
 const MAX_BUFFER_SIZE: u32 = 8 * 1024 * 1024; // 8MiB
@@ -66,7 +69,7 @@ impl Yamux {
         config.set_max_buffer_size(MAX_BUFFER_SIZE as usize);
         config.set_receive_window(RECEIVE_WINDOW);
 
-        let substream_counter = SubstreamCounter::new();
+        let substream_counter = AtomicRefCounter::new();
         let connection = yamux::Connection::new(socket.compat(), config, mode);
         let control = Control::new(connection.control(), substream_counter.clone());
         let incoming = Self::spawn_incoming_stream_worker(connection, substream_counter.clone());
@@ -82,7 +85,7 @@ impl Yamux {
     // Control api. Here we spawn off a worker which will do this job
     fn spawn_incoming_stream_worker<TSocket>(
         connection: yamux::Connection<TSocket>,
-        counter: SubstreamCounter,
+        counter: AtomicRefCounter,
     ) -> IncomingSubstreams
     where
         TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static,
@@ -105,7 +108,7 @@ impl Yamux {
     }
 
     /// Consumes this object and returns a `Stream` that emits substreams initiated by the remote
-    pub fn incoming(self) -> IncomingSubstreams {
+    pub fn into_incoming(self) -> IncomingSubstreams {
         self.incoming
     }
 
@@ -115,7 +118,7 @@ impl Yamux {
     }
 
     /// Return a SubstreamCounter for this connection
-    pub(crate) fn substream_counter(&self) -> SubstreamCounter {
+    pub(crate) fn substream_counter(&self) -> AtomicRefCounter {
         self.substream_counter.clone()
     }
 }
@@ -123,11 +126,11 @@ impl Yamux {
 #[derive(Clone)]
 pub struct Control {
     inner: yamux::Control,
-    substream_counter: SubstreamCounter,
+    substream_counter: AtomicRefCounter,
 }
 
 impl Control {
-    pub fn new(inner: yamux::Control, substream_counter: SubstreamCounter) -> Self {
+    pub fn new(inner: yamux::Control, substream_counter: AtomicRefCounter) -> Self {
         Self {
             inner,
             substream_counter,
@@ -141,7 +144,7 @@ impl Control {
         let stream = self.inner.open_stream().await?;
         Ok(Substream {
             stream: stream.compat(),
-            counter_guard,
+            _counter_guard: counter_guard,
         })
     }
 
@@ -154,19 +157,23 @@ impl Control {
         self.substream_counter.get()
     }
 
-    pub(crate) fn substream_counter(&self) -> SubstreamCounter {
+    pub(crate) fn substream_counter(&self) -> AtomicRefCounter {
         self.substream_counter.clone()
     }
 }
 
 pub struct IncomingSubstreams {
-    inner: IncomingRx,
-    substream_counter: SubstreamCounter,
+    inner: mpsc::Receiver<yamux::Stream>,
+    substream_counter: AtomicRefCounter,
     shutdown: Shutdown,
 }
 
 impl IncomingSubstreams {
-    pub(self) fn new(inner: IncomingRx, substream_counter: SubstreamCounter, shutdown: Shutdown) -> Self {
+    pub(self) fn new(
+        inner: mpsc::Receiver<yamux::Stream>,
+        substream_counter: AtomicRefCounter,
+        shutdown: Shutdown,
+    ) -> Self {
         Self {
             inner,
             substream_counter,
@@ -186,7 +193,7 @@ impl Stream for IncomingSubstreams {
         match futures::ready!(Pin::new(&mut self.inner).poll_recv(cx)) {
             Some(stream) => Poll::Ready(Some(Substream {
                 stream: stream.compat(),
-                counter_guard: self.substream_counter.new_guard(),
+                _counter_guard: self.substream_counter.new_guard(),
             })),
             None => Poll::Ready(None),
         }
@@ -202,12 +209,12 @@ impl Drop for IncomingSubstreams {
 #[derive(Debug)]
 pub struct Substream {
     stream: Compat<yamux::Stream>,
-    counter_guard: CounterGuard,
+    _counter_guard: AtomicRefCounterGuard,
 }
 
-impl Substream {
-    pub fn id(&self) -> yamux::StreamId {
-        self.stream.get_ref().id()
+impl StreamId for Substream {
+    fn stream_id(&self) -> stream_id::Id {
+        self.stream.get_ref().id().into()
     }
 }
 
@@ -231,6 +238,12 @@ impl tokio::io::AsyncWrite for Substream {
     }
 }
 
+impl From<yamux::StreamId> for stream_id::Id {
+    fn from(id: yamux::StreamId) -> Self {
+        stream_id::Id::new(id.val())
+    }
+}
+
 struct IncomingWorker<TSocket> {
     connection: yamux::Connection<TSocket>,
     sender: mpsc::Sender<yamux::Stream>,
@@ -240,7 +253,11 @@ struct IncomingWorker<TSocket> {
 impl<TSocket> IncomingWorker<TSocket>
 where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static /*  */
 {
-    pub fn new(connection: yamux::Connection<TSocket>, sender: IncomingTx, shutdown_signal: ShutdownSignal) -> Self {
+    pub fn new(
+        connection: yamux::Connection<TSocket>,
+        sender: mpsc::Sender<yamux::Stream>,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self {
         Self {
             connection,
             sender,
@@ -312,28 +329,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
     }
 }
 
-pub type CounterGuard = Arc<()>;
-#[derive(Debug, Clone, Default)]
-pub struct SubstreamCounter(Arc<CounterGuard>);
-
-impl SubstreamCounter {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Create a new CounterGuard. Each of these counts 1 in the substream count
-    /// until it is dropped.
-    pub fn new_guard(&self) -> CounterGuard {
-        Arc::clone(&*self.0)
-    }
-
-    /// Get the substream count
-    pub fn get(&self) -> usize {
-        // Substract one to account for the initial CounterGuard reference
-        Arc::strong_count(&*self.0) - 1
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::{
@@ -368,7 +363,7 @@ mod test {
 
         let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
-            .incoming();
+            .into_incoming();
         let mut substream = listener
             .next()
             .await
@@ -405,7 +400,7 @@ mod test {
         let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await
             .unwrap()
-            .incoming();
+            .into_incoming();
         let substreams_in = collect_stream!(&mut listener, take = NUM_SUBSTREAMS, timeout = Duration::from_secs(10));
 
         assert_eq!(dialer.substream_count(), NUM_SUBSTREAMS);
@@ -439,7 +434,7 @@ mod test {
 
         let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
-            .incoming();
+            .into_incoming();
         let mut substream = incoming.next().await.unwrap();
 
         let mut buf = vec![0; msg.len()];
@@ -487,7 +482,7 @@ mod test {
 
         let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
             .await?
-            .incoming();
+            .into_incoming();
         assert_eq!(incoming.substream_count(), 0);
         let mut substream = incoming.next().await.unwrap();
         assert_eq!(incoming.substream_count(), 1);

@@ -26,19 +26,19 @@ use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 
-use tari_app_utilities::utilities::{create_transport_type, ExitCodes};
-use tari_common::{ConfigBootstrap, GlobalConfig};
-use tari_common_types::types::PrivateKey;
+use tari_app_utilities::utilities::create_transport_type;
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
 };
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
-    initialization::CommsConfig,
+    initialization::P2pConfig,
     peer_seeds::SeedPeer,
     transport::TransportType::Tor,
     DEFAULT_DNS_NAME_SERVER,
@@ -47,13 +47,9 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::{config::OutputManagerServiceConfig, TxoValidationType},
+    output_manager_service::config::OutputManagerServiceConfig,
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
-    transaction_service::{
-        config::{TransactionRoutingMechanism, TransactionServiceConfig},
-        tasks::start_transaction_validation_and_broadcast_protocols::start_transaction_validation_and_broadcast_protocols,
-    },
-    types::ValidationRetryStrategy,
+    transaction_service::config::{TransactionRoutingMechanism, TransactionServiceConfig},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -258,7 +254,7 @@ pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
-    recovery_master_key: Option<PrivateKey>,
+    recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes> {
     fs::create_dir_all(
@@ -317,7 +313,7 @@ pub async fn init_wallet(
         node_features,
     ));
 
-    let transport_type = create_transport_type(&config);
+    let transport_type = create_transport_type(config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
@@ -326,7 +322,7 @@ pub async fn init_wallet(
         _ => transport_type,
     };
 
-    let comms_config = CommsConfig {
+    let comms_config = P2pConfig {
         network: config.network,
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
@@ -341,7 +337,10 @@ pub async fn init_wallet(
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
-            saf_msg_validity: config.saf_expiry_duration,
+            saf_config: SafConfig {
+                msg_validity: config.saf_expiry_duration,
+                ..Default::default()
+            },
             dedup_cache_capacity: config.dedup_cache_capacity,
             ..Default::default()
         },
@@ -362,7 +361,7 @@ pub async fn init_wallet(
     );
 
     let updater_config = AutoUpdateConfig {
-        name_server: config.dns_seeds_name_server,
+        name_server: config.dns_seeds_name_server.clone(),
         update_uris: config.autoupdate_dns_hosts.clone(),
         use_dnssec: config.dns_seeds_use_dnssec,
         download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
@@ -390,7 +389,7 @@ pub async fn init_wallet(
             base_node_query_timeout: config.base_node_query_timeout,
             prevent_fee_gt_amount: config.prevent_fee_gt_amount,
             event_channel_size: config.output_manager_event_channel_size,
-            base_node_update_publisher_channel_size: config.base_node_update_publisher_channel_size,
+            num_confirmations_required: config.transaction_num_confirmations_required,
             ..Default::default()
         }),
         config.network.into(),
@@ -412,7 +411,7 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_master_key.clone(),
+        recovery_seed.clone(),
     )
     .await
     .map_err(|e| {
@@ -454,7 +453,7 @@ pub async fn init_wallet(
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
-        if interactive && recovery_master_key.is_none() {
+        if interactive && recovery_seed.is_none() {
             match confirm_seed_words(&mut wallet).await {
                 Ok(()) => {
                     print!("\x1Bc"); // Clear the screen
@@ -500,12 +499,7 @@ pub async fn start_wallet(
         if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
             error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
         }
-        if let Err(e) = start_transaction_validation_and_broadcast_protocols(
-            wallet.transaction_service.clone(),
-            ValidationRetryStrategy::UntilSuccess,
-        )
-        .await
-        {
+        if let Err(e) = wallet.transaction_service.validate_transactions().await {
             error!(
                 target: LOG_TARGET,
                 "Problem validating and restarting transaction protocols: {}", e
@@ -521,37 +515,12 @@ pub async fn start_wallet(
 async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Starting TXO validations.");
 
-    // Unspent TXOs
-    wallet
-        .output_manager_service
-        .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
-            ExitCodes::WalletError(e.to_string())
-        })?;
+    wallet.output_manager_service.validate_txos().await.map_err(|e| {
+        error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
+        ExitCodes::WalletError(e.to_string())
+    })?;
 
-    // Spent TXOs
-    wallet
-        .output_manager_service
-        .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Error validating Spent TXOs: {}", e);
-            ExitCodes::WalletError(e.to_string())
-        })?;
-
-    // Invalid TXOs
-    wallet
-        .output_manager_service
-        .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
-        .await
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Error validating Invalid TXOs: {}", e);
-            ExitCodes::WalletError(e.to_string())
-        })?;
-
-    debug!(target: LOG_TARGET, "TXO validations completed.");
+    debug!(target: LOG_TARGET, "TXO validations started.");
 
     Ok(())
 }

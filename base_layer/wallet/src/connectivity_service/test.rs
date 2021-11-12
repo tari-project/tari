@@ -21,7 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::service::WalletConnectivityService;
-use crate::connectivity_service::{watch::Watch, OnlineStatus, WalletConnectivityHandle};
+use crate::{
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    util::watch::Watch,
+};
 use core::convert;
 use futures::future;
 use std::{iter, sync::Arc};
@@ -81,7 +84,7 @@ async fn it_dials_peer_when_base_node_is_set() {
     // Set the mock to defer returning a result for the peer connection
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer.to_peer());
 
     // Wait for connection request
     mock_state.await_call_count(1).await;
@@ -104,7 +107,7 @@ async fn it_resolves_many_pending_rpc_session_requests() {
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer.to_peer());
 
     let pending_requests = iter::repeat_with(|| {
         let mut handle = handle.clone();
@@ -136,20 +139,20 @@ async fn it_changes_to_a_new_base_node() {
     mock_state.add_active_connection(conn2).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer1.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer1.to_peer());
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer1.node_id()).await;
-    assert!(mock_state.count_calls_containing("AddManagedPeer").await >= 1);
+    assert!(mock_state.count_calls_containing("DialPeer").await >= 1);
     let _ = mock_state.take_calls().await;
 
     let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
     assert!(rpc_client.is_connected());
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer2.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer2.to_peer());
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer2.node_id()).await;
 
     let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
@@ -166,7 +169,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
     mock_state.set_pending_connection(base_node_peer.node_id()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer.to_peer());
 
     // Now a connection will given to the service
     mock_state.add_active_connection(conn.clone()).await;
@@ -185,7 +188,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
         }
     });
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer.node_id()).await;
 
     // Make sure that the task has actually started before continuing, otherwise we may not be testing the client asking
@@ -206,7 +209,7 @@ async fn it_gracefully_handles_multiple_connection_failures() {
     let conn = mock_server.create_mockimpl_connection(base_node_peer.to_peer()).await;
 
     // Initiate a connection to the base node
-    handle.set_base_node(base_node_peer.to_peer()).await.unwrap();
+    handle.set_base_node(base_node_peer.to_peer());
 
     // Now a connection will given to the service
     mock_state.add_active_connection(conn.clone()).await;
@@ -222,7 +225,7 @@ async fn it_gracefully_handles_multiple_connection_failures() {
         }
     });
 
-    mock_state.await_call_count(2).await;
+    mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer.node_id()).await;
 
     barrier.wait().await;

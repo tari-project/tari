@@ -41,16 +41,15 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
-    net::SocketAddr,
 };
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{configuration::bootstrap::ApplicationType, DnsNameServer};
 use tari_utilities::hex::Hex;
 
 const LOG_TARGET: &str = "p2p::auto_update";
 
 #[derive(Debug, Clone)]
 pub struct AutoUpdateConfig {
-    pub name_server: SocketAddr,
+    pub name_server: DnsNameServer,
     pub update_uris: Vec<String>,
     pub use_dnssec: bool,
     pub download_base_url: String,
@@ -75,7 +74,7 @@ pub async fn check_for_updates(
     let hashes_sig_url = config.hashes_sig_url.clone();
     let dns_update = dns::DnsSoftwareUpdate::connect(config).await?;
 
-    match dns_update.check_for_updates(app, &arch, version).await? {
+    match dns_update.check_for_updates(app, arch, version).await? {
         Some(update_spec) => {
             log::debug!(
                 target: LOG_TARGET,
@@ -169,6 +168,7 @@ const MAINTAINERS: &[&str] = &[
     include_str!("../../../../meta/gpg_keys/philipr-za.asc"),
     include_str!("../../../../meta/gpg_keys/sdbondi.asc"),
     include_str!("../../../../meta/gpg_keys/swvheerden.asc"),
+    include_str!("../../../../meta/gpg_keys/delta1.asc"),
 ];
 
 fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {

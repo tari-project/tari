@@ -72,12 +72,14 @@ Make it rain! Send many transactions to a public key or emoji id.
 
 `<type>` can be `negotiated` or `one_sided`
 
+`<start time>` is a string in RFC3339 format or `now`
+
 example:
 
 ```
 $ tari_console_wallet --command "make-it-rain 1 10 8000 100 now c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 negotiated makin it rain yo"
 
-1. make-it-rain 1 10 8000 µT 100 µT 2021-03-26 10:03:30.459157 UTC c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 negotiated makin it rain yo
+1. make-it-rain 1 10 8000 µT 100 µT 2021-03-26T10:03:30Z c69fbe5f05a304eaec65d5f234a6aa258a90b8bb5b9ceffea779653667ef2108 negotiated makin it rain yo
 
 Monitoring 10 sent transactions to Broadcast stage...
 Done! All transactions monitored to Broadcast stage.

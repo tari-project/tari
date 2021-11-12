@@ -47,7 +47,12 @@ class MiningNodeProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-    this.mineOnTipOnly = mineOnTipOnly || this.mineOnTipOnly;
+
+    // Can't use the || shortcut here because `false` is a valid value
+    this.mineOnTipOnly =
+      mineOnTipOnly === undefined || mineOnTipOnly === null
+        ? this.mineOnTipOnly
+        : mineOnTipOnly;
     this.numMiningThreads = numMiningThreads || this.numMiningThreads;
   }
 
@@ -164,13 +169,26 @@ class MiningNodeProcess {
     });
   }
 
-  async mineBlocksUntilHeightIncreasedBy(numBlocks, minDifficulty) {
+  async mineBlocksUntilHeightIncreasedBy(
+    numBlocks,
+    minDifficulty,
+    mineOnTipOnly
+  ) {
     const height =
       parseInt(await this.baseNodeClient.getTipHeight()) + parseInt(numBlocks);
-    await this.init(numBlocks, height, minDifficulty, 9999999999, true, 1);
+    await this.init(
+      numBlocks,
+      height,
+      minDifficulty,
+      9999999999,
+      mineOnTipOnly,
+      1
+    );
     await this.startNew();
     await this.stop();
-    return await this.baseNodeClient.getTipHeight();
+    const tipHeight = await this.baseNodeClient.getTipHeight();
+    console.log(`[${this.name}] Tip at ${tipHeight}`);
+    return tipHeight;
   }
 }
 

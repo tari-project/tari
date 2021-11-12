@@ -24,21 +24,9 @@
 mod helpers;
 use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
 use helpers::{
-    block_builders::{
-        append_block,
-        chain_block,
-        create_genesis_block,
-        create_genesis_block_with_utxos,
-        generate_block,
-    },
+    block_builders::{append_block, chain_block, create_genesis_block, create_genesis_block_with_utxos},
     event_stream::event_stream_next,
-    nodes::{
-        create_network_with_2_base_nodes_with_config,
-        create_network_with_3_base_nodes_with_config,
-        random_node_identity,
-        wait_until_online,
-        BaseNodeBuilder,
-    },
+    nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
 };
 use randomx_rs::RandomXFlag;
 use std::{sync::Arc, time::Duration};
@@ -50,14 +38,13 @@ use tari_core::{
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    blocks::NewBlock,
-    chain_storage::ChainBlock,
+    blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     proof_of_work::PowAlgorithm,
     transactions::{
-        helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, T},
+        test_helpers::{schema_to_transaction, spend_utxos},
         transaction::OutputFeatures,
         CryptoFactories,
     },
@@ -72,154 +59,6 @@ use tari_crypto::tari_utilities::Hashable;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
-
-#[tokio::test]
-async fn request_response_get_metadata() {
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
-        .with_block(block0)
-        .build();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
-    assert_eq!(received_metadata.height_of_longest_chain(), 0);
-
-    alice_node.shutdown().await;
-    bob_node.shutdown().await;
-    carol_node.shutdown().await;
-}
-
-#[tokio::test]
-async fn request_and_response_fetch_blocks() {
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
-        .build();
-    let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager.clone(),
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    let mut blocks = vec![block0];
-    let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-
-    carol_node
-        .blockchain_db
-        .add_block(blocks[1].to_arc_block())
-        .unwrap()
-        .assert_added();
-    carol_node
-        .blockchain_db
-        .add_block(blocks[2].to_arc_block())
-        .unwrap()
-        .assert_added();
-
-    let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
-    assert_eq!(received_blocks.len(), 1);
-    assert_eq!(received_blocks[0].block(), blocks[0].block());
-
-    let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0, 1]).await.unwrap();
-    assert_eq!(received_blocks.len(), 2);
-    assert_ne!(*received_blocks[0].block(), *received_blocks[1].block());
-    assert!(received_blocks[0].block() == blocks[0].block() || received_blocks[1].block() == blocks[0].block());
-    assert!(received_blocks[0].block() == blocks[1].block() || received_blocks[1].block() == blocks[1].block());
-
-    alice_node.shutdown().await;
-    bob_node.shutdown().await;
-    carol_node.shutdown().await;
-}
-
-#[tokio::test]
-async fn request_and_response_fetch_blocks_with_hashes() {
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
-        .build();
-    let (mut alice_node, mut bob_node, carol_node, _) = create_network_with_3_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager.clone(),
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    let mut blocks = vec![block0];
-    let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-    let block0_hash = blocks[0].hash();
-    let block1_hash = blocks[1].hash();
-
-    carol_node
-        .blockchain_db
-        .add_block(blocks[1].to_arc_block())
-        .unwrap()
-        .assert_added();
-    carol_node
-        .blockchain_db
-        .add_block(blocks[2].to_arc_block())
-        .unwrap()
-        .assert_added();
-
-    let received_blocks = alice_node
-        .outbound_nci
-        .fetch_blocks_with_hashes(vec![block0_hash.clone()])
-        .await
-        .unwrap();
-    assert_eq!(received_blocks.len(), 1);
-    assert_eq!(received_blocks[0].block(), blocks[0].block());
-
-    let received_blocks = alice_node
-        .outbound_nci
-        .fetch_blocks_with_hashes(vec![block0_hash.clone(), block1_hash.clone()])
-        .await
-        .unwrap();
-    assert_eq!(received_blocks.len(), 2);
-    assert_ne!(received_blocks[0], received_blocks[1]);
-    assert!(received_blocks[0].block() == blocks[0].block() || received_blocks[1].block() == blocks[0].block());
-    assert!(received_blocks[0].block() == blocks[1].block() || received_blocks[1].block() == blocks[1].block());
-
-    alice_node.shutdown().await;
-    bob_node.shutdown().await;
-    carol_node.shutdown().await;
-}
 
 #[tokio::test]
 async fn propagate_and_forward_many_valid_blocks() {
@@ -244,7 +83,7 @@ async fn propagate_and_forward_many_valid_blocks() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -358,7 +197,7 @@ async fn propagate_and_forward_invalid_block_hash() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
@@ -462,7 +301,7 @@ async fn propagate_and_forward_invalid_block() {
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants)
+        .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), true, factories);
@@ -584,9 +423,16 @@ async fn service_request_timeout() {
     )
     .await;
 
+    let bob_node_id = bob_node.node_identity.node_id().clone();
     // Bob should not be reachable
     bob_node.shutdown().await;
-    unpack_enum!(CommsInterfaceError::RequestTimedOut = alice_node.outbound_nci.get_metadata().await.unwrap_err());
+    unpack_enum!(
+        CommsInterfaceError::RequestTimedOut = alice_node
+            .outbound_nci
+            .request_blocks_with_hashes_from_peer(vec![], Some(bob_node_id))
+            .await
+            .unwrap_err()
+    );
     alice_node.shutdown().await;
 }
 
@@ -617,7 +463,7 @@ async fn local_get_new_block_template_and_get_new_block() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManager::builder(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
@@ -658,7 +504,7 @@ async fn local_get_new_block_with_zero_conf() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -716,7 +562,9 @@ async fn local_get_new_block_with_zero_conf() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -735,7 +583,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let consensus_constants = NetworkConsensus::from(network).create_consensus_constants();
     let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -788,7 +636,9 @@ async fn local_get_new_block_with_combined_transaction() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template.body.sort();
+    block_template
+        .body
+        .sort(rules.consensus_constants(0).blockchain_version());
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -811,7 +661,7 @@ async fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let mut block1 = db
-        .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_mmr_size += 1;

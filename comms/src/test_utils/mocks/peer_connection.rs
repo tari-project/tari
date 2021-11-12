@@ -30,9 +30,10 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing,
-    multiplexing::{IncomingSubstreams, Substream, SubstreamCounter, Yamux},
+    multiplexing::{IncomingSubstreams, Substream, Yamux},
     peer_manager::{NodeId, Peer, PeerFeatures},
     test_utils::{node_identity::build_node_identity, transport},
+    utils::atomic_ref_counter::AtomicRefCounter,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -44,6 +45,8 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 
+static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
     let (tx, rx) = mpsc::channel(1);
     (
@@ -54,7 +57,7 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
             PeerFeatures::COMMUNICATION_NODE,
             Multiaddr::empty(),
             ConnectionDirection::Inbound,
-            SubstreamCounter::new(),
+            AtomicRefCounter::new(),
         ),
         rx,
     )
@@ -84,7 +87,8 @@ pub async fn create_peer_connection_mock_pair(
 
     (
         PeerConnection::new(
-            1,
+            // ID must be unique since it is used for connection equivalency, so we re-implement this in the mock
+            ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             tx1,
             peer2.node_id,
             peer2.features,
@@ -94,7 +98,7 @@ pub async fn create_peer_connection_mock_pair(
         ),
         mock_state_in,
         PeerConnection::new(
-            2,
+            ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             tx2,
             peer1.node_id,
             peer1.features,
@@ -122,7 +126,7 @@ pub struct PeerConnectionMockState {
     call_count: Arc<AtomicUsize>,
     mux_control: Arc<Mutex<multiplexing::Control>>,
     mux_incoming: Arc<Mutex<IncomingSubstreams>>,
-    substream_counter: SubstreamCounter,
+    substream_counter: AtomicRefCounter,
 }
 
 impl PeerConnectionMockState {
@@ -132,7 +136,7 @@ impl PeerConnectionMockState {
         Self {
             call_count: Arc::new(AtomicUsize::new(0)),
             mux_control: Arc::new(Mutex::new(control)),
-            mux_incoming: Arc::new(Mutex::new(muxer.incoming())),
+            mux_incoming: Arc::new(Mutex::new(muxer.into_incoming())),
             substream_counter,
         }
     }
@@ -149,7 +153,7 @@ impl PeerConnectionMockState {
         self.mux_control.lock().await.open_stream().await.map_err(Into::into)
     }
 
-    pub fn substream_counter(&self) -> SubstreamCounter {
+    pub fn substream_counter(&self) -> AtomicRefCounter {
         self.substream_counter.clone()
     }
 
@@ -193,11 +197,7 @@ impl PeerConnectionMock {
         use PeerConnectionRequest::*;
         self.state.inc_call_count();
         match req {
-            OpenSubstream {
-                protocol_id,
-                reply_tx,
-                tracing_id: _,
-            } => match self.state.open_substream().await {
+            OpenSubstream { protocol_id, reply_tx } => match self.state.open_substream().await {
                 Ok(stream) => {
                     let negotiated_substream = NegotiatedSubstream {
                         protocol: protocol_id,

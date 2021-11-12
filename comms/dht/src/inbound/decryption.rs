@@ -22,7 +22,7 @@
 
 use crate::{
     crypt,
-    envelope::{DhtMessageFlags, DhtMessageHeader},
+    envelope::DhtMessageHeader,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     proto::envelope::OriginMac,
     DhtConfig,
@@ -36,7 +36,7 @@ use tari_comms::{
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
-    types::CommsPublicKey,
+    types::{Challenge, CommsPublicKey},
     utils::signature,
 };
 use tari_utilities::ByteArray;
@@ -65,6 +65,8 @@ enum DecryptionError {
     EnvelopeBodyDecodeFailed,
     #[error("Failed to decrypt message body")]
     MessageBodyDecryptionFailed,
+    #[error("Encrypted message without a destination is invalid")]
+    EncryptedMessageNoDestination,
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -161,10 +163,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let trace_id = message.dht_header.message_tag;
         let tag = message.tag;
         match Self::validate_and_decrypt_message(node_identity, message).await {
-            Ok(msg) => next_service.oneshot(msg).await,
+            Ok(msg) => {
+                trace!(target: LOG_TARGET, "Passing onto next service (Trace: {})", msg.tag);
+                next_service.oneshot(msg).await
+            },
 
             Err(err @ OriginMacNotProvided) |
             Err(err @ EphemeralKeyNotProvided) |
+            Err(err @ EncryptedMessageNoDestination) |
             Err(err @ OriginMacInvalidSignature) => {
                 // This message should not have been propagated, or has been manipulated in some way. Ban the source of
                 // this message.
@@ -193,8 +199,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let dht_header = &message.dht_header;
 
-        if !dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
-            return Self::success_not_encrypted(message).await;
+        let mac_challenge = crypt::create_origin_mac_challenge(dht_header, &message.body);
+
+        if !dht_header.flags.is_encrypted() {
+            return Self::success_not_encrypted(message, mac_challenge).await;
         }
         trace!(
             target: LOG_TARGET,
@@ -202,6 +210,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.tag,
             message.dht_header.message_tag
         );
+
+        // Check if there is no destination specified and discard
+        if dht_header.destination.is_unknown() {
+            return Err(DecryptionError::EncryptedMessageNoDestination);
+        }
 
         let e_pk = dht_header
             .ephemeral_public_key
@@ -216,7 +229,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok((public_key, signature)) => {
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                Self::authenticate_origin_mac(&public_key, &signature, &message.body)?;
+                Self::authenticate_origin_mac(&public_key, &signature, mac_challenge)?;
                 public_key
             },
             Err(err) => {
@@ -307,9 +320,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     fn authenticate_origin_mac(
         public_key: &CommsPublicKey,
         signature: &[u8],
-        body: &[u8],
+        challenge: Challenge,
     ) -> Result<(), DecryptionError> {
-        if signature::verify(public_key, signature, body) {
+        if signature::verify_challenge(public_key, signature, challenge) {
             Ok(())
         } else {
             Err(DecryptionError::OriginMacInvalidSignature)
@@ -350,7 +363,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageBodyDecryptionFailed)
     }
 
-    async fn success_not_encrypted(message: DhtInboundMessage) -> Result<DecryptedDhtMessage, DecryptionError> {
+    async fn success_not_encrypted(
+        message: DhtInboundMessage,
+        mac_challenge: Challenge,
+    ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = if message.dht_header.origin_mac.is_empty() {
             None
         } else {
@@ -358,7 +374,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .map_err(|_| DecryptionError::OriginMacClearTextDecodeFailed)?;
             let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
                 .map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
-            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, &message.body)?;
+
+            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, mac_challenge)?;
             Some(public_key)
         };
 
@@ -440,6 +457,7 @@ mod test {
             plain_text_msg.to_encoded_bytes(),
             DhtMessageFlags::ENCRYPTED,
             true,
+            true,
         );
 
         block_on(service.call(inbound_msg)).unwrap();
@@ -464,8 +482,13 @@ mod test {
 
         let some_secret = b"Super secret message".to_vec();
         let some_other_node_identity = make_node_identity();
-        let inbound_msg =
-            make_dht_inbound_message(&some_other_node_identity, some_secret, DhtMessageFlags::ENCRYPTED, true);
+        let inbound_msg = make_dht_inbound_message(
+            &some_other_node_identity,
+            some_secret,
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            true,
+        );
 
         block_on(service.call(inbound_msg.clone())).unwrap();
         let decrypted = result.lock().unwrap().take().unwrap();
@@ -476,6 +499,7 @@ mod test {
 
     #[runtime::test]
     async fn decrypt_inbound_fail_destination() {
+        let _ = env_logger::try_init();
         let (connectivity, mock) = create_connectivity_mock();
         mock.spawn();
         let result = Arc::new(Mutex::new(None));
@@ -490,13 +514,43 @@ mod test {
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let nonsense = b"Cannot Decrypt this".to_vec();
-        let mut inbound_msg =
-            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true);
-        inbound_msg.dht_header.destination = node_identity.public_key().clone().into();
+        let inbound_msg =
+            make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true, true);
 
         let err = service.call(inbound_msg).await.unwrap_err();
         let err = err.downcast::<DecryptionError>().unwrap();
         unpack_enum!(DecryptionError::MessageRejectDecryptionFailed = err);
+        assert!(result.lock().unwrap().is_none());
+    }
+
+    #[runtime::test]
+    async fn decrypt_inbound_fail_no_destination() {
+        let _ = env_logger::try_init();
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let node_identity = make_node_identity();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+
+        let plain_text_msg = b"Secret message to nowhere".to_vec();
+        let inbound_msg = make_dht_inbound_message(
+            &node_identity,
+            plain_text_msg.to_encoded_bytes(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            false,
+        );
+
+        let err = service.call(inbound_msg).await.unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::EncryptedMessageNoDestination = err);
         assert!(result.lock().unwrap().is_none());
     }
 }

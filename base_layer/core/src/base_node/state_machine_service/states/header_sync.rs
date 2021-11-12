@@ -24,25 +24,32 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, Listening, StateEvent, StateInfo, StatusInfo},
-        sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeers},
+        sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
 };
 use log::*;
-use std::time::Instant;
-use tari_comms::peer_manager::NodeId;
+use std::{cmp::Ordering, time::Instant};
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
 #[derive(Clone, Debug, Default)]
 pub struct HeaderSync {
-    sync_peers: Vec<NodeId>,
+    sync_peers: Vec<SyncPeer>,
     is_synced: bool,
 }
 
 impl HeaderSync {
-    pub fn new(sync_peers: Vec<NodeId>) -> Self {
+    pub fn new(mut sync_peers: Vec<SyncPeer>) -> Self {
+        // Sort by latency lowest to highest
+        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
+            (None, None) => Ordering::Equal,
+            // No latency goes to the end
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(la), Some(lb)) => la.cmp(&lb),
+        });
         Self {
             sync_peers,
             is_synced: false,
@@ -53,22 +60,20 @@ impl HeaderSync {
         self.is_synced
     }
 
+    pub fn into_sync_peers(self) -> Vec<SyncPeer> {
+        self.sync_peers
+    }
+
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
-        let sync_peers = if self.sync_peers.is_empty() {
-            &shared.config.block_sync_config.sync_peers
-        } else {
-            &self.sync_peers
-        };
-
         let mut synchronizer = HeaderSynchronizer::new(
             shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.consensus_rules.clone(),
             shared.connectivity.clone(),
-            sync_peers,
+            &self.sync_peers,
             shared.randomx_factory.clone(),
         );
 
@@ -76,15 +81,25 @@ impl HeaderSync {
         let bootstrapped = shared.is_bootstrapped();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
-        synchronizer.on_progress(move |details, sync_peers| {
-            let details = details.map(|(current_height, remote_tip_height)| BlockSyncInfo {
-                tip_height: remote_tip_height,
-                local_height: current_height,
-                sync_peers: sync_peers.to_vec(),
-            });
+        synchronizer.on_starting(move || {
             let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
-                state_info: StateInfo::HeaderSync(details),
+                state_info: StateInfo::HeaderSync(None),
+                randomx_vm_cnt,
+                randomx_vm_flags,
+            });
+        });
+
+        let status_event_sender = shared.status_event_sender.clone();
+        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peer| {
+            let details = BlockSyncInfo {
+                tip_height: remote_tip_height,
+                local_height: current_height,
+                sync_peers: vec![sync_peer.clone()],
+            };
+            let _ = status_event_sender.send(StatusInfo {
+                bootstrapped,
+                state_info: StateInfo::HeaderSync(Some(details)),
                 randomx_vm_cnt,
                 randomx_vm_flags,
             });
@@ -101,6 +116,10 @@ impl HeaderSync {
                 info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
+            },
+            Err(err @ BlockHeaderSyncError::SyncFailedAllPeers) => {
+                warn!(target: LOG_TARGET, "{}. Continuing...", err);
+                StateEvent::Continue
             },
             Err(err @ BlockHeaderSyncError::NetworkSilence) => {
                 warn!(target: LOG_TARGET, "{}", err);
@@ -120,8 +139,8 @@ impl From<Listening> for HeaderSync {
         Default::default()
     }
 }
-impl From<SyncPeers> for HeaderSync {
-    fn from(peers: SyncPeers) -> Self {
-        Self::new(peers.into_iter().map(|p| p.node_id).collect())
+impl From<Vec<SyncPeer>> for HeaderSync {
+    fn from(peers: Vec<SyncPeer>) -> Self {
+        Self::new(peers)
     }
 }

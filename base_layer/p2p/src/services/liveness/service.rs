@@ -322,6 +322,7 @@ mod test {
     use tari_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
+        DhtProtocolVersion,
     };
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
@@ -435,8 +436,7 @@ mod test {
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
-                major: 0,
-                minor: 0,
+                version: DhtProtocolVersion::latest(),
                 destination: Default::default(),
                 origin_mac: Vec::new(),
                 ephemeral_public_key: None,

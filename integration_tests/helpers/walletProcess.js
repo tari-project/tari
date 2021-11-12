@@ -56,11 +56,11 @@ class WalletProcess {
   }
 
   setPeerSeeds(addresses) {
-    this.peerSeeds = addresses.join(",");
+    this.peerSeeds = addresses;
   }
 
   run(cmd, args, saveFile, input_buffer, output) {
-    return new Promise((resolve, reject) => {
+    let thePromise = new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
@@ -142,10 +142,11 @@ class WalletProcess {
           resolve(ps);
         }
       });
-
-      expect(ps.error).to.be.an("undefined");
+      expect(ps.error).to.be.undefined;
       this.ps = ps;
+      resolve(ps);
     });
+    return thePromise;
   }
 
   async startNew() {

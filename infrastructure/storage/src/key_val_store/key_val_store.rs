@@ -44,6 +44,9 @@ pub trait KeyValueStore<K, V> {
     /// Get the value corresponding to the provided key from the key-value database.
     fn get(&self, key: &K) -> Result<Option<V>, KeyValStoreError>;
 
+    /// Get the value corresponding to the provided key from the key-value database.
+    fn get_many(&self, keys: &[K]) -> Result<Vec<V>, KeyValStoreError>;
+
     /// Returns the total number of entries recorded in the key-value database.
     fn size(&self) -> Result<usize, KeyValStoreError>;
 

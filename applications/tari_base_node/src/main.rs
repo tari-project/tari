@@ -1,4 +1,3 @@
-#![recursion_limit = "1024"]
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -112,10 +111,15 @@ use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
     initialization::init_configuration,
-    utilities::{setup_runtime, ExitCodes},
+    utilities::setup_runtime,
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
-use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    tor::HiddenServiceControllerError,
+    utils::multiaddr::multiaddr_to_socketaddr,
+};
+use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
@@ -129,7 +133,7 @@ const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
-        eprintln!("{:?}", exit_code);
+        exit_code.eprint_details();
         error!(
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}",
@@ -148,7 +152,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Set up the Tokio runtime
     let rt = setup_runtime(&node_config).map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(e)
     })?;
 
     rt.block_on(run_node(node_config.into(), bootstrap))?;
@@ -205,31 +209,32 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     )
     .await
     .map_err(|err| {
-        error!(target: LOG_TARGET, "{}", err);
         for boxed_error in err.chain() {
-            if let Some(HiddenServiceControllerError::TorControlPortOffline) =
-                boxed_error.downcast_ref::<HiddenServiceControllerError>()
-            {
-                println!("Unable to connect to the Tor control port.");
-                println!(
-                    "Please check that you have the Tor proxy running and that access to the Tor control port is \
-                     turned on.",
-                );
-                println!("If you are unsure of what to do, use the following command to start the Tor proxy:");
-                println!(
-                    "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
-                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
-                );
+            if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
                 return ExitCodes::TorOffline;
             }
+            if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
+                return ExitCodes::DbInconsistentState(format!(
+                    "You may need to resync your database because {}",
+                    reason
+                ));
+            }
+
+            // todo: find a better way to do this
+            if boxed_error.to_string().contains("Invalid force sync peer") {
+                println!("Please check your force sync peers configuration");
+                return ExitCodes::ConfigError(boxed_error.to_string());
+            }
         }
-        ExitCodes::UnknownError
+        ExitCodes::UnknownError(err.to_string())
     })?;
 
     if node_config.grpc_enabled {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
+        let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
+            .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
     }
 
     // Run, node, run!
@@ -248,6 +253,12 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
         task::spawn(cli_loop(parser, shutdown));
     }
+    if !node_config.force_sync_peers.is_empty() {
+        warn!(
+            target: LOG_TARGET,
+            "Force Sync Peers have been set! This node will only sync to the nodes in this set"
+        );
+    }
 
     ctx.run().await;
 
@@ -258,6 +269,8 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 fn enable_tracing() {
     // To run:
     // docker run -d -p6831:6831/udp -p6832:6832/udp -p16686:16686 -p14268:14268 jaegertracing/all-in-one:latest
+    // To view the UI after starting the container (default):
+    // http://localhost:16686
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("tari::base_node")
@@ -381,7 +394,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
             res = &mut read_command_fut => {
                 match res {
                     Ok((line, mut rustyline)) => {
-                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                        if let Some(p) = rustyline.helper_mut() {
                             p.handle_command(line.as_str(), &mut shutdown);
                         }
                         if !shutdown.is_triggered() {

@@ -31,19 +31,21 @@ pub struct OutputManagerServiceConfig {
     pub peer_dial_retry_timeout: Duration,
     pub seed_word_language: MnemonicLanguage,
     pub event_channel_size: usize,
-    pub base_node_update_publisher_channel_size: usize,
+    pub num_confirmations_required: u64,
+    pub tx_validator_batch_size: usize,
 }
 
 impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
             base_node_query_timeout: Duration::from_secs(60),
-            max_utxo_query_size: 3500,
+            max_utxo_query_size: 2500,
             prevent_fee_gt_amount: true,
             peer_dial_retry_timeout: Duration::from_secs(20),
             seed_word_language: MnemonicLanguage::English,
             event_channel_size: 250,
-            base_node_update_publisher_channel_size: 50,
+            num_confirmations_required: 3,
+            tx_validator_batch_size: 100,
         }
     }
 }

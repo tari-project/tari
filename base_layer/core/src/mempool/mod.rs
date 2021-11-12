@@ -108,14 +108,15 @@ impl Display for StateResponse {
         fmt.write_str("--- Unconfirmed Pool ---\n")?;
         for tx in &self.unconfirmed_pool {
             fmt.write_str(&format!(
-                "    {} Fee:{}, Outputs:{}, Kernels:{}, Inputs:{}\n",
+                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes\n",
                 tx.first_kernel_excess_sig()
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "N/A".to_string()),
                 tx.body.get_total_fee(),
                 tx.body.outputs().len(),
                 tx.body.kernels().len(),
-                tx.body.inputs().len()
+                tx.body.inputs().len(),
+                tx.body.sum_metadata_size()
             ))?;
         }
         fmt.write_str("--- Reorg Pool ---\n")?;
@@ -152,7 +153,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
             TxStorageResponse::NotStored => "Not stored",
         };
-        fmt.write_str(&storage)
+        fmt.write_str(storage)
     }
 }
 

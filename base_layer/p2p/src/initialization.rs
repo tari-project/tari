@@ -35,13 +35,12 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     fs::File,
     iter,
-    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, DnsNameServer};
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
@@ -62,7 +61,7 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
+use tari_comms_dht::{Dht, DhtConfig, DhtInitializationError, DhtProtocolVersion};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
@@ -112,7 +111,7 @@ impl CommsInitializationError {
 
 /// Configuration for a comms node
 #[derive(Clone)]
-pub struct CommsConfig {
+pub struct P2pConfig {
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database
@@ -146,8 +145,8 @@ pub struct CommsConfig {
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.
     pub dns_seeds: Vec<String>,
-    /// DNS resolver to use for DNS seeds.
-    pub dns_seeds_name_server: SocketAddr,
+    /// DNS name server to use for DNS seeds.
+    pub dns_seeds_name_server: DnsNameServer,
     /// All DNS seed records must pass DNSSEC validation
     pub dns_seeds_use_dnssec: bool,
     /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
@@ -193,7 +192,7 @@ pub async fn initialize_local_test_comms(
         .with_user_agent("/test/1.0")
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_min_connectivity(1.0)
+        .with_min_connectivity(1)
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
@@ -202,17 +201,17 @@ pub async fn initialize_local_test_comms(
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
 
-    let dht = DhtBuilder::new(
-        comms.node_identity(),
-        comms.peer_manager(),
-        outbound_tx,
-        comms.connectivity(),
-        comms.shutdown_signal(),
-    )
-    .local_test()
-    .with_discovery_timeout(discovery_request_timeout)
-    .build()
-    .await?;
+    let dht = Dht::builder()
+        .local_test()
+        .with_outbound_sender(outbound_tx)
+        .with_discovery_timeout(discovery_request_timeout)
+        .build(
+            comms.node_identity(),
+            comms.peer_manager(),
+            comms.connectivity(),
+            comms.shutdown_signal(),
+        )
+        .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
     let (event_sender, _) = broadcast::channel(100);
@@ -305,7 +304,11 @@ async fn initialize_hidden_service(
         .with_socks_authentication(config.socks_auth)
         .with_control_server_auth(config.control_server_auth)
         .with_control_server_address(config.control_server_addr)
-        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses);
+        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses.into());
+
+    if config.tor_proxy_bypass_for_outbound_tcp {
+        builder = builder.bypass_tor_for_tcp_addresses();
+    }
 
     if let Some(identity) = config.identity {
         builder = builder.with_tor_identity(*identity);
@@ -316,7 +319,7 @@ async fn initialize_hidden_service(
 
 async fn configure_comms_and_dht(
     builder: CommsBuilder,
-    config: &CommsConfig,
+    config: &P2pConfig,
     connector: InboundDomainConnector,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
     let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
@@ -352,16 +355,15 @@ async fn configure_comms_and_dht(
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
-    let dht = DhtBuilder::new(
-        node_identity.clone(),
-        peer_manager,
-        outbound_tx,
-        connectivity,
-        shutdown_signal,
-    )
-    .with_config(config.dht.clone())
-    .build()
-    .await?;
+    let mut dht = Dht::builder();
+    dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
+    // TODO: remove this once enough weatherwax nodes have upgraded
+    if config.network == Network::Weatherwax {
+        dht.with_protocol_version(DhtProtocolVersion::v1());
+    }
+    let dht = dht
+        .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
+        .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
@@ -449,12 +451,12 @@ async fn add_all_peers(
 }
 
 pub struct P2pInitializer {
-    config: CommsConfig,
+    config: P2pConfig,
     connector: Option<PubsubDomainConnector>,
 }
 
 impl P2pInitializer {
-    pub fn new(config: CommsConfig, connector: PubsubDomainConnector) -> Self {
+    pub fn new(config: P2pConfig, connector: PubsubDomainConnector) -> Self {
         Self {
             config,
             connector: Some(connector),
@@ -472,13 +474,13 @@ impl P2pInitializer {
             .map_err(Into::into)
     }
 
-    #[inline(always)]
     async fn try_resolve_dns_seeds(
-        resolver_addr: SocketAddr,
+        resolver_addr: DnsNameServer,
         dns_seeds: &[String],
         use_dnssec: bool,
     ) -> Result<Vec<Peer>, ServiceInitializationError> {
         if dns_seeds.is_empty() {
+            debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
         }
 
@@ -558,12 +560,19 @@ impl ServiceInitializer for P2pInitializer {
         let node_identity = comms.node_identity();
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
-        let peers = Self::try_resolve_dns_seeds(
+        let peers = match Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
             &config.dns_seeds,
             config.dns_seeds_use_dnssec,
         )
-        .await?;
+        .await
+        {
+            Ok(peers) => peers,
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
+                Vec::new()
+            },
+        };
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

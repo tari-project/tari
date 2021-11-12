@@ -1,10 +1,11 @@
 const { CronJob } = require("cron");
-const fs = require("fs/promises");
+const { promises: fs } = require("fs");
 const {
   sendWebhookNotification,
   getWebhookUrl,
   readLastNLines,
   emptyFile,
+  git,
 } = require("./helpers");
 const walletRecoveryTest = require("./automatic_recovery_test");
 const baseNodeSyncTest = require("./automatic_sync_test");
@@ -14,7 +15,7 @@ const WEBHOOK_CHANNEL = "protocol-bot-stuff";
 
 function failed(message) {
   console.error(message);
-  if (!!getWebhookUrl()) {
+  if (getWebhookUrl()) {
     sendWebhookNotification(WEBHOOK_CHANNEL, `🚨 ${message}`);
   }
   process.exit(1);
@@ -22,7 +23,7 @@ function failed(message) {
 
 function notify(message) {
   console.log(message);
-  if (!!getWebhookUrl()) {
+  if (getWebhookUrl()) {
     sendWebhookNotification(WEBHOOK_CHANNEL, message);
   }
 }
@@ -52,25 +53,14 @@ async function runWalletRecoveryTest(instances) {
       recoveredAmount,
     } = await walletRecoveryTest({
       seedWords:
-        "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
+        "abandon rely pave boil case broken volume bracket own false sketch ordinary gown bitter strong unhappy shoulder salad season student public will monkey inquiry",
       log: LOG_FILE,
       numWallets: instances,
+      baseDir,
     });
 
     notify(
-      "🙌 Wallet (Pubkey:",
-      identity.public_key,
-      ") recovered to a block height of",
-      numScanned,
-      "completed in",
-      timeDiffMinutes,
-      "minutes (",
-      scannedRate,
-      "blocks/min).",
-      recoveredAmount,
-      "µT recovered for ",
-      instances,
-      " instance(s)."
+      `🙌 Wallet (Pubkey: ${identity.public_key} ) recovered to a block height of ${numScanned}, completed in ${timeDiffMinutes} minutes (${scannedRate} blocks/min). ${recoveredAmount} µT recovered for ${instances} instance(s).`
     );
   } catch (err) {
     console.error(err);
@@ -107,6 +97,9 @@ async function runBaseNodeSyncTest(syncType) {
       log: LOG_FILE,
       syncType,
       baseDir,
+      forceSyncPeers: [
+        "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849::/ip4/3.8.193.254/tcp/18189",
+      ],
     });
 
     notify(
@@ -125,10 +118,29 @@ ${logLines.join("\n")}
   }
 }
 
-// ------------------------- CRON ------------------------- //
-new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
-new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
-new CronJob("0 6 * * *", () => runBaseNodeSyncTest(SyncType.Archival)).start();
-new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
+async function main() {
+  console.log("👩‍💻 Updating repo...");
+  await git.pull(__dirname).catch((err) => {
+    console.error("🚨 Failed to update git repo");
+    console.error(err);
+  });
 
-console.log("Cron jobs started.");
+  // ------------------------- CRON ------------------------- //
+  new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
+  //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
+  new CronJob("0 6 * * *", () =>
+    runBaseNodeSyncTest(SyncType.Archival)
+  ).start();
+  new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
+  new CronJob("0 4 * * *", () =>
+    git.pull(__dirname).catch((err) => {
+      failed("Failed to update git repo");
+      console.error(err);
+      return Promise.resolve(null);
+    })
+  ).start();
+
+  console.log("⏱ Cron jobs started.");
+}
+
+Promise.all([main()]);
