@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::WalletError;
-use rand::rngs::OsRng;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::{common::Blake256, keys::PublicKey as OtherPublicKey};
 use tari_key_manager::key_manager::KeyManager;

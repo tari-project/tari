@@ -26,7 +26,7 @@ use crate::{
         service::Balance,
         storage::{
             models::DbUnblindedOutput,
-            sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
+            sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputStatus,
         },
     },

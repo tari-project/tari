@@ -59,7 +59,6 @@ use tari_crypto::{
     },
 };
 use tari_key_manager::cipher_seed::CipherSeed;
-use tari_utilities::hash::Hashable;
 use tokio::time::Instant;
 mod new_output_sql;
 pub use new_output_sql::NewOutputSql;
