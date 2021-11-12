@@ -285,12 +285,12 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
     let WalletModeConfig {
         global_config, handle, ..
     } = config;
-    println!("Starting grpc server");
+    info!(target: LOG_TARGET, "Starting grpc server");
     let grpc = WalletGrpcServer::new(wallet);
     handle
         .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
-    println!("Shutting down");
+    info!(target: LOG_TARGET, "Shutting down");
     Ok(())
 }
 
