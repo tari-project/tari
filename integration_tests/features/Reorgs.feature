@@ -146,7 +146,7 @@ Feature: Reorgs
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A1 connected to seed SEED_A1
     And I have a base node NODE_A2 connected to seed SEED_A1
-    When I mine <X1> blocks on SEED_A1 with difficulty 1
+    When I mine <X1> blocks with difficulty 1 on SEED_A1
     Then all nodes are on the same chain at height <X1>
         #
         # Chain 1b:
@@ -156,7 +156,7 @@ Feature: Reorgs
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A3 connected to seed SEED_A2
     And I have a base node NODE_A4 connected to seed SEED_A2
-    When I mine <Y1> blocks on SEED_A2 with difficulty 1
+    When I mine <Y1> blocks with difficulty 1 on SEED_A2
     Then node NODE_A3 is at height <Y1>
     Then node NODE_A4 is at height <Y1>
         #
@@ -176,7 +176,7 @@ Feature: Reorgs
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_B1 connected to seed SEED_B1
     And I have a base node NODE_B2 connected to seed SEED_B1
-    When I mine <X2> blocks on SEED_B1 with difficulty 1
+    When I mine <X2> blocks with difficulty 1 on SEED_B1
     Then node NODE_B1 is at height <X2>
     Then node NODE_B2 is at height <X2>
         #
@@ -187,7 +187,7 @@ Feature: Reorgs
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_B3 connected to seed SEED_B2
     And I have a base node NODE_B4 connected to seed SEED_B2
-    When I mine <Y2> blocks on SEED_B2 with difficulty 1
+    When I mine <Y2> blocks with difficulty 1 on SEED_B2
     Then node NODE_B3 is at height <Y2>
     Then node NODE_B4 is at height <Y2>
         #

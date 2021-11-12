@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
@@ -35,7 +36,6 @@ use tari_wallet::{
 
 use crate::wallet_modes::PeerConfig;
 use tari_key_manager::cipher_seed::CipherSeed;
-use time::OffsetDateTime;
 use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
@@ -126,14 +126,14 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 debug!(
                     target: LOG_TARGET,
                     "{}: Recovery process {}% complete ({} of {} utxos).",
-                    OffsetDateTime::now_local().unwrap(),
+                    Local::now(),
                     percentage_progress,
                     current,
                     total
                 );
                 println!(
                     "{}: Recovery process {}% complete ({} of {} utxos).",
-                    OffsetDateTime::now_local().unwrap(),
+                    Local::now(),
                     percentage_progress,
                     current,
                     total

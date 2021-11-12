@@ -75,8 +75,8 @@ class CustomWorld {
   }
 
   async createAndAddNode(name, addresses) {
+    console.log(`Creating node ${name} connected to ${addresses}`);
     const node = this.createNode(name);
-    console.log(`Creating node ${name} with ${addresses}`);
     if (addresses) {
       if (Array.isArray(addresses)) {
         node.setPeerSeeds(addresses);
@@ -102,6 +102,7 @@ class CustomWorld {
   }
 
   async createAndAddWallet(name, nodeAddresses, options = {}) {
+    console.log(`Creating wallet ${name} connected to ${nodeAddresses}`);
     const wallet = new WalletProcess(
       name,
       false,

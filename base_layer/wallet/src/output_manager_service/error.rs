@@ -34,7 +34,6 @@ use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
-use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -46,8 +45,6 @@ pub enum OutputManagerError {
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
@@ -145,8 +142,6 @@ pub enum OutputManagerStorageError {
     OutputAlreadySpent,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("R2d2 error")]
     R2d2Error,
     #[error("Transaction error: `{0}`")]

@@ -52,6 +52,7 @@ pub fn standard_error_response(
     err: jsonrpc::error::StandardError,
     data: Option<json::Value>,
 ) -> json::Value {
+    let data = data.and_then(|value| json::value::to_raw_value(&value).ok());
     let err = jsonrpc::error::standard_error(err, data);
     json!({
         "id":  req_id.unwrap_or(-1),
