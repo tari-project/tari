@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 
 pub use prometheus::{
     core::Collector,
+    proto,
     Counter,
     CounterVec,
     Encoder,

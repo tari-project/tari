@@ -25,7 +25,7 @@ use once_cell::sync::Lazy;
 use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 pub fn sessions_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
-    static GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::server::num_sessions",
             "The number of active server sessions per node per protocol",
@@ -34,11 +34,11 @@ pub fn sessions_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
 pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
-    static GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::server::handshake_errors",
             "The number of handshake errors per node per protocol",
@@ -47,11 +47,11 @@ pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGa
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
 pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
-    static GAUGE: Lazy<IntCounterVec> = Lazy::new(|| {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::error_count",
             "The number of RPC errors per node per protocol",
@@ -60,11 +60,11 @@ pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
 pub fn inbound_requests_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histogram {
-    static GAUGE: Lazy<HistogramVec> = Lazy::new(|| {
+    static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
             "comms::rpc::server::inbound_request_bytes",
             "Avg. request bytes per node per protocol",
@@ -73,11 +73,11 @@ pub fn inbound_requests_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histog
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
 pub fn outbound_response_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histogram {
-    static GAUGE: Lazy<HistogramVec> = Lazy::new(|| {
+    static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
             "comms::rpc::server::outbound_response_bytes",
             "Avg. response bytes per peer per protocol",
@@ -86,5 +86,5 @@ pub fn outbound_response_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histo
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }

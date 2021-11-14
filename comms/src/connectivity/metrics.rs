@@ -20,24 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection_manager::ConnectionDirection;
+use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId, protocol::ProtocolId};
 use once_cell::sync::Lazy;
 use tari_metrics::{IntGauge, IntGaugeVec};
 
 pub fn connections(direction: ConnectionDirection) -> IntGauge {
-    static GAUGE: Lazy<IntGaugeVec> = Lazy::new(|| {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec("comms::connections", "Number of active connections by direction", &[
             "direction",
         ])
         .unwrap()
     });
 
-    GAUGE.with_label_values(&[direction.as_str()])
+    METER.with_label_values(&[direction.as_str()])
+}
+
+pub fn substream_request_count(peer: &NodeId, protocol: &ProtocolId) -> IntGauge {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
+        tari_metrics::register_int_gauge_vec("comms::substream_request_count", "Number of substream requests", &[
+            "peer", "protocol",
+        ])
+        .unwrap()
+    });
+
+    METER.with_label_values(&[peer.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
 pub fn uptime() -> IntGauge {
-    static GAUGE: Lazy<IntGauge> =
+    static METER: Lazy<IntGauge> =
         Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
 
-    GAUGE.clone()
+    METER.clone()
 }
