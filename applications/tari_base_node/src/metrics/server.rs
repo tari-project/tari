@@ -47,7 +47,7 @@ async fn metrics_text_handler(registry: Registry) -> Result<impl Reply, Rejectio
         Ok(encoded)
     })
     .await
-    .map_err(Error::JoinError)?
+    .map_err(Error::BlockingThreadFailed)?
     .map_err(Into::into)
 }
 
@@ -60,9 +60,9 @@ enum Error {
     #[error("Failed to encode: {0}")]
     PrometheusEncodeFailed(#[from] tari_metrics::Error),
     #[error("Failed to encode: {0}")]
-    FromUtf8Error(#[from] FromUtf8Error),
+    FromUtf8(#[from] FromUtf8Error),
     #[error("Failed to spawn blocking thread: {0}")]
-    JoinError(#[from] JoinError),
+    BlockingThreadFailed(#[from] JoinError),
 }
 
 impl Reject for Error {}

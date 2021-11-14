@@ -45,14 +45,14 @@ pub fn install(
     if let Some(addr) = bootstrap
         .metrics_server_bind_addr
         .as_ref()
-        .or(config.metrics.prometheus_scraper_bind_addr.as_ref())
+        .or_else(|| config.metrics.prometheus_scraper_bind_addr.as_ref())
     {
         metrics = metrics.with_scrape_server(addr);
     }
     if let Some(endpoint) = bootstrap
         .metrics_push_endpoint
         .as_ref()
-        .or(config.metrics.prometheus_push_endpoint.as_ref())
+        .or_else(|| config.metrics.prometheus_push_endpoint.as_ref())
     {
         // http://localhost:9091/metrics/job/base-node
         metrics = metrics.with_push_gateway(endpoint);
@@ -61,11 +61,11 @@ pub fn install(
 }
 
 fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity) -> Registry {
-    let mut labels = HashMap::with_capacity(3);
+    let mut labels = HashMap::with_capacity(4);
     labels.insert("app".to_string(), application.as_config_str().to_string());
-    labels.insert("role".to_string(), identity.features().as_role_str().to_string());
+    labels.insert("node_role".to_string(), identity.features().as_role_str().to_string());
     labels.insert("node_id".to_string(), identity.node_id().to_string());
-    labels.insert("public_key".to_string(), identity.public_key().to_string());
+    labels.insert("node_public_key".to_string(), identity.public_key().to_string());
 
     tari_metrics::Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }

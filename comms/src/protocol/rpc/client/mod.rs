@@ -256,7 +256,7 @@ impl<TClient> RpcClientBuilder<TClient> {
         self
     }
 
-    /// Set the node_id
+    /// Set the node_id for logging/metrics purposes
     pub fn with_node_id(mut self, node_id: NodeId) -> Self {
         self.node_id = Some(node_id);
         self
