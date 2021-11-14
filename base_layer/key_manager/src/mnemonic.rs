@@ -33,7 +33,7 @@ use tari_crypto::tari_utilities::bit::*;
 /// It can autodetect the language of the Mnemonic word sequence
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 
-#[derive(Clone, Debug, PartialEq, EnumString, Display)]
+#[derive(Clone, Debug, PartialEq, Eq, EnumString, Display)]
 pub enum MnemonicLanguage {
     ChineseSimplified,
     English,

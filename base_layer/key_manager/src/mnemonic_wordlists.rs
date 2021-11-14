@@ -933,3 +933,36 @@ pub const MNEMONIC_SPANISH_WORDS: [&str; 2048] = [
     "vitamina", "viudo", "vivaz", "vivero", "vivir", "vivo", "volcan", "volumen", "volver", "voraz", "votar", "voto", "voz", "vuelo", "vulgar", "yacer",
     "yate", "yegua", "yema", "yerno", "yeso", "yodo", "yoga", "yogur", "zafiro", "zanja", "zapato", "zarza", "zona", "zorro", "zumo", "zurdo",
 ];
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn it_does_not_contain_duplicate_words() {
+        use crate::mnemonic::MnemonicLanguage::*;
+        let all_words = &[
+            (Spanish, MNEMONIC_SPANISH_WORDS),
+            (Italian, MNEMONIC_ITALIAN_WORDS),
+            (French, MNEMONIC_FRENCH_WORDS),
+            (English, MNEMONIC_ENGLISH_WORDS),
+        ];
+        for (lang_a, a) in all_words {
+            for (lang_b, b) in all_words {
+                if lang_a == lang_b {
+                    continue;
+                }
+
+                for word_a in a {
+                    for word_b in b {
+                        assert_ne!(
+                            word_a, word_b,
+                            "Found duplicate word '{}' in list {} and {}",
+                            word_b, lang_a, lang_b
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
