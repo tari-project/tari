@@ -693,6 +693,15 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub fn has_time_locked_balance(&self) -> bool {
+        if let Some(time_locked_balance) = self.data.balance.time_locked_balance {
+            if time_locked_balance > MicroTari::from(0) {
+                return true;
+            }
+        }
+        false
+    }
+
     pub async fn refresh_balance(&mut self, balance: Balance) -> Result<(), UiError> {
         self.data.balance = balance;
         self.updated = true;
