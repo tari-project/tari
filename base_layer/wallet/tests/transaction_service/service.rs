@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, TestParams},
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
 };
+
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -33,13 +36,22 @@ use futures::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey as SK},
+    script,
+    script::{ExecutionStack, TariScript},
 };
+use tempfile::tempdir;
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+    sync::{broadcast, broadcast::channel},
+    time::sleep,
+};
+
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus},
@@ -86,14 +98,6 @@ use tari_core::{
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
@@ -145,12 +149,11 @@ use tari_wallet::{
     },
     types::HashDigest,
 };
-use tempfile::tempdir;
-use tokio::{
-    runtime,
-    runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
-    time::sleep,
+
+use crate::support::{
+    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::{make_input, TestParams},
 };
 
 fn create_runtime() -> Runtime {
@@ -1243,7 +1246,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -1351,8 +1354,8 @@ fn finalize_tx_with_incorrect_pubkey() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -1479,8 +1482,8 @@ fn finalize_tx_with_missing_output() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -5105,7 +5108,7 @@ fn dont_broadcast_invalid_transactions() {
     let temp_dir = tempdir().unwrap();
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
 
     let kernel = KernelBuilder::new()
