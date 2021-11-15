@@ -12,7 +12,7 @@ tari_app_grpc = { path = "../tari_app_grpc" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms", features = ["rpc"] }
-tari_common_types = {path = "../../base_layer/common_types"}
+tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
@@ -39,15 +39,22 @@ thiserror = "^1.0.26"
 tokio = { version = "1.11", features = ["signal"] }
 tonic = "0.5.2"
 tracing = "0.1.26"
+
+# network tracing, rt-tokio for async batch export
+opentelemetry = { version = "0.16", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry-jaeger = { version = "0.15", features = ["rt-tokio", "collector_client", "reqwest_collector_client"] }
 tracing-opentelemetry = "0.15.0"
 tracing-subscriber = "0.2.20"
 
-# network tracing, rt-tokio for async batch export
-opentelemetry = { version = "0.16", default-features = false, features = ["trace","rt-tokio"] }
-opentelemetry-jaeger = { version="0.15", features=["rt-tokio"]}
+# Metrics
+tari_metrics = { path = "../../infrastructure/metrics", optional = true }
+warp = { version = "0.3.1", optional = true }
+reqwest = { version = "0.11.4", default-features = false, optional = true }
 
 [features]
-avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2",  "tari_comms/avx2", "tari_comms_dht/avx2"]
+default = ["metrics"]
+avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]
+metrics = ["warp", "reqwest", "tari_metrics",  "tari_comms/metrics"]
 safe = []
 
 

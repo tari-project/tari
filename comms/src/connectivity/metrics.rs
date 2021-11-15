@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,29 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection_stats;
+use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId, protocol::ProtocolId};
+use once_cell::sync::Lazy;
+use tari_metrics::{IntGauge, IntGaugeVec};
 
-mod config;
-pub use config::ConnectivityConfig;
+pub fn connections(direction: ConnectionDirection) -> IntGauge {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
+        tari_metrics::register_int_gauge_vec("comms::connections", "Number of active connections by direction", &[
+            "direction",
+        ])
+        .unwrap()
+    });
 
-mod connection_pool;
+    METER.with_label_values(&[direction.as_str()])
+}
 
-mod error;
-pub use error::ConnectivityError;
+pub fn substream_request_count(peer: &NodeId, protocol: &ProtocolId) -> IntGauge {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
+        tari_metrics::register_int_gauge_vec("comms::substream_request_count", "Number of substream requests", &[
+            "peer", "protocol",
+        ])
+        .unwrap()
+    });
 
-mod manager;
-pub(crate) use manager::ConnectivityManager;
-pub use manager::ConnectivityStatus;
+    METER.with_label_values(&[peer.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+}
 
-#[cfg(feature = "metrics")]
-mod metrics;
+pub fn uptime() -> IntGauge {
+    static METER: Lazy<IntGauge> =
+        Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
 
-mod requester;
-pub(crate) use requester::ConnectivityRequest;
-pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
-
-mod selection;
-pub use selection::ConnectivitySelection;
-
-#[cfg(test)]
-mod test;
+    METER.clone()
+}

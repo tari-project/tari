@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,29 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod connection_stats;
+use log::*;
+use reqwest::{Client, Url};
+use std::time::{Duration, Instant};
+use tari_metrics::{Encoder, Registry, TextEncoder};
+use tokio::{time, time::MissedTickBehavior};
 
-mod config;
-pub use config::ConnectivityConfig;
+const LOG_TARGET: &str = "base_node::metrics::push";
 
-mod connection_pool;
+pub async fn start(endpoint: Url, push_interval: Duration, registry: Registry) {
+    let mut interval = time::interval(push_interval);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-mod error;
-pub use error::ConnectivityError;
+    loop {
+        interval.tick().await;
 
-mod manager;
-pub(crate) use manager::ConnectivityManager;
-pub use manager::ConnectivityStatus;
+        if let Err(err) = push_metrics(&registry, endpoint.clone()).await {
+            error!(target: LOG_TARGET, "{}", err);
+        }
+    }
+}
 
-#[cfg(feature = "metrics")]
-mod metrics;
-
-mod requester;
-pub(crate) use requester::ConnectivityRequest;
-pub use requester::{ConnectivityEvent, ConnectivityEventRx, ConnectivityEventTx, ConnectivityRequester};
-
-mod selection;
-pub use selection::ConnectivitySelection;
-
-#[cfg(test)]
-mod test;
+async fn push_metrics(registry: &Registry, endpoint: Url) -> Result<(), anyhow::Error> {
+    let client = Client::new();
+    let timer = Instant::now();
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    let metrics = registry.gather();
+    encoder.encode(&metrics, &mut buffer)?;
+    let raw_metrics_data = String::from_utf8(buffer)?;
+    client.post(endpoint).body(raw_metrics_data).send().await?;
+    debug!(
+        target: LOG_TARGET,
+        "POSTed {} metrics in {:.2?}",
+        metrics.len(),
+        timer.elapsed()
+    );
+    Ok(())
+}

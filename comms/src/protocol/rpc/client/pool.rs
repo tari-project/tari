@@ -69,7 +69,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
 }
 
 #[derive(Clone)]
-pub(super) struct LazyPool<T> {
+pub(crate) struct LazyPool<T> {
     connection: PeerConnection,
     clients: Vec<RpcClientLease<T>>,
     client_config: RpcClientBuilder<T>,

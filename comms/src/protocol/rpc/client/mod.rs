@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,10 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod pool;
+
+#[cfg(test)]
+mod tests;
+
+mod metrics;
+
 use super::message::RpcMethod;
 use crate::{
     framing::CanonicalFraming,
     message::MessageExt,
+    peer_manager::NodeId,
     proto,
     protocol::{
         rpc,
@@ -87,6 +95,7 @@ impl RpcClient {
     /// Create a new RpcClient using the given framed substream and perform the RPC handshake.
     pub async fn connect<TSubstream>(
         config: RpcClientConfig,
+        node_id: NodeId,
         framed: CanonicalFraming<TSubstream>,
         protocol_name: ProtocolId,
     ) -> Result<Self, RpcError>
@@ -103,9 +112,17 @@ impl RpcClient {
             let span = span!(Level::TRACE, "start_rpc_worker");
             span.follows_from(tracing_id);
 
-            RpcClientWorker::new(config, request_rx, framed, ready_tx, protocol_name, shutdown_signal)
-                .run()
-                .instrument(span)
+            RpcClientWorker::new(
+                config,
+                node_id,
+                request_rx,
+                framed,
+                ready_tx,
+                protocol_name,
+                shutdown_signal,
+            )
+            .run()
+            .instrument(span)
         });
         ready_rx
             .await
@@ -184,6 +201,7 @@ impl fmt::Debug for RpcClient {
 pub struct RpcClientBuilder<TClient> {
     config: RpcClientConfig,
     protocol_id: Option<ProtocolId>,
+    node_id: Option<NodeId>,
     _client: PhantomData<TClient>,
 }
 
@@ -192,6 +210,7 @@ impl<TClient> Default for RpcClientBuilder<TClient> {
         Self {
             config: Default::default(),
             protocol_id: None,
+            node_id: None,
             _client: PhantomData,
         }
     }
@@ -236,6 +255,12 @@ impl<TClient> RpcClientBuilder<TClient> {
         self.protocol_id = Some(protocol_id);
         self
     }
+
+    /// Set the node_id for logging/metrics purposes
+    pub fn with_node_id(mut self, node_id: NodeId) -> Self {
+        self.node_id = Some(node_id);
+        self
+    }
 }
 
 impl<TClient> RpcClientBuilder<TClient>
@@ -246,6 +271,7 @@ where TClient: From<RpcClient> + NamedProtocolService
     where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId + 'static {
         RpcClient::connect(
             self.config,
+            self.node_id.unwrap_or_default(),
             framed,
             self.protocol_id
                 .as_ref()
@@ -363,6 +389,7 @@ impl Service<BaseRequest<Bytes>> for ClientConnector {
 
 struct RpcClientWorker<TSubstream> {
     config: RpcClientConfig,
+    node_id: NodeId,
     request_rx: mpsc::Receiver<ClientRequest>,
     framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
@@ -379,6 +406,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 {
     pub(self) fn new(
         config: RpcClientConfig,
+        node_id: NodeId,
         request_rx: mpsc::Receiver<ClientRequest>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
@@ -387,6 +415,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     ) -> Self {
         Self {
             config,
+            node_id,
             request_rx,
             framed,
             next_request_id: 0,
@@ -439,6 +468,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             },
         }
 
+        let session_counter = metrics::sessions_counter(&self.node_id, &self.protocol_id);
+        session_counter.inc();
         loop {
             tokio::select! {
                 biased;
@@ -458,6 +489,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 }
             }
         }
+        session_counter.dec();
 
         if let Err(err) = self.framed.close().await {
             debug!(
@@ -556,6 +588,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     ) -> Result<(), RpcError> {
+        metrics::outbound_request_bytes(&self.node_id, &self.protocol_id).observe(request.get_ref().len() as f64);
+
         let request_id = self.next_request_id();
         let method = request.method.into();
         let req = proto::rpc::RpcRequest {
@@ -568,7 +602,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         debug!(target: LOG_TARGET, "Sending request: {}", req);
 
-        let start = Instant::now();
+        let mut timer = Some(Instant::now());
         if reply.is_closed() {
             event!(Level::WARN, "Client request was cancelled before request was sent");
             warn!(
@@ -590,6 +624,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             return Ok(());
         }
 
+        let latency = metrics::request_response_latency(&self.node_id, &self.protocol_id);
+        let mut metrics_timer = Some(latency.start_timer());
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
             let _ = response_tx.send(Err(err.into()));
@@ -610,27 +646,28 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
             let resp = match self.read_response(request_id).await {
                 Ok(resp) => {
-                    let latency = start.elapsed();
+                    if let Some(t) = timer.take() {
+                        self.last_request_latency = Some(t.elapsed());
+                    }
                     event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
-                        "Received response ({} byte(s)) from request #{} (protocol = {}, method={}) in {:.0?}",
+                        "Received response ({} byte(s)) from request #{} (protocol = {}, method={})",
                         resp.payload.len(),
                         request_id,
                         self.protocol_name(),
                         method,
-                        latency
                     );
-                    self.last_request_latency = Some(latency);
+
+                    if let Some(t) = metrics_timer.take() {
+                        t.observe_duration();
+                    }
                     resp
                 },
                 Err(RpcError::ReplyTimeout) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Request {} (method={}) timed out after {:.0?}",
-                        request_id,
-                        method,
-                        start.elapsed()
+                        "Request {} (method={}) timed out", request_id, method,
                     );
                     event!(Level::ERROR, "Response timed out");
                     if !response_tx.is_closed() {
@@ -641,10 +678,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 Err(RpcError::ClientClosed) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Request {} (method={}) was closed after {:.0?} (read_reply)",
-                        request_id,
-                        method,
-                        start.elapsed()
+                        "Request {} (method={}) was closed (read_reply)", request_id, method,
                     );
                     self.request_rx.close();
                     break;
@@ -652,10 +686,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 Err(err) => {
                     event!(
                         Level::WARN,
-                        "Request {} (method={}) returned an error after {:.0?}: {}",
+                        "Request {} (method={}) returned an error: {}",
                         request_id,
                         method,
-                        start.elapsed(),
                         err
                     );
                     return Err(err);
@@ -733,7 +766,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let mut num_ignored = 0;
         let resp = loop {
             match reader.read_response().await {
-                Ok(resp) => break resp,
+                Ok(resp) => {
+                    metrics::inbound_response_bytes(&self.node_id, &self.protocol_id)
+                        .observe(reader.bytes_read() as f64);
+                    break resp;
+                },
                 Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
                     if actual.saturating_add(1) == request_id =>
                 {
@@ -792,6 +829,7 @@ struct RpcResponseReader<'a, TSubstream> {
     framed: &'a mut CanonicalFraming<TSubstream>,
     config: RpcClientConfig,
     request_id: u16,
+    bytes_read: usize,
 }
 
 impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
@@ -802,7 +840,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             framed,
             config,
             request_id,
+            bytes_read: 0,
         }
+    }
+
+    pub fn bytes_read(&self) -> usize {
+        self.bytes_read
     }
 
     pub async fn read_response(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
@@ -833,6 +876,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             let msg = self.next().await?;
             last_chunk_flags = RpcMessageFlags::from_bits_truncate(msg.flags as u8);
             last_chunk_size = msg.payload.len();
+            self.bytes_read += last_chunk_size;
             self.check_response(&resp)?;
             resp.payload.extend(msg.payload);
             chunk_count += 1;
