@@ -480,6 +480,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         if let Some(m) = metadata {
+            let mined_height = m.mined_height;
+            let mined_in_block = m.header_hash.clone();
             match m.output {
                 PrunedOutput::Pruned {
                     output_hash,
@@ -509,6 +511,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 image,
                                 owner_commitment: Vec::from(output.commitment.as_bytes()),
                                 features: Some(output.features.clone().into()),
+                                mined_height,
+                                mined_in_block,
                             }));
                         }
                     }
@@ -518,6 +522,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         image: None,
                         owner_commitment: Vec::from(output.commitment.as_bytes()),
                         features: Some(output.features.clone().into()),
+                        mined_height,
+                        mined_in_block,
                     }));
                 },
             };

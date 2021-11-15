@@ -27,7 +27,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFeatures, Transaction};
+use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
 
 pub mod initializer;
 
@@ -42,6 +42,7 @@ pub enum AssetManagerRequest {
         template_ids_implemented: Vec<u32>,
         description: Option<String>,
         image: Option<String>,
+        template_parameters: Vec<TemplateParameter>,
     },
     CreateMintingTransaction {
         asset_public_key: Box<PublicKey>,

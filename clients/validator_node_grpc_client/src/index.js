@@ -6,7 +6,7 @@ const path = require("path");
 const packageDefinition = protoLoader.loadSync(
     path.resolve(
         __dirname,
-        "../../../applications/tari_validator_node/proto/grpc/validator_node.proto"
+        "../../../applications/tari_app_grpc/proto/validator_node.proto"
     ),
     {
         keepCase: true,
@@ -17,7 +17,7 @@ const packageDefinition = protoLoader.loadSync(
     }
 );
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
-const tariGrpc = protoDescriptor.tari.validator_node.rpc;
+const tariGrpc = protoDescriptor.tari.rpc;
 
 function connect(address) {
     const client = new tariGrpc.ValidatorNode(

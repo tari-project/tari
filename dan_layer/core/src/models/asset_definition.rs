@@ -23,6 +23,7 @@
 use crate::types::PublicKey;
 use serde::{self, de, Deserialize, Deserializer, Serialize};
 use std::{fmt, marker::PhantomData};
+use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Deserialize, Clone)]
@@ -37,6 +38,7 @@ pub struct AssetDefinition {
     pub base_layer_confirmation_time: u64,
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
+    pub template_parameters: Vec<TemplateParameter>,
 }
 
 impl Default for AssetDefinition {
@@ -48,6 +50,7 @@ impl Default for AssetDefinition {
             initial_committee: vec![],
             phase_timeout: 10,
             initial_state: Default::default(),
+            template_parameters: vec![],
         }
     }
 }

@@ -1,3 +1,4 @@
+syntax = "proto3";
 
 service Tip001 {
   rpc ReadMetada(ReadMetadataRequest) returns ReadMetadataResponse;

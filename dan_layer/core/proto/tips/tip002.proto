@@ -1,6 +1,20 @@
+syntax = "proto3";
+package tari_dan_tips;
+
 service Tip002 {
-  rpc Info(InfoRequest) returns InfoResponse;
-  rpc BalanceOf(BalanceOfRequest) returns BalanceOfResponse;
+  rpc Init(InitRequest) returns (Empty);
+  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
+    }
+
+
+    message InitRequest {
+      string symbol =1;
+      byte decimals = 2;
+      uint256 total_supply = 3;
+    }
+    message Empty{
+
     }
 
    message InfoRequest {

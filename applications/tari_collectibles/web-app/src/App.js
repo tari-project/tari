@@ -113,8 +113,7 @@ function App() {
    let a = await binding.command_accounts_list();
   console.log(a);
   setAccounts(a);
-
-  });
+  }, []);
 
   return (
     <div className="App">

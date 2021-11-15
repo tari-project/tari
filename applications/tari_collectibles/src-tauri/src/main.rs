@@ -30,6 +30,7 @@ fn main() {
       commands::assets::assets_list_owned,
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_issue_simple_tokens,
+      commands::assets::assets_get_registration,
       commands::accounts::accounts_create,
       commands::accounts::accounts_list
     ])

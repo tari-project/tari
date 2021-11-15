@@ -37,7 +37,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Transaction};
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
@@ -87,6 +87,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         description: Option<String>,
         image: Option<String>,
         template_ids_implemented: Vec<u32>,
+        template_parameters: Vec<TemplateParameter>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let serializer = V1AssetMetadataSerializer {};
 
@@ -103,7 +104,12 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
             .output_manager
             .create_output_with_features(
                 0.into(),
-                OutputFeatures::for_asset_registration(metadata_bin, public_key, template_ids_implemented),
+                OutputFeatures::for_asset_registration(
+                    metadata_bin,
+                    public_key,
+                    template_ids_implemented,
+                    template_parameters,
+                ),
             )
             .await?;
         debug!(target: LOG_TARGET, "Created output: {:?}", output);

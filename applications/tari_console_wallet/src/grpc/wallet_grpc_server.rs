@@ -400,6 +400,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.template_ids_implemented,
                 Some(message.description),
                 Some(message.image),
+                message.template_parameters.into_iter().map(|tp| tp.into()).collect(),
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;

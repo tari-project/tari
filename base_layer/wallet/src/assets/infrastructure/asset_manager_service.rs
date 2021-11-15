@@ -93,10 +93,17 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 template_ids_implemented,
                 description,
                 image,
+                template_parameters,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_registration_transaction(name, description, image, template_ids_implemented)
+                    .create_registration_transaction(
+                        name,
+                        description,
+                        image,
+                        template_ids_implemented,
+                        template_parameters,
+                    )
                     .await?;
                 Ok(AssetManagerResponse::CreateRegistrationTransaction {
                     transaction: Box::new(transaction),

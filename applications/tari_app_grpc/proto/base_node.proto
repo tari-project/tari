@@ -97,6 +97,8 @@ message GetAssetMetadataResponse {
     optional string image = 4;
     bytes owner_commitment = 5;
     OutputFeatures features = 6;
+    uint64 mined_height = 7;
+    bytes mined_in_block = 8;
 }
 
 message ListAssetRegistrationsRequest {

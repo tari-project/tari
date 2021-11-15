@@ -20,15 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_info;
-pub use asset_info::AssetInfo;
-mod registered_asset_info;
-pub use registered_asset_info::RegisteredAssetInfo;
-mod account;
-pub use account::{Account, NewAccount};
-mod tip002_info;
-pub use tip002_info::Tip002Info;
-mod template_parameter;
-pub use template_parameter::TemplateParameter;
-mod output_features;
-pub use output_features::OutputFeatures;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TemplateParameter {
+  pub(crate) template_id: u32,
+  pub(crate) template_data_version: u32,
+  pub(crate) template_data: Vec<u8>,
+}
