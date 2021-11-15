@@ -52,7 +52,7 @@ warp = { version = "0.3.1", optional = true }
 reqwest = { version = "0.11.4", default-features = false, optional = true }
 
 [features]
-default = []
+default = ["metrics"]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]
 metrics = ["warp", "reqwest", "tari_metrics",  "tari_comms/metrics"]
 safe = []
