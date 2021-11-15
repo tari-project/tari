@@ -1087,13 +1087,15 @@ pub struct MetricsConfig {
 
 impl MetricsConfig {
     fn from_config(cfg: &Config) -> Result<Self, ConfigurationError> {
-        let key = "common.metrics.server_bind_addr";
+        let key = "common.metrics.server_bind_address";
         let prometheus_scraper_bind_addr = optional(cfg.get_str(key))?
             .map(|s| {
                 s.parse()
                     .map_err(|_| ConfigurationError::new(key, "Invalid metrics server socket address"))
             })
             .transpose()?;
+
+        let key = "common.metrics.push_endpoint";
         let prometheus_push_endpoint = optional(cfg.get_str(key))?;
 
         Ok(Self {
