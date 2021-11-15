@@ -200,8 +200,8 @@ pub enum TransactionStorageError {
     CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

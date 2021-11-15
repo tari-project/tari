@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,37 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
-use tari_test_utils::random;
-use tari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
-use tempfile::{tempdir, TempDir};
+use core::{
+    option::{Option, Option::Some},
+    result::{Result, Result::Ok},
+    time::Duration,
+};
+use diesel::{connection::SimpleConnection, SqliteConnection};
 
-pub fn get_path(name: Option<&str>) -> String {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/data");
-    path.push(name.unwrap_or(""));
-    path.to_str().unwrap().to_string()
+#[derive(Debug, Clone)]
+pub struct ConnectionOptions {
+    enable_wal: bool,
+    enable_foreign_keys: bool,
+    busy_timeout: Option<Duration>,
 }
 
-pub fn clean_up_sql_database(name: &str) {
-    if std::fs::metadata(get_path(Some(name))).is_ok() {
-        std::fs::remove_file(get_path(Some(name))).unwrap();
+impl ConnectionOptions {
+    pub fn new(enable_wal: bool, enable_foreign_keys: bool, busy_timeout: Duration) -> Self {
+        Self {
+            enable_wal,
+            enable_foreign_keys,
+            busy_timeout: Some(busy_timeout),
+        }
     }
 }
 
-pub fn init_sql_database(name: &str) {
-    clean_up_sql_database(name);
-    let path = get_path(None);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
-}
-
-pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {
-    let db_name = format!("{}.sqlite3", random::string(8).as_str());
-    let db_tempdir = tempdir().unwrap();
-    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-    let db_path = format!("{}/{}", db_folder, db_name);
-    // let db_path = "/tmp/test.sqlite3".to_string();
-    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
-
-    (connection, db_tempdir)
+impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionOptions {
+    fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        (|| {
+            if self.enable_wal {
+                conn.batch_execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
+            }
+            if self.enable_foreign_keys {
+                conn.batch_execute("PRAGMA foreign_keys = ON;")?;
+            }
+            if let Some(d) = self.busy_timeout {
+                conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
+            }
+            Ok(())
+        })()
+        .map_err(diesel::r2d2::Error::QueryError)
+    }
 }

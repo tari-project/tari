@@ -112,6 +112,7 @@ pub struct GlobalConfig {
     pub transaction_event_channel_size: usize,
     pub base_node_event_channel_size: usize,
     pub output_manager_event_channel_size: usize,
+    pub wallet_connection_manager_pool_size: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -487,6 +488,9 @@ fn convert_node_config(
     let key = "wallet.base_node_event_channel_size";
     let base_node_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
 
+    let key = "wallet.connection_manager_pool_size";
+    let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16) as usize;
+
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
 
@@ -762,6 +766,7 @@ fn convert_node_config(
         transaction_num_confirmations_required,
         transaction_event_channel_size,
         base_node_event_channel_size,
+        wallet_connection_manager_pool_size,
         output_manager_event_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,

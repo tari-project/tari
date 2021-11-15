@@ -17,6 +17,7 @@ tari_p2p = { version = "^0.21", path = "../p2p", features = ["auto-update"] }
 tari_service_framework = { version = "^0.21", path = "../service_framework" }
 tari_shutdown = { version = "^0.21", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.21", path = "../../infrastructure/storage" }
+tari_common_sqlite = { path = "../../common_sqlite" }
 
 aes-gcm = "^0.8"
 async-trait = "0.1.50"

@@ -272,7 +272,7 @@ pub async fn init_wallet(
     // test encryption by initializing with no passphrase...
     let db_path = config.console_wallet_db_file.clone();
 
-    let result = initialize_sqlite_database_backends(db_path.clone(), None);
+    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.wallet_connection_manager_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -281,7 +281,8 @@ pub async fn init_wallet(
         Err(WalletStorageError::NoPasswordError) => {
             // get supplied or prompt password
             let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
-            let backends = initialize_sqlite_database_backends(db_path, passphrase)?;
+            let backends =
+                initialize_sqlite_database_backends(db_path, passphrase, config.wallet_connection_manager_pool_size)?;
 
             (backends, true)
         },
