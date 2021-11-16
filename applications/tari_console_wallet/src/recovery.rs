@@ -97,7 +97,10 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             peer.node_id.to_hex()
         );
         peer_public_keys.push(peer.public_key.clone());
-        peer_manager.add_peer(peer).await?;
+        peer_manager
+            .add_peer(peer)
+            .await
+            .map_err(|err| ExitCodes::NetworkError(err.to_string()))?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
