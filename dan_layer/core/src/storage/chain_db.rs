@@ -266,16 +266,24 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
     }
 
     fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
-        // put it in the tracker
-        let _ = self.get_locked_qc()?;
         let mut inner = self.inner.write().unwrap();
-        {
-            let mut db_locked = inner.locked_qc.as_ref().unwrap().get_mut();
 
-            db_locked.message_type = qc.message_type();
-            db_locked.view_number = qc.view_number();
-            db_locked.node_hash = qc.node_hash().clone();
-            db_locked.signature = qc.signature().cloned();
+        if let Some(locked_qc) = &inner.locked_qc.as_ref() {
+            let mut locked_qc = locked_qc.get_mut();
+            locked_qc.message_type = qc.message_type();
+            locked_qc.view_number = qc.view_number();
+            locked_qc.node_hash = qc.node_hash().clone();
+            locked_qc.signature = qc.signature().cloned();
+        } else {
+            inner.locked_qc = Some(UnitOfWorkTracker::new(
+                DbQc {
+                    message_type: qc.message_type(),
+                    view_number: qc.view_number(),
+                    node_hash: qc.node_hash().clone(),
+                    signature: qc.signature().cloned(),
+                },
+                true,
+            ));
         }
         let found_node = inner.find_proposed_node(qc.node_hash())?;
         let mut node = found_node.1.get_mut();

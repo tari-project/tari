@@ -157,7 +157,6 @@ pub trait BackendAdapter: Send + Sync + Clone {
     fn get_prepare_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, DbNode), Self::Error>;
     fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
-
     fn update_locked_qc(&self, locked_qc: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }
 
