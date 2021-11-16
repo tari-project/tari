@@ -148,6 +148,14 @@ class WalletClient {
     return await this.client.transfer(args);
   }
 
+  async sendHtlc(args) {
+    return await this.client.SendShaAtomicSwapTransaction(args);
+  }
+
+  async claimHtlc(args) {
+    return await this.client.claimShaAtomicSwapTransaction(args);
+  }
+
   async importUtxos(outputs) {
     return await this.client.importUtxos({
       outputs: outputs,
