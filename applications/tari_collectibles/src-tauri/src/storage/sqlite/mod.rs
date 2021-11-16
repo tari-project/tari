@@ -29,7 +29,7 @@ use uuid::Uuid;
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 pub mod models;
-use crate::schema::{self, accounts::dsl::accounts, *};
+use crate::schema::{self};
 use diesel::prelude::*;
 use std::fs;
 use tari_common_types::types::PublicKey;
@@ -40,7 +40,7 @@ pub struct SqliteDbFactory {
 impl SqliteDbFactory {
   pub fn new(data_dir: &Path) -> Self {
     fs::create_dir_all(data_dir)
-      .expect(&format!("Could not create data directory: {:?}", data_dir));
+      .unwrap_or_else(|_| panic!("Could not create data directory: {:?}", data_dir));
     let database_url = data_dir
       .join("collectibles.sqlite")
       .into_os_string()
@@ -86,12 +86,10 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     let results: Vec<models::Account> = schema::accounts::table
       .order_by(schema::accounts::name.asc())
       .load(&conn)?;
-    Ok(
-      results
+    results
         .iter()
         .map(|r| SqliteAccountsTableGateway::convert_account(r))
-        .collect::<Result<_, _>>()?,
-    )
+        .collect::<Result<_, _>>()
   }
 
   fn insert(&self, account: NewAccount) -> Result<Account, StorageError> {

@@ -21,12 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainDbUnitOfWork, DbFactory, StorageError, UnitOfWork},
+    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata},
+    storage::{StorageError, UnitOfWork},
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+
+
 
 // TODO: perhaps rename to ChainBusinessLogic
 // One per asset, per network

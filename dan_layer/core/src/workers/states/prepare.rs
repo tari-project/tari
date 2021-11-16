@@ -40,7 +40,7 @@ use crate::{
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
-use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use crate::{
     models::TreeNodeHash,

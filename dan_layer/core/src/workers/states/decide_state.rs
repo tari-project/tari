@@ -26,7 +26,6 @@ use crate::{
         Committee,
         HotStuffMessage,
         HotStuffMessageType,
-        HotStuffTreeNode,
         Payload,
         QuorumCertificate,
         View,
@@ -34,7 +33,6 @@ use crate::{
     },
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-        SigningService,
     },
     storage::UnitOfWork,
     workers::states::ConsensusWorkerStateEvent,

@@ -25,7 +25,7 @@ use tari_core::transactions::transaction::TemplateParameter;
 
 pub fn init<TUnitOfWork: StateDbUnitOfWork>(
     template_parameter: &TemplateParameter,
-    state_db: &mut TUnitOfWork,
+    _state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
     let params = tip002::InitRequest::decode(&*template_parameter.template_data);
     dbg!(&params);

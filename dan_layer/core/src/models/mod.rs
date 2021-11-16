@@ -48,7 +48,7 @@ pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_metadata::SidechainMetadata;
 pub use state_root::StateRoot;
-use tari_crypto::common::Blake256;
+
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
 pub use view_id::ViewId;
@@ -210,7 +210,7 @@ pub enum ConsensusWorkerState {
 pub struct Signature {}
 
 impl Signature {
-    pub fn from_bytes(source: &[u8]) -> Self {
+    pub fn from_bytes(_source: &[u8]) -> Self {
         Self {}
     }
 

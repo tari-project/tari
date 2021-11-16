@@ -24,12 +24,12 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, StateRoot, TariDanPayload},
     services::{AssetProcessor, MempoolService},
-    storage::{ChainDb, ChainDbUnitOfWork, DbFactory, StateDbUnitOfWork, UnitOfWork},
+    storage::{StateDbUnitOfWork},
 };
 use async_trait::async_trait;
-use std::sync::Arc;
+
 use tari_core::transactions::transaction::TemplateParameter;
-use tokio::sync::RwLock;
+
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {

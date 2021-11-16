@@ -22,15 +22,15 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
-    storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork, UnitOfWork},
-    template_command::{ExecutionResult, TemplateCommand},
-    templates::{editable_metadata_template::_EditableMetadataTemplate, tip002_template},
+    models::{AssetDefinition, Instruction, TemplateId},
+    storage::{StateDbUnitOfWork},
+    template_command::{ExecutionResult},
+    templates::{tip002_template},
 };
-use async_trait::async_trait;
-use std::{collections::VecDeque, sync::Arc};
+
+use std::{collections::VecDeque};
 use tari_core::transactions::transaction::TemplateParameter;
-use tokio::sync::RwLock;
+
 
 pub trait AssetProcessor {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
@@ -92,12 +92,12 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
 
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
-        template_id: TemplateId,
-        method: String,
-        args: VecDeque<Vec<u8>>,
+        _template_id: TemplateId,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
-        hash: Vec<u8>,
-        db: TUnitOfWork,
+        _hash: Vec<u8>,
+        _db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         todo!()
         // let instruction = self.template_factory.create_command(template_id, method, args)?;
@@ -118,7 +118,7 @@ impl TemplateFactory {
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         match TemplateId::from(template.template_id) {
-            TemplateId::Tip002 => tip002_template::init(&template, state_db)?,
+            TemplateId::Tip002 => tip002_template::init(template, state_db)?,
             _ => unimplemented!(),
         }
         unimplemented!()
@@ -126,9 +126,9 @@ impl TemplateFactory {
 
     pub fn create_command(
         &self,
-        template: TemplateId,
-        method: String,
-        args: VecDeque<Vec<u8>>,
+        _template: TemplateId,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
     ) -> Result<(), DigitalAssetError> {
         todo!()

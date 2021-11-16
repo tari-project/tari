@@ -448,7 +448,9 @@ where T: BlockchainBackend + 'static
                     .blockchain_db
                     .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
                     .await?;
-                Ok(NodeCommsResponse::FetchAssetMetadataResponse { output })
+                Ok(NodeCommsResponse::FetchAssetMetadataResponse {
+                    output: Box::new(output),
+                })
             },
         }
     }

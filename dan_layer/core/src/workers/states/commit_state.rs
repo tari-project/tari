@@ -26,7 +26,6 @@ use crate::{
         Committee,
         HotStuffMessage,
         HotStuffMessageType,
-        HotStuffTreeNode,
         Payload,
         QuorumCertificate,
         TreeNodeHash,

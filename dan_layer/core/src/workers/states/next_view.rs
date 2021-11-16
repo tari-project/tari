@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, Payload, QuorumCertificate, View},
+    models::{Committee, HotStuffMessage, Payload, View},
     services::infrastructure_services::{NodeAddressable, OutboundService},
     storage::{BackendAdapter, DbFactory},
     workers::states::ConsensusWorkerStateEvent,

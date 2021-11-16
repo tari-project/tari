@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, InstructionSet, Payload, TariDanPayload},
+    models::{InstructionSet, Payload, TariDanPayload},
     services::MempoolService,
 };
 use async_trait::async_trait;

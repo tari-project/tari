@@ -27,7 +27,6 @@ use crate::{
         AssetDefinition,
         ConsensusWorkerState,
         Payload,
-        QuorumCertificate,
         View,
         ViewId,
     },
@@ -44,7 +43,7 @@ use crate::{
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData};
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 

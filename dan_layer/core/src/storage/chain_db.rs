@@ -22,14 +22,9 @@
 
 use crate::{
     models::{
-        HotStuffMessageType,
-        HotStuffTreeNode,
         Instruction,
-        Payload,
         QuorumCertificate,
-        Signature,
         TreeNodeHash,
-        ViewId,
     },
     storage::{BackendAdapter, StorageError, UnitOfWork, UnitOfWorkTracker},
 };
@@ -79,7 +74,7 @@ pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
 impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
     fn set_dirty(
         &mut self,
-        item: (Option<TBackendAdapter::Id>, UnitOfWorkTracker),
+        _item: (Option<TBackendAdapter::Id>, UnitOfWorkTracker),
     ) -> Result<(Option<TBackendAdapter::Id>, &mut UnitOfWorkTracker), StorageError> {
         //     let inner = self.inner.write().unwrap();
         // for (clean_id, clean_item) in inner.drain(..) {
@@ -134,7 +129,7 @@ pub enum IsDirty {
 
 impl IsDirty {
     pub fn is_dirty(&self) -> bool {
-        matches!(self, Dirty)
+        matches!(self, _Dirty)
     }
 }
 
@@ -179,7 +174,7 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
     // }
 
     fn commit(&mut self) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let inner = self.inner.write().unwrap();
         let tx = inner
             .backend_adapter
             .create_transaction()
@@ -232,7 +227,7 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
 
     fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError> {
         let mut inner = self.inner.write().unwrap();
-        let id = inner.backend_adapter.locked_qc_id();
+        let _id = inner.backend_adapter.locked_qc_id();
 
         for (_, item, _) in &inner.items {
             match item {
@@ -243,8 +238,8 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
                     signature,
                 } => {
                     return Ok(QuorumCertificate::new(
-                        message_type.clone(),
-                        view_number.clone(),
+                        *message_type,
+                        *view_number,
                         node_hash.clone(),
                         signature.clone(),
                     ));
@@ -262,8 +257,8 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
         inner.items.push((
             Some(id),
             UnitOfWorkTracker::LockedQc {
-                message_type: qc.message_type().clone(),
-                view_number: qc.view_number().clone(),
+                message_type: qc.message_type(),
+                view_number: qc.view_number(),
                 node_hash: qc.node_hash().clone(),
                 signature: qc.signature().cloned(),
             },

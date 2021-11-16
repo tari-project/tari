@@ -21,13 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::models::{
-    ChainHeight,
     HotStuffMessageType,
-    HotStuffTreeNode,
     Instruction,
     Payload,
     QuorumCertificate,
-    SidechainMetadata,
     Signature,
     StateRoot,
     TreeNodeHash,
@@ -36,7 +33,7 @@ use crate::models::{
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
-use std::sync::{Arc, RwLock};
+
 pub use store::{AssetDataStore, AssetStore};
 
 mod chain_db;

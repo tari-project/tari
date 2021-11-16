@@ -26,7 +26,6 @@ use crate::{
         Committee,
         HotStuffMessage,
         HotStuffMessageType,
-        HotStuffTreeNode,
         Payload,
         QuorumCertificate,
         TreeNodeHash,
@@ -215,7 +214,7 @@ where
         }
 
         let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node.clone(), None);
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }

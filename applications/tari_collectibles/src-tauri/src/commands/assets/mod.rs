@@ -25,7 +25,7 @@ use crate::{
   models::{AssetInfo, RegisteredAssetInfo, TemplateParameter},
 };
 use rand::rngs::OsRng;
-use tari_app_grpc::tari_rpc::{self, OutputFeatures};
+use tari_app_grpc::tari_rpc::{self};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::{
   hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey,
@@ -147,7 +147,7 @@ pub(crate) async fn assets_get_registration(
   let asset = client.get_asset_metadata(&asset_pub_key).await?;
 
   dbg!(&asset);
-  let features = asset.features.map(|f| f.clone()).unwrap();
+  let features = asset.features.unwrap();
 
   Ok(RegisteredAssetInfo {
     owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),

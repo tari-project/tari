@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{TemplateId, TokenId},
-    types::{com_sig_to_bytes, ComSig, PublicKey},
+    models::{TemplateId},
+    types::{PublicKey},
 };
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};

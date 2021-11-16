@@ -22,19 +22,19 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{InstructionCaller, TokenId},
-    storage::{AssetStore, ChainDbUnitOfWork, StateDbUnitOfWork, UnitOfWork},
+    models::{TokenId},
+    storage::{UnitOfWork},
     template_command::{ExecutionResult, TemplateCommand},
 };
-use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::RwLock;
+use std::{collections::VecDeque};
+
 
 pub struct _EditableMetadataTemplate {}
 
 impl _EditableMetadataTemplate {
     pub fn _create_command(
-        method: String,
-        mut args: VecDeque<Vec<u8>>,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
     ) -> Result<UpdateMetadataCommand, DigitalAssetError> {
         unimplemented!()
@@ -73,7 +73,7 @@ impl UpdateMetadataCommand {
 }
 
 impl TemplateCommand for UpdateMetadataCommand {
-    fn try_execute<TUnitOfWork: UnitOfWork>(&self, db: TUnitOfWork) -> Result<ExecutionResult, DigitalAssetError> {
+    fn try_execute<TUnitOfWork: UnitOfWork>(&self, _db: TUnitOfWork) -> Result<ExecutionResult, DigitalAssetError> {
         // data_store.replace_metadata(&self.token_id, &self.metadata)?;
         unimplemented!()
         // Ok(ExecutionResult::Ok)

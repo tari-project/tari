@@ -22,7 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate, TariDanPayload},
+    models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate},
     services::{
         infrastructure_services::NodeAddressable,
         AssetProcessor,
