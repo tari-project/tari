@@ -1792,6 +1792,165 @@ When(
 );
 
 When(
+  /I broadcast HTLC transaction with (.*) uT from wallet (.*) to wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (tariAmount, source, dest, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+    const destClient = await this.getWallet(dest).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    const destInfo = await destClient.identify();
+    console.log("Starting HTLC transaction of", tariAmount, "to", dest);
+    let success = false;
+    let retries = 1;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.sendHtlc({
+              recipient: {
+                address: destInfo.public_key,
+                amount: tariAmount,
+                fee_per_gram: feePerGram,
+                message: "msg",
+              },
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            lastResult.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.transaction_id
+      );
+      this.addTransaction(destInfo.public_key, this.lastResult.transaction_id);
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.transaction_id
+    );
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
+  /I claim an HTLC transaction with wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (source, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    console.log("Claiming HTLC transaction of", source);
+    let success = false;
+    let retries = 1;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.claimHtlc({
+              output: this.lastResult.output_hash,
+              pre_image: this.lastResult.pre_image,
+              fee_per_gram: feePerGram,
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.results.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            lastResult.results.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.results.transaction_id
+      );
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.results.transaction_id
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
   /I send(.*) uT without waiting for broadcast from wallet (.*) to wallet (.*) at fee (.*)/,
   { timeout: 20 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {

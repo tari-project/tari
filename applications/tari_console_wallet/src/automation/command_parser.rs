@@ -21,20 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::automation::{commands::WalletCommand, error::ParseError};
-
 use chrono::{DateTime, Utc};
 use core::str::SplitWhitespace;
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
-use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
-use tari_comms::multiaddr::Multiaddr;
 
+use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_hash};
 use tari_common_types::types::PublicKey;
+use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParsedCommand {
     pub command: WalletCommand,
     pub args: Vec<ParsedArgument>,
@@ -57,6 +57,8 @@ impl Display for ParsedCommand {
             SetBaseNode => "set-base-node",
             SetCustomBaseNode => "set-custom-base-node",
             ClearCustomBaseNode => "clear-custom-base-node",
+            InitShaAtomicSwap => "init-sha-atomic-swap",
+            FinaliseShaAtomicSwap => "finalise-sha-atomic-swap",
         };
 
         let args = self
@@ -82,6 +84,7 @@ pub enum ParsedArgument {
     CSVFileName(String),
     Address(Multiaddr),
     Negotiated(bool),
+    Hash(Vec<u8>),
 }
 
 impl Display for ParsedArgument {
@@ -98,6 +101,7 @@ impl Display for ParsedArgument {
             CSVFileName(v) => write!(f, "{}", v.to_string()),
             Address(v) => write!(f, "{}", v.to_string()),
             Negotiated(v) => write!(f, "{}", v.to_string()),
+            Hash(v) => write!(f, "{}", v.to_hex()),
         }
     }
 }
@@ -124,6 +128,8 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         SetBaseNode => parse_public_key_and_address(args)?,
         SetCustomBaseNode => parse_public_key_and_address(args)?,
         ClearCustomBaseNode => Vec::new(),
+        InitShaAtomicSwap => parse_init_sha_atomic_swap(args)?,
+        FinaliseShaAtomicSwap => parse_finalise_sha_atomic_swap(args)?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -171,6 +177,44 @@ fn parse_public_key_and_address(mut args: SplitWhitespace) -> Result<Vec<ParsedA
         .ok_or_else(|| ParseError::Empty("net address".to_string()))?;
     let address = address.parse::<Multiaddr>().map_err(|_| ParseError::Address)?;
     parsed_args.push(ParsedArgument::Address(address));
+
+    Ok(parsed_args)
+}
+
+fn parse_init_sha_atomic_swap(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // amount
+    let amount = args.next().ok_or_else(|| ParseError::Empty("amount".to_string()))?;
+    let amount = MicroTari::from_str(amount)?;
+    parsed_args.push(ParsedArgument::Amount(amount));
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+    // message
+    let message = args.collect::<Vec<&str>>().join(" ");
+    parsed_args.push(ParsedArgument::Text(message));
+
+    Ok(parsed_args)
+}
+
+fn parse_finalise_sha_atomic_swap(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+    // hash
+    let hash = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("Output hash".to_string()))?;
+    let hash = parse_hash(hash).ok_or(ParseError::Hash)?;
+    parsed_args.push(ParsedArgument::Hash(hash));
+
+    // public key
+    let pre_image = args.next().ok_or_else(|| ParseError::Empty("public key".to_string()))?;
+    let pre_image = parse_emoji_id_or_public_key(pre_image).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pre_image));
 
     Ok(parsed_args)
 }
