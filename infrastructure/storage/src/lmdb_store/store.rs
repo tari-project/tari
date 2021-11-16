@@ -182,7 +182,7 @@ impl LMDBBuilder {
             Arc::new(env)
         };
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
             path,

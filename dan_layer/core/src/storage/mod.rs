@@ -41,7 +41,7 @@ pub use store::{AssetDataStore, AssetStore};
 
 mod chain_db;
 pub use chain_db::{ChainDb, ChainDbUnitOfWork};
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 mod chain_storage_service;
 mod error;
@@ -57,7 +57,7 @@ pub trait DbFactory<TBackendAdapter: BackendAdapter> {
 
 // TODO: I don't really like the matches on this struct, so it would be better to have individual types, e.g.
 // NodeDataTracker, QcDataTracker
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnitOfWorkTracker {
     SidechainMetadata,
     LockedQc {
@@ -78,14 +78,6 @@ pub enum UnitOfWorkTracker {
         height: u32,
         is_committed: bool,
     },
-}
-
-pub enum NewUnitOfWorkTracker {
-    Node {
-        hash: TreeNodeHash,
-        parent: TreeNodeHash,
-        height: u32,
-    },
     Instruction {
         instruction: Instruction,
         node_hash: TreeNodeHash,
@@ -95,12 +87,12 @@ pub enum NewUnitOfWorkTracker {
 pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
-    type Id: Copy + Send + Sync;
+    type Id: Copy + Send + Sync + Debug + PartialEq;
     type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
-    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn insert(&self, item: &UnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn update(
         &self,
         id: &Self::Id,

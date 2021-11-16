@@ -54,7 +54,7 @@ impl<T: OutputManagerBackend + 'static> TokenManagerService<T> {
         let request_stream = request_stream.fuse();
         pin_mut!(request_stream);
 
-        info!(target: LOG_TARGET, "Token Manager Service started");
+        debug!(target: LOG_TARGET, "Token Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {

@@ -19,41 +19,9 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use diesel;
-use tari_dan_core::storage::StorageError;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum SqliteStorageError {
-    #[error("Could not connect to database: {source}")]
-    ConnectionError {
-        #[from]
-        source: diesel::ConnectionError,
-    },
-    #[error("General diesel error during operation {operation}: {source}")]
-    DieselError {
-        source: diesel::result::Error,
-        operation: String,
-    },
-    #[error("Could not migrate the database")]
-    MigrationError {
-        #[from]
-        source: diesel_migrations::RunMigrationsError,
-    },
-}
-
-impl From<SqliteStorageError> for StorageError {
-    fn from(source: SqliteStorageError) -> Self {
-        match source {
-            SqliteStorageError::ConnectionError { .. } => StorageError::ConnectionError {
-                reason: source.to_string(),
-            },
-            SqliteStorageError::DieselError { .. } => StorageError::QueryError {
-                reason: source.to_string(),
-            },
-            SqliteStorageError::MigrationError { .. } => StorageError::MigrationError {
-                reason: source.to_string(),
-            },
-        }
+pub mod tips {
+    pub mod tip002 {
+        include!(concat!(env!("OUT_DIR"), "/tari.dan.tips.tip002.rs"));
     }
 }

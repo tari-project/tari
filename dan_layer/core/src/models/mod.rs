@@ -66,7 +66,8 @@ impl InstructionCaller {
 
 #[derive(Copy, Clone, Debug)]
 pub enum TemplateId {
-    EditableMetadata = 2,
+    Tip002 = 2,
+    EditableMetadata = 20,
 }
 
 impl TemplateId {
@@ -86,7 +87,7 @@ impl From<u32> for TemplateId {
     fn from(v: u32) -> Self {
         // Must be an easier way than this
         match v {
-            2 => TemplateId::EditableMetadata,
+            2 => TemplateId::Tip002,
             _ => {
                 unimplemented!()
             },
@@ -205,7 +206,7 @@ pub enum ConsensusWorkerState {
     Idle,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Signature {}
 
 impl Signature {

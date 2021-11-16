@@ -25,13 +25,20 @@ use crate::{
     models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
     storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork, UnitOfWork},
     template_command::{ExecutionResult, TemplateCommand},
-    templates::editable_metadata_template::_EditableMetadataTemplate,
+    templates::{editable_metadata_template::_EditableMetadataTemplate, tip002_template},
 };
 use async_trait::async_trait;
 use std::{collections::VecDeque, sync::Arc};
+use tari_core::transactions::transaction::TemplateParameter;
 use tokio::sync::RwLock;
 
 pub trait AssetProcessor {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
+
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
@@ -48,6 +55,14 @@ pub struct ConcreteAssetProcessor<TInstructionLog> {
 }
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        self.template_factory.init(template_parameter, state_db)
+    }
+
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
@@ -97,6 +112,18 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
+    pub fn init<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template: &TemplateParameter,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        match TemplateId::from(template.template_id) {
+            TemplateId::Tip002 => tip002_template::init(&template, state_db)?,
+            _ => unimplemented!(),
+        }
+        unimplemented!()
+    }
+
     pub fn create_command(
         &self,
         template: TemplateId,

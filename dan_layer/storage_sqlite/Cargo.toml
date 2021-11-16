@@ -3,7 +3,6 @@ name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 tari_dan_core = {path="../core"}
@@ -15,3 +14,4 @@ thiserror = "1.0.30"
 async-trait = "0.1.50"
 tokio = { version="1.10", features = ["macros", "time"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
+log = { version = "0.4.8", features = ["std"] }

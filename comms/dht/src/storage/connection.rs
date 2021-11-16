@@ -82,7 +82,7 @@ impl DbConnection {
     pub async fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url).await?;
         let output = conn.migrate().await?;
-        info!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+        debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
         Ok(conn)
     }
 

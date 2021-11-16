@@ -163,7 +163,7 @@ impl ConnectivityRequester {
     }
 
     /// Send a request to dial many peers without waiting for the response.
-    #[tracing::instrument(skip(self, peers))]
+    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {

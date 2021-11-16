@@ -93,7 +93,7 @@ pub struct SchemaState {
     pub items: Vec<KeyValue>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct KeyValue {
     pub key: Vec<u8>,
     pub value: Vec<u8>,

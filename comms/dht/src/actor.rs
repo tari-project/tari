@@ -257,7 +257,7 @@ impl DhtActor {
             .await
             .ok()
             .flatten();
-        info!(
+        debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
             offline_ts

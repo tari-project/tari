@@ -152,7 +152,7 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
-        info!(target: LOG_TARGET, "Output Manager Service started");
+        debug!(target: LOG_TARGET, "Output Manager Service started");
         loop {
             tokio::select! {
                 event = base_node_service_event_stream.recv() => {

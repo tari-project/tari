@@ -32,11 +32,14 @@ use crate::{
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
+use log::*;
 use std::convert::TryFrom;
 use tari_dan_core::{
     models::{HotStuffMessageType, Payload, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
-    storage::{BackendAdapter, NewUnitOfWorkTracker, StorageError, UnitOfWorkTracker},
+    storage::{BackendAdapter, StorageError, UnitOfWorkTracker},
 };
+
+const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_backend_adapter";
 
 #[derive(Clone)]
 pub struct SqliteBackendAdapter {
@@ -57,7 +60,14 @@ impl BackendAdapter for SqliteBackendAdapter {
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        let n: Option<Node> = nodes::table.first(&connection).optional()?;
+        let n: Option<Node> =
+            nodes::table
+                .first(&connection)
+                .optional()
+                .map_err(|source| SqliteStorageError::DieselError {
+                    source,
+                    operation: "is_empty".to_string(),
+                })?;
         Ok(n.is_none())
     }
 
@@ -69,9 +79,12 @@ impl BackendAdapter for SqliteBackendAdapter {
         Ok(SqliteTransaction::new(connection))
     }
 
-    fn insert(&self, item: &NewUnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn insert(&self, item: &UnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        debug!(target: LOG_TARGET, "Inserting {:?}", item);
         match item {
-            NewUnitOfWorkTracker::Node { hash, parent, height } => {
+            UnitOfWorkTracker::Node {
+                hash, parent, height, ..
+            } => {
                 let new_node = NewNode {
                     hash: Vec::from(hash.as_bytes()),
                     parent: Vec::from(parent.as_bytes()),
@@ -79,11 +92,18 @@ impl BackendAdapter for SqliteBackendAdapter {
                 };
                 diesel::insert_into(nodes::table)
                     .values(&new_node)
-                    .execute(transaction.connection())?;
+                    .execute(transaction.connection())
+                    .map_err(|source| SqliteStorageError::DieselError {
+                        source,
+                        operation: "insert::node".to_string(),
+                    })?;
             },
-            NewUnitOfWorkTracker::Instruction { .. } => {
+            UnitOfWorkTracker::Instruction { .. } => {
                 todo!()
             },
+            UnitOfWorkTracker::SidechainMetadata => {},
+            UnitOfWorkTracker::LockedQc { .. } => {},
+            UnitOfWorkTracker::PrepareQc { .. } => {},
         }
         Ok(())
     }
@@ -94,6 +114,7 @@ impl BackendAdapter for SqliteBackendAdapter {
         item: &UnitOfWorkTracker,
         transaction: &Self::BackendTransaction,
     ) -> Result<(), Self::Error> {
+        debug!(target: LOG_TARGET, "Updating {:?} => {:?}", id, item);
         match item {
             UnitOfWorkTracker::SidechainMetadata => {
                 todo!()
@@ -116,7 +137,11 @@ impl BackendAdapter for SqliteBackendAdapter {
                                 dsl::node_hash.eq(node_hash.as_bytes()),
                                 dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
                             ))
-                            .execute(transaction.connection())?;
+                            .execute(transaction.connection())
+                            .map_err(|source| SqliteStorageError::DieselError {
+                                source,
+                                operation: "update::locked_qc".to_string(),
+                            })?;
                     },
                     Err(_) => {
                         diesel::insert_into(locked_qc::table)
@@ -127,7 +152,11 @@ impl BackendAdapter for SqliteBackendAdapter {
                                 dsl::node_hash.eq(node_hash.as_bytes()),
                                 dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
                             ))
-                            .execute(transaction.connection())?;
+                            .execute(transaction.connection())
+                            .map_err(|source| SqliteStorageError::DieselError {
+                                source,
+                                operation: "insert::locked_qc".to_string(),
+                            })?;
                     },
                 }
             },
@@ -149,7 +178,11 @@ impl BackendAdapter for SqliteBackendAdapter {
                                 dsl::node_hash.eq(node_hash.as_bytes()),
                                 dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
                             ))
-                            .execute(transaction.connection())?;
+                            .execute(transaction.connection())
+                            .map_err(|source| SqliteStorageError::DieselError {
+                                source,
+                                operation: "update::prepare_qc".to_string(),
+                            })?;
                     },
                     Err(_) => {
                         diesel::insert_into(prepare_qc::table)
@@ -160,7 +193,11 @@ impl BackendAdapter for SqliteBackendAdapter {
                                 dsl::node_hash.eq(node_hash.as_bytes()),
                                 dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
                             ))
-                            .execute(transaction.connection())?;
+                            .execute(transaction.connection())
+                            .map_err(|source| SqliteStorageError::DieselError {
+                                source,
+                                operation: "insert::prepare_qc".to_string(),
+                            })?;
                     },
                 }
             },
@@ -170,22 +207,35 @@ impl BackendAdapter for SqliteBackendAdapter {
                 height,
                 is_committed,
             } => {
-                use crate::schema::nodes::dsl;
-                diesel::update(dsl::nodes.find(id))
-                    .set((
-                        dsl::hash.eq(&hash.0),
-                        dsl::parent.eq(&parent.0),
-                        dsl::height.eq(*height as i32),
-                        dsl::is_committed.eq(is_committed),
-                    ))
-                    .execute(transaction.connection())?;
+                todo!("Not implemented");
+                // use crate::schema::nodes::dsl;
+                // diesel::update(dsl::nodes.find(id))
+                //     .set((
+                //         dsl::hash.eq(&hash.0),
+                //         dsl::parent.eq(&parent.0),
+                //         dsl::height.eq(*height as i32),
+                //         dsl::is_committed.eq(is_committed),
+                //     ))
+                //     .execute(transaction.connection())
+                //     .map_err(|source| SqliteStorageError::DieselError {
+                //         source,
+                //         operation: "update::nodes".to_string(),
+                //     })?;
             },
+            UnitOfWorkTracker::Instruction { .. } => {},
         }
         Ok(())
     }
 
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        transaction.connection().execute("COMMIT TRANSACTION;")?;
+        debug!(target: LOG_TARGET, "Committing transaction");
+        transaction
+            .connection()
+            .execute("COMMIT TRANSACTION;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "commit".to_string(),
+            })?;
         Ok(())
     }
 
@@ -204,11 +254,21 @@ impl BackendAdapter for SqliteBackendAdapter {
         let result: Option<PrepareQc> = prepare_qc::table
             .order_by(prepare_qc::view_number.desc())
             .first(&connection)
-            .optional()?;
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "find_highest_prepared_qc".to_string(),
+            })?;
         let qc = match result {
             Some(r) => r,
             None => {
-                let l: LockedQc = dsl::locked_qc.find(self.locked_qc_id()).first(&connection)?;
+                let l: LockedQc = dsl::locked_qc
+                    .find(self.locked_qc_id())
+                    .first(&connection)
+                    .map_err(|source| SqliteStorageError::DieselError {
+                        source,
+                        operation: "find_locked_qc".to_string(),
+                    })?;
                 PrepareQc {
                     id: 1,
                     message_type: l.message_type,
@@ -229,7 +289,13 @@ impl BackendAdapter for SqliteBackendAdapter {
 
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        let qc: LockedQc = dsl::locked_qc.find(self.locked_qc_id()).first(&connection)?;
+        let qc: LockedQc = dsl::locked_qc
+            .find(self.locked_qc_id())
+            .first(&connection)
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_locked_qc".to_string(),
+            })?;
         Ok(QuorumCertificate::new(
             HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
             ViewId::from(qc.view_number as u64),
@@ -241,7 +307,13 @@ impl BackendAdapter for SqliteBackendAdapter {
     fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), Self::Error> {
         use crate::schema::nodes::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        let node: Node = dsl::nodes.filter(nodes::hash.eq(&node_hash.0)).first(&connection)?;
+        let node: Node = dsl::nodes
+            .filter(nodes::hash.eq(&node_hash.0))
+            .first(&connection)
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "find_node_by_hash".to_string(),
+            })?;
         Ok((node.id, UnitOfWorkTracker::Node {
             hash: TreeNodeHash(node.hash),
             parent: TreeNodeHash(node.parent),

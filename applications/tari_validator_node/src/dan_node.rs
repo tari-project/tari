@@ -397,7 +397,7 @@ impl DanNode {
                         // If this fails, we can just use another address
                         load_from_json::<_, TorIdentity>(p).ok()
                     });
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Tor identity at path '{}' {:?}",
                     self.config.base_node_tor_identity_file.to_string_lossy(),

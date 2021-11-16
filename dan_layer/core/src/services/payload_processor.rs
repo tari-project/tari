@@ -28,10 +28,16 @@ use crate::{
 };
 use async_trait::async_trait;
 use std::sync::Arc;
+use tari_core::transactions::transaction::TemplateParameter;
 use tokio::sync::RwLock;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         payload: &TPayload,
@@ -63,6 +69,14 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
     PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        self.asset_processor.init_template(template_parameter, state_db)
+    }
+
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
         &self,
         payload: &TariDanPayload,

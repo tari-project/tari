@@ -423,7 +423,7 @@ where
         )
     }
 
-    #[tracing::instrument(skip(dial_state, noise_config, transport, backoff, config))]
+    #[tracing::instrument(level = "trace", skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,
@@ -431,7 +431,7 @@ where
         backoff: Arc<TBackoff>,
         config: &ConnectionManagerConfig,
     ) -> (DialState, DialResult<TTransport::Output>) {
-        // Container for dial state
+        // Container for dial
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
 
