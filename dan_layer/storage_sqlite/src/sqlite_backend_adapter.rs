@@ -36,7 +36,7 @@ use log::*;
 use std::convert::TryFrom;
 use tari_dan_core::{
     models::{HotStuffMessageType, Payload, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
-    storage::{BackendAdapter, StorageError, UnitOfWorkTracker},
+    storage::{BackendAdapter, DbInstruction, DbNode, DbQc, StorageError, UnitOfWorkTracker},
 };
 
 const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_backend_adapter";
@@ -79,152 +79,139 @@ impl BackendAdapter for SqliteBackendAdapter {
         Ok(SqliteTransaction::new(connection))
     }
 
-    fn insert(&self, item: &UnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+    fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         debug!(target: LOG_TARGET, "Inserting {:?}", item);
-        match item {
-            UnitOfWorkTracker::Node {
-                hash, parent, height, ..
-            } => {
-                let new_node = NewNode {
-                    hash: Vec::from(hash.as_bytes()),
-                    parent: Vec::from(parent.as_bytes()),
-                    height: *height as i32,
-                };
-                diesel::insert_into(nodes::table)
-                    .values(&new_node)
+        let new_node = NewNode {
+            hash: Vec::from(item.hash.as_bytes()),
+            parent: Vec::from(item.parent.as_bytes()),
+            height: item.height as i32,
+        };
+        diesel::insert_into(nodes::table)
+            .values(&new_node)
+            .execute(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert::node".to_string(),
+            })?;
+        Ok(())
+    }
+
+    fn update_node(
+        &self,
+        id: &Self::Id,
+        item: &DbNode,
+        transaction: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::nodes::dsl;
+        // Should not be allowed to update hash, parent and height
+        diesel::update(dsl::nodes.find(id))
+            .set((
+                // dsl::hash.eq(&hash.0),
+                // dsl::parent.eq(&parent.0),
+                // dsl::height.eq(*height as i32),
+                dsl::is_committed.eq(item.is_committed),
+            ))
+            .execute(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "update::nodes".to_string(),
+            })?;
+        Ok(())
+    }
+
+    fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        use crate::schema::locked_qc::dsl;
+        let message_type = item.message_type.as_u8() as i32;
+        let existing: Result<LockedQc, _> = dsl::locked_qc.find(1).first(transaction.connection());
+        match existing {
+            Ok(x) => {
+                diesel::update(dsl::locked_qc.find(1))
+                    .set((
+                        dsl::message_type.eq(message_type),
+                        dsl::view_number.eq(item.view_number.0 as i64),
+                        dsl::node_hash.eq(item.node_hash.as_bytes()),
+                        dsl::signature.eq(item.signature.as_ref().map(|s| s.to_bytes())),
+                    ))
                     .execute(transaction.connection())
                     .map_err(|source| SqliteStorageError::DieselError {
                         source,
-                        operation: "insert::node".to_string(),
+                        operation: "update::locked_qc".to_string(),
                     })?;
             },
-            UnitOfWorkTracker::Instruction { .. } => {
-                todo!()
+            Err(_) => {
+                diesel::insert_into(locked_qc::table)
+                    .values((
+                        dsl::id.eq(1),
+                        dsl::message_type.eq(message_type),
+                        dsl::view_number.eq(item.view_number.0 as i64),
+                        dsl::node_hash.eq(item.node_hash.as_bytes()),
+                        dsl::signature.eq(item.signature.as_ref().map(|s| s.to_bytes())),
+                    ))
+                    .execute(transaction.connection())
+                    .map_err(|source| SqliteStorageError::DieselError {
+                        source,
+                        operation: "insert::locked_qc".to_string(),
+                    })?;
             },
-            UnitOfWorkTracker::SidechainMetadata => {},
-            UnitOfWorkTracker::LockedQc { .. } => {},
-            UnitOfWorkTracker::PrepareQc { .. } => {},
         }
         Ok(())
     }
 
-    fn update(
-        &self,
-        id: &Self::Id,
-        item: &UnitOfWorkTracker,
-        transaction: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error> {
-        debug!(target: LOG_TARGET, "Updating {:?} => {:?}", id, item);
-        match item {
-            UnitOfWorkTracker::SidechainMetadata => {
-                todo!()
+    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        use crate::schema::prepare_qc::dsl;
+        let message_type = item.message_type.as_u8() as i32;
+        let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(1).first(transaction.connection());
+        match existing {
+            Ok(x) => {
+                diesel::update(dsl::prepare_qc.find(1))
+                    .set((
+                        dsl::message_type.eq(message_type),
+                        dsl::view_number.eq(item.view_number.0 as i64),
+                        dsl::node_hash.eq(item.node_hash.as_bytes()),
+                        dsl::signature.eq(item.signature.as_ref().map(|s| s.to_bytes())),
+                    ))
+                    .execute(transaction.connection())
+                    .map_err(|source| SqliteStorageError::DieselError {
+                        source,
+                        operation: "update::prepare_qc".to_string(),
+                    })?;
             },
-            UnitOfWorkTracker::LockedQc {
-                message_type,
-                view_number,
-                node_hash,
-                signature,
-            } => {
-                use crate::schema::locked_qc::dsl;
-                let message_type = message_type.as_u8() as i32;
-                let existing: Result<LockedQc, _> = dsl::locked_qc.find(id).first(transaction.connection());
-                match existing {
-                    Ok(x) => {
-                        diesel::update(dsl::locked_qc.find(id))
-                            .set((
-                                dsl::message_type.eq(message_type),
-                                dsl::view_number.eq(view_number.0 as i64),
-                                dsl::node_hash.eq(node_hash.as_bytes()),
-                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
-                            ))
-                            .execute(transaction.connection())
-                            .map_err(|source| SqliteStorageError::DieselError {
-                                source,
-                                operation: "update::locked_qc".to_string(),
-                            })?;
-                    },
-                    Err(_) => {
-                        diesel::insert_into(locked_qc::table)
-                            .values((
-                                dsl::id.eq(id),
-                                dsl::message_type.eq(message_type),
-                                dsl::view_number.eq(view_number.0 as i64),
-                                dsl::node_hash.eq(node_hash.as_bytes()),
-                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
-                            ))
-                            .execute(transaction.connection())
-                            .map_err(|source| SqliteStorageError::DieselError {
-                                source,
-                                operation: "insert::locked_qc".to_string(),
-                            })?;
-                    },
-                }
+            Err(_) => {
+                diesel::insert_into(prepare_qc::table)
+                    .values((
+                        dsl::id.eq(1),
+                        dsl::message_type.eq(message_type),
+                        dsl::view_number.eq(item.view_number.0 as i64),
+                        dsl::node_hash.eq(item.node_hash.as_bytes()),
+                        dsl::signature.eq(item.signature.as_ref().map(|s| s.to_bytes())),
+                    ))
+                    .execute(transaction.connection())
+                    .map_err(|source| SqliteStorageError::DieselError {
+                        source,
+                        operation: "insert::prepare_qc".to_string(),
+                    })?;
             },
-            UnitOfWorkTracker::PrepareQc {
-                message_type,
-                view_number,
-                node_hash,
-                signature,
-            } => {
-                use crate::schema::prepare_qc::dsl;
-                let message_type = message_type.as_u8() as i32;
-                let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(id).first(transaction.connection());
-                match existing {
-                    Ok(x) => {
-                        diesel::update(dsl::prepare_qc.find(id))
-                            .set((
-                                dsl::message_type.eq(message_type),
-                                dsl::view_number.eq(view_number.0 as i64),
-                                dsl::node_hash.eq(node_hash.as_bytes()),
-                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
-                            ))
-                            .execute(transaction.connection())
-                            .map_err(|source| SqliteStorageError::DieselError {
-                                source,
-                                operation: "update::prepare_qc".to_string(),
-                            })?;
-                    },
-                    Err(_) => {
-                        diesel::insert_into(prepare_qc::table)
-                            .values((
-                                dsl::id.eq(id),
-                                dsl::message_type.eq(message_type),
-                                dsl::view_number.eq(view_number.0 as i64),
-                                dsl::node_hash.eq(node_hash.as_bytes()),
-                                dsl::signature.eq(signature.as_ref().map(|s| s.to_bytes())),
-                            ))
-                            .execute(transaction.connection())
-                            .map_err(|source| SqliteStorageError::DieselError {
-                                source,
-                                operation: "insert::prepare_qc".to_string(),
-                            })?;
-                    },
-                }
-            },
-            UnitOfWorkTracker::Node {
-                hash,
-                parent,
-                height,
-                is_committed,
-            } => {
-                todo!("Not implemented");
-                // use crate::schema::nodes::dsl;
-                // diesel::update(dsl::nodes.find(id))
-                //     .set((
-                //         dsl::hash.eq(&hash.0),
-                //         dsl::parent.eq(&parent.0),
-                //         dsl::height.eq(*height as i32),
-                //         dsl::is_committed.eq(is_committed),
-                //     ))
-                //     .execute(transaction.connection())
-                //     .map_err(|source| SqliteStorageError::DieselError {
-                //         source,
-                //         operation: "update::nodes".to_string(),
-                //     })?;
-            },
-            UnitOfWorkTracker::Instruction { .. } => {},
         }
         Ok(())
+    }
+
+    fn get_prepare_qc(&self) -> Result<QuorumCertificate, Self::Error> {
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        use crate::schema::prepare_qc::dsl;
+        let qc: PrepareQc =
+            dsl::prepare_qc
+                .find(1)
+                .first(&connection)
+                .map_err(|source| SqliteStorageError::DieselError {
+                    source,
+                    operation: "get_prepare_qc".to_string(),
+                })?;
+        Ok(QuorumCertificate::new(
+            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+            ViewId::from(qc.view_number as u64),
+            TreeNodeHash(qc.node_hash.clone()),
+            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+        ))
     }
 
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
@@ -304,7 +291,7 @@ impl BackendAdapter for SqliteBackendAdapter {
         ))
     }
 
-    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), Self::Error> {
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, DbNode), Self::Error> {
         use crate::schema::nodes::dsl;
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
         let node: Node = dsl::nodes
@@ -314,11 +301,19 @@ impl BackendAdapter for SqliteBackendAdapter {
                 source,
                 operation: "find_node_by_hash".to_string(),
             })?;
-        Ok((node.id, UnitOfWorkTracker::Node {
+        Ok((node.id, DbNode {
             hash: TreeNodeHash(node.hash),
             parent: TreeNodeHash(node.parent),
             height: node.height as u32,
             is_committed: node.is_committed,
         }))
+    }
+
+    fn insert_instruction(
+        &self,
+        item: &DbInstruction,
+        transaction: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
     }
 }

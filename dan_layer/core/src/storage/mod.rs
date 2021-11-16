@@ -37,8 +37,19 @@ pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
 pub use store::{AssetDataStore, AssetStore};
 
 mod chain_db;
-pub use chain_db::{ChainDb, ChainDbUnitOfWork};
-use std::{fmt::Debug, marker::PhantomData};
+pub use chain_db::{ChainDb, ChainDbUnitOfWork, DbInstruction, DbNode, DbQc};
+use std::{
+    fmt::Debug,
+    marker::PhantomData,
+    ops::Deref,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+        RwLock,
+        RwLockReadGuard,
+        RwLockWriteGuard,
+    },
+};
 
 mod chain_storage_service;
 mod error;
@@ -52,34 +63,71 @@ pub trait DbFactory<TBackendAdapter: BackendAdapter> {
     fn create_state_db(&self) -> Result<StateDb<StateDbUnitOfWorkImpl>, StorageError>;
 }
 
-// TODO: I don't really like the matches on this struct, so it would be better to have individual types, e.g.
-// NodeDataTracker, QcDataTracker
-#[derive(Clone, Debug, PartialEq)]
-pub enum UnitOfWorkTracker {
-    SidechainMetadata,
-    LockedQc {
-        message_type: HotStuffMessageType,
-        view_number: ViewId,
-        node_hash: TreeNodeHash,
-        signature: Option<Signature>,
-    },
-    PrepareQc {
-        message_type: HotStuffMessageType,
-        view_number: ViewId,
-        node_hash: TreeNodeHash,
-        signature: Option<Signature>,
-    },
-    Node {
-        hash: TreeNodeHash,
-        parent: TreeNodeHash,
-        height: u32,
-        is_committed: bool,
-    },
-    Instruction {
-        instruction: Instruction,
-        node_hash: TreeNodeHash,
-    },
+#[derive(Debug)]
+pub struct UnitOfWorkTracker<TItem> {
+    item: Arc<RwLock<TItem>>,
+    is_dirty: Arc<AtomicBool>,
 }
+
+impl<TItem> Clone for UnitOfWorkTracker<TItem> {
+    fn clone(&self) -> Self {
+        Self {
+            item: self.item.clone(),
+            is_dirty: self.is_dirty.clone(),
+        }
+    }
+}
+
+impl<TItem> UnitOfWorkTracker<TItem> {
+    pub fn new(item: TItem, is_dirty: bool) -> Self {
+        Self {
+            item: Arc::new(RwLock::new(item)),
+            is_dirty: Arc::new(AtomicBool::new(is_dirty)),
+        }
+    }
+
+    pub fn get(&self) -> RwLockReadGuard<TItem> {
+        self.item.read().unwrap()
+    }
+
+    pub fn get_mut(&self) -> RwLockWriteGuard<TItem> {
+        self.is_dirty.store(true, Ordering::SeqCst);
+        self.item.write().unwrap()
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.is_dirty.load(Ordering::SeqCst)
+    }
+}
+
+// // TODO: I don't really like the matches on this struct, so it would be better to have individual types, e.g.
+// // NodeDataTracker, QcDataTracker
+// #[derive(Clone, Debug, PartialEq)]
+// pub enum UnitOfWorkTracker {
+//     SidechainMetadata,
+//     LockedQc {
+//         message_type: HotStuffMessageType,
+//         view_number: ViewId,
+//         node_hash: TreeNodeHash,
+//         signature: Option<Signature>,
+//     },
+//     PrepareQc {
+//         message_type: HotStuffMessageType,
+//         view_number: ViewId,
+//         node_hash: TreeNodeHash,
+//         signature: Option<Signature>,
+//     },
+//     Node {
+//         hash: TreeNodeHash,
+//         parent: TreeNodeHash,
+//         height: u32,
+//         is_committed: bool,
+//     },
+//     Instruction {
+//         instruction: Instruction,
+//         node_hash: TreeNodeHash,
+//     },
+// }
 
 pub trait BackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
@@ -89,11 +137,16 @@ pub trait BackendAdapter: Send + Sync + Clone {
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
-    fn insert(&self, item: &UnitOfWorkTracker, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn update(
+    fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn update_node(
         &self,
         id: &Self::Id,
-        item: &UnitOfWorkTracker,
+        item: &DbNode,
+        transaction: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error>;
+    fn insert_instruction(
+        &self,
+        item: &DbInstruction,
         transaction: &Self::BackendTransaction,
     ) -> Result<(), Self::Error>;
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
@@ -101,7 +154,11 @@ pub trait BackendAdapter: Send + Sync + Clone {
     fn prepare_qc_id(&self) -> Self::Id;
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error>;
-    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), Self::Error>;
+    fn get_prepare_qc(&self) -> Result<QuorumCertificate, Self::Error>;
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, DbNode), Self::Error>;
+    fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
+
+    fn update_locked_qc(&self, locked_qc: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }
 
 pub trait UnitOfWork: Clone + Send + Sync {
@@ -110,6 +167,7 @@ pub trait UnitOfWork: Clone + Send + Sync {
     fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
     fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
     fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
+    fn get_prepare_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
     fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
     // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
