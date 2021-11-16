@@ -998,8 +998,8 @@ fn test_htlc_send_and_claim() {
             .expect("Alice sending HTLC transaction")
     });
 
-    let mut alice_ts_clone2 = alice_ts.clone();
-    let mut alice_oms_clone = alice_oms.clone();
+    let mut alice_ts_clone2 = alice_ts;
+    let mut alice_oms_clone = alice_oms;
     runtime.block_on(async move {
         let completed_tx = alice_ts_clone2
             .get_completed_transaction(tx_id)
