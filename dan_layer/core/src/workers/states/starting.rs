@@ -120,6 +120,7 @@ where TBaseNodeClient: BaseNodeClient
                     state_tx.set_value(schema.name.clone(), key_value.key.clone(), key_value.value.clone());
                 }
             }
+            dbg!(&asset_definition);
             for template in &asset_definition.template_parameters {
                 debug!(
                     target: LOG_TARGET,

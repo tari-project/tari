@@ -105,22 +105,12 @@ pub(crate) async fn assets_list_registered_assets(
 }
 
 #[tauri::command]
-pub(crate) async fn assets_issue_simple_tokens(
+pub(crate) async fn assets_create_initial_checkpoint(
   asset_pub_key: String,
-  num_tokens: u32,
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), String> {
-  // let mut pubKeys = vec![];
   let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-  let mut rng = OsRng;
-  for _i in 0..num_tokens {
-    let (_private, public) = RistrettoPublicKey::random_keypair(&mut rng);
-    // lol, best save that private key somewhere...
-    // TODO
-
-    mmr.push(public.hash()).unwrap();
-  }
 
   let root = mmr.get_merkle_root().unwrap();
 

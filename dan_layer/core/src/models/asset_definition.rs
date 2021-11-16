@@ -26,7 +26,7 @@ use std::{fmt, marker::PhantomData};
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct AssetDefinition {
     #[serde(deserialize_with = "AssetDefinition::deserialize_pub_key_from_hex")]
@@ -82,12 +82,12 @@ impl AssetDefinition {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct InitialState {
     pub schemas: Vec<SchemaState>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SchemaState {
     pub name: String,
     pub items: Vec<KeyValue>,

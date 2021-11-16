@@ -55,13 +55,15 @@ class Create extends React.Component {
       isSaving: false,
       tip001: true,
       tip002: false,
-      tip003: false,
+      tip003: true,
       tip002Data: {
         totalSupply: 0,
         symbol: "NAH",
         decimals: 2
       },
-      committee: [],
+      tip003Data:{
+        committee: []
+      },
       newCommitteePubKey: "",
     };
 
@@ -120,6 +122,7 @@ class Create extends React.Component {
 
           templateParameters.push({
             template_id: 2,
+            template_data_version: 1,
             template_data:Array.from(arr)
           });
         });
@@ -133,15 +136,14 @@ class Create extends React.Component {
       );
 
       // TODO: How to create the initial checkpoint?
-      // if (this.state.tip003 || this.state.tip00) {
-      //   let res = await binding.command_asset_issue_simple_tokens(
-      //     publicKey,
-      //     parseInt(this.state.numberInitialTokens),
-      //     this.state.committee
-      //   );
-      //
-      //   console.log(res);
-      // }
+      if (this.state.tip003 ) {
+        let res = await binding.command_asset_create_initial_checkpoint(
+          publicKey,
+          this.state.tip003Data.committee
+        );
+
+        console.log(res);
+      }
       let history = this.props.history;
 
       history.push(`/assets/manage/${publicKey}`);
@@ -194,21 +196,23 @@ class Create extends React.Component {
   };
 
   onAddCommitteeMember = () => {
-    let committee = [...this.state.committee];
+    let committee = [...this.state.tip003Data.committee];
     committee.push(this.state.newCommitteePubKey);
+    let tip003Data = {...this.state.tip003Data, ...{committee: committee}};
     console.log(committee);
     this.setState({
-      committee,
+      tip003Data,
       newCommitteePubKey: "",
     });
   };
 
   onDeleteCommitteeMember = (index) => {
-    let committee = this.state.committee.filter(function (_, i, arr) {
+    let committee = this.state.tip003Data.committee.filter(function (_, i, arr) {
       return i !== parseInt(index);
     });
+    let tip003Data = {...this.state.tip003Data, ...{committee}};
 
-    this.setState({ committee });
+    this.setState({ tip003Data });
   };
 
   onImageChanged = (e) => {
@@ -393,6 +397,7 @@ class Create extends React.Component {
                   onClick={this.onTip003Changed}
 
                   checked={this.state.tip003}
+                  disabled={true}
                 />
               }
               label="003 Sidechain with committees"
@@ -400,7 +405,7 @@ class Create extends React.Component {
           </FormGroup>
           <FormGroup>
             <List>
-              {this.state.committee.map((item, index) => {
+              {this.state.tip003Data.committee.map((item, index) => {
                 return (
                   <ListItem>
                     <ListItemText primary={item}></ListItemText>

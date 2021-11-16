@@ -38,14 +38,12 @@ async function command_assets_get_registration(assetPubKey) {
   return await invoke("assets_get_registration", {assetPubKey});
 }
 
-async function command_asset_issue_simple_tokens(
+async function command_asset_create_initial_checkpoint(
   assetPubKey,
-  numTokens,
   committee
 ) {
-  return await invoke("assets_issue_simple_tokens", {
+  return await invoke("assets_create_initial_checkpoint", {
     assetPubKey,
-    numTokens,
     committee,
   });
 }
@@ -63,7 +61,7 @@ const commands = {
   command_assets_get_registration,
   command_assets_list_owned,
   command_assets_list_registered_assets,
-  command_asset_issue_simple_tokens,
+  command_asset_create_initial_checkpoint,
   command_accounts_create,
   command_accounts_list
 };

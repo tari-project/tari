@@ -152,7 +152,9 @@ impl DanNode {
         let mut result = vec![];
         for path in paths {
             let path = path.expect("Not a valid file").path();
-            if !path.is_dir() {
+            dbg!(&path.extension());
+
+            if !path.is_dir() && path.extension().unwrap_or_default() == "asset" {
                 let file = File::open(path).expect("could not open file");
                 let reader = BufReader::new(file);
 
