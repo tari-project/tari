@@ -43,14 +43,15 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{cmp::Ordering, fmt, fmt::Display, sync::Arc};
+use std::{cmp::Ordering, convert::TryInto, fmt, fmt::Display, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
-    types::{PrivateKey, PublicKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -85,6 +86,7 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity> {
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<TBackend, TWalletConnectivity> OutputManagerService<TBackend, TWalletConnectivity>
@@ -107,6 +109,7 @@ where
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
         master_seed: CipherSeed,
+        node_identity: Arc<NodeIdentity>,
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
@@ -130,6 +133,7 @@ where
             request_stream: Some(request_stream),
             base_node_service,
             last_seen_tip_height: None,
+            node_identity,
         })
     }
 
@@ -331,7 +335,28 @@ where
                 .set_coinbase_abandoned(tx_id, abandoned)
                 .await
                 .map(|_| OutputManagerResponse::CoinbaseAbandonedSet),
+            OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(output_hash, pre_image, fee_per_gram) => {
+                self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
+                    .await
+            },
         }
+    }
+
+    async fn claim_sha_atomic_swap_with_hash(
+        &mut self,
+        output_hash: HashOutput,
+        pre_image: PublicKey,
+        fee_per_gram: MicroTari,
+    ) -> Result<OutputManagerResponse, OutputManagerError> {
+        let output = self
+            .fetch_outputs_from_node(vec![output_hash])
+            .await?
+            .pop()
+            .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
+
+        self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
+            .await
+            .map(OutputManagerResponse::ClaimShaAtomicSwapTransaction)
     }
 
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
@@ -1157,6 +1182,119 @@ where
         let fee = stp.get_fee_amount()?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, fee, utxos_total_value))
+    }
+
+    async fn fetch_outputs_from_node(
+        &mut self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionOutput>, OutputManagerError> {
+        // lets get the output from the blockchain
+        let req = FetchMatchingUtxos { output_hashes: hashes };
+        let results: Vec<TransactionOutput> = self
+            .resources
+            .connectivity
+            .obtain_base_node_wallet_rpc_client()
+            .await
+            .ok_or_else(|| {
+                OutputManagerError::InvalidResponseError("Could not connect to base node rpc client".to_string())
+            })?
+            .fetch_matching_utxos(req)
+            .await?
+            .outputs
+            .into_iter()
+            .filter_map(|o| match o.try_into() {
+                Ok(output) => Some(output),
+                _ => None,
+            })
+            .collect();
+        Ok(results)
+    }
+
+    pub async fn create_claim_sha_atomic_swap_transaction(
+        &mut self,
+        output: TransactionOutput,
+        pre_image: PublicKey,
+        fee_per_gram: MicroTari,
+    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        let spending_key = PrivateKey::from_bytes(
+            CommsPublicKey::shared_secret(
+                self.node_identity.as_ref().secret_key(),
+                &output.sender_offset_public_key,
+            )
+            .as_bytes(),
+        )?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let rewound =
+            output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
+
+        let rewound_output = UnblindedOutput::new(
+            rewound.committed_value,
+            rewound.blinding_factor.clone(),
+            output.features,
+            output.script,
+            inputs!(pre_image),
+            self.node_identity.as_ref().secret_key().clone(),
+            output.sender_offset_public_key,
+            output.metadata_signature,
+        );
+        let amount = rewound.committed_value;
+
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+        let message = "SHA-XTR atomic swap".to_string();
+
+        // Create builder with no recipients (other than ourselves)
+        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone())
+            .with_message(message)
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_input(
+                rewound_output.as_transaction_input(&self.resources.factories.commitment)?,
+                rewound_output,
+            );
+
+        let mut outputs = Vec::new();
+
+        let (spending_key, script_private_key) = self
+            .resources
+            .master_key_manager
+            .get_next_spend_and_script_key()
+            .await?;
+        builder.with_change_secret(spending_key);
+        builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        builder.with_change_script(
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            script_private_key,
+        );
+
+        let factories = CryptoFactories::default();
+        let mut stp = builder
+            .build::<HashDigest>(&self.resources.factories)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        let tx_id = stp.get_tx_id()?;
+
+        let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+            OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
+        })?;
+        let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
+        outputs.push(change_output);
+
+        trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
+        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs).await?;
+        self.confirm_encumberance(tx_id).await?;
+        let fee = stp.get_fee_amount()?;
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        stp.finalize(KernelFeatures::empty(), &factories)?;
+        let tx = stp.take_transaction()?;
+
+        Ok((tx_id, fee, amount - fee, tx))
     }
 
     /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows

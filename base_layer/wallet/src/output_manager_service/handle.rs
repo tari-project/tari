@@ -27,7 +27,10 @@ use crate::output_manager_service::{
 };
 use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
-use tari_common_types::{transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{HashOutput, PublicKey},
+};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionOutput, UnblindedOutput},
@@ -73,6 +76,7 @@ pub enum OutputManagerRequest {
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     ReinstateCancelledInboundTx(TxId),
     SetCoinbaseAbandoned(TxId, bool),
+    CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -120,6 +124,13 @@ impl fmt::Display for OutputManagerRequest {
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
             SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
+            CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
+                f,
+                "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
+                output.to_hex(),
+                pre_image,
+                fee_per_gram,
+            ),
         }
     }
 }
@@ -153,6 +164,7 @@ pub enum OutputManagerResponse {
     AddKnownOneSidedPaymentScript,
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
+    ClaimShaAtomicSwapTransaction((u64, MicroTari, MicroTari, Transaction)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -421,6 +433,26 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_claim_sha_atomic_swap_transaction(
+        &mut self,
+        output: HashOutput,
+        pre_image: PublicKey,
+        fee_per_gram: MicroTari,
+    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(
+                output,
+                pre_image,
+                fee_per_gram,
+            ))
+            .await??
+        {
+            OutputManagerResponse::ClaimShaAtomicSwapTransaction(ct) => Ok(ct),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

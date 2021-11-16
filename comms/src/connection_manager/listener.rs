@@ -41,7 +41,6 @@ use crate::{
     protocol::ProtocolId,
     runtime,
     transports::Transport,
-    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
@@ -335,21 +334,22 @@ where
     }
 
     async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
-        let public_key: Option<CommsPublicKey> = match time::timeout(
+        let noise_socket = time::timeout(
             Duration::from_secs(30),
             noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
         )
-        .await
-        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)
-        {
-            Ok(Ok(noise_socket)) => {
-                match noise_socket
-                    .get_remote_public_key()
-                    .ok_or(ConnectionManagerError::InvalidStaticPublicKey)
-                {
-                    Ok(pk) => Some(pk),
-                    _ => None,
+        .await;
+
+        let public_key = match noise_socket {
+            Ok(Ok(mut noise_socket)) => {
+                let pk = noise_socket.get_remote_public_key();
+                if let Err(err) = noise_socket.shutdown().await {
+                    debug!(
+                        target: LOG_TARGET,
+                        "IO error when closing socket after invalid wire format: {}", err
+                    );
                 }
+                pk
             },
             _ => None,
         };

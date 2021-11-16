@@ -34,3 +34,18 @@ Feature: Wallet Transfer
     And I mine 5 blocks on NODE
     Then all nodes are at height 15
     Then all wallets detect all transactions as Mined_Confirmed
+
+  Scenario: As a wallet I want to create a HTLC transaction
+    Given I have a seed node NODE
+    # Add a 2nd node otherwise initial sync will not succeed
+    And I have 1 base nodes connected to all seed nodes
+    And I have wallet WALLET_A connected to all seed nodes
+    And I have wallet WALLET_B connected to all seed nodes
+    And I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 10 blocks
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I broadcast HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    And mining node MINER mines 6 blocks
+    And I claim an HTLC transaction with wallet WALLET_B at fee 20
+    And mining node MINER mines 6 blocks
+    Then I wait for wallet WALLET_B to have at least 4000000000 uT

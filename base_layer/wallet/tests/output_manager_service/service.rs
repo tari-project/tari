@@ -197,6 +197,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
         cipher_seed,
+        server_node_identity.clone(),
     )
     .await
     .unwrap();
@@ -219,6 +220,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
     height: Option<u64>,
+    node_identity: Arc<NodeIdentity>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -263,6 +265,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         base_node_service_handle.clone(),
         connectivity,
         CipherSeed::new(),
+        node_identity,
     )
     .await
     .unwrap();
@@ -370,10 +373,14 @@ async fn fee_estimate() {
 async fn test_utxo_selection_no_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _) =
-        setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), None).await;
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        None,
+        server_node_identity,
+    )
+    .await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // no utxos - not enough funds
@@ -468,9 +475,14 @@ async fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _) =
-        setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), Some(6)).await;
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+        server_node_identity,
+    )
+    .await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
 
     // no utxos - not enough funds
@@ -1679,6 +1691,7 @@ async fn test_oms_key_manager_discrepancy() {
 
     let master_seed1 = CipherSeed::new();
 
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,
@@ -1690,6 +1703,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
         master_seed1.clone(),
+        server_node_identity,
     )
     .await
     .unwrap();
@@ -1697,6 +1711,8 @@ async fn test_oms_key_manager_discrepancy() {
     drop(output_manager_service);
 
     let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
+
+    let server_node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service2 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver2,
@@ -1708,6 +1724,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
         master_seed1,
+        server_node_identity2,
     )
     .await
     .expect("Should be able to make a new OMS with same master key");
@@ -1715,6 +1732,7 @@ async fn test_oms_key_manager_discrepancy() {
 
     let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
     let master_seed2 = CipherSeed::new();
+    let server_node_identity3 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver3,
@@ -1726,6 +1744,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle,
         wallet_connectivity,
         master_seed2,
+        server_node_identity3,
     )
     .await;
 

@@ -171,6 +171,7 @@ where
                 factories.clone(),
                 config.network,
                 master_seed,
+                node_identity.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),

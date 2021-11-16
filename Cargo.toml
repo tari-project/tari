@@ -14,6 +14,7 @@ members = [
     "comms/dht",
     "comms/rpc_macros",
     "common_sqlite",
+    "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",

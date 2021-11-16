@@ -95,6 +95,9 @@ mod recovery;
 mod status_line;
 mod utils;
 
+#[cfg(feature = "metrics")]
+mod metrics;
+
 use crate::command_handler::{CommandHandler, StatusOutput};
 use futures::{pin_mut, FutureExt};
 use log::*;
@@ -164,9 +167,13 @@ fn main_inner() -> Result<(), ExitCodes> {
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    // This is the main and only shutdown trigger for the system.
+    let shutdown = Shutdown::new();
+
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
+
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -174,6 +181,17 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
+
+    #[cfg(feature = "metrics")]
+    {
+        metrics::install(
+            ApplicationType::BaseNode,
+            &node_identity,
+            &node_config,
+            &bootstrap,
+            shutdown.to_signal(),
+        );
+    }
 
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
@@ -187,8 +205,6 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         );
         return Ok(());
     }
-    // This is the main and only shutdown trigger for the system.
-    let shutdown = Shutdown::new();
 
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");

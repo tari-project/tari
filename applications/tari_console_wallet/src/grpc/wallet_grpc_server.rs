@@ -7,6 +7,8 @@ use tari_app_grpc::{
     tari_rpc::{
         payment_recipient::PaymentType,
         wallet_server,
+        ClaimShaAtomicSwapRequest,
+        ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
         GetBalanceRequest,
@@ -25,6 +27,8 @@ use tari_app_grpc::{
         ImportUtxosResponse,
         RevalidateRequest,
         RevalidateResponse,
+        SendShaAtomicSwapRequest,
+        SendShaAtomicSwapResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -33,17 +37,19 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{BlockHash, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
     transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
 };
+use tari_crypto::tari_utilities::Hashable;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
+
 use tokio::task;
 use tonic::{Request, Response, Status};
 
@@ -154,6 +160,118 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }
+    }
+
+    async fn send_sha_atomic_swap_transaction(
+        &self,
+        request: Request<SendShaAtomicSwapRequest>,
+    ) -> Result<Response<SendShaAtomicSwapResponse>, Status> {
+        let message = request
+            .into_inner()
+            .recipient
+            .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
+        let address = CommsPublicKey::from_hex(&message.address)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .send_sha_atomic_swap_transaction(
+                address.clone(),
+                message.amount.into(),
+                message.fee_per_gram.into(),
+                message.message,
+            )
+            .await
+        {
+            Ok((tx_id, pre_image, output)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction broadcast: {}, preimage_hex: {}, hash {}",
+                    tx_id,
+                    pre_image.to_hex(),
+                    output.to_string()
+                );
+                SendShaAtomicSwapResponse {
+                    transaction_id: tx_id,
+                    pre_image: pre_image.to_hex(),
+                    output_hash: output.hash().to_hex(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to send Sha - XTR atomic swap for address `{}`: {}", address, e
+                );
+                SendShaAtomicSwapResponse {
+                    transaction_id: Default::default(),
+                    pre_image: "".to_string(),
+                    output_hash: "".to_string(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn claim_sha_atomic_swap_transaction(
+        &self,
+        request: Request<ClaimShaAtomicSwapRequest>,
+    ) -> Result<Response<ClaimShaAtomicSwapResponse>, Status> {
+        let message = request.into_inner();
+        let pre_image = CommsPublicKey::from_hex(&message.pre_image)
+            .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
+        let output = BlockHash::from_hex(&message.output)
+            .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let mut output_manager_service = self.get_output_manager_service();
+        let response = match output_manager_service
+            .create_claim_sha_atomic_swap_transaction(output, pre_image, message.fee_per_gram.into())
+            .await
+        {
+            Ok((tx_id, fee, amount, tx)) => {
+                match transaction_service
+                    .submit_transaction(
+                        tx_id,
+                        tx,
+                        fee,
+                        amount,
+                        "Claiming HTLC transaction with pre-image".to_string(),
+                    )
+                    .await
+                {
+                    Ok(()) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: tx_id,
+                        is_success: true,
+                        failure_message: Default::default(),
+                    },
+                    Err(e) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to claim SHA - XTR atomic swap: {}", e);
+                TransferResult {
+                    address: Default::default(),
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(ClaimShaAtomicSwapResponse {
+            results: Some(response),
+        }))
     }
 
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
