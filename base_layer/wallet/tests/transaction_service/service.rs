@@ -944,7 +944,7 @@ fn test_htlc_send_and_claim() {
     let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let shutdown = Shutdown::new();
-    let (alice_ts, alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
         &mut runtime,
         alice_node_identity,
         vec![],
@@ -998,10 +998,8 @@ fn test_htlc_send_and_claim() {
             .expect("Alice sending HTLC transaction")
     });
 
-    let mut alice_ts_clone2 = alice_ts.clone();
-    let mut alice_oms_clone = alice_oms.clone();
     runtime.block_on(async move {
-        let completed_tx = alice_ts_clone2
+        let completed_tx = alice_ts
             .get_completed_transaction(tx_id)
             .await
             .expect("Could not find completed HTLC tx");
@@ -1009,7 +1007,7 @@ fn test_htlc_send_and_claim() {
         let fees = completed_tx.fee;
 
         assert_eq!(
-            alice_oms_clone.get_balance().await.unwrap().pending_incoming_balance,
+            alice_oms.get_balance().await.unwrap().pending_incoming_balance,
             initial_wallet_value - value - fees
         );
     });

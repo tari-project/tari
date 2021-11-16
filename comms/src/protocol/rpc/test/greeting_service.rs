@@ -447,8 +447,8 @@ impl GreetingClient {
         self.inner.server_streaming(request, 8).await
     }
 
-    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
-        self.inner.get_last_request_latency().await
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
+        self.inner.get_last_request_latency()
     }
 
     pub async fn ping(&mut self) -> Result<Duration, RpcError> {

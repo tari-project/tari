@@ -268,7 +268,7 @@ where TBackend: WalletBackend + 'static
             .connect_rpc_using_builder(BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
             .await?;
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
             peer.clone(),
             latency.unwrap_or_default(),

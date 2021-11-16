@@ -4513,8 +4513,6 @@ dependencies = [
  "log",
  "log4rs 1.0.0",
  "multiaddr",
- "opentelemetry",
- "opentelemetry-jaeger",
  "path-clean",
  "prost-build",
  "serde 1.0.130",
@@ -4527,8 +4525,6 @@ dependencies = [
  "thiserror",
  "toml 0.5.8",
  "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
 ]
 
 [[package]]
