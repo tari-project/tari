@@ -339,6 +339,10 @@ where
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
+            OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo)) => self
+                .add_unvalidated_output(tx_id, *uo)
+                .await
+                .map(|_| OutputManagerResponse::OutputAdded),
         }
     }
 
@@ -417,7 +421,7 @@ where
         self.validate_outputs()
     }
 
-    /// Add an unblinded output to the unspent outputs list
+    /// Add an unblinded output to the outputs table and marks is as `Unspent`.
     pub async fn add_output(&mut self, tx_id: Option<TxId>, output: UnblindedOutput) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -428,6 +432,22 @@ where
             None => self.resources.db.add_unspent_output(output).await?,
             Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output).await?,
         }
+        Ok(())
+    }
+
+    /// Add an unblinded output to the outputs table and marks is as `EncumberedToBeReceived`. This is so that it will
+    /// require a successful validation to confirm that it indeed spendable.
+    pub async fn add_unvalidated_output(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+    ) -> Result<(), OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Add unvalidated output of value {} to Output Manager", output.value
+        );
+        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
+        self.resources.db.add_unvalidated_output(tx_id, output).await?;
         Ok(())
     }
 
