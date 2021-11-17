@@ -23,6 +23,7 @@ export const refreshLogin = createAsyncThunk("user/refresh-login", async () => {
 export const loginSlice = createSlice({
   name: "login",
   initialState: {
+    called: false,
     credentials: undefined,
   },
   reducers: {},
@@ -32,13 +33,16 @@ export const loginSlice = createSlice({
         state.credentials = action.payload.token;
       })
       .addCase(refreshLogin.fulfilled, (state, action) => {
-        if (action.payload.successful) {
-          state.credentials = action.payload.token;
-        }
+        state.called = true;
+        state.credentials = action.payload.token;
+      })
+      .addCase(refreshLogin.rejected, (state, action) => {
+        state.called = true;
       });
   },
 });
 
+export const getCredentialsCalled = (state) => state?.login?.called;
 export const getCredentials = (state) => state?.login?.credentials;
 
 export default loginSlice.reducer;

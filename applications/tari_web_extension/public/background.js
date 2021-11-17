@@ -20,7 +20,14 @@ const getSelectedAsset = () => ({ successful: true, selected: selectedAsset });
 
 const loginRefresh = () => ({ successful: !!credentials, token: credentials });
 
+const getSeedWords = () => ({
+  successful: true,
+  seedWords:
+    "theme panther ladder custom field aspect misery shine bundle worry senior velvet brush tourist glide jump example vanish embody enemy struggle air extend empty",
+});
+
 function messageCallback(request, sender, sendResponse) {
+  console.log(request);
   switch (request?.action) {
     case "tari-login":
       credentials = "token";
@@ -37,6 +44,9 @@ function messageCallback(request, sender, sendResponse) {
       break;
     case "tari-login-refresh":
       sendResponse(loginRefresh());
+      break;
+    case "tari-get-seedwords":
+      sendResponse(getSeedWords());
       break;
     default:
       console.log("unknown message", request?.action);

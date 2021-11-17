@@ -7,7 +7,7 @@ export function sendMessagePromise(message) {
         reject();
       });
     } else {
-      // Mock for testing UI in non-extension version.
+      // Mock for testing UI in non-extension version (npm start run)
       // TODO: Delete this before any release
       console.log("mock", message.action);
       switch (message.action) {
@@ -22,6 +22,13 @@ export function sendMessagePromise(message) {
           break;
         case "tari-get-selected-asset":
           resolve({ successful: true, selected: "asset2" });
+          break;
+        case "tari-get-seedwords":
+          resolve({
+            successful: true,
+            seedWords:
+              "theme panther ladder custom field aspect misery shine bundle worry senior velvet brush tourist glide jump example vanish embody enemy struggle air extend empty",
+          });
           break;
         default:
           console.log("unimplemented mock for", message);
