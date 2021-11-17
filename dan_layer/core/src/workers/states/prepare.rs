@@ -70,7 +70,7 @@ pub struct Prepare<
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TBackendAdapter: BackendAdapter,
-    TDbFactory: DbFactory<TBackendAdapter>,
+    TDbFactory: DbFactory,
 {
     node_id: TAddr,
     // bft_service: Box<dyn BftReplicaService>,
@@ -116,7 +116,7 @@ where
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TBackendAdapter: BackendAdapter + Send + Sync,
-    TDbFactory: DbFactory<TBackendAdapter> + Clone,
+    TDbFactory: DbFactory + Clone,
 {
     pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
         Self {

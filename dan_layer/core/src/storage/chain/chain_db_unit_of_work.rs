@@ -21,116 +21,28 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffMessageType, HotStuffTreeNode, Instruction, QuorumCertificate, Signature, TreeNodeHash, ViewId},
-    storage::{BackendAdapter, StorageError, UnitOfWork, UnitOfWorkTracker},
+    models::{Instruction, QuorumCertificate, TreeNodeHash},
+    storage::{
+        chain::{db_node::DbNode, ChainUnitOfWork, DbInstruction, DbQc},
+        unit_of_work_tracker::UnitOfWorkTracker,
+        StorageError,
+    },
 };
 use std::{
     fmt::{Debug, Formatter},
-    ops::{Deref, DerefMut},
     sync::{Arc, RwLock},
 };
-
-pub struct ChainDb<TBackendAdapter: BackendAdapter> {
-    adapter: TBackendAdapter,
-}
-
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
-    pub fn new(adapter: TBackendAdapter) -> ChainDb<TBackendAdapter> {
-        ChainDb { adapter }
-    }
-
-    pub fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, StorageError> {
-        self.adapter
-            .find_highest_prepared_qc()
-            .map_err(TBackendAdapter::Error::into)
-    }
-
-    pub fn get_locked_qc(&self) -> Result<QuorumCertificate, StorageError> {
-        self.adapter.get_locked_qc().map_err(TBackendAdapter::Error::into)
-    }
-}
-
-impl<TBackendAdapter: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
-    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdapter> {
-        ChainDbUnitOfWork {
-            inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(self.adapter.clone()))),
-        }
-    }
-}
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
-    pub fn is_empty(&self) -> Result<bool, StorageError> {
-        self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
-    }
-}
 
 // Cloneable, Send, Sync wrapper
 pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
     inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
 }
 
-#[derive(Debug)]
-pub struct DbNode {
-    pub hash: TreeNodeHash,
-    pub parent: TreeNodeHash,
-    pub height: u32,
-    pub is_committed: bool,
-}
-
-#[derive(Debug)]
-pub struct DbInstruction {
-    pub instruction: Instruction,
-    pub node_hash: TreeNodeHash,
-}
-
-#[derive(Debug)]
-pub struct DbQc {
-    pub message_type: HotStuffMessageType,
-    pub view_number: ViewId,
-    pub node_hash: TreeNodeHash,
-    pub signature: Option<Signature>,
-}
-
-pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
-    backend_adapter: TBackendAdapter,
-    nodes: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>)>,
-    instructions: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbInstruction>)>,
-    locked_qc: Option<UnitOfWorkTracker<DbQc>>,
-    prepare_qc: Option<UnitOfWorkTracker<DbQc>>,
-}
-
-impl<T: BackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Nodes:{:?}", self.nodes)
-    }
-}
-impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
-    pub fn new(backend_adapter: TBackendAdapter) -> Self {
+impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
+    pub fn new(adapter: TBackendAdapter) -> Self {
         Self {
-            backend_adapter,
-            nodes: vec![],
-            instructions: vec![],
-            locked_qc: None,
-            prepare_qc: None,
+            inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(adapter))),
         }
-    }
-
-    pub fn find_proposed_node(
-        &mut self,
-        node_hash: &TreeNodeHash,
-    ) -> Result<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>), StorageError> {
-        for (id, item) in &self.nodes {
-            if &item.get().hash == node_hash {
-                return Ok((*id, item.clone()));
-            }
-        }
-        // finally hit the db
-        let (id, item) = self
-            .backend_adapter
-            .find_node_by_hash(node_hash)
-            .map_err(TBackendAdapter::Error::into)?;
-        let tracker = UnitOfWorkTracker::new(item, false);
-        self.nodes.push((Some(id), tracker.clone()));
-        Ok((Some(id), tracker))
     }
 }
 
@@ -341,5 +253,49 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
         let mut node = found_node.1.get_mut();
         node.is_committed = true;
         Ok(())
+    }
+}
+
+pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
+    backend_adapter: TBackendAdapter,
+    nodes: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>)>,
+    instructions: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbInstruction>)>,
+    locked_qc: Option<UnitOfWorkTracker<DbQc>>,
+    prepare_qc: Option<UnitOfWorkTracker<DbQc>>,
+}
+
+impl<T: BackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Nodes:{:?}", self.nodes)
+    }
+}
+impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
+    pub fn new(backend_adapter: TBackendAdapter) -> Self {
+        Self {
+            backend_adapter,
+            nodes: vec![],
+            instructions: vec![],
+            locked_qc: None,
+            prepare_qc: None,
+        }
+    }
+
+    pub fn find_proposed_node(
+        &mut self,
+        node_hash: &TreeNodeHash,
+    ) -> Result<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>), StorageError> {
+        for (id, item) in &self.nodes {
+            if &item.get().hash == node_hash {
+                return Ok((*id, item.clone()));
+            }
+        }
+        // finally hit the db
+        let (id, item) = self
+            .backend_adapter
+            .find_node_by_hash(node_hash)
+            .map_err(TBackendAdapter::Error::into)?;
+        let tracker = UnitOfWorkTracker::new(item, false);
+        self.nodes.push((Some(id), tracker.clone()));
+        Ok((Some(id), tracker))
     }
 }

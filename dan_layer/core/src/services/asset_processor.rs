@@ -23,19 +23,19 @@
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{AssetDefinition, Instruction, TemplateId},
-    storage::{StateDbUnitOfWork},
-    template_command::{ExecutionResult},
-    templates::{tip002_template},
+    storage::StateDbUnitOfWork,
+    template_command::ExecutionResult,
+    templates::tip002_template,
 };
 
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 use tari_core::transactions::transaction::TemplateParameter;
-
 
 pub trait AssetProcessor {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 
@@ -58,9 +58,11 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        self.template_factory.init(template_parameter, state_db)
+        self.template_factory
+            .init(template_parameter, asset_definition, state_db)
     }
 
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
@@ -115,13 +117,14 @@ impl TemplateFactory {
     pub fn init<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template: &TemplateParameter,
+        asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         match TemplateId::from(template.template_id) {
-            TemplateId::Tip002 => tip002_template::init(template, state_db)?,
+            TemplateId::Tip002 => tip002_template::init(template, asset_definition, state_db)?,
             _ => unimplemented!(),
         }
-        unimplemented!()
+        Ok(())
     }
 
     pub fn create_command(

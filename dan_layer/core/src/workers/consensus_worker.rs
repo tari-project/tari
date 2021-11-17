@@ -22,14 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{
-        domain_events::ConsensusWorkerDomainEvent,
-        AssetDefinition,
-        ConsensusWorkerState,
-        Payload,
-        View,
-        ViewId,
-    },
+    models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, Payload, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         BaseNodeClient,
@@ -43,7 +36,7 @@ use crate::{
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
-use std::{marker::PhantomData};
+use std::marker::PhantomData;
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -75,7 +68,7 @@ pub struct ConsensusWorker<
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
     TBackendAdapter: BackendAdapter,
-    TDbFactory: DbFactory<TBackendAdapter>,
+    TDbFactory: DbFactory,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     inbound_connections: TInboundConnectionService,
@@ -95,8 +88,6 @@ pub struct ConsensusWorker<
     chain_storage_service: TChainStorageService,
     pd: PhantomData<TBackendAdapter>,
     pd2: PhantomData<TPayload>,
-    // TODO: Make generic
-    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl>,
 }
 
 impl<
@@ -142,7 +133,7 @@ where
     TBaseNodeClient: BaseNodeClient,
     // TODO: REmove this Send
     TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
-    TDbFactory: DbFactory<TBackendAdapter> + Clone,
+    TDbFactory: DbFactory + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     pub fn new(

@@ -44,7 +44,7 @@ impl NextViewState {
         TOutboundService: OutboundService<TAddr, TPayload>,
         TAddr: NodeAddressable + Clone + Send,
         TBackendAdapter: BackendAdapter<Payload = TPayload>,
-        TDbFactory: DbFactory<TBackendAdapter>,
+        TDbFactory: DbFactory,
     >(
         &mut self,
         current_view: &View,

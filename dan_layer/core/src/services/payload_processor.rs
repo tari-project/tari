@@ -24,18 +24,19 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, StateRoot, TariDanPayload},
     services::{AssetProcessor, MempoolService},
-    storage::{StateDbUnitOfWork},
+    storage::StateDbUnitOfWork,
 };
 use async_trait::async_trait;
 
+use crate::models::AssetDefinition;
 use tari_core::transactions::transaction::TemplateParameter;
-
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
@@ -72,9 +73,11 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolServ
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        self.asset_processor.init_template(template_parameter, state_db)
+        self.asset_processor
+            .init_template(template_parameter, asset_definition, state_db)
     }
 
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(

@@ -59,7 +59,7 @@ where TBaseNodeClient: BaseNodeClient
         TPayloadProvider: PayloadProvider<TPayload>,
         TPayloadProcessor: PayloadProcessor<TPayload>,
         TBackendAdapter: BackendAdapter,
-        TDbFactory: DbFactory<TBackendAdapter>,
+        TDbFactory: DbFactory,
         TChainStorageService: ChainStorageService<TPayload>,
     >(
         &self,
@@ -126,7 +126,7 @@ where TBaseNodeClient: BaseNodeClient
                     target: LOG_TARGET,
                     "Setting template parameters for: {}", template.template_id
                 );
-                payload_processor.init_template(template, &mut state_tx);
+                payload_processor.init_template(template, &asset_definition, &mut state_tx);
             }
             info!(target: LOG_TARGET, "Saving genesis node");
             let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());
