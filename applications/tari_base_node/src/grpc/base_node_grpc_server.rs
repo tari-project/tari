@@ -576,10 +576,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             })?;
 
         if !base_node_response.is_empty() {
-            debug!(target: LOG_TARGET, "Sending Transaction state response to client");
             let response = tari_rpc::TransactionStateResponse {
                 result: tari_rpc::TransactionLocation::Mined.into(),
             };
+            debug!(
+                target: LOG_TARGET,
+                "Sending Transaction state response to client {:?}", response
+            );
             return Ok(Response::new(response));
         }
 
@@ -609,7 +612,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             },
         };
 
-        debug!(target: LOG_TARGET, "Sending Transaction state response to client");
+        debug!(
+            target: LOG_TARGET,
+            "Sending Transaction state response to client {:?}", response
+        );
         Ok(Response::new(response))
     }
 

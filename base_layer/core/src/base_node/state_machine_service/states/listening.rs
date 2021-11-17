@@ -24,7 +24,16 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
-            states::{BlockSync, HeaderSync, StateEvent, StateEvent::FatalError, StateInfo, SyncStatus, Waiting},
+            states::{
+                BlockSync,
+                DecideNextSync,
+                HeaderSync,
+                StateEvent,
+                StateEvent::FatalError,
+                StateInfo,
+                SyncStatus,
+                Waiting,
+            },
             BaseNodeStateMachine,
         },
     },
@@ -36,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
     ops::Deref,
+    time::{Duration, Instant},
 };
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
@@ -101,8 +111,12 @@ impl Listening {
     ) -> StateEvent {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
+        let mut time_since_better_block = None;
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
+            log_mdc::extend(mdc.clone());
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::NetworkSilence) => {
                     debug!("NetworkSilence event received");
@@ -128,6 +142,7 @@ impl Listening {
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;
+                        log_mdc::extend(mdc.clone());
                     }
 
                     let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
@@ -154,11 +169,11 @@ impl Listening {
 
                     // Find the best network metadata and set of sync peers with the best tip.
                     let best_metadata = match best_claimed_metadata(&peer_metadata_list) {
-                        Some(m) => m.clone(),
+                        Some(m) => m,
                         None => {
                             debug!(
                                 target: LOG_TARGET,
-                                "No best metadata for {} peer(s)",
+                                "No better metadata advertised for {} peer(s)",
                                 peer_metadata_list.len()
                             );
                             continue;
@@ -171,13 +186,42 @@ impl Listening {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+                    log_mdc::extend(mdc.clone());
+
+                    // If this node is just one block behind, wait for block propagation before
+                    // rushing to sync mode
+                    if self.is_synced &&
+                        best_metadata.height_of_longest_chain() == local.height_of_longest_chain() + 1 &&
+                        time_since_better_block
+                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(30))
+                            .unwrap_or(true)
+                    {
+                        if time_since_better_block.is_none() {
+                            time_since_better_block = Some(Instant::now());
+                        }
+                        debug!(
+                            target: LOG_TARGET,
+                            "This node is one block behind. Best network metadata is at height {}.",
+                            best_metadata.height_of_longest_chain()
+                        );
+                        continue;
+                    }
+                    time_since_better_block = None;
 
                     // If we have configured sync peers, they are already filtered at this point
                     let sync_peers = if configured_sync_peers.is_empty() {
-                        select_sync_peers(&local, &best_metadata, &peer_metadata_list)
+                        select_sync_peers(best_metadata, &peer_metadata_list)
                     } else {
                         peer_metadata_list
                     };
+
+                    let local = match shared.db.get_chain_metadata().await {
+                        Ok(m) => m,
+                        Err(e) => {
+                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                        },
+                    };
+                    log_mdc::extend(mdc.clone());
 
                     let sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
@@ -236,10 +280,15 @@ impl From<BlockSync> for Listening {
     }
 }
 
+impl From<DecideNextSync> for Listening {
+    fn from(_: DecideNextSync) -> Self {
+        Self { is_synced: false }
+    }
+}
+
 // Finds the set of sync peers that have the best tip on their main chain and have all the data required to update the
 // local node.
 fn select_sync_peers<'a>(
-    local_metadata: &ChainMetadata,
     best_metadata: &ChainMetadata,
     peer_metadata_list: &[&'a PeerChainMetadata],
 ) -> Vec<&'a PeerChainMetadata> {
@@ -247,16 +296,7 @@ fn select_sync_peers<'a>(
         .iter()
         // Check if the peer can provide blocks higher than the local tip height
         .filter(|peer| {
-            let chain_metadata = peer.claimed_chain_metadata();
-
-            // If we synced from this peer, do they claim to be able to provide full blocks up until our pruned height?
-            let our_pruned_height_from_peer = local_metadata.horizon_block(chain_metadata.height_of_longest_chain());
-            let their_pruned_height= chain_metadata.pruned_height();
-            if our_pruned_height_from_peer < their_pruned_height {
-                return false;
-            }
-
-            chain_metadata.best_block() == best_metadata.best_block()
+            peer.claimed_chain_metadata().best_block() == best_metadata.best_block()
         })
         // &T is a Copy type
         .copied()
@@ -281,7 +321,7 @@ fn best_claimed_metadata<'a>(metadata_list: &[&'a PeerChainMetadata]) -> Option<
 fn determine_sync_mode(
     blocks_behind_before_considered_lagging: u64,
     local: &ChainMetadata,
-    network: ChainMetadata,
+    network: &ChainMetadata,
     sync_peers: Vec<&PeerChainMetadata>,
 ) -> SyncStatus {
     use SyncStatus::*;
@@ -300,7 +340,6 @@ fn determine_sync_mode(
             network_tip_height,
             network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
-        let network_horizon_block = local.horizon_block(network_tip_height);
 
         // This is to test the block propagation by delaying lagging.
         if local_tip_height + blocks_behind_before_considered_lagging > network_tip_height &&
@@ -316,13 +355,11 @@ fn determine_sync_mode(
         };
 
         let sync_peers = sync_peers.into_iter().cloned().collect();
-        if local_tip_height < network_horizon_block {
-            debug!(target: LOG_TARGET, "Lagging behind horizon");
-            LaggingBehindHorizon(network, sync_peers)
-        } else {
-            debug!(target: LOG_TARGET, "Lagging");
-            Lagging(network, sync_peers)
-        }
+        debug!(
+            target: LOG_TARGET,
+            "Lagging (local height = {}, network height = {})", local_tip_height, network_tip_height
+        );
+        Lagging(network.clone(), sync_peers)
     } else {
         info!(
             target: LOG_TARGET,
@@ -361,9 +398,8 @@ mod test {
         let best_network_metadata = best_claimed_metadata(&peer_metadata_list);
         assert!(best_network_metadata.is_none());
         let best_network_metadata = ChainMetadata::empty();
-        let local_metadata = ChainMetadata::new(network_tip_height, Vec::new(), 501, 0, 0);
         assert_eq!(best_network_metadata, ChainMetadata::new(0, Vec::new(), 0, 0, 0));
-        let sync_peers = select_sync_peers(&local_metadata, &best_network_metadata, &peer_metadata_list);
+        let sync_peers = select_sync_peers(&best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 0);
 
         let node_id1 = random_node_id();
@@ -375,6 +411,7 @@ mod test {
         let peer1 = PeerChainMetadata::new(
             node_id1.clone(),
             ChainMetadata::new(network_tip_height, block_hash1.clone(), 0, 0, accumulated_difficulty1),
+            None,
         );
 
         // Pruning horizon is to short to sync from
@@ -387,6 +424,7 @@ mod test {
                 5000 - 500,
                 accumulated_difficulty1,
             ),
+            None,
         );
 
         let peer3 = PeerChainMetadata::new(
@@ -398,6 +436,7 @@ mod test {
                 5000 - 1440,
                 accumulated_difficulty1,
             ),
+            None,
         );
         let peer4 = PeerChainMetadata::new(
             node_id4,
@@ -408,6 +447,7 @@ mod test {
                 5000 - 2880,
                 accumulated_difficulty2,
             ),
+            None,
         );
         // Node running a fork
         let peer5 = PeerChainMetadata::new(
@@ -419,6 +459,7 @@ mod test {
                 5000 - 2880,
                 accumulated_difficulty1,
             ),
+            None,
         );
         peer_metadata_list.push(&peer1);
         peer_metadata_list.push(&peer2);
@@ -430,8 +471,8 @@ mod test {
         assert_eq!(best_network_metadata.height_of_longest_chain(), network_tip_height);
         assert_eq!(best_network_metadata.best_block(), &block_hash1);
         assert_eq!(best_network_metadata.accumulated_difficulty(), accumulated_difficulty1);
-        let sync_peers = select_sync_peers(&local_metadata, best_network_metadata, &peer_metadata_list);
-        assert_eq!(sync_peers.len(), 3);
+        let sync_peers = select_sync_peers(best_network_metadata, &peer_metadata_list);
+        assert_eq!(sync_peers.len(), 4);
         sync_peers.iter().find(|p| *p.node_id() == node_id1).unwrap();
         sync_peers.iter().find(|p| *p.node_id() == node_id3).unwrap();
         sync_peers.iter().find(|p| *p.node_id() == node_id5).unwrap();
@@ -440,41 +481,41 @@ mod test {
     #[test]
     fn sync_mode_selection() {
         let local = ChainMetadata::new(0, Vec::new(), 0, 0, 500_000);
-        match determine_sync_mode(0, &local, local.clone(), vec![]) {
+        match determine_sync_mode(0, &local, &local, vec![]) {
             SyncStatus::UpToDate => {},
             _ => panic!(),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 499_000);
-        match determine_sync_mode(0, &local, network, vec![]) {
+        match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::UpToDate => {},
             _ => panic!(),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(0, &local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(0, &local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, &network, vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(0, &local, network.clone(), vec![]) {
-            SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
+        match determine_sync_mode(0, &local, &network, vec![]) {
+            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(0, &local, network.clone(), vec![]) {
-            SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
+        match determine_sync_mode(0, &local, &network, vec![]) {
+            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => panic!(),
         }
     }

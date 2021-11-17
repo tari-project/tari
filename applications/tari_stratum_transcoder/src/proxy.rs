@@ -44,6 +44,7 @@ use std::{
 };
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::blocks::{Block, NewBlockTemplate};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tracing::{debug, error};
@@ -58,14 +59,18 @@ pub struct StratumTranscoderProxyConfig {
     pub transcoder_host_address: SocketAddr,
 }
 
-impl From<GlobalConfig> for StratumTranscoderProxyConfig {
-    fn from(config: GlobalConfig) -> Self {
-        Self {
+impl TryFrom<GlobalConfig> for StratumTranscoderProxyConfig {
+    type Error = std::io::Error;
+
+    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
+        let grpc_base_node_address = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+        let grpc_console_wallet_address = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
+        Ok(Self {
             network: config.network,
-            grpc_base_node_address: config.grpc_base_node_address,
-            grpc_console_wallet_address: config.grpc_console_wallet_address,
+            grpc_base_node_address,
+            grpc_console_wallet_address,
             transcoder_host_address: config.transcoder_host_address,
-        }
+        })
     }
 }
 
@@ -476,6 +481,64 @@ impl InnerService {
         proxy::json_response(StatusCode::OK, &json_response)
     }
 
+    async fn handle_get_fee(
+        &self,
+        request: Request<json::Value>,
+    ) -> Result<Response<Body>, StratumTranscoderProxyError> {
+        let request = request.body();
+        let transactions = match request["params"]["transactions"].as_array() {
+            Some(v) => v,
+            None => {
+                return proxy::json_response(
+                    StatusCode::OK,
+                    &json_rpc::error_response(
+                        request["id"].as_i64(),
+                        1,
+                        "`transactions` field is empty or an invalid type for transfer request.",
+                        None,
+                    ),
+                )
+            },
+        };
+
+        let mut grpc_transaction_info = Vec::new();
+        for transaction in transactions.iter() {
+            grpc_transaction_info.push(
+                transaction["transaction_id"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+                    .parse::<u64>()
+                    .unwrap(),
+            );
+        }
+
+        let mut client = self.wallet_client.clone();
+
+        let transaction_info_results = client
+            .get_transaction_info(grpc::GetTransactionInfoRequest {
+                transaction_ids: grpc_transaction_info,
+            })
+            .await?
+            .into_inner();
+        let info_results = &transaction_info_results.transactions;
+
+        let mut results = Vec::new();
+        for info_result in info_results.iter() {
+            let result = json!({
+                "transaction_id":  info_result.tx_id,
+                "fee": info_result.fee,
+            });
+            results.push(result.as_object().unwrap().clone());
+        }
+
+        let json_response = json!({
+            "jsonrpc": "2.0",
+            "result": {"fee_results" : results},
+        });
+        proxy::json_response(StatusCode::OK, &json_response)
+    }
+
     async fn handle_transfer(
         &self,
         request: Request<json::Value>,
@@ -582,6 +645,7 @@ impl InnerService {
                     "getlastblockheader" | "get_last_block_header" => self.handle_get_last_block_header(request).await,
                     "transfer" => self.handle_transfer(request).await,
                     "getbalance" | "get_balance" => self.handle_get_balance(request).await,
+                    "getfee" | "get_fee" => self.handle_get_fee(request).await,
                     _ => {
                         let request = request.body();
                         proxy_resp = Response::new(standard_error_response(

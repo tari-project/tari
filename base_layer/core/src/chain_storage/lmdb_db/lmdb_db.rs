@@ -115,7 +115,8 @@ const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
-    let _ = std::fs::create_dir_all(&path);
+    debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
+    std::fs::create_dir_all(&path)?;
 
     let file_lock = acquire_exclusive_file_lock(&path.as_ref().to_path_buf())?;
 
@@ -145,6 +146,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
+    debug!(target: LOG_TARGET, "LMDB database creation successful");
     LMDBDatabase::new(lmdb_store, file_lock)
 }
 

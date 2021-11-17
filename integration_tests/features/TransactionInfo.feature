@@ -4,7 +4,6 @@ Feature: Transaction Info
 @long-running
 Scenario: Get Transaction Info
     Given I have a seed node NODE
-        # TODO: This test takes an hour if only one base node is used
     And I have a SHA3 miner MINER connected to all seed nodes
     And I have wallet WALLET_A connected to all seed nodes
     And I have wallet WALLET_B connected to all seed nodes

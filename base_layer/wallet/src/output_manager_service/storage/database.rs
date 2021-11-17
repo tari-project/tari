@@ -33,9 +33,10 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput, PrivateKey},
+    types::{BlindingFactor, Commitment, HashOutput},
 };
 use tari_core::transactions::transaction::TransactionOutput;
+use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
@@ -127,12 +128,14 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
     ) -> Result<Balance, OutputManagerStorageError>;
+    /// Import unvalidated output
+    fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
 #[derive(Clone, Debug, PartialEq)]
 pub struct KeyManagerState {
-    pub master_key: PrivateKey,
+    pub seed: CipherSeed,
     pub branch_seed: String,
     pub primary_key_index: u64,
 }
@@ -259,6 +262,19 @@ where T: OutputManagerBackend + 'static
         })
         .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn add_unvalidated_output(
+        &self,
+        tx_id: TxId,
+        output: DbUnblindedOutput,
+    ) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.add_unvalidated_output(output, tx_id))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
 
         Ok(())
     }

@@ -56,6 +56,10 @@ service Wallet {
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
     // Will triggger a complete revalidation of all wallet outputs.
     rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+    // This will send a XTR SHA Atomic swap transaction
+    rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
+    // This will claim a XTR SHA Atomic swap transaction
+    rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
 }
 
 message GetVersionRequest { }
@@ -76,6 +80,10 @@ message TransferRequest {
     repeated PaymentRecipient recipients = 1;
 }
 
+message SendShaAtomicSwapRequest {
+    PaymentRecipient recipient = 1;
+}
+
 message PaymentRecipient {
     string address = 1;
     uint64 amount = 2;
@@ -92,11 +100,29 @@ message TransferResponse {
   repeated TransferResult results = 1;
 }
 
+message SendShaAtomicSwapResponse {
+    uint64 transaction_id = 1;
+    string pre_image = 2;
+    string output_hash = 3;
+    bool is_success = 4;
+    string failure_message = 5;
+}
+
 message TransferResult {
     string address = 1;
     uint64 transaction_id = 2;
     bool is_success = 3;
     string failure_message = 4;
+}
+
+message ClaimShaAtomicSwapRequest{
+    string output = 1;
+    string pre_image = 2;
+    uint64 fee_per_gram = 3;
+}
+
+message ClaimShaAtomicSwapResponse {
+    TransferResult results = 1;
 }
 
 message GetTransactionInfoRequest {

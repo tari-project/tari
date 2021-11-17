@@ -20,16 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{panic, path::Path, sync::Arc, time::Duration};
-
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
-use digest::Digest;
 use rand::rngs::OsRng;
+use std::{panic, path::Path, sync::Arc, time::Duration};
 use tari_crypto::{
-    common::Blake256,
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
@@ -44,7 +37,7 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::transactions::{
@@ -53,6 +46,7 @@ use tari_core::transactions::{
     transaction::OutputFeatures,
     CryptoFactories,
 };
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -101,7 +95,7 @@ async fn create_wallet(
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
     passphrase: Option<String>,
-    recovery_master_key: Option<CommsSecretKey>,
+    recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
     const NETWORK: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -142,7 +136,7 @@ async fn create_wallet(
         .with_extension("sqlite3");
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-        initialize_sqlite_database_backends(sql_database_path, passphrase).unwrap();
+        initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
         resend_response_cooldown: Duration::from_secs(1),
@@ -173,7 +167,7 @@ async fn create_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_master_key,
+        recovery_seed,
     )
     .await
 }
@@ -318,31 +312,22 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
 
     if WalletSqliteDatabase::new(connection.clone(), None).is_ok() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let passphrase_hash = Blake256::new()
-        .chain("wrong passphrase".to_string().as_bytes())
-        .finalize();
-    let key = GenericArray::from_slice(passphrase_hash.as_slice());
-    let cipher = Aes256Gcm::new(key);
-    let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
+    let result = WalletSqliteDatabase::new(connection.clone(), Some("wrong passphrase".to_string()));
 
     if let Err(err) = result {
-        assert!(matches!(err, WalletStorageError::IncorrectPassword));
+        assert!(matches!(err, WalletStorageError::InvalidPassphrase));
     } else {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
-    let passphrase_hash = Blake256::new()
-        .chain("It's turtles all the way down".to_string().as_bytes())
-        .finalize();
-    let key = GenericArray::from_slice(passphrase_hash.as_slice());
-    let cipher = Aes256Gcm::new(key);
-    let db = WalletSqliteDatabase::new(connection, Some(cipher)).expect("Should be able to instantiate db with cipher");
+    let db = WalletSqliteDatabase::new(connection, Some("It's turtles all the way down".to_string()))
+        .expect("Should be able to instantiate db with cipher");
     drop(db);
 
     let mut shutdown_a = Shutdown::new();
@@ -363,7 +348,7 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let db = WalletSqliteDatabase::new(connection, None).expect(
         "Should be able to instantiate db with
     cipher",
@@ -389,11 +374,9 @@ async fn test_wallet() {
         .join("alice_db_backup")
         .with_extension("sqlite3");
 
-    alice_wallet
-        .db
-        .set_master_secret_key(alice_identity.secret_key().clone())
-        .await
-        .unwrap();
+    let alice_seed = CipherSeed::new();
+
+    alice_wallet.db.set_master_seed(alice_seed).await.unwrap();
 
     shutdown_a.trigger();
     alice_wallet.wait_until_shutdown().await;
@@ -403,18 +386,18 @@ async fn test_wallet() {
         .unwrap();
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_private_key = wallet_db.get_master_secret_key().await.unwrap();
-    assert!(master_private_key.is_some());
+    let master_seed = wallet_db.get_master_seed().await.unwrap();
+    assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
-    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
+    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path, 16).expect(
         "Could not open Sqlite
     db",
     );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-    let master_secret_key = backup_wallet_db.get_master_secret_key().await.unwrap();
-    assert!(master_secret_key.is_none());
+    let master_seed = backup_wallet_db.get_master_seed().await.unwrap();
+    assert!(master_seed.is_none());
 
     shutdown_b.trigger();
 
@@ -428,14 +411,14 @@ async fn test_do_not_overwrite_master_key() {
 
     // create a wallet and shut it down
     let mut shutdown = Shutdown::new();
-    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    let recovery_seed = CipherSeed::new();
     let wallet = create_wallet(
         dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key),
+        Some(recovery_seed),
     )
     .await
     .unwrap();
@@ -444,14 +427,14 @@ async fn test_do_not_overwrite_master_key() {
 
     // try to use a new master key to create a wallet using the existing wallet database
     let shutdown = Shutdown::new();
-    let (recovery_master_key, _) = PublicKey::random_keypair(&mut OsRng);
+    let recovery_seed = CipherSeed::new();
     match create_wallet(
         dir.path(),
         "wallet_db",
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key.clone()),
+        Some(recovery_seed.clone()),
     )
     .await
     {
@@ -467,7 +450,7 @@ async fn test_do_not_overwrite_master_key() {
         factories.clone(),
         shutdown.to_signal(),
         None,
-        Some(recovery_master_key),
+        Some(recovery_seed),
     )
     .await
     .unwrap();
@@ -761,7 +744,7 @@ async fn test_import_utxo() {
 
     let balance = alice_wallet.output_manager_service.get_balance().await.unwrap();
 
-    assert_eq!(balance.available_balance, 20000 * uT);
+    assert_eq!(balance.pending_incoming_balance, 20000 * uT);
 
     let completed_tx = alice_wallet
         .transaction_service
@@ -772,8 +755,6 @@ async fn test_import_utxo() {
         .expect("Tx should be in collection");
 
     assert_eq!(completed_tx.amount, 20000 * uT);
-    let stored_utxo = alice_wallet.output_manager_service.get_unspent_outputs().await.unwrap()[0].clone();
-    assert_eq!(stored_utxo, utxo);
 }
 
 #[test]
@@ -781,14 +762,14 @@ fn test_db_file_locking() {
     let db_tempdir = tempdir().unwrap();
     let wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
-    let connection = run_migration_and_create_sqlite_connection(&wallet_path).expect("Could not open Sqlite db");
+    let connection = run_migration_and_create_sqlite_connection(&wallet_path, 16).expect("Could not open Sqlite db");
 
-    match run_migration_and_create_sqlite_connection(&wallet_path) {
+    match run_migration_and_create_sqlite_connection(&wallet_path, 16) {
         Err(WalletStorageError::CannotAcquireFileLock) => {},
         _ => panic!("Should not be able to acquire file lock"),
     }
 
     drop(connection);
 
-    assert!(run_migration_and_create_sqlite_connection(&wallet_path).is_ok());
+    assert!(run_migration_and_create_sqlite_connection(&wallet_path, 16).is_ok());
 }

@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, TestParams},
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
 };
+
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -33,13 +36,22 @@ use futures::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey as SK},
+    script,
+    script::{ExecutionStack, TariScript},
 };
+use tempfile::tempdir;
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+    sync::{broadcast, broadcast::channel},
+    time::sleep,
+};
+
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus},
@@ -50,7 +62,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
-    types::CommsSecretKey,
     CommsNode,
     PeerConnection,
 };
@@ -88,14 +99,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
-};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -145,12 +149,11 @@ use tari_wallet::{
     },
     types::HashDigest,
 };
-use tempfile::tempdir;
-use tokio::{
-    runtime,
-    runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
-    time::sleep,
+
+use crate::support::{
+    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::{make_input, TestParams},
 };
 
 fn create_runtime() -> Runtime {
@@ -205,7 +208,8 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
             oms_backend,
             factories.clone(),
             Network::Weatherwax.into(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
+            comms.node_identity(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -238,6 +242,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
         connectivity_service_handle,
     )
 }
+
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
 /// streams for testing purposes.
 #[allow(clippy::type_complexity)]
@@ -327,7 +332,6 @@ pub fn setup_transaction_service_no_comms(
     );
     let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, None));
-
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
@@ -339,7 +343,8 @@ pub fn setup_transaction_service_no_comms(
             shutdown.to_signal(),
             basenode_service_handle.clone(),
             wallet_connectivity.clone(),
-            CommsSecretKey::default(),
+            CipherSeed::new(),
+            server_node_identity.clone(),
         ))
         .unwrap();
 
@@ -373,11 +378,7 @@ pub fn setup_transaction_service_no_comms(
         outbound_message_requester,
         wallet_connectivity.clone(),
         event_publisher,
-        Arc::new(NodeIdentity::random(
-            &mut OsRng,
-            get_next_memory_address(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )),
+        server_node_identity.clone(),
         factories,
         shutdown.to_signal(),
         basenode_service_handle,
@@ -909,6 +910,148 @@ fn recover_one_sided_transaction() {
 }
 
 #[test]
+fn test_htlc_send_and_claim() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_bob = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let path_string = temp_dir_bob.path().to_str().unwrap().to_string();
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
+    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+
+    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
+
+    let shutdown = Shutdown::new();
+    let (alice_ts, alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity,
+        vec![],
+        factories.clone(),
+        db_connection,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    let (
+        mut bob_ts,
+        mut bob_oms,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _,
+        bob_node_identity,
+        bob_node_mock,
+        _,
+        _,
+        _rpc_server_connection,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_connection, None);
+
+    log::info!(
+        "manage_single_transaction: Bob: '{}'",
+        bob_node_identity.node_id().short_str(),
+    );
+
+    let mut alice_event_stream = alice_ts.get_event_stream();
+
+    alice_connectivity.set_base_node(base_node_identity.to_peer());
+
+    let initial_wallet_value = 2500.into();
+    let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+    let mut alice_oms_clone = alice_oms.clone();
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+
+    let message = "".to_string();
+    let value = 1000.into();
+    let mut alice_ts_clone = alice_ts.clone();
+    let bob_pubkey = bob_node_identity.public_key().clone();
+    let (tx_id, pre_image, output) = runtime.block_on(async move {
+        alice_ts_clone
+            .send_sha_atomic_swap_transaction(bob_pubkey, value, 20.into(), message.clone())
+            .await
+            .expect("Alice sending HTLC transaction")
+    });
+
+    let mut alice_ts_clone2 = alice_ts;
+    let mut alice_oms_clone = alice_oms;
+    runtime.block_on(async move {
+        let completed_tx = alice_ts_clone2
+            .get_completed_transaction(tx_id)
+            .await
+            .expect("Could not find completed HTLC tx");
+
+        let fees = completed_tx.fee;
+
+        assert_eq!(
+            alice_oms_clone.get_balance().await.unwrap().pending_incoming_balance,
+            initial_wallet_value - value - fees
+        );
+    });
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
+                        if id == &tx_id {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+    });
+    let hash = output.hash();
+    bob_node_mock.set_utxos(vec![output]);
+    runtime.block_on(async move {
+        let (tx_id_htlc, htlc_fee, htlc_amount, tx) = bob_oms
+            .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
+            .await
+            .unwrap();
+
+        bob_ts
+            .submit_transaction(tx_id_htlc, tx, htlc_fee, htlc_amount, "".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+            htlc_amount
+        );
+    });
+}
+
+#[test]
 fn send_one_sided_transaction_to_self() {
     let mut runtime = create_runtime();
 
@@ -1243,7 +1386,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -1351,8 +1494,8 @@ fn finalize_tx_with_incorrect_pubkey() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -1479,8 +1622,8 @@ fn finalize_tx_with_missing_output() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -1817,6 +1960,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -1828,7 +1972,7 @@ fn test_power_mode_updates() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 6000 * uT,
         fee: MicroTari::from(200),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -1838,6 +1982,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -4981,7 +5126,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -4991,6 +5136,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -5103,7 +5249,7 @@ fn dont_broadcast_invalid_transactions() {
     let temp_dir = tempdir().unwrap();
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
 
     let kernel = KernelBuilder::new()
@@ -5126,7 +5272,7 @@ fn dont_broadcast_invalid_transactions() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -5136,6 +5282,7 @@ fn dont_broadcast_invalid_transactions() {
         send_count: 0,
         last_send_timestamp: None,
         valid: false,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,

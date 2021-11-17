@@ -35,6 +35,14 @@ impl ConnectionDirection {
     is_fn!(is_inbound, ConnectionDirection::Inbound);
 
     is_fn!(is_outbound, ConnectionDirection::Outbound);
+
+    pub fn as_str(&self) -> &'static str {
+        use ConnectionDirection::*;
+        match self {
+            Inbound => "inbound",
+            Outbound => "outbound",
+        }
+    }
 }
 
 impl fmt::Display for ConnectionDirection {

@@ -442,7 +442,7 @@ impl AppState {
         self.completed_tx_filter.toggle(TransactionFilter::ABANDONED_COINBASES);
     }
 
-    pub fn get_notifications(&self) -> &Vec<(DateTime<Local>, String)> {
+    pub fn get_notifications(&self) -> &[(DateTime<Local>, String)] {
         &self.cached_data.notifications
     }
 
@@ -691,6 +691,15 @@ impl AppStateInner {
         self.data.connected_peers = peers;
         self.updated = true;
         Ok(())
+    }
+
+    pub fn has_time_locked_balance(&self) -> bool {
+        if let Some(time_locked_balance) = self.data.balance.time_locked_balance {
+            if time_locked_balance > MicroTari::from(0) {
+                return true;
+            }
+        }
+        false
     }
 
     pub async fn refresh_balance(&mut self, balance: Balance) -> Result<(), UiError> {

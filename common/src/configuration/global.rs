@@ -23,11 +23,10 @@
 //! # Global configuration of tari base layer system
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, Network},
+    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, Network},
     ConfigurationError,
 };
 use config::{Config, ConfigError, Environment};
-use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
     fmt,
@@ -35,9 +34,13 @@ use std::{
     net::SocketAddr,
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
+    prelude::rust_2021::FromIterator,
     str::FromStr,
     time::Duration,
 };
+
+use multiaddr::{Error, Multiaddr, Protocol};
+
 use tari_storage::lmdb_store::LMDBConfig;
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
@@ -74,11 +77,11 @@ pub struct GlobalConfig {
     pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
-    pub grpc_base_node_address: SocketAddr,
-    pub grpc_console_wallet_address: SocketAddr,
+    pub grpc_base_node_address: Multiaddr,
+    pub grpc_console_wallet_address: Multiaddr,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
-    pub dns_seeds_name_server: SocketAddr,
+    pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
     pub num_mining_threads: usize,
@@ -109,6 +112,7 @@ pub struct GlobalConfig {
     pub transaction_event_channel_size: usize,
     pub base_node_event_channel_size: usize,
     pub output_manager_event_channel_size: usize,
+    pub wallet_connection_manager_pool_size: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -137,6 +141,7 @@ pub struct GlobalConfig {
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
+    pub metrics: MetricsConfig,
 }
 
 impl GlobalConfig {
@@ -146,7 +151,6 @@ impl GlobalConfig {
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
-
         let network = one_of::<Network>(&cfg, &[
             &format!("{}.network", application.as_config_str()),
             "common.network",
@@ -192,7 +196,7 @@ fn convert_node_config(
             return Err(ConfigurationError::new(
                 &key,
                 &format!("DB initial size must be at least {} MB.", DB_INIT_MIN_MB),
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -207,7 +211,7 @@ fn convert_node_config(
             return Err(ConfigurationError::new(
                 &key,
                 &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -225,19 +229,19 @@ fn convert_node_config(
                     "DB resize threshold must be at least {} MB.",
                     DB_RESIZE_THRESHOLD_MIN_MB
                 ),
-            ))
+            ));
         },
         Ok(mb) if mb as usize >= grow_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 "DB resize threshold must be less than grow size.",
-            ))
+            ));
         },
         Ok(mb) if mb as usize >= init_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 "DB resize threshold must be less than init size.",
-            ))
+            ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
@@ -341,20 +345,13 @@ fn convert_node_config(
     let key = config_string("base_node", net_str, "grpc_base_node_address");
     let grpc_base_node_address = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
     let key = config_string("base_node", net_str, "grpc_console_wallet_address");
     let grpc_console_wallet_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
-            addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
     // Peer and DNS seeds
     let key = "common.peer_seeds";
@@ -366,14 +363,17 @@ fn convert_node_config(
             .unwrap_or_default(),
     };
 
+    // TODO: dns resolver presets e.g. "cloudflare", "quad9", "custom" (maybe just in toml) and
+    //       add support for multiple addresses
     let key = "common.dns_seeds_name_server";
     let dns_seeds_name_server = cfg
         .get_str(key)
         .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         .and_then(|s| {
-            s.parse::<SocketAddr>()
+            s.parse::<DnsNameServer>()
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))
         })?;
+
     let key = config_string("base_node", net_str, "bypass_range_proof_verification");
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
@@ -383,11 +383,17 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
     let key = "common.dns_seeds";
-    let dns_seeds = optional(cfg.get_array(key))?
-        .unwrap_or_default()
-        .into_iter()
-        .map(|v| v.into_str().unwrap())
-        .collect::<Vec<_>>();
+    let dns_seeds = match cfg.get_array(key) {
+        Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => optional(cfg.get_str(key))?
+            .map(|s| {
+                s.split(',')
+                    .map(|v| v.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    };
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
@@ -481,6 +487,9 @@ fn convert_node_config(
 
     let key = "wallet.base_node_event_channel_size";
     let base_node_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
+
+    let key = "wallet.connection_manager_pool_size";
+    let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16) as usize;
 
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
@@ -698,6 +707,8 @@ fn convert_node_config(
         .filter(|c| c.is_alphanumeric())
         .collect::<String>();
 
+    let metrics = MetricsConfig::from_config(&cfg)?;
+
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
@@ -755,6 +766,7 @@ fn convert_node_config(
         transaction_num_confirmations_required,
         transaction_event_channel_size,
         base_node_event_channel_size,
+        wallet_connection_manager_pool_size,
         output_manager_event_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,
@@ -784,6 +796,7 @@ fn convert_node_config(
         mining_wallet_address,
         mining_worker_name,
         base_node_bypass_range_proof_verification,
+        metrics,
     })
 }
 
@@ -967,6 +980,17 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
     )
 }
 
+/// Interpret a string as either a socket address (first) or a multiaddr format string.
+/// If the former, it gets converted into a MultiAddr before being returned.
+pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
+    addr.parse::<SocketAddr>()
+        .map(|socket| match socket {
+            SocketAddr::V4(ip4) => Multiaddr::from_iter([Protocol::Ip4(*ip4.ip()), Protocol::Tcp(ip4.port())]),
+            SocketAddr::V6(ip6) => Multiaddr::from_iter([Protocol::Ip6(*ip6.ip()), Protocol::Tcp(ip6.port())]),
+        })
+        .or_else(|_| addr.parse::<Multiaddr>())
+}
+
 impl FromStr for TorControlAuthentication {
     type Err = String;
 
@@ -1058,4 +1082,30 @@ pub enum CommsTransport {
         auth: SocksAuthentication,
         listener_address: Multiaddr,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct MetricsConfig {
+    pub prometheus_scraper_bind_addr: Option<SocketAddr>,
+    pub prometheus_push_endpoint: Option<String>,
+}
+
+impl MetricsConfig {
+    fn from_config(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let key = "common.metrics.server_bind_address";
+        let prometheus_scraper_bind_addr = optional(cfg.get_str(key))?
+            .map(|s| {
+                s.parse()
+                    .map_err(|_| ConfigurationError::new(key, "Invalid metrics server socket address"))
+            })
+            .transpose()?;
+
+        let key = "common.metrics.push_endpoint";
+        let prometheus_push_endpoint = optional(cfg.get_str(key))?;
+
+        Ok(Self {
+            prometheus_scraper_bind_addr,
+            prometheus_push_endpoint,
+        })
+    }
 }

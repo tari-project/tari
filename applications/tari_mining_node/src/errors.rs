@@ -24,6 +24,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MinerError {
+    #[error("I/O error")]
+    IOError(#[from] std::io::Error),
     #[error("GRPC error: {0}")]
     GrpcStatus(#[from] tonic::Status),
     #[error("Connection error: {0}")]

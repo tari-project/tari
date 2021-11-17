@@ -32,6 +32,7 @@ use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_common::exit_codes::ExitCodes;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
@@ -40,6 +41,7 @@ use tari_comms::{
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
+use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
 use thiserror::Error;
@@ -84,6 +86,8 @@ pub enum WalletError {
     ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
+    #[error("Key manager error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
 }
 
 pub const LOG_TARGET: &str = "tari::application";
@@ -110,8 +114,8 @@ pub enum WalletStorageError {
     DbPathDoesNotExist,
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]
@@ -132,6 +136,8 @@ pub enum WalletStorageError {
     HexError(#[from] HexError),
     #[error("Invalid Encryption Cipher was provided to database")]
     InvalidEncryptionCipher,
+    #[error("Invalid passphrase was provided")]
+    InvalidPassphrase,
     #[error("Missing Nonce in encrypted data")]
     MissingNonce,
     #[error("Aead error: `{0}`")]
@@ -148,10 +154,10 @@ pub enum WalletStorageError {
     IoError(#[from] std::io::Error),
     #[error("No password provided for encrypted wallet")]
     NoPasswordError,
-    #[error("Incorrect password provided for encrypted wallet")]
-    IncorrectPassword,
     #[error("Deprecated operation error")]
     DeprecatedOperation,
+    #[error("Key Manager Error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
 }
 
 impl From<WalletStorageError> for ExitCodes {
@@ -159,8 +165,14 @@ impl From<WalletStorageError> for ExitCodes {
         use WalletStorageError::*;
         match err {
             NoPasswordError => ExitCodes::NoPassword,
-            IncorrectPassword => ExitCodes::IncorrectPassword,
+            InvalidPassphrase => ExitCodes::IncorrectPassword,
             e => ExitCodes::WalletError(e.to_string()),
         }
+    }
+}
+
+impl PartialEq for WalletStorageError {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
     }
 }
