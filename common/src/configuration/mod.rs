@@ -40,6 +40,7 @@ pub mod global;
 pub mod loader;
 mod network;
 pub use network::Network;
+pub mod name_server;
 pub mod seconds;
 pub mod utils;
 pub mod writer;

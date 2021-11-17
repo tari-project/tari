@@ -26,6 +26,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![deny(clippy::needless_borrow)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -94,6 +95,9 @@ mod recovery;
 mod status_line;
 mod utils;
 
+#[cfg(feature = "metrics")]
+mod metrics;
+
 use crate::command_handler::{CommandHandler, StatusOutput};
 use futures::{pin_mut, FutureExt};
 use log::*;
@@ -114,7 +118,11 @@ use tari_app_utilities::{
     utilities::setup_runtime,
 };
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    tor::HiddenServiceControllerError,
+    utils::multiaddr::multiaddr_to_socketaddr,
+};
 use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
@@ -159,9 +167,13 @@ fn main_inner() -> Result<(), ExitCodes> {
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    // This is the main and only shutdown trigger for the system.
+    let shutdown = Shutdown::new();
+
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
+
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -169,6 +181,20 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
+
+    #[cfg(feature = "metrics")]
+    {
+        metrics::install(
+            ApplicationType::BaseNode,
+            &node_identity,
+            &node_config,
+            &bootstrap,
+            shutdown.to_signal(),
+        );
+    }
+
+    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
+    log_mdc::insert("node-id", node_identity.node_id().to_string());
 
     // Exit if create_id or init arguments were run
     if bootstrap.create_id {
@@ -179,8 +205,6 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         );
         return Ok(());
     }
-    // This is the main and only shutdown trigger for the system.
-    let shutdown = Shutdown::new();
 
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
@@ -228,7 +252,9 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     if node_config.grpc_enabled {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        task::spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
+        let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
+            .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
     }
 
     // Run, node, run!

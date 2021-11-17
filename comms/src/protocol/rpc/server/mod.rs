@@ -30,6 +30,8 @@ mod handle;
 pub use handle::RpcServerHandle;
 use handle::RpcServerRequest;
 
+mod metrics;
+
 pub mod mock;
 
 mod router;
@@ -63,15 +65,19 @@ use crate::{
     Bytes,
     Substream,
 };
-use futures::{stream, SinkExt, StreamExt};
+use futures::{future, stream, SinkExt, StreamExt};
 use prost::Message;
 use std::{
     borrow::Cow,
     future::Future,
+    pin::Pin,
     sync::Arc,
+    task::Poll,
     time::{Duration, Instant},
 };
+use tari_metrics::IntCounter;
 use tokio::{sync::mpsc, time};
+use tokio_stream::Stream;
 use tower::Service;
 use tower_make::MakeService;
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
@@ -305,8 +311,15 @@ where
                 );
 
                 let framed = framing::canonical(substream, RPC_MAX_FRAME_SIZE);
-                match self.try_initiate_service(notification.protocol, node_id, framed).await {
+                match self
+                    .try_initiate_service(notification.protocol.clone(), &node_id, framed)
+                    .await
+                {
                     Ok(_) => {},
+                    Err(err @ RpcServerError::HandshakeError(_)) => {
+                        debug!(target: LOG_TARGET, "{}", err);
+                        metrics::handshake_error_counter(&node_id, &notification.protocol).inc();
+                    },
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
                     },
@@ -321,7 +334,7 @@ where
     async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,
-        node_id: NodeId,
+        node_id: &NodeId,
         mut framed: CanonicalFraming<Substream>,
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
@@ -370,8 +383,14 @@ where
             self.comms_provider.clone(),
         );
 
+        let node_id = node_id.clone();
         self.executor
-            .try_spawn(service.start())
+            .try_spawn(async move {
+                let sessions_counter = metrics::sessions_counter(&node_id, &service.protocol);
+                sessions_counter.inc();
+                service.start().await;
+                sessions_counter.dec();
+            })
             .map_err(|_| RpcServerError::MaximumSessionsReached)?;
 
         Ok(())
@@ -386,6 +405,7 @@ struct ActivePeerRpcService<TSvc, TCommsProvider> {
     framed: CanonicalFraming<Substream>,
     comms_provider: TCommsProvider,
     logging_context_string: Arc<String>,
+    error_counter: IntCounter,
 }
 
 impl<TSvc, TCommsProvider> ActivePeerRpcService<TSvc, TCommsProvider>
@@ -401,6 +421,7 @@ where
         framed: CanonicalFraming<Substream>,
         comms_provider: TCommsProvider,
     ) -> Self {
+        let error_counter = metrics::error_counter(&node_id, &protocol);
         Self {
             logging_context_string: Arc::new(format!(
                 "stream_id: {}, peer: {}, protocol: {}",
@@ -415,6 +436,7 @@ where
             service,
             framed,
             comms_provider,
+            error_counter,
         }
     }
 
@@ -424,6 +446,7 @@ where
             "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
+            self.error_counter.inc();
             error!(
                 target: LOG_TARGET,
                 "({}) Rpc server exited with an error: {}", self.logging_context_string, err
@@ -432,10 +455,12 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
+        let request_bytes = metrics::inbound_requests_bytes(&self.node_id, &self.protocol);
         while let Some(result) = self.framed.next().await {
             match result {
                 Ok(frame) => {
                     let start = Instant::now();
+                    request_bytes.observe(frame.len() as f64);
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
                             error!(
@@ -445,6 +470,7 @@ where
                                 err
                             );
                         }
+                        self.error_counter.inc();
                         return Err(err);
                     }
                     let elapsed = start.elapsed();
@@ -463,6 +489,7 @@ where
                             "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
                         );
                     }
+                    self.error_counter.inc();
                     return Err(err.into());
                 },
             }
@@ -498,10 +525,16 @@ where
                 payload: status.to_details_bytes(),
             };
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
+            self.error_counter.inc();
             return Ok(());
         }
 
         let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+
+        if msg_flags.contains(RpcMessageFlags::FIN) {
+            debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
+            return Ok(());
+        }
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
@@ -546,6 +579,7 @@ where
                     self.node_id,
                     self.protocol_name()
                 );
+                self.error_counter.inc();
                 return Ok(());
             },
         };
@@ -569,6 +603,7 @@ where
                     payload: err.to_details_bytes(),
                 };
 
+                self.error_counter.inc();
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
             },
         }
@@ -586,6 +621,7 @@ where
         deadline: Duration,
         body: Response<Body>,
     ) -> Result<(), RpcServerError> {
+        let response_bytes = metrics::outbound_response_bytes(&self.node_id, &self.protocol);
         trace!(target: LOG_TARGET, "Service call succeeded");
         let mut stream = body
             .into_message()
@@ -594,6 +630,13 @@ where
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
 
         loop {
+            // Check if the client interrupted the outgoing stream
+            if let Err(err) = self.check_interruptions().await {
+                // Debug level because there are many valid reasons to interrupt a stream
+                debug!(target: LOG_TARGET, "Stream interrupted: {}", err);
+                break;
+            }
+
             let next_item = log_timing(
                 self.logging_context_string.clone(),
                 request_id,
@@ -602,7 +645,8 @@ where
             );
             match time::timeout(deadline, next_item).await {
                 Ok(Some(msg)) => {
-                    trace!(
+                    response_bytes.observe(msg.len() as f64);
+                    debug!(
                         target: LOG_TARGET,
                         "({}) Sending body len = {}",
                         self.logging_context_string,
@@ -623,11 +667,26 @@ where
                         deadline
                     );
 
+                    self.error_counter.inc();
                     break;
                 },
             }
         } // end loop
         Ok(())
+    }
+
+    async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
+        let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
+            Poll::Ready(Some(Ok(_))) => Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessage)),
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(RpcServerError::from(err))),
+            Poll::Ready(None) => Poll::Ready(Some(RpcServerError::StreamClosedByRemote)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        match check {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 
     fn create_request_context(&self, request_id: u32) -> RequestContext {

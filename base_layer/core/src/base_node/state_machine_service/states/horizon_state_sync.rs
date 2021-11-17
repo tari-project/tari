@@ -29,9 +29,12 @@ use log::*;
 
 pub use error::HorizonSyncError;
 use horizon_state_synchronization::HorizonStateSynchronization;
-use tari_comms::PeerConnection;
 
-use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::CryptoFactories};
+use crate::{
+    base_node::{sync::SyncPeer, BaseNodeStateMachine},
+    chain_storage::BlockchainBackend,
+    transactions::CryptoFactories,
+};
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
@@ -51,12 +54,16 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sy
 
 #[derive(Clone, Debug)]
 pub struct HorizonStateSync {
-    sync_peer: PeerConnection,
+    sync_peer: SyncPeer,
 }
 
 impl HorizonStateSync {
-    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+    pub fn new(sync_peer: SyncPeer) -> Self {
         Self { sync_peer }
+    }
+
+    pub fn into_sync_peer(self) -> SyncPeer {
+        self.sync_peer
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -83,12 +90,11 @@ impl HorizonStateSync {
             return StateEvent::HorizonStateSynchronized;
         }
 
-        let info = HorizonSyncInfo::new(vec![self.sync_peer.peer_node_id().clone()], HorizonSyncStatus::Starting);
+        let info = HorizonSyncInfo::new(vec![self.sync_peer.node_id().clone()], HorizonSyncStatus::Starting);
         shared.set_state_info(StateInfo::HorizonSync(info));
 
         let prover = CryptoFactories::default().range_proof;
-        let mut horizon_state =
-            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), horizon_sync_height, &prover);
+        let mut horizon_state = HorizonStateSynchronization::new(shared, &self.sync_peer, horizon_sync_height, &prover);
 
         match horizon_state.synchronize().await {
             Ok(()) => {
@@ -100,5 +106,11 @@ impl HorizonStateSync {
                 StateEvent::HorizonStateSyncFailure
             },
         }
+    }
+}
+
+impl From<SyncPeer> for HorizonStateSync {
+    fn from(sync_peer: SyncPeer) -> Self {
+        Self { sync_peer }
     }
 }

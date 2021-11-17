@@ -172,7 +172,10 @@ impl GreetingRpc for GreetingService {
         tokio::spawn(async move {
             for _ in 0..num_items {
                 time::sleep(Duration::from_millis(delay_ms)).await;
-                tx.send(Ok(item.clone())).await.unwrap();
+                if tx.send(Ok(item.clone())).await.is_err() {
+                    log::info!("stream was interrupted");
+                    break;
+                }
             }
         });
 
@@ -395,7 +398,13 @@ impl __rpc_deps::NamedProtocolService for GreetingClient {
 
 impl GreetingClient {
     pub async fn connect(framed: __rpc_deps::CanonicalFraming<Substream>) -> Result<Self, RpcError> {
-        let inner = __rpc_deps::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
+        let inner = __rpc_deps::RpcClient::connect(
+            Default::default(),
+            Default::default(),
+            framed,
+            Self::PROTOCOL_NAME.into(),
+        )
+        .await?;
         Ok(Self { inner })
     }
 

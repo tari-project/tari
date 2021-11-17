@@ -89,6 +89,7 @@ pub enum BaseNodeCommand {
     GetMempoolState,
     Whoami,
     GetStateInfo,
+    GetNetworkStats,
     Quit,
     Exit,
 }
@@ -270,6 +271,9 @@ impl Parser {
             Whoami => {
                 self.command_handler.whoami();
             },
+            GetNetworkStats => {
+                self.command_handler.get_network_stats();
+            },
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -416,6 +420,9 @@ impl Parser {
                     "Display identity information about this node, including: public key, node ID and the public \
                      address"
                 );
+            },
+            GetNetworkStats => {
+                println!("Displays network stats");
             },
             Exit | Quit => {
                 println!("Exits the base node");

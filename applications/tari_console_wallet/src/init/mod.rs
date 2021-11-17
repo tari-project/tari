@@ -28,7 +28,6 @@ use rustyline::Editor;
 
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_common_types::types::PrivateKey;
 use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
@@ -36,6 +35,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     initialization::P2pConfig,
@@ -254,7 +254,7 @@ pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
-    recovery_master_key: Option<PrivateKey>,
+    recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes> {
     fs::create_dir_all(
@@ -272,7 +272,7 @@ pub async fn init_wallet(
     // test encryption by initializing with no passphrase...
     let db_path = config.console_wallet_db_file.clone();
 
-    let result = initialize_sqlite_database_backends(db_path.clone(), None);
+    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.wallet_connection_manager_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -281,7 +281,8 @@ pub async fn init_wallet(
         Err(WalletStorageError::NoPasswordError) => {
             // get supplied or prompt password
             let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
-            let backends = initialize_sqlite_database_backends(db_path, passphrase)?;
+            let backends =
+                initialize_sqlite_database_backends(db_path, passphrase, config.wallet_connection_manager_pool_size)?;
 
             (backends, true)
         },
@@ -361,7 +362,7 @@ pub async fn init_wallet(
     );
 
     let updater_config = AutoUpdateConfig {
-        name_server: config.dns_seeds_name_server,
+        name_server: config.dns_seeds_name_server.clone(),
         update_uris: config.autoupdate_dns_hosts.clone(),
         use_dnssec: config.dns_seeds_use_dnssec,
         download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
@@ -411,7 +412,7 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_master_key.clone(),
+        recovery_seed.clone(),
     )
     .await
     .map_err(|e| {
@@ -453,7 +454,7 @@ pub async fn init_wallet(
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
 
-        if interactive && recovery_master_key.is_none() {
+        if interactive && recovery_seed.is_none() {
             match confirm_seed_words(&mut wallet).await {
                 Ok(()) => {
                     print!("\x1Bc"); // Clear the screen

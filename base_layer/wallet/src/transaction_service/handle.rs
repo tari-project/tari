@@ -33,6 +33,9 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
+use tari_common_types::types::PublicKey;
+use tari_core::transactions::transaction::TransactionOutput;
+
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionServiceRequest {
@@ -46,9 +49,10 @@ pub enum TransactionServiceRequest {
     GetAnyTransaction(TxId),
     SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
-    SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
+    SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -76,6 +80,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendOneSidedTransaction(k, v, _, msg) => {
                 f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
             },
+            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+                f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
+            },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
                 "ImportUtxo (from {}, {}, {} with maturity: {})",
@@ -84,9 +91,7 @@ impl fmt::Display for TransactionServiceRequest {
                 msg,
                 maturity.unwrap_or(0)
             )),
-            Self::SubmitCoinSplitTransaction(tx_id, _, _, _, _) => {
-                f.write_str(&format!("SubmitTransaction ({})", tx_id))
-            },
+            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
@@ -128,6 +133,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsSet,
     ValidationStarted(u64),
     CompletedTransactionValidityChanged,
+    ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -381,7 +387,7 @@ impl TransactionServiceHandle {
     ) -> Result<(), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
+            .call(TransactionServiceRequest::SubmitTransactionToSelf(
                 tx_id, tx, fee, amount, message,
             ))
             .await??
@@ -509,6 +515,31 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_sha_atomic_swap_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
+                let (tx_id, pre_image, output) = *boxed;
+                Ok((tx_id, pre_image, output))
+            },
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -82,8 +82,8 @@ class WalletClient {
     const transactions = [];
     for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i].status) == 6 &&
-        data[i].valid == true
+        transactionStatus().indexOf(data[i].status) === 6 &&
+        data[i].valid === true
       ) {
         transactions.push(data[i]);
       }
@@ -146,6 +146,14 @@ class WalletClient {
 
   async transfer(args) {
     return await this.client.transfer(args);
+  }
+
+  async sendHtlc(args) {
+    return await this.client.SendShaAtomicSwapTransaction(args);
+  }
+
+  async claimHtlc(args) {
+    return await this.client.claimShaAtomicSwapTransaction(args);
   }
 
   async importUtxos(outputs) {

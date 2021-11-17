@@ -950,7 +950,7 @@ impl TransactionOutput {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())
             .chain(script.as_bytes())
-            // TODO: Use consensus encoded bytes #testnet reset
+            // TODO: Use consensus encoded bytes #testnet_reset
             .chain(features.to_v1_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
@@ -1058,7 +1058,7 @@ impl TransactionOutput {
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            // TODO: use consensus encoding #testnetreset
+            // TODO: use consensus encoding #testnet_reset
             .chain(self.features.to_v1_bytes())
             .chain(self.commitment.as_bytes())
             // .chain(range proof) // See docs as to why we exclude this

@@ -20,19 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
-
-use aes_gcm::{
-    aead::{generic_array::GenericArray, NewAead},
-    Aes256Gcm,
-};
 use digest::Digest;
 use log::*;
-use rand::rngs::OsRng;
+use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_crypto::{
     common::Blake256,
-    keys::SecretKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     script,
     script::{ExecutionStack, TariScript},
@@ -90,6 +83,7 @@ use crate::{
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
 use tari_common_types::transaction::TxId;
+use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -129,11 +123,10 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-        recovery_master_key: Option<CommsSecretKey>,
+        recovery_seed: Option<CipherSeed>,
     ) -> Result<Self, WalletError> {
-        let master_secret_key =
-            read_or_create_master_secret_key(recovery_master_key, &mut wallet_database.clone()).await?;
-        let comms_secret_key = derive_comms_secret_key(&master_secret_key)?;
+        let master_seed = read_or_create_master_seed(recovery_seed, &mut wallet_database.clone()).await?;
+        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
 
         let node_identity = Arc::new(NodeIdentity::new(
             comms_secret_key,
@@ -177,7 +170,8 @@ where
                 output_manager_backend,
                 factories.clone(),
                 config.network,
-                master_secret_key,
+                master_seed,
+                node_identity.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -273,7 +267,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.clone().wait_until_shutdown().await;
+        self.comms.to_owned().wait_until_shutdown().await;
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
@@ -379,7 +373,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_unvalidated_output(tx_id, unblinded_output.clone())
             .await?;
 
         info!(
@@ -486,11 +480,7 @@ where
     /// in which case this will fail.
     pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
-        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).finalize();
-        let key = GenericArray::from_slice(passphrase_hash.as_slice());
-        let cipher = Aes256Gcm::new(key);
-
-        self.db.apply_encryption(cipher.clone()).await?;
+        let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
         self.transaction_service.apply_encryption(cipher).await?;
         Ok(())
@@ -513,30 +503,29 @@ where
     }
 }
 
-async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
-    recovery_master_key: Option<CommsSecretKey>,
+async fn read_or_create_master_seed<T: WalletBackend + 'static>(
+    recovery_seed: Option<CipherSeed>,
     db: &mut WalletDatabase<T>,
-) -> Result<CommsSecretKey, WalletError> {
-    let db_master_secret_key = db.get_master_secret_key().await?;
+) -> Result<CipherSeed, WalletError> {
+    let db_master_seed = db.get_master_seed().await?;
 
-    let master_secret_key = match recovery_master_key {
-        None => match db_master_secret_key {
+    let master_seed = match recovery_seed {
+        None => match db_master_seed {
             None => {
-                let secret_key = CommsSecretKey::random(&mut OsRng);
-                db.set_master_secret_key(secret_key.clone()).await?;
-                secret_key
+                let seed = CipherSeed::new();
+                db.set_master_seed(seed.clone()).await?;
+                seed
             },
-            Some(secret_key) => secret_key,
+            Some(seed) => seed,
         },
-        Some(recovery_key) => {
-            if db_master_secret_key.is_none() {
-                db.set_master_secret_key(recovery_key.clone()).await?;
-                recovery_key
+        Some(recovery_seed) => {
+            if db_master_seed.is_none() {
+                db.set_master_seed(recovery_seed.clone()).await?;
+                recovery_seed
             } else {
                 error!(
                     target: LOG_TARGET,
-                    "Attempted recovery would overwrite the existing wallet database master secret key, causing a \
-                     `MasterSecretKeyMismatch` error."
+                    "Attempted recovery would overwrite the existing wallet database master seed"
                 );
                 let msg = "Wallet already exists! Move the existing wallet database file.".to_string();
                 return Err(WalletError::WalletRecoveryError(msg));
@@ -544,12 +533,12 @@ async fn read_or_create_master_secret_key<T: WalletBackend + 'static>(
         },
     };
 
-    Ok(master_secret_key)
+    Ok(master_seed)
 }
 
-fn derive_comms_secret_key(master_secret_key: &CommsSecretKey) -> Result<CommsSecretKey, WalletError> {
+fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-        master_secret_key.clone(),
+        master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );

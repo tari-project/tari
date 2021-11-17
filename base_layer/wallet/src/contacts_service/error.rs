@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::contacts_service::storage::database::DbKey;
+use crate::{contacts_service::storage::database::DbKey, error::WalletStorageError};
 use diesel::result::Error as DieselError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -50,8 +50,8 @@ pub enum ContactsServiceStorageError {
     ValueNotFound(DbKey),
     #[error("Unexpected result error: `{0}`")]
     UnexpectedResult(String),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

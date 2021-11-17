@@ -93,8 +93,11 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
-                trace_log($name, move || db.$fn())
+                    log_mdc::extend(mdc.clone());
+                    trace_log($name, move || db.$fn())
             })
             .await?
         }
@@ -107,7 +110,10 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn$(< $( $lt $( : $clt )? ),+ +Sync+Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
+                log_mdc::extend(mdc.clone());
                 trace_log($name, move || db.$fn($($param),+))
             })
             .await?

@@ -20,9 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod client_pool;
 mod comms_integration;
-mod greeting_service;
+pub(super) mod greeting_service;
 mod handshake;
-mod mock;
+pub(super) mod mock;
 mod smoke;

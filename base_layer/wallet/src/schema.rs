@@ -25,6 +25,8 @@ table! {
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
+        transaction_signature_nonce -> Binary,
+        transaction_signature_key -> Binary,
     }
 }
 
@@ -53,7 +55,7 @@ table! {
 table! {
     key_manager_states (id) {
         id -> Integer,
-        master_key -> Binary,
+        seed -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
         timestamp -> Timestamp,

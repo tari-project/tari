@@ -37,8 +37,8 @@ peer_seeds = [
 # The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
 # Enter a domain name for the TXT records: seeds.tari.com
 dns_seeds =["seeds.weatherwax.tari.com"]
-# The name server used to resolve DNS seeds  (Default: "1.1.1.1:53")
-# dns_seeds_name_server = "1.1.1.1:53"
+# The name server used to resolve DNS seeds format: {socket address}/{tls sni dns name} (Default: cloudflare)
+# dns_seeds_name_server = "1.1.1.1:853/cloudfare-dns.com"
 # Servers addresses, majority of them have to agree.
 # autoupdate_dns_hosts = [#server1, #server2, ...]
 # Set to true to only accept DNS records that pass DNSSEC validation (Default: true)

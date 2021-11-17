@@ -26,6 +26,7 @@ use super::{
     error::ConnectivityError,
     requester::{ConnectivityEvent, ConnectivityRequest},
     selection::ConnectivitySelection,
+    ConnectivityEventTx,
 };
 use crate::{
     connection_manager::{
@@ -34,7 +35,6 @@ use crate::{
         ConnectionManagerEvent,
         ConnectionManagerRequester,
     },
-    connectivity::ConnectivityEventTx,
     peer_manager::NodeId,
     runtime::task,
     utils::datetime::format_duration,
@@ -91,6 +91,8 @@ impl ConnectivityManager {
             node_identity: self.node_identity,
             pool: ConnectionPool::new(),
             shutdown_signal: self.shutdown_signal,
+            #[cfg(feature = "metrics")]
+            uptime: Instant::now(),
         }
         .spawn()
     }
@@ -145,11 +147,18 @@ struct ConnectivityManagerActor {
     connection_stats: HashMap<NodeId, PeerConnectionStats>,
     pool: ConnectionPool,
     shutdown_signal: ShutdownSignal,
+    #[cfg(feature = "metrics")]
+    uptime: Instant,
 }
 
 impl ConnectivityManagerActor {
     pub fn spawn(self) -> JoinHandle<()> {
-        task::spawn(Self::run(self))
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
+        task::spawn(async {
+            log_mdc::extend(mdc);
+            Self::run(self).await
+        })
     }
 
     #[tracing::instrument(name = "connectivity_manager_actor::run", skip(self))]
@@ -319,6 +328,7 @@ impl ConnectivityManagerActor {
             self.reap_inactive_connections().await;
         }
         self.update_connectivity_status();
+        self.update_connectivity_metrics();
         Ok(())
     }
 
@@ -500,6 +510,10 @@ impl ConnectivityManagerActor {
                     _ => {},
                 }
             },
+            #[cfg(feature = "metrics")]
+            NewInboundSubstream(node_id, protocol, _) => {
+                super::metrics::substream_request_count(node_id, protocol).inc();
+            },
             _ => {},
         }
 
@@ -572,6 +586,7 @@ impl ConnectivityManagerActor {
         }
 
         self.update_connectivity_status();
+        self.update_connectivity_metrics();
         Ok(())
     }
 
@@ -632,6 +647,25 @@ impl ConnectivityManagerActor {
             },
             _ => unreachable!("num_connected is unsigned and only negative pattern covered on this branch"),
         }
+    }
+
+    #[cfg(not(feature = "metrics"))]
+    fn update_connectivity_metrics(&mut self) {}
+
+    #[cfg(feature = "metrics")]
+    fn update_connectivity_metrics(&mut self) {
+        use super::metrics;
+        use std::convert::TryFrom;
+
+        let total = self.pool.count_connected() as i64;
+        let num_inbound = self.pool.count_filtered(|state| match state.connection() {
+            Some(conn) => conn.is_connected() && conn.direction().is_inbound(),
+            None => false,
+        }) as i64;
+
+        metrics::connections(ConnectionDirection::Inbound).set(num_inbound);
+        metrics::connections(ConnectionDirection::Outbound).set(total - num_inbound);
+        metrics::uptime().set(i64::try_from(self.uptime.elapsed().as_secs()).unwrap_or(i64::MAX));
     }
 
     fn transition(&mut self, next_status: ConnectivityStatus, required_num_peers: usize) {

@@ -220,7 +220,7 @@ impl AggregateBody {
         }
         self.inputs.sort();
         self.outputs.sort();
-        // TODO: #testnetreset clean up this code
+        // TODO: #testnet_reset clean up this code
         if version <= 1 {
             self.kernels.sort_by(|a, b| a.deprecated_cmp(b));
         } else {

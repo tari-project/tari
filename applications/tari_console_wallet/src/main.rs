@@ -5,8 +5,9 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![deny(clippy::redundant_clone)]
 #![recursion_limit = "1024"]
-use crate::{recovery::get_private_key_from_seed_words, wallet_modes::WalletModeConfig};
+use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
 use init::{
     boot,
     change_password,
@@ -24,7 +25,7 @@ use recovery::prompt_private_key_from_seed_words;
 use std::{env, process};
 use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
-use tari_common_types::types::PrivateKey;
+use tari_key_manager::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
@@ -89,7 +90,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&bootstrap, &global_config)?;
 
-    let recovery_master_key: Option<PrivateKey> = get_recovery_master_key(boot_mode, &bootstrap)?;
+    let recovery_seed: Option<CipherSeed> = get_recovery_seed(boot_mode, &bootstrap)?;
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -112,7 +113,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         &global_config,
         arg_password,
         seed_words_file_name,
-        recovery_master_key,
+        recovery_seed,
         shutdown_signal,
     ))?;
 
@@ -165,12 +166,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_recovery_master_key(
-    boot_mode: WalletBoot,
-    bootstrap: &ConfigBootstrap,
-) -> Result<Option<PrivateKey>, ExitCodes> {
+fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitCodes> {
     if matches!(boot_mode, WalletBoot::Recovery) {
-        let private_key = if bootstrap.seed_words.is_some() {
+        let seed = if bootstrap.seed_words.is_some() {
             let seed_words: Vec<String> = bootstrap
                 .seed_words
                 .clone()
@@ -178,11 +176,11 @@ fn get_recovery_master_key(
                 .split_whitespace()
                 .map(|v| v.to_string())
                 .collect();
-            get_private_key_from_seed_words(seed_words)?
+            get_seed_from_seed_words(seed_words)?
         } else {
             prompt_private_key_from_seed_words()?
         };
-        Ok(Some(private_key))
+        Ok(Some(seed))
     } else {
         Ok(None)
     }

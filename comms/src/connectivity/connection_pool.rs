@@ -207,49 +207,41 @@ impl ConnectionPool {
     }
 
     pub fn count_connected_nodes(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| {
-                c.status() == ConnectionStatus::Connected &&
-                    c.connection()
-                        .filter(|c| c.is_connected() && c.peer_features().is_node())
-                        .is_some()
-            })
-            .count()
+        self.count_filtered(|c| {
+            c.status() == ConnectionStatus::Connected &&
+                c.connection()
+                    .filter(|c| c.is_connected() && c.peer_features().is_node())
+                    .is_some()
+        })
     }
 
     pub fn count_connected_clients(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| {
-                c.status() == ConnectionStatus::Connected &&
-                    c.connection()
-                        .filter(|c| c.is_connected() && c.peer_features().is_client())
-                        .is_some()
-            })
-            .count()
+        self.count_filtered(|c| {
+            c.status() == ConnectionStatus::Connected &&
+                c.connection()
+                    .filter(|c| c.is_connected() && c.peer_features().is_client())
+                    .is_some()
+        })
     }
 
     pub fn count_connected(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| c.status() == ConnectionStatus::Connected || c.status() == ConnectionStatus::Connecting)
-            .count()
+        self.count_filtered(|c| c.is_connected())
     }
 
     pub fn count_failed(&self) -> usize {
-        self.count_status(ConnectionStatus::Failed)
+        self.count_filtered(|c| c.status() == ConnectionStatus::Failed)
     }
 
     pub fn count_disconnected(&self) -> usize {
-        self.count_status(ConnectionStatus::Disconnected)
+        self.count_filtered(|c| c.status() == ConnectionStatus::Disconnected)
     }
 
     pub fn count_entries(&self) -> usize {
         self.connections.len()
     }
 
-    fn count_status(&self, status: ConnectionStatus) -> usize {
-        self.connections.values().filter(|c| c.status() == status).count()
+    pub(in crate::connectivity) fn count_filtered<P>(&self, mut predicate: P) -> usize
+    where P: FnMut(&PeerConnectionState) -> bool {
+        self.connections.values().filter(|c| (predicate)(*c)).count()
     }
 }
