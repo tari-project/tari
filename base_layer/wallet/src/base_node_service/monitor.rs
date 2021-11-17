@@ -119,7 +119,7 @@ where
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Obtain RPC client {} ms",
                 timer.elapsed().as_millis()
@@ -144,36 +144,27 @@ where
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "get_tip_info took {} ms",
+                "Obtain tip info in {} ms",
                 timer.elapsed().as_millis()
             );
 
+            let timer = Instant::now();
             let latency = match client.get_last_request_latency() {
                 Some(latency) => latency,
                 None => continue,
             };
-
-            let is_synced = tip_info.is_synced;
-            debug!(
-                target: LOG_TARGET,
-                "Base node {} Tip: {} ({}) Latency: {} ms",
-                base_node_id,
-                chain_metadata.height_of_longest_chain(),
-                if is_synced { "Synced" } else { "Syncing..." },
-                latency.as_millis()
-            );
-
-            let timer = Instant::now();
-            self.db.set_chain_metadata(chain_metadata.clone()).await?;
             trace!(
                 target: LOG_TARGET,
-                "Update metadata in db {} ms",
+                "Obtain latency info in {} ms",
                 timer.elapsed().as_millis()
             );
 
-            let timer = Instant::now();
+            self.db.set_chain_metadata(chain_metadata.clone()).await?;
+
+            let is_synced = tip_info.is_synced;
+            let height_of_longest_chain = chain_metadata.height_of_longest_chain();
             self.map_state(move |_| BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
@@ -181,7 +172,15 @@ where
                 latency: Some(latency),
             })
             .await;
-            trace!(target: LOG_TARGET, "Publish event {} ms", timer.elapsed().as_millis());
+
+            debug!(
+                target: LOG_TARGET,
+                "Base node {} Tip: {} ({}) Latency: {} ms",
+                base_node_id,
+                height_of_longest_chain,
+                if is_synced { "Synced" } else { "Syncing..." },
+                latency.as_millis()
+            );
 
             let delay = time::sleep(self.interval.saturating_sub(latency));
             if interrupt(base_node_watch.changed(), delay).await.is_none() {
