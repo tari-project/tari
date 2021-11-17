@@ -64,6 +64,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
+use tari_common_types::types::CompressedCommitment;
 
 mod new_output_sql;
 mod output_sql;
@@ -924,7 +925,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
+    fn revalidate_unspent_output(&self, commitment: &CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();

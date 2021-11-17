@@ -59,4 +59,6 @@ pub enum MnemonicError {
     ByteArrayError(#[from] ByteArrayError),
     #[error("Encoding a mnemonic sequence to bytes requires exactly 24 mnemonic words")]
     EncodeInvalidLength,
+    #[error("Overflow during bit conversion")]
+    Overflow,
 }

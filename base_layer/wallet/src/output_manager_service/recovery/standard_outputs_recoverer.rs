@@ -104,7 +104,7 @@ where TBackend: OutputManagerBackend + 'static
                         output.blinding_factor,
                         features,
                         script,
-                        inputs!(PublicKey::from_secret_key(&script_key)),
+                        inputs!(PublicKey::from_secret_key(&script_key).compress()),
                         script_key,
                         sender_offset_public_key,
                         metadata_signature,
@@ -163,7 +163,7 @@ where TBackend: OutputManagerBackend + 'static
             .await?;
 
         let script_private_key = self.master_key_manager.get_script_key_at_index(found_index).await?;
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
+        output.input_data = inputs!(PublicKey::from_secret_key(&script_private_key).compress());
         output.script_private_key = script_private_key;
         Ok(())
     }

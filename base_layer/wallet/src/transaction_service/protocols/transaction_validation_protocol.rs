@@ -41,7 +41,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::BlockHash,
+    types::{BlockHash, CompressedSignature},
 };
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
@@ -262,7 +262,7 @@ where
         let mut batch_signatures = HashMap::new();
         for tx_info in batch.iter() {
             // Imported transactions do not have a signature; this is represented by the default signature in info
-            if tx_info.signature != Signature::default() {
+            if tx_info.signature != CompressedSignature::default() {
                 batch_signatures.insert(tx_info.signature.clone(), tx_info);
             }
         }

@@ -38,7 +38,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::Signature,
+    types::{CompressedSignature, Signature},
 };
 use tari_core::{
     base_node::{
@@ -282,7 +282,7 @@ where
     /// end.
     async fn transaction_query(
         &mut self,
-        signature: Signature,
+        signature: CompressedSignature,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError> {
         let response = match client.transaction_query(signature.into()).await {

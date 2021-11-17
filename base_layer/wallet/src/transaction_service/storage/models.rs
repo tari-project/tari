@@ -24,7 +24,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, PrivateKey, Signature},
+    types::{BlockHash, CompressedSignature, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -138,7 +138,7 @@ pub struct CompletedTransaction {
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub valid: bool,
-    pub transaction_signature: Signature,
+    pub transaction_signature: CompressedSignature,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
@@ -162,7 +162,7 @@ impl CompletedTransaction {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
-            Signature::default()
+            CompressedSignature::default()
         };
         Self {
             tx_id,
@@ -246,7 +246,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
-            Signature::default()
+            CompressedSignature::default()
         };
         Self {
             tx_id: tx.tx_id,
@@ -290,7 +290,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: Signature::default(),
+            transaction_signature: CompressedSignature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,

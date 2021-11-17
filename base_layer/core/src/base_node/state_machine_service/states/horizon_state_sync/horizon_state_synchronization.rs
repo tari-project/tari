@@ -467,10 +467,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         });
                     }
 
-                    // Validate rangeproofs if the MMR matches
-                    for o in unpruned_outputs.drain(..) {
-                        o.verify_range_proof(self.prover)
-                            .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
+                    if !self.shared.config.bypass_range_proof_verification {
+                        // Validate rangeproofs if the MMR matches
+                        for o in unpruned_outputs.drain(..) {
+                            o.verify_range_proof(self.prover).map_err(|err| {
+                                HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string())
+                            })?;
+                        }
                     }
 
                     txn.update_deleted_bitmap(diff_bitmap.clone());

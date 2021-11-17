@@ -120,7 +120,7 @@ impl SingleReceiverTransactionProtocol {
             &spending_key.clone(),
             &sender_info.script,
             &sender_info.features,
-            &sender_info.sender_offset_public_key.decompress().expect("fix mew"),
+            &sender_info.sender_offset_public_key,
             &sender_info.public_commitment_nonce.decompress().expect("fix me"),
         )?;
 

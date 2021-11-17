@@ -964,7 +964,7 @@ impl TransactionOutput {
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
-        sender_offset_public_key: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
         partial_commitment_nonce: Option<&PublicKey>,
         sender_offset_private_key: Option<&PrivateKey>,
     ) -> Result<ComSignature, TransactionError> {
@@ -980,7 +980,7 @@ impl TransactionOutput {
         let e = TransactionOutput::build_metadata_signature_challenge(
             script,
             output_features,
-            &sender_offset_public_key.compress(),
+            &sender_offset_public_key,
             &nonce_commitment.as_public_key().compress(),
             &commitment.as_public_key().compress(),
         );
@@ -1004,7 +1004,7 @@ impl TransactionOutput {
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
-        sender_offset_public_key: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
         partial_commitment_nonce: &PublicKey,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
@@ -1026,7 +1026,7 @@ impl TransactionOutput {
         output_features: &OutputFeatures,
         sender_offset_private_key: &PrivateKey,
     ) -> Result<ComSignature, TransactionError> {
-        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key).compress();
         TransactionOutput::create_metadata_signature(
             value,
             spending_key,

@@ -42,7 +42,15 @@ use log::*;
 use std::convert::TryFrom;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComSignature, Commitment, PrivateKey, PublicKey},
+    types::{
+        ComSignature,
+        Commitment,
+        CompressedComSig,
+        CompressedCommitment,
+        CompressedPublicKey,
+        PrivateKey,
+        PublicKey,
+    },
 };
 use tari_core::{
     tari_utilities::hash::Hashable,
@@ -125,7 +133,7 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
-            // Return outputs not marked as deleted or confirmed 
+            // Return outputs not marked as deleted or confirmed
             .filter(outputs::marked_deleted_in_block.is_null().or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)))
             // Only return mined
             .filter(outputs::mined_in_block.is_not_null())
@@ -409,15 +417,15 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
+            CompressedPublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            ComSignature::new(
-                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
+            CompressedComSig::new(
+                CompressedCommitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
@@ -454,8 +462,10 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 factories
                     .commitment
                     .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
+                    .as_public_key()
+                    .compress()
             },
-            Some(c) => Commitment::from_vec(&c)?,
+            Some(c) => CompressedCommitment::from_vec(&c)?,
         };
 
         Ok(Self {

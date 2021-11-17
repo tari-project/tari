@@ -46,7 +46,7 @@ use rand::{rngs::OsRng, RngCore};
 use std::{cmp::Ordering, convert::TryInto, fmt, fmt::Display, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{CompressedPublicKey, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -65,7 +65,12 @@ use tari_core::{
 };
 use tari_crypto::{
     inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    keys::{
+        CompressedPublicKey as CompressedPublicKeyTrait,
+        DiffieHellmanSharedSecret,
+        PublicKey as PublicKeyTrait,
+        SecretKey,
+    },
     script,
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
@@ -349,7 +354,7 @@ where
     async fn claim_sha_atomic_swap_with_hash(
         &mut self,
         output_hash: HashOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
@@ -501,7 +506,7 @@ where
                 single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
                 // TODO: The input data should be variable; this will only work for a Nop script
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                 script_private_key,
                 single_round_sender_data.sender_offset_public_key.clone(),
                 // Note: The commitment signature at this time is only partially built
@@ -511,8 +516,12 @@ where
                     &single_round_sender_data.script.clone(),
                     &single_round_sender_data.features.clone(),
                     &single_round_sender_data.sender_offset_public_key.clone(),
-                    &single_round_sender_data.public_commitment_nonce.clone(),
-                )?,
+                    &single_round_sender_data
+                        .public_commitment_nonce
+                        .decompress()
+                        .expect("fix me"),
+                )?
+                .compress(),
             ),
             &self.resources.factories,
         )?;
@@ -642,7 +651,7 @@ where
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
                 script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                 script_private_key,
             );
         }
@@ -804,16 +813,17 @@ where
             &script,
             &output_features,
             &sender_offset_private_key,
-        )?;
+        )?
+        .compress();
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
                 amount,
                 spending_key.clone(),
                 output_features,
                 script,
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                 script_private_key,
-                PublicKey::from_secret_key(&sender_offset_private_key),
+                PublicKey::from_secret_key(&sender_offset_private_key).compress(),
                 metadata_signature,
             ),
             &self.resources.factories,
@@ -834,7 +844,7 @@ where
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
                 script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                 script_private_key,
             );
         }
@@ -1139,10 +1149,10 @@ where
                     spending_key.clone(),
                     output_features.clone(),
                     script.clone(),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
+                    inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                     script_private_key,
-                    sender_offset_public_key,
-                    metadata_signature,
+                    sender_offset_public_key.compress(),
+                    metadata_signature.compress(),
                 ),
                 &self.resources.factories,
             )?;
@@ -1162,7 +1172,7 @@ where
             builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
             builder.with_change_script(
                 script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
+                inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
                 script_private_key,
             );
         }
@@ -1233,14 +1243,15 @@ where
     pub async fn create_claim_sha_atomic_swap_transaction(
         &mut self,
         output: TransactionOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(
+            PublicKey::shared_secret(
                 self.node_identity.as_ref().secret_key(),
-                &output.sender_offset_public_key,
+                &output.sender_offset_public_key.decompress().expect("fix me"),
             )
+            .compress()
             .as_bytes(),
         )?;
         let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
@@ -1289,7 +1300,7 @@ where
         builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
         builder.with_change_script(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
             script_private_key,
         );
 
@@ -1349,10 +1360,11 @@ where
                 .position(|known_one_sided_script| known_one_sided_script.script == output.script);
             if let Some(i) = position {
                 let spending_key = PrivateKey::from_bytes(
-                    CommsPublicKey::shared_secret(
+                    PublicKey::shared_secret(
                         &known_one_sided_payment_scripts[i].private_key,
-                        &output.sender_offset_public_key,
+                        &output.sender_offset_public_key.decompress().expect("fix me"),
                     )
+                    .compress()
                     .as_bytes(),
                 )?;
                 let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;

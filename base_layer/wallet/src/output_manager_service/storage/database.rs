@@ -33,7 +33,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput},
+    types::{BlindingFactor, Commitment, CompressedCommitment, HashOutput},
 };
 use tari_core::transactions::transaction::TransactionOutput;
 use tari_key_manager::cipher_seed::CipherSeed;
@@ -104,7 +104,7 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
-    fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
+    fn revalidate_unspent_output(&self, spending_key: &CompressedCommitment) -> Result<(), OutputManagerStorageError>;
     /// Apply encryption to the backend.
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
@@ -144,7 +144,7 @@ pub struct KeyManagerState {
 pub enum DbKey {
     SpentOutput(BlindingFactor),
     UnspentOutput(BlindingFactor),
-    AnyOutputByCommitment(Commitment),
+    AnyOutputByCommitment(CompressedCommitment),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
     SpentOutputs,
@@ -168,9 +168,9 @@ pub enum DbValue {
 }
 
 pub enum DbKeyValuePair {
-    UnspentOutput(Commitment, Box<DbUnblindedOutput>),
-    UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
-    OutputToBeReceived(Commitment, (TxId, Box<DbUnblindedOutput>, Option<u64>)),
+    UnspentOutput(CompressedCommitment, Box<DbUnblindedOutput>),
+    UnspentOutputWithTxId(CompressedCommitment, (TxId, Box<DbUnblindedOutput>)),
+    OutputToBeReceived(CompressedCommitment, (TxId, Box<DbUnblindedOutput>, Option<u64>)),
     KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
@@ -465,7 +465,7 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+    pub async fn revalidate_output(&self, commitment: CompressedCommitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
             .await
@@ -540,7 +540,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub async fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
+    pub async fn remove_output_by_commitment(
+        &self,
+        commitment: CompressedCommitment,
+    ) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {

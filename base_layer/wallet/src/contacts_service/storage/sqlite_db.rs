@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use tari_crypto::tari_utilities::ByteArray;
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{CompressedPublicKey, PublicKey};
 
 use crate::{
     contacts_service::{
@@ -160,7 +160,8 @@ impl TryFrom<ContactSql> for Contact {
 
     fn try_from(o: ContactSql) -> Result<Self, Self::Error> {
         Ok(Self {
-            public_key: PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?,
+            public_key: CompressedPublicKey::from_vec(&o.public_key)
+                .map_err(|_| ContactsServiceStorageError::ConversionError)?,
             alias: o.alias,
         })
     }

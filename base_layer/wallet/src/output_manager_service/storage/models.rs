@@ -22,7 +22,7 @@
 
 use crate::output_manager_service::error::OutputManagerStorageError;
 use std::cmp::Ordering;
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
+use tari_common_types::types::{BlockHash, Commitment, CompressedCommitment, HashOutput, PrivateKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
@@ -31,7 +31,7 @@ use tari_crypto::script::{ExecutionStack, TariScript};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
-    pub commitment: Commitment,
+    pub commitment: CompressedCommitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
     pub mined_height: Option<u64>,

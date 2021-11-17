@@ -33,7 +33,7 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 
-use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
+use tari_common_types::types::{ComSignature, CompressedComSig, CompressedPublicKey, PrivateKey, PublicKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -354,7 +354,7 @@ where
         message: String,
         metadata_signature: CompressedComSig,
         script_private_key: &PrivateKey,
-        sender_offset_public_key: &PublicKey,
+        sender_offset_public_key: &CompressedPublicKey,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,

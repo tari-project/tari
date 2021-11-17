@@ -66,6 +66,7 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
 
@@ -130,8 +131,8 @@ impl TransactionServiceSqliteDatabase {
                         )
                     } else {
                         (
-                            Some(Signature::default().get_public_nonce().as_bytes().to_vec()),
-                            Some(Signature::default().get_signature().as_bytes().to_vec()),
+                            Some(CompressedSignature::default().get_public_nonce().as_bytes().to_vec()),
+                            Some(CompressedSignature::default().get_signature().as_bytes().to_vec()),
                         )
                     };
                 tx_sql.update(
@@ -1471,7 +1472,8 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
     fn try_from(i: InboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: i.tx_id as u64,
-            source_public_key: PublicKey::from_vec(&i.source_public_key).map_err(TransactionKeyError::Source)?,
+            source_public_key: CompressedPublicKey::from_vec(&i.source_public_key)
+                .map_err(TransactionKeyError::Source)?,
             amount: MicroTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol)?,
             status: TransactionStatus::Pending,
@@ -1642,7 +1644,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
     fn try_from(o: OutboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: o.tx_id as u64,
-            destination_public_key: PublicKey::from_vec(&o.destination_public_key)
+            destination_public_key: CompressedPublicKey::from_vec(&o.destination_public_key)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(o.amount as u64),
             fee: MicroTari::from(o.fee as u64),
@@ -1930,17 +1932,18 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
     type Error = CompletedTransactionConversionError;
 
     fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
-        let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
+        let transaction_signature = match CompressedPublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
-                Ok(signature) => Signature::new(public_nonce, signature),
-                Err(_) => Signature::default(),
+                Ok(signature) => CompressedSignature::new(public_nonce, signature),
+                Err(_) => CompressedSignature::default(),
             },
-            Err(_) => Signature::default(),
+            Err(_) => CompressedSignature::default(),
         };
         Ok(Self {
             tx_id: c.tx_id as u64,
-            source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
-            destination_public_key: PublicKey::from_vec(&c.destination_public_key)
+            source_public_key: CompressedPublicKey::from_vec(&c.source_public_key)
+                .map_err(TransactionKeyError::Source)?,
+            destination_public_key: CompressedPublicKey::from_vec(&c.destination_public_key)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
@@ -1983,7 +1986,7 @@ pub struct UpdateCompletedTransactionSql {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
-    pub signature: Signature,
+    pub signature: CompressedSignature,
     pub status: TransactionStatus,
     pub coinbase_block_height: Option<u64>,
 }
@@ -2004,8 +2007,8 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
     fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: i.tx_id as u64,
-            signature: Signature::new(
-                PublicKey::from_vec(&i.transaction_signature_nonce)?,
+            signature: CompressedSignature::new(
+                CompressedPublicKey::from_vec(&i.transaction_signature_nonce)?,
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
             status: TransactionStatus::try_from(i.status)?,

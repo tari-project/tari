@@ -27,7 +27,7 @@ use crate::{
 };
 use std::slice::Iter;
 use strum_macros::{Display, EnumString};
-use tari_crypto::tari_utilities::bit::*;
+use tari_utilities::bit::*;
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
@@ -148,7 +148,7 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
         let start_index = i * group_bit_count;
         let stop_index = start_index + group_bit_count;
         let sub_v = &bits[start_index..stop_index].to_vec();
-        let word_index = bits_to_uint(sub_v);
+        let word_index = checked_bits_to_uint(sub_v).ok_or_else(|| MnemonicError::Overflow)?;
         match find_mnemonic_word_from_index(word_index as usize, language) {
             Ok(mnemonic_word) => mnemonic_sequence.push(mnemonic_word),
             Err(err) => return Err(err),
@@ -172,7 +172,7 @@ pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLangua
     for curr_word in mnemonic_seq {
         match find_mnemonic_index_from_word(curr_word, language) {
             Ok(index) => {
-                let curr_bits = uint_to_bits(index, 11);
+                let curr_bits = checked_uint_to_bits(index, 11).ok_or_else(|| MnemonicError::Overflow)?;
                 bits.extend(curr_bits.iter().cloned());
             },
             Err(err) => return Err(err),

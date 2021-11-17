@@ -65,7 +65,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{PrivateKey, PublicKey},
+    types::{CompressedPublicKey, PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -86,7 +86,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait},
+    keys::{CompressedPublicKey as CompressedPublicKeyTrait, DiffieHellmanSharedSecret, PublicKey as PKtrait},
     script,
     tari_utilities::ByteArray,
 };
@@ -813,10 +813,10 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
-    ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
+    ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
         let tx_id = OsRng.next_u64();
         // this can be anything, so lets generate a random private key
-        let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+        let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress();
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks * 30 blocks per hour * 24 hours
@@ -852,7 +852,12 @@ where
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            PublicKey::shared_secret(
+                &sender_offset_private_key.clone(),
+                &dest_pubkey.decompress().expect("fix me"),
+            )
+            .compress()
+            .as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -988,7 +993,12 @@ where
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
         let spending_key = PrivateKey::from_bytes(
-            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+            PublicKey::shared_secret(
+                &sender_offset_private_key.clone(),
+                &dest_pubkey.decompress().expect("fix me"),
+            )
+            .compress()
+            .as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 

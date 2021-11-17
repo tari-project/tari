@@ -29,7 +29,7 @@ use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PublicKey},
+    types::{CompressedPublicKey, HashOutput, PublicKey},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -77,7 +77,7 @@ pub enum OutputManagerRequest {
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     ReinstateCancelledInboundTx(TxId),
     SetCoinbaseAbandoned(TxId, bool),
-    CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
+    CreateClaimShaAtomicSwapTransaction(HashOutput, CompressedPublicKey, MicroTari),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -459,7 +459,7 @@ impl OutputManagerHandle {
     pub async fn create_claim_sha_atomic_swap_transaction(
         &mut self,
         output: HashOutput,
-        pre_image: PublicKey,
+        pre_image: CompressedPublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
         match self

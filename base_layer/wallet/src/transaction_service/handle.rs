@@ -33,7 +33,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{CompressedPublicKey, PublicKey};
 use tari_core::transactions::transaction::TransactionOutput;
 
 /// API Request enum
@@ -133,7 +133,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsSet,
     ValidationStarted(u64),
     CompletedTransactionValidityChanged,
-    ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
+    ShaAtomicSwapTransactionSent(Box<(TxId, CompressedPublicKey, TransactionOutput)>),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -525,7 +525,7 @@ impl TransactionServiceHandle {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         message: String,
-    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+    ) -> Result<(TxId, CompressedPublicKey, TransactionOutput), TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
