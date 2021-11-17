@@ -23,7 +23,7 @@
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -50,7 +50,6 @@ use crate::{
     util::watch::Watch,
     utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
 };
-
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
@@ -74,7 +73,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput},
+        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto,
             recipient::RecipientSignedMessage,
@@ -86,6 +85,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait},
     script,
     tari_utilities::ByteArray,
@@ -791,6 +791,8 @@ where
             message,
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
+            None,
+            self.last_seen_tip_height,
         );
 
         let join_handle = tokio::spawn(protocol.execute());
@@ -851,13 +853,13 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
-        let spending_key = PrivateKey::from_bytes(
+        let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
@@ -868,7 +870,7 @@ where
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spending_key,
+            spend_key.clone(),
             OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
@@ -876,6 +878,17 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
+        let unblinded_output = UnblindedOutput::new(
+            amount,
+            spend_key,
+            OutputFeatures::default(),
+            script,
+            inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
+            self.node_identity.secret_key().clone(),
+            output.sender_offset_public_key.clone(),
+            output.metadata_signature.clone(),
+            height,
+        );
 
         // Start finalizing
 
@@ -884,14 +897,19 @@ where
 
         // Finalize
 
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories)
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-                );
-                TransactionServiceProtocolError::new(tx_id, e.into())
-            })?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height,
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -908,7 +926,9 @@ where
         let fee = stp
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
+            .await?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
             CompletedTransaction::new(
@@ -987,13 +1007,13 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
-        let spending_key = PrivateKey::from_bytes(
+        let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
         let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
@@ -1004,7 +1024,7 @@ where
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spending_key,
+            spend_key,
             OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
@@ -1019,14 +1039,19 @@ where
 
         // Finalize
 
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories)
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-                );
-                TransactionServiceProtocolError::new(tx_id, e.into())
-            })?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height,
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -1290,19 +1315,6 @@ where
         Ok(())
     }
 
-    // async fn set_completed_transaction_validity(
-    //     &mut self,
-    //     tx_id: TxId,
-    //     valid: bool,
-    // ) -> Result<(), TransactionServiceError> {
-    //     self.resources
-    //         .db
-    //         .set_completed_transaction_validity(tx_id, valid)
-    //         .await?;
-    //
-    //     Ok(())
-    // }
-
     /// Handle a Transaction Cancelled message received from the Comms layer
     pub async fn handle_transaction_cancelled_message(
         &mut self,
@@ -1356,6 +1368,8 @@ where
                     tx.message,
                     None,
                     TransactionSendProtocolStage::WaitForReply,
+                    None,
+                    self.last_seen_tip_height,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());
@@ -1478,6 +1492,8 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
+                None,
+                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -1662,6 +1678,8 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
+                None,
+                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());

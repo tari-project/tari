@@ -155,6 +155,7 @@ impl TestParams {
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
             metadata_signature,
+            0,
         )
     }
 
@@ -444,8 +445,10 @@ pub fn create_transaction_with(
         stx_builder.with_output(utxo, script_offset_pvt_key).unwrap();
     });
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
-    stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    stx_protocol
+        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
     stx_protocol.take_transaction().unwrap()
 }
 
@@ -513,7 +516,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             .unwrap();
     }
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     // The change output is assigned its own random script offset private key
     let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();
@@ -539,9 +542,12 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         test_params_change_and_txn.script_private_key.clone(),
         change_sender_offset_public_key,
         metadata_sig,
+        0,
     );
     outputs.push(change_output);
-    stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stx_protocol
+        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs, test_params_change_and_txn)
 }

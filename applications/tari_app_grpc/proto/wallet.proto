@@ -54,12 +54,14 @@ service Wallet {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Cancel pending transaction
     rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
-    // Will triggger a complete revalidation of all wallet outputs.
+    // Will trigger a complete revalidation of all wallet outputs.
     rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
     // This will send a XTR SHA Atomic swap transaction
     rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
     // This will claim a XTR SHA Atomic swap transaction
     rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
+    // This will claim a HTLC refund transaction
+    rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
 }
 
 message GetVersionRequest { }
@@ -122,6 +124,15 @@ message ClaimShaAtomicSwapRequest{
 }
 
 message ClaimShaAtomicSwapResponse {
+    TransferResult results = 1;
+}
+
+message ClaimHtlcRefundRequest{
+    string output_hash = 1;
+    uint64 fee_per_gram = 2;
+}
+
+message ClaimHtlcRefundResponse {
     TransferResult results = 1;
 }
 

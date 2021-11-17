@@ -88,6 +88,7 @@ pub enum WalletCommand {
     ClearCustomBaseNode,
     InitShaAtomicSwap,
     FinaliseShaAtomicSwap,
+    ClaimShaAtomicSwapRefund,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -201,6 +202,27 @@ pub async fn finalise_sha_atomic_swap(
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC atomic swap".into())
+        .await?;
+    Ok(tx_id)
+}
+
+/// claims a HTLC refund transaction
+pub async fn claim_htlc_refund(
+    mut output_service: OutputManagerHandle,
+    mut transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError> {
+    use ParsedArgument::*;
+    let output = match args[0].clone() {
+        Hash(output) => Ok(output),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let (tx_id, fee, amount, tx) = output_service
+        .create_htlc_refund_transaction(output, MicroTari(25))
+        .await?;
+    transaction_service
+        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC refund".into())
         .await?;
     Ok(tx_id)
 }
@@ -756,6 +778,11 @@ pub async fn command_runner(
             FinaliseShaAtomicSwap => {
                 let tx_id =
                     finalise_sha_atomic_swap(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            ClaimShaAtomicSwapRefund => {
+                let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(), parsed.args).await?;
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },

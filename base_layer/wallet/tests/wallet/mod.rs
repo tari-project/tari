@@ -156,7 +156,7 @@ async fn create_wallet(
         None,
         None,
     );
-    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
     let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
@@ -241,7 +241,7 @@ async fn test_wallet() {
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
-    alice_wallet.output_manager_service.add_output(uo1).await.unwrap();
+    alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
     alice_wallet
         .transaction_service
@@ -577,7 +577,7 @@ fn test_store_and_forward_send_tx() {
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     alice_runtime
-        .block_on(alice_wallet.output_manager_service.add_output(uo1))
+        .block_on(alice_wallet.output_manager_service.add_output(uo1, None))
         .unwrap();
 
     let tx_id = alice_runtime
@@ -738,6 +738,7 @@ async fn test_import_utxo() {
             utxo.metadata_signature.clone(),
             &p.script_private_key,
             &p.sender_offset_public_key,
+            0,
         )
         .await
         .unwrap();
