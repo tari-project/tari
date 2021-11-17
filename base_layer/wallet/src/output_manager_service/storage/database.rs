@@ -25,6 +25,9 @@ use crate::output_manager_service::{
     service::Balance,
     storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
 };
+use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::output_manager_service::service::UTXOSelectionStrategy;
 use aes_gcm::Aes256Gcm;
 use log::*;
 use std::{
@@ -35,7 +38,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlindingFactor, Commitment, HashOutput},
 };
-use tari_core::transactions::transaction::TransactionOutput;
+use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
 use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -130,6 +133,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     ) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
     fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+
+    fn fetch_unspent_outputs_for_spending(
+        &self,
+        strategy: UTXOSelectionStrategy,
+        amount: u64,
+        current_tip_height: Option<u64>,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -144,6 +154,7 @@ pub struct KeyManagerState {
 pub enum DbKey {
     SpentOutput(BlindingFactor),
     UnspentOutput(BlindingFactor),
+    UnspentOutputHash(HashOutput),
     AnyOutputByCommitment(Commitment),
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
@@ -387,6 +398,22 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
+    /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
+    pub async fn fetch_unspent_outputs_for_spending(
+        &self,
+        strategy: UTXOSelectionStrategy,
+        amount: MicroTari,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let utxos = tokio::task::spawn_blocking(move || {
+            db_clone.fetch_unspent_outputs_for_spending(strategy, amount.as_u64(), tip_height)
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(utxos)
+    }
+
     pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -516,6 +543,27 @@ where T: OutputManagerBackend + 'static
         Ok(scripts)
     }
 
+    pub async fn get_unspent_output(&self, output: HashOutput) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(
+            move || match db_clone.fetch(&DbKey::UnspentOutputHash(output.clone())) {
+                Ok(None) => log_error(
+                    DbKey::UnspentOutputHash(output.clone()),
+                    OutputManagerStorageError::UnexpectedResult(
+                        "Could not retrieve unspent output: ".to_string() + &output.to_hex(),
+                    ),
+                ),
+                Ok(Some(DbValue::UnspentOutput(uo))) => Ok(uo),
+                Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputHash(output), other),
+                Err(e) => log_error(DbKey::UnspentOutputHash(output), e),
+            },
+        )
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(*uo)
+    }
+
     pub async fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
         self.db.get_last_mined_output()
     }
@@ -630,6 +678,7 @@ impl Display for DbKey {
         match self {
             DbKey::SpentOutput(_) => f.write_str(&"Spent Output Key".to_string()),
             DbKey::UnspentOutput(_) => f.write_str(&"Unspent Output Key".to_string()),
+            DbKey::UnspentOutputHash(_) => f.write_str(&"Unspent Output Hash Key".to_string()),
             DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
             DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
             DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),

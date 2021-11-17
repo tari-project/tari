@@ -59,6 +59,7 @@ impl Display for ParsedCommand {
             ClearCustomBaseNode => "clear-custom-base-node",
             InitShaAtomicSwap => "init-sha-atomic-swap",
             FinaliseShaAtomicSwap => "finalise-sha-atomic-swap",
+            ClaimShaAtomicSwapRefund => "claim-sha-atomic-swap-refund",
         };
 
         let args = self
@@ -130,6 +131,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         ClearCustomBaseNode => Vec::new(),
         InitShaAtomicSwap => parse_init_sha_atomic_swap(args)?,
         FinaliseShaAtomicSwap => parse_finalise_sha_atomic_swap(args)?,
+        ClaimShaAtomicSwapRefund => parse_claim_htlc_refund_refund(args)?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -215,6 +217,18 @@ fn parse_finalise_sha_atomic_swap(mut args: SplitWhitespace) -> Result<Vec<Parse
     let pre_image = args.next().ok_or_else(|| ParseError::Empty("public key".to_string()))?;
     let pre_image = parse_emoji_id_or_public_key(pre_image).ok_or(ParseError::PublicKey)?;
     parsed_args.push(ParsedArgument::PublicKey(pre_image));
+
+    Ok(parsed_args)
+}
+
+fn parse_claim_htlc_refund_refund(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+    // hash
+    let hash = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("Output hash".to_string()))?;
+    let hash = parse_hash(hash).ok_or(ParseError::Hash)?;
+    parsed_args.push(ParsedArgument::Hash(hash));
 
     Ok(parsed_args)
 }

@@ -41,24 +41,35 @@ pub const LOG_TARGET: &str = "c::val::transaction_validators";
 /// 1. Range proofs of the outputs are valid
 ///
 /// This function does NOT check that inputs come from the UTXO set
-pub struct TxInternalConsistencyValidator {
+pub struct TxInternalConsistencyValidator<B> {
+    db: BlockchainDatabase<B>,
     factories: CryptoFactories,
     bypass_range_proof_verification: bool,
 }
 
-impl TxInternalConsistencyValidator {
-    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool) -> Self {
+impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
+    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool, db: BlockchainDatabase<B>) -> Self {
         Self {
+            db,
             factories,
             bypass_range_proof_verification,
         }
     }
 }
 
-impl MempoolTransactionValidation for TxInternalConsistencyValidator {
+impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistencyValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        tx.validate_internal_consistency(self.bypass_range_proof_verification, &self.factories, None)
-            .map_err(ValidationError::TransactionError)?;
+        let db = self.db.db_read_access()?;
+        let tip = db.fetch_chain_metadata()?;
+
+        tx.validate_internal_consistency(
+            self.bypass_range_proof_verification,
+            &self.factories,
+            None,
+            Some(tip.best_block().clone()),
+            Some(tip.height_of_longest_chain()),
+        )
+        .map_err(ValidationError::TransactionError)?;
         Ok(())
     }
 }

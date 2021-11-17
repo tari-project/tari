@@ -31,7 +31,7 @@ use crate::{
         resources::OutputManagerResources,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
         },
         tasks::TxoValidationTask,
         MasterKeyManager,
@@ -43,7 +43,7 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{cmp::Ordering, convert::TryInto, fmt, fmt::Display, sync::Arc};
+use std::{convert::TryInto, fmt, fmt::Display, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
     types::{HashOutput, PrivateKey, PublicKey},
@@ -187,12 +187,16 @@ where
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
         match request {
-            OutputManagerRequest::AddOutput(uo) => self
-                .add_output(None, *uo)
+            OutputManagerRequest::AddOutput((uo, spend_priority)) => self
+                .add_output(None, *uo, spend_priority)
                 .await
                 .map(|_| OutputManagerResponse::OutputAdded),
-            OutputManagerRequest::AddOutputWithTxId((tx_id, uo)) => self
-                .add_output(Some(tx_id), *uo)
+            OutputManagerRequest::AddOutputWithTxId((tx_id, uo, spend_priority)) => self
+                .add_output(Some(tx_id), *uo, spend_priority)
+                .await
+                .map(|_| OutputManagerResponse::OutputAdded),
+            OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
+                .add_unvalidated_output(tx_id, *uo, spend_priority)
                 .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
@@ -339,10 +343,10 @@ where
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
-            OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo)) => self
-                .add_unvalidated_output(tx_id, *uo)
+            OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram) => self
+                .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
-                .map(|_| OutputManagerResponse::OutputAdded),
+                .map(OutputManagerResponse::ClaimHtlcTransaction),
         }
     }
 
@@ -360,7 +364,7 @@ where
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .await
-            .map(OutputManagerResponse::ClaimShaAtomicSwapTransaction)
+            .map(OutputManagerResponse::ClaimHtlcTransaction)
     }
 
     fn handle_base_node_service_event(&mut self, event: Arc<BaseNodeEvent>) {
@@ -422,12 +426,23 @@ where
     }
 
     /// Add an unblinded output to the outputs table and marks is as `Unspent`.
-    pub async fn add_output(&mut self, tx_id: Option<TxId>, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+    pub async fn add_output(
+        &mut self,
+        tx_id: Option<TxId>,
+        output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
+    ) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Add output of value {} to Output Manager", output.value
         );
-        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
+
+        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories, spend_priority)?;
+        debug!(
+            target: LOG_TARGET,
+            "saving output of hash {} to Output Manager",
+            output.hash.to_hex()
+        );
         match tx_id {
             None => self.resources.db.add_unspent_output(output).await?,
             Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output).await?,
@@ -441,12 +456,13 @@ where
         &mut self,
         tx_id: TxId,
         output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Add unvalidated output of value {} to Output Manager", output.value
         );
-        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
+        let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories, spend_priority)?;
         self.resources.db.add_unvalidated_output(tx_id, output).await?;
         Ok(())
     }
@@ -513,8 +529,10 @@ where
                     &single_round_sender_data.sender_offset_public_key.clone(),
                     &single_round_sender_data.public_commitment_nonce.clone(),
                 )?,
+                0,
             ),
             &self.resources.factories,
+            None,
         )?;
 
         self.resources
@@ -648,7 +666,7 @@ where
         }
 
         let stp = builder
-            .build::<HashDigest>(&self.resources.factories)
+            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
@@ -662,6 +680,7 @@ where
             change_output.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
+                None,
             )?);
         }
 
@@ -710,7 +729,7 @@ where
             .with_rewind_data(self.resources.master_key_manager.rewind_data().clone())
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
-        let output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
+        let output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories, None)?;
 
         // Clear any existing pending coinbase transactions for this blockheight if they exist
         if let Err(e) = self
@@ -815,8 +834,10 @@ where
                 script_private_key,
                 PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
+                0,
             ),
             &self.resources.factories,
+            None,
         )?;
         builder
             .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
@@ -841,7 +862,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories)
+            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         if input_selection.requires_change_output() {
@@ -850,7 +871,8 @@ where
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
+            let change_output =
+                DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories, None)?;
             outputs.push(change_output);
         }
 
@@ -866,7 +888,7 @@ where
         self.confirm_encumberance(tx_id).await?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories)?;
+        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -922,78 +944,40 @@ where
         let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
 
-        let uo = self.resources.db.fetch_sorted_unspent_outputs().await?;
-
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
         let (connected, tip_height) = match &chain_metadata {
-            Some(metadata) => (true, metadata.height_of_longest_chain()),
-            None => (false, 0),
+            Some(metadata) => (true, Some(metadata.height_of_longest_chain())),
+            None => (false, None),
         };
 
         // If no strategy was specified and no metadata is available, then make sure to use MaturitythenSmallest
         let strategy = match (strategy, connected) {
-            (Some(s), _) => Some(s),
-            (None, false) => Some(UTXOSelectionStrategy::MaturityThenSmallest),
-            (None, true) => None, // use the selection heuristic next
-        };
-
-        // If we know the chain height then filter out unspendable UTXOs
-        let num_utxos = uo.len();
-        let uo = if connected {
-            let mature_utxos = uo
-                .into_iter()
-                .filter(|u| u.unblinded_output.features.maturity <= tip_height)
-                .collect::<Vec<DbUnblindedOutput>>();
-
-            trace!(
-                target: LOG_TARGET,
-                "Some UTXOs have not matured yet at height {}, filtered {} UTXOs",
-                tip_height,
-                num_utxos - mature_utxos.len()
-            );
-
-            mature_utxos
-        } else {
-            uo
+            (Some(s), _) => s,
+            (None, false) => UTXOSelectionStrategy::MaturityThenSmallest,
+            (None, true) => UTXOSelectionStrategy::Default, // use the selection heuristic next
         };
 
         // Heuristic for selection strategy: Default to MaturityThenSmallest, but if the amount is greater than
         // the largest UTXO, use Largest UTXOs first.
-        let strategy = match (strategy, uo.is_empty()) {
-            (Some(s), _) => s,
-            (None, true) => UTXOSelectionStrategy::Smallest,
-            (None, false) => {
-                let largest_utxo = &uo[uo.len() - 1];
-                if amount > largest_utxo.unblinded_output.value {
-                    UTXOSelectionStrategy::Largest
-                } else {
-                    UTXOSelectionStrategy::MaturityThenSmallest
-                }
-            },
-        };
+        // let strategy = match (strategy, uo.is_empty()) {
+        //     (Some(s), _) => s,
+        //     (None, true) => UTXOSelectionStrategy::Smallest,
+        //     (None, false) => {
+        //         let largest_utxo = &uo[uo.len() - 1];
+        //         if amount > largest_utxo.unblinded_output.value {
+        //             UTXOSelectionStrategy::Largest
+        //         } else {
+        //             UTXOSelectionStrategy::MaturityThenSmallest
+        //         }
+        //     },
+        // };
         debug!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
-
-        let uo = match strategy {
-            UTXOSelectionStrategy::Smallest => uo,
-            UTXOSelectionStrategy::MaturityThenSmallest => {
-                let mut uo = uo;
-                uo.sort_by(|a, b| {
-                    match a
-                        .unblinded_output
-                        .features
-                        .maturity
-                        .cmp(&b.unblinded_output.features.maturity)
-                    {
-                        Ordering::Equal => a.unblinded_output.value.cmp(&b.unblinded_output.value),
-                        Ordering::Less => Ordering::Less,
-                        Ordering::Greater => Ordering::Greater,
-                    }
-                });
-                uo
-            },
-            UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
-        };
+        let uo = self
+            .resources
+            .db
+            .fetch_unspent_outputs_for_spending(strategy, amount, tip_height)
+            .await?;
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
@@ -1143,8 +1127,10 @@ where
                     script_private_key,
                     sender_offset_public_key,
                     metadata_signature,
+                    0,
                 ),
                 &self.resources.factories,
+                None,
             )?;
             builder
                 .with_output(utxo.unblinded_output.clone(), sender_offset_private_key)
@@ -1169,7 +1155,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories)
+            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -1189,6 +1175,7 @@ where
             outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
+                None,
             )?);
         }
 
@@ -1198,7 +1185,7 @@ where
             .await?;
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories)?;
+        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
         let fee = stp.get_fee_amount()?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, fee, utxos_total_value))
@@ -1257,6 +1244,9 @@ where
             self.node_identity.as_ref().secret_key().clone(),
             output.sender_offset_public_key,
             output.metadata_signature,
+            // Although the technically the script does have a script lock higher than 0, this does not apply to to us
+            // as we are claiming the Hashed part which has a 0 time lock
+            0,
         );
         let amount = rewound.committed_value;
 
@@ -1295,7 +1285,7 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories)
+            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let tx_id = stp.get_tx_id()?;
@@ -1303,7 +1293,8 @@ where
         let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
             OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
         })?;
-        let change_output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories)?;
+        let change_output =
+            DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories, None)?;
         outputs.push(change_output);
 
         trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
@@ -1311,9 +1302,85 @@ where
         self.confirm_encumberance(tx_id).await?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories)?;
+        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
         let tx = stp.take_transaction()?;
 
+        Ok((tx_id, fee, amount - fee, tx))
+    }
+
+    pub async fn create_htlc_refund_transaction(
+        &mut self,
+        output_hash: HashOutput,
+        fee_per_gram: MicroTari,
+    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        let output = self
+            .resources
+            .db
+            .get_unspent_output(output_hash)
+            .await?
+            .unblinded_output;
+
+        let amount = output.value;
+
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+        let message = "SHA-XTR atomic refund".to_string();
+
+        // Create builder with no recipients (other than ourselves)
+        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone())
+            .with_message(message)
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+            .with_input(
+                output.as_transaction_input(&self.resources.factories.commitment)?,
+                output,
+            );
+
+        let mut outputs = Vec::new();
+
+        let (spending_key, script_private_key) = self
+            .resources
+            .master_key_manager
+            .get_next_spend_and_script_key()
+            .await?;
+        builder.with_change_secret(spending_key);
+        builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        builder.with_change_script(
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            script_private_key,
+        );
+
+        let factories = CryptoFactories::default();
+        println!("he`");
+        let mut stp = builder
+            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        let tx_id = stp.get_tx_id()?;
+
+        let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+            OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
+        })?;
+
+        let change_output =
+            DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories, None)?;
+        outputs.push(change_output);
+
+        trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", tx_id);
+
+        let fee = stp.get_fee_amount()?;
+
+        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
+
+        let tx = stp.take_transaction()?;
+
+        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs).await?;
+        self.confirm_encumberance(tx_id).await?;
         Ok((tx_id, fee, amount - fee, tx))
     }
 
@@ -1370,9 +1437,13 @@ where
                         known_one_sided_payment_scripts[i].private_key.clone(),
                         output.sender_offset_public_key,
                         output.metadata_signature,
+                        known_one_sided_payment_scripts[i].script_lock_height,
                     );
-                    let db_output =
-                        DbUnblindedOutput::from_unblinded_output(rewound_output.clone(), &self.resources.factories)?;
+                    let db_output = DbUnblindedOutput::from_unblinded_output(
+                        rewound_output.clone(),
+                        &self.resources.factories,
+                        None,
+                    )?;
 
                     let output_hex = output.commitment.to_hex();
                     match self.resources.db.add_unspent_output(db_output).await {
@@ -1410,7 +1481,7 @@ where
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
 /// TODO Investigate and implement more optimal strategies
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
     // is removing small UTXOs from the blockchain, con is that it costs more in fees
@@ -1419,6 +1490,9 @@ pub enum UTXOSelectionStrategy {
     MaturityThenSmallest,
     // A strategy that selects the largest UTXOs first. Preferred when the amount is large
     Largest,
+    // Heuristic for selection strategy: MaturityThenSmallest, but if the amount is greater than
+    // the largest UTXO, use Largest UTXOs first
+    Default,
 }
 
 impl Display for UTXOSelectionStrategy {
@@ -1427,6 +1501,7 @@ impl Display for UTXOSelectionStrategy {
             UTXOSelectionStrategy::Smallest => write!(f, "Smallest"),
             UTXOSelectionStrategy::MaturityThenSmallest => write!(f, "MaturityThenSmallest"),
             UTXOSelectionStrategy::Largest => write!(f, "Largest"),
+            UTXOSelectionStrategy::Default => write!(f, "Default"),
         }
     }
 }
