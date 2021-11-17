@@ -26,14 +26,13 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::error::MnemonicError;
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -284,6 +283,22 @@ impl From<WalletError> for LibWalletError {
             },
             WalletError::WalletStorageError(WalletStorageError::InvalidPassphrase) => Self {
                 code: 428,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::InvalidData) => Self {
+                code: 429,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::VersionMismatch) => Self {
+                code: 430,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::DecryptionFailed) => Self {
+                code: 431,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::CrcError) => Self {
+                code: 432,
                 message: format!("{:?}", w),
             },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
