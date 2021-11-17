@@ -1071,7 +1071,8 @@ pub unsafe extern "C" fn seed_words_push_word(
         return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
             log::error!(
                 target: LOG_TARGET,
-                "Problem building valid private seed from seed phrase: {}", e
+                "Problem building valid private seed from seed phrase: {}",
+                e
             );
             error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
