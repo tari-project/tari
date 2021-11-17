@@ -78,6 +78,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
     wallet_modes::PeerConfig,
 };
+use tari_common_types::types::CompressedPublicKey;
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 
@@ -201,7 +202,7 @@ impl AppState {
     }
 
     // Return alias or pub key if the contact is not in the list.
-    pub fn get_alias(&self, pub_key: &RistrettoPublicKey) -> String {
+    pub fn get_alias(&self, pub_key: &CompressedPublicKey) -> String {
         let pub_key_hex = format!("{}", pub_key);
         // TODO: We can uncomment this to indicated unknown origin, otherwise there is our pub key.
         // if self.get_identity().public_key == pub_key_hex {
@@ -407,7 +408,7 @@ impl AppState {
     }
 
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
-        let pub_key = PublicKey::from_hex(public_key.as_str())?;
+        let pub_key = CompressedPublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
         let node_id = NodeId::from_key(&pub_key);
         let peer = Peer::new(

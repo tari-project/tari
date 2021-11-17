@@ -43,7 +43,11 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 use tari_common::GlobalConfig;
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    emoji::EmojiId,
+    transaction::TxId,
+    types::{CompressedPublicKey, PublicKey},
+};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -107,7 +111,7 @@ pub struct SentTransaction {}
 
 fn get_transaction_parameters(
     args: Vec<ParsedArgument>,
-) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
+) -> Result<(MicroTari, MicroTari, CompressedPublicKey, String), CommandError> {
     // TODO: Consolidate "fee per gram" in codebase
     let fee_per_gram = 25 * uT;
 
@@ -132,7 +136,7 @@ fn get_transaction_parameters(
 
 fn get_init_sha_atomic_swap_parameters(
     args: Vec<ParsedArgument>,
-) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
+) -> Result<(MicroTari, MicroTari, CompressedPublicKey, String), CommandError> {
     // TODO: Consolidate "fee per gram" in codebase
     let fee_per_gram = 25 * uT;
 
@@ -171,7 +175,7 @@ pub async fn send_tari(
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
-) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
+) -> Result<(TxId, CompressedPublicKey, TransactionOutput), CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_init_sha_atomic_swap_parameters(args)?;
 
     let (tx_id, pre_image, output) = wallet_transaction_service
