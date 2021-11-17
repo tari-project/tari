@@ -22,19 +22,9 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{
-        Committee,
-        HotStuffMessage,
-        HotStuffMessageType,
-        Payload,
-        QuorumCertificate,
-        View,
-        ViewId,
-    },
-    services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-    },
-    storage::UnitOfWork,
+    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
+    services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+    storage::chain::ChainUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
@@ -77,7 +67,7 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: UnitOfWork>(
+    pub async fn next_event<TUnitOfWork: ChainUnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
@@ -206,7 +196,7 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: UnitOfWork>(
+    async fn process_replica_message<TUnitOfWork: ChainUnitOfWork>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,

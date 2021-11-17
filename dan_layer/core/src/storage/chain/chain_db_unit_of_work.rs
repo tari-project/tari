@@ -23,7 +23,7 @@
 use crate::{
     models::{Instruction, QuorumCertificate, TreeNodeHash},
     storage::{
-        chain::{db_node::DbNode, ChainUnitOfWork, DbInstruction, DbQc},
+        chain::{db_node::DbNode, ChainBackendAdapter, ChainUnitOfWork, DbInstruction, DbQc},
         unit_of_work_tracker::UnitOfWorkTracker,
         StorageError,
     },
@@ -34,11 +34,11 @@ use std::{
 };
 
 // Cloneable, Send, Sync wrapper
-pub struct ChainDbUnitOfWork<TBackendAdapter: BackendAdapter> {
+pub struct ChainDbUnitOfWork<TBackendAdapter: ChainBackendAdapter> {
     inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
 }
 
-impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
     pub fn new(adapter: TBackendAdapter) -> Self {
         Self {
             inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(adapter))),
@@ -46,7 +46,7 @@ impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
     }
 }
 
-impl<TBackendAdapter: BackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapter> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -54,7 +54,7 @@ impl<TBackendAdapter: BackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapte
     }
 }
 
-impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> ChainUnitOfWork for ChainDbUnitOfWork<TBackendAdapter> {
     // pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
     //     self.clean.push(item);
     // }
@@ -256,7 +256,7 @@ impl<TBackendAdapter: BackendAdapter> UnitOfWork for ChainDbUnitOfWork<TBackendA
     }
 }
 
-pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
+pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainBackendAdapter> {
     backend_adapter: TBackendAdapter,
     nodes: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>)>,
     instructions: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbInstruction>)>,
@@ -264,12 +264,12 @@ pub struct ChainDbUnitOfWorkInner<TBackendAdapter: BackendAdapter> {
     prepare_qc: Option<UnitOfWorkTracker<DbQc>>,
 }
 
-impl<T: BackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
+impl<T: ChainBackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Nodes:{:?}", self.nodes)
     }
 }
-impl<TBackendAdapter: BackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
     pub fn new(backend_adapter: TBackendAdapter) -> Self {
         Self {
             backend_adapter,

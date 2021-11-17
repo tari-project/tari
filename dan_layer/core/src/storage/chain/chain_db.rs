@@ -34,11 +34,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub struct ChainDb<TBackendAdapter: BackendAdapter> {
+pub struct ChainDb<TBackendAdapter: ChainBackendAdapter> {
     adapter: TBackendAdapter,
 }
 
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn new(adapter: TBackendAdapter) -> ChainDb<TBackendAdapter> {
         ChainDb { adapter }
     }
@@ -54,12 +54,12 @@ impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
     }
 }
 
-impl<TBackendAdapter: BackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
     pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdapter> {
         ChainDbUnitOfWork::new(self.adapter.clone())
     }
 }
-impl<TBackendAdapter: BackendAdapter> ChainDb<TBackendAdapter> {
+impl<TBackendAdapter: ChainBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn is_empty(&self) -> Result<bool, StorageError> {
         self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
     }

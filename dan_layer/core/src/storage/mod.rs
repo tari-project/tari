@@ -46,7 +46,7 @@ use std::{
     },
 };
 pub use store::{AssetDataStore, AssetStore};
-mod chain;
+pub mod chain;
 mod chain_storage_service;
 mod db_factory;
 mod error;

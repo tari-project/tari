@@ -45,7 +45,13 @@ use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use crate::{
     models::TreeNodeHash,
     services::PayloadProcessor,
-    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StorageError, UnitOfWork},
+    storage::{
+        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        ChainStorageService,
+        DbFactory,
+        StateDbUnitOfWork,
+        StorageError,
+    },
 };
 use tokio::time::{sleep, Duration};
 
@@ -69,7 +75,7 @@ pub struct Prepare<
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: BackendAdapter,
+    TBackendAdapter: ChainBackendAdapter,
     TDbFactory: DbFactory,
 {
     node_id: TAddr,
@@ -115,7 +121,7 @@ where
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: BackendAdapter + Send + Sync,
+    TBackendAdapter: ChainBackendAdapter + Send + Sync,
     TDbFactory: DbFactory + Clone,
 {
     pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
@@ -135,7 +141,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub async fn next_event<
         TChainStorageService: ChainStorageService<TPayload>,
-        TUnitOfWork: UnitOfWork,
+        TUnitOfWork: ChainUnitOfWork,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
         &mut self,
@@ -263,7 +269,7 @@ where
     }
 
     async fn process_replica_message<
-        TUnitOfWork: UnitOfWork,
+        TUnitOfWork: ChainUnitOfWork,
         TChainStorageService: ChainStorageService<TPayload>,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
@@ -380,7 +386,7 @@ where
         &from == &node.parent()
     }
 
-    fn is_safe_node<TUnitOfWork: UnitOfWork>(
+    fn is_safe_node<TUnitOfWork: ChainUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate,

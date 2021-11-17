@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{chain::ChainDb, ChainBackendAdapter, StateDb, StateDbBackendAdapter, StorageError};
+use crate::storage::{
+    chain::{ChainBackendAdapter, ChainDb},
+    StateDb,
+    StateDbBackendAdapter,
+    StorageError,
+};
 
 pub trait DbFactory {
     type ChainDbBackendAdapter: ChainBackendAdapter;

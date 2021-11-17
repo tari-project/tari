@@ -31,7 +31,12 @@ use crate::{
         PayloadProcessor,
         PayloadProvider,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, UnitOfWork},
+    storage::{
+        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        ChainStorageService,
+        DbFactory,
+        StateDbUnitOfWork,
+    },
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -58,7 +63,7 @@ where TBaseNodeClient: BaseNodeClient
         TPayload: Payload,
         TPayloadProvider: PayloadProvider<TPayload>,
         TPayloadProcessor: PayloadProcessor<TPayload>,
-        TBackendAdapter: BackendAdapter,
+        TBackendAdapter: ChainBackendAdapter,
         TDbFactory: DbFactory,
         TChainStorageService: ChainStorageService<TPayload>,
     >(

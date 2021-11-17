@@ -24,7 +24,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Committee, HotStuffMessage, Payload, View},
     services::infrastructure_services::{NodeAddressable, OutboundService},
-    storage::{BackendAdapter, DbFactory},
+    storage::{chain::ChainBackendAdapter, DbFactory},
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -43,7 +43,7 @@ impl NextViewState {
         TPayload: Payload,
         TOutboundService: OutboundService<TAddr, TPayload>,
         TAddr: NodeAddressable + Clone + Send,
-        TBackendAdapter: BackendAdapter<Payload = TPayload>,
+        TBackendAdapter: ChainBackendAdapter<Payload = TPayload>,
         TDbFactory: DbFactory,
     >(
         &mut self,

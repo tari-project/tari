@@ -32,7 +32,13 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StateDbUnitOfWorkImpl, UnitOfWork},
+    storage::{
+        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        ChainStorageService,
+        DbFactory,
+        StateDbUnitOfWork,
+        StateDbUnitOfWorkImpl,
+    },
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
@@ -67,7 +73,7 @@ pub struct ConsensusWorker<
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    TBackendAdapter: BackendAdapter,
+    TBackendAdapter: ChainBackendAdapter,
     TDbFactory: DbFactory,
     TChainStorageService: ChainStorageService<TPayload>,
 {
@@ -132,7 +138,7 @@ where
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
     // TODO: REmove this Send
-    TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
+    TBackendAdapter: ChainBackendAdapter<Payload = TPayload> + Send + Sync,
     TDbFactory: DbFactory + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
