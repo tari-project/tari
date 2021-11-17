@@ -156,6 +156,10 @@ class WalletClient {
     return await this.client.claimShaAtomicSwapTransaction(args);
   }
 
+  async claimHtlcRefund(args) {
+    return await this.client.ClaimHtlcRefundTransaction(args);
+  }
+
   async importUtxos(outputs) {
     return await this.client.importUtxos({
       outputs: outputs,

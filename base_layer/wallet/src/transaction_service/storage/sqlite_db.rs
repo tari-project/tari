@@ -2145,7 +2145,7 @@ mod test {
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+        let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64,

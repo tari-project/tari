@@ -41,12 +41,14 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::max,
+    convert::TryInto,
     fmt::{Display, Error, Formatter},
 };
 use tari_common_types::types::{
     BlindingFactor,
     Commitment,
     CommitmentFactory,
+    HashOutput,
     PrivateKey,
     PublicKey,
     RangeProofService,
@@ -55,6 +57,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
+    script::ScriptContext,
     tari_utilities::hex::Hex,
 };
 
@@ -342,6 +345,7 @@ impl AggregateBody {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
+    #[allow(clippy::too_many_arguments)]
     pub fn validate_internal_consistency(
         &self,
         tx_offset: &BlindingFactor,
@@ -349,6 +353,8 @@ impl AggregateBody {
         bypass_range_proof_verification: bool,
         total_reward: MicroTari,
         factories: &CryptoFactories,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Result<(), TransactionError> {
         self.verify_kernel_signatures()?;
 
@@ -361,7 +367,7 @@ impl AggregateBody {
         self.verify_metadata_signatures()?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        self.validate_script_offset(script_offset_g, &factories.commitment)
+        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -425,12 +431,17 @@ impl AggregateBody {
         &self,
         script_offset: PublicKey,
         factory: &CommitmentFactory,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
+        let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
+        let height = height.unwrap_or_default();
         for input in &self.inputs {
-            input_keys = input_keys + input.run_and_verify_script(factory)?;
+            let context = ScriptContext::new(height, &prev_hash, &input.commitment);
+            input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
         }
 
         // Now lets gather the output public keys and hashes.

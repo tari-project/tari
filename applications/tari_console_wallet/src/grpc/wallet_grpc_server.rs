@@ -7,6 +7,8 @@ use tari_app_grpc::{
     tari_rpc::{
         payment_recipient::PaymentType,
         wallet_server,
+        ClaimHtlcRefundRequest,
+        ClaimHtlcRefundResponse,
         ClaimShaAtomicSwapRequest,
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
@@ -189,7 +191,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     "Transaction broadcast: {}, preimage_hex: {}, hash {}",
                     tx_id,
                     pre_image.to_hex(),
-                    output.to_string()
+                    output.hash().to_hex()
                 );
                 SendShaAtomicSwapResponse {
                     transaction_id: tx_id,
@@ -226,7 +228,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
         let output = BlockHash::from_hex(&message.output)
             .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
-
+        debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
         let mut transaction_service = self.get_transaction_service();
         let mut output_manager_service = self.get_output_manager_service();
         let response = match output_manager_service
@@ -270,6 +272,56 @@ impl wallet_server::Wallet for WalletGrpcServer {
         };
 
         Ok(Response::new(ClaimShaAtomicSwapResponse {
+            results: Some(response),
+        }))
+    }
+
+    async fn claim_htlc_refund_transaction(
+        &self,
+        request: Request<ClaimHtlcRefundRequest>,
+    ) -> Result<Response<ClaimHtlcRefundResponse>, Status> {
+        let message = request.into_inner();
+        let output = BlockHash::from_hex(&message.output_hash)
+            .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let mut output_manager_service = self.get_output_manager_service();
+        debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
+        let response = match output_manager_service
+            .create_htlc_refund_transaction(output, message.fee_per_gram.into())
+            .await
+        {
+            Ok((tx_id, fee, amount, tx)) => {
+                match transaction_service
+                    .submit_transaction(tx_id, tx, fee, amount, "Creating HTLC refund transaction".to_string())
+                    .await
+                {
+                    Ok(()) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: tx_id,
+                        is_success: true,
+                        failure_message: Default::default(),
+                    },
+                    Err(e) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to claim HTLC refund transaction: {}", e);
+                TransferResult {
+                    address: Default::default(),
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(ClaimHtlcRefundResponse {
             results: Some(response),
         }))
     }
