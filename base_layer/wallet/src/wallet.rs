@@ -373,7 +373,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_unvalidated_output(tx_id, unblinded_output.clone())
             .await?;
 
         info!(

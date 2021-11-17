@@ -744,7 +744,7 @@ async fn test_import_utxo() {
 
     let balance = alice_wallet.output_manager_service.get_balance().await.unwrap();
 
-    assert_eq!(balance.available_balance, 20000 * uT);
+    assert_eq!(balance.pending_incoming_balance, 20000 * uT);
 
     let completed_tx = alice_wallet
         .transaction_service
@@ -755,8 +755,6 @@ async fn test_import_utxo() {
         .expect("Tx should be in collection");
 
     assert_eq!(completed_tx.amount, 20000 * uT);
-    let stored_utxo = alice_wallet.output_manager_service.get_unspent_outputs().await.unwrap()[0].clone();
-    assert_eq!(stored_utxo, utxo);
 }
 
 #[test]

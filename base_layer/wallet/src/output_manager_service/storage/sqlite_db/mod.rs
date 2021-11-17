@@ -1166,6 +1166,30 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
         Ok(())
     }
+
+    fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn).is_ok() {
+            return Err(OutputManagerStorageError::DuplicateOutput);
+        }
+        let mut new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id), None)?;
+        self.encrypt_if_necessary(&mut new_output)?;
+        new_output.commit(&conn)?;
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
 }
 
 impl TryFrom<i32> for OutputStatus {

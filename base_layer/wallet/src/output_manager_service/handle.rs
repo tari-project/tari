@@ -48,6 +48,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(Box<UnblindedOutput>),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
+    AddUnvalidatedOutput((TxId, Box<UnblindedOutput>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
@@ -131,6 +132,9 @@ impl fmt::Display for OutputManagerRequest {
                 pre_image,
                 fee_per_gram,
             ),
+            OutputManagerRequest::AddUnvalidatedOutput((t, v)) => {
+                write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
+            },
         }
     }
 }
@@ -227,6 +231,21 @@ impl OutputManagerHandle {
         match self
             .handle
             .call(OutputManagerRequest::AddOutputWithTxId((tx_id, Box::new(output))))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_unvalidated_output(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddUnvalidatedOutput((tx_id, Box::new(output))))
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
