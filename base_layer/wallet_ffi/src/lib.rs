@@ -4393,7 +4393,25 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*spending_key).clone(),
         &Default::default(),
     )) {
-        Ok(tx_id) => tx_id,
+        Ok(tx_id) => {
+            if let Err(e) = (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.output_manager_service.validate_txos())
+            {
+                error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return 0;
+            }
+            if let Err(e) = (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.transaction_service.validate_transactions())
+            {
+                error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return 0;
+            }
+            tx_id
+        },
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
