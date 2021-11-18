@@ -147,7 +147,7 @@ use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus},
-    types::{ComSignature, PublicKey},
+    types::PublicKey,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -194,6 +194,8 @@ use crate::{
     error::{InterfaceError, TransactionError},
     tasks::recovery_event_monitoring,
 };
+use tari_common_types::types::CompressedComSig;
+use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
 mod callback_handler;
 #[cfg(test)]
@@ -596,7 +598,7 @@ pub unsafe extern "C" fn public_key_from_private_key(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let m = TariPublicKey::from_secret_key(&(*secret_key));
+    let m = PublicKey::from_secret_key(&(*secret_key)).compress();
     Box::into_raw(Box::new(m))
 }
 
@@ -3127,7 +3129,7 @@ pub unsafe extern "C" fn wallet_sign_message(
     match signature {
         Ok(s) => {
             let hex_sig = s.get_signature().to_hex();
-            let hex_nonce = s.get_public_nonce().to_hex();
+            let hex_nonce = s.get_public_nonce().compress().to_hex();
             let hex_return = format!("{}|{}", hex_sig, hex_nonce);
             result = CString::new(hex_return).unwrap();
         },
@@ -3201,9 +3203,12 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
             let public_nonce = TariPublicKey::from_hex(hex_keys.get(1).unwrap());
             match public_nonce {
                 Ok(pn) => {
-                    result = (*wallet)
-                        .wallet
-                        .verify_message_signature((*public_key).clone(), pn, p, message)
+                    result = (*wallet).wallet.verify_message_signature(
+                        (*public_key).decompress().expect("fix me"),
+                        pn.decompress().expect("fix me"),
+                        p,
+                        message,
+                    )
                 },
                 Err(e) => {
                     error = LibWalletError::from(e).code;
@@ -4380,7 +4385,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         CString::new("Imported UTXO").unwrap().to_str().unwrap().to_owned()
     };
 
-    let public_script_key = PublicKey::from_secret_key(&(*spending_key));
+    let public_script_key = PublicKey::from_secret_key(&(*spending_key)).compress();
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
@@ -4389,7 +4394,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*source_public_key).clone(),
         OutputFeatures::default(),
         message_string,
-        ComSignature::default(),
+        CompressedComSig::default(),
         &(*spending_key).clone(),
         &Default::default(),
     )) {

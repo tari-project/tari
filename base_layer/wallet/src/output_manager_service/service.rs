@@ -48,7 +48,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{CompressedPublicKey, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     proto::base_node::FetchMatchingUtxos,

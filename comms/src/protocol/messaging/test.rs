@@ -46,13 +46,13 @@ use crate::{
         node_identity::build_node_identity,
         transport,
     },
-    types::{CommsDatabase, CommsPublicKey},
+    types::CommsDatabase,
 };
 use bytes::Bytes;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::OsRng;
 use std::{io, sync::Arc, time::Duration};
-use tari_crypto::keys::PublicKey;
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
 use tokio::{
@@ -114,10 +114,10 @@ async fn new_inbound_substream_handling() {
         spawn_messaging_protocol().await;
 
     let expected_node_id = node_id::random();
-    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
     peer_manager
         .add_peer(Peer::new(
-            pk.clone(),
+            pk.compress(),
             expected_node_id.clone(),
             MultiaddressesWithStats::default(),
             PeerFlags::empty(),

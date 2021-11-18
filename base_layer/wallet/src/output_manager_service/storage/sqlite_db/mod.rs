@@ -41,10 +41,7 @@ use tokio::time::Instant;
 
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
-use tari_common_types::{
-    transaction::TxId,
-    types::{Commitment, PrivateKey},
-};
+use tari_common_types::{transaction::TxId, types::PrivateKey};
 use tari_core::transactions::transaction::TransactionOutput;
 use tari_key_manager::cipher_seed::CipherSeed;
 

@@ -33,7 +33,7 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 
-use tari_common_types::types::{ComSignature, CompressedComSig, CompressedPublicKey, PrivateKey, PublicKey};
+use tari_common_types::types::{CompressedComSig, CompressedPublicKey, PrivateKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},

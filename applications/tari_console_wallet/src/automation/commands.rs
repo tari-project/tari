@@ -43,11 +43,7 @@ use crate::{
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 use tari_common::GlobalConfig;
-use tari_common_types::{
-    emoji::EmojiId,
-    transaction::TxId,
-    types::{CompressedPublicKey, PublicKey},
-};
+use tari_common_types::{emoji::EmojiId, transaction::TxId, types::CompressedPublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,

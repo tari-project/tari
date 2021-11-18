@@ -11,6 +11,7 @@ edition = "2018"
 tari_core = { path = "../../base_layer/core",  default-features = false }
 tari_common = {  path = "../../common" }
 tari_comms = {  path = "../../comms" }
+tari_common_types = {path = "../../base_layer/common_types"}
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_crypto = { git = "https://github.com/mikethetike/tari-crypto.git", branch = "mb-compressed-pk" }
 tari_app_grpc = {  path = "../tari_app_grpc" }

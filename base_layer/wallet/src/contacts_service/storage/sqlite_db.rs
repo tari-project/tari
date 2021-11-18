@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use tari_crypto::tari_utilities::ByteArray;
 
-use tari_common_types::types::{CompressedPublicKey, PublicKey};
+use tari_common_types::types::CompressedPublicKey;
 
 use crate::{
     contacts_service::{

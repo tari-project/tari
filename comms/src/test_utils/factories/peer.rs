@@ -28,7 +28,7 @@ use crate::{
 use multiaddr::Multiaddr;
 use rand::rngs::OsRng;
 use std::iter::repeat_with;
-use tari_crypto::keys::PublicKey;
+use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
 pub fn create_many(n: usize) -> PeersFactory {
     PeersFactory::default().with_count(n)
@@ -71,8 +71,8 @@ impl TestFactory for PeerFactory {
             .public_key
             .clone()
             .or_else(|| {
-                let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
-                Some(pk)
+                let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+                Some(pk.compress())
             })
             .unwrap();
 

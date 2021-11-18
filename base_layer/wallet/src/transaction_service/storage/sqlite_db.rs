@@ -46,7 +46,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, PrivateKey, PublicKey, Signature},
+    types::{BlockHash, PrivateKey},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;

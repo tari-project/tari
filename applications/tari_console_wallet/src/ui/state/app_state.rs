@@ -30,7 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tokio::{
     sync::{watch, RwLock},
@@ -41,7 +41,6 @@ use tari_common::{configuration::Network, GlobalConfig};
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
 };
 use tari_comms::{
     connectivity::ConnectivityEventRx,

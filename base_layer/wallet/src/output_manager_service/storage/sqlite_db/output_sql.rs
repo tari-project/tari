@@ -42,15 +42,7 @@ use log::*;
 use std::convert::TryFrom;
 use tari_common_types::{
     transaction::TxId,
-    types::{
-        ComSignature,
-        Commitment,
-        CompressedComSig,
-        CompressedCommitment,
-        CompressedPublicKey,
-        PrivateKey,
-        PublicKey,
-    },
+    types::{CompressedComSig, CompressedCommitment, CompressedPublicKey, PrivateKey},
 };
 use tari_core::{
     tari_utilities::hash::Hashable,

@@ -414,11 +414,7 @@ where D: Deserializer<'de> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::types::{CommsPublicKey, CommsSecretKey};
-    use tari_crypto::{
-        keys::{PublicKey, SecretKey},
-        tari_utilities::byte_array::ByteArray,
-    };
+    use tari_crypto::tari_utilities::byte_array::ByteArray;
 
     #[test]
     fn display() {
@@ -427,19 +423,6 @@ mod test {
 
         let result = format!("{}", node_id);
         assert_eq!("901c6a70dcc5d87709d92a4d9f", result);
-    }
-
-    #[test]
-    fn test_from_public_key() {
-        let mut rng = rand::rngs::OsRng;
-        let sk = CommsSecretKey::random(&mut rng);
-        let pk = CommsPublicKey::from_secret_key(&sk);
-        let node_id = NodeId::from_key(&pk);
-        assert_ne!(node_id.0.to_vec(), NodeId::new().0.to_vec());
-        // Ensure node id is different to original public key
-        let mut pk_array: [u8; 32] = [0; 32];
-        pk_array.copy_from_slice(pk.as_bytes());
-        assert_ne!(node_id.0.to_vec(), pk_array.to_vec());
     }
 
     #[test]

@@ -64,7 +64,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
-use tari_common_types::types::Signature;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>

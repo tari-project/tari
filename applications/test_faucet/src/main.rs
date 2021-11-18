@@ -12,7 +12,7 @@ use serde::Serialize;
 use tari_crypto::script;
 use tokio::{sync::mpsc, task};
 
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::PrivateKey;
 use tari_core::transactions::{
     tari_amount::{MicroTari, T},
     test_helpers,
@@ -111,13 +111,13 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
         }
     }
     let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let excess = pk.compress();
     let kernel = TransactionKernel {
         features: KernelFeatures::empty(),
         fee: MicroTari::from(0),
         lock_height: 0,
         excess,
-        excess_sig: sig,
+        excess_sig: sig.compress(),
     };
     let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 

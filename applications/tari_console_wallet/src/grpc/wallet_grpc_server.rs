@@ -59,7 +59,7 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::{BlockHash, Signature};
+use tari_common_types::types::BlockHash;
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},

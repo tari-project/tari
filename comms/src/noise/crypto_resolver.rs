@@ -134,24 +134,24 @@ mod test {
         let keypair = build_keypair();
 
         let sk = CommsSecretKey::from_bytes(&keypair.private).unwrap();
-        let expected_pk = CommsPublicKey::from_secret_key(&sk);
+        let expected_pk = RistrettoPublicKey::from_secret_key(&sk).compress();
         let pk = CommsPublicKey::from_bytes(&keypair.public).unwrap();
         assert_eq!(pk, expected_pk);
     }
 
     #[test]
     fn dh() {
-        let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let dh = CommsDiffieHellman {
-            public_key: public_key.clone(),
+            public_key: public_key.compress(),
             secret_key,
         };
 
-        let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);
-        let expected_shared = CommsPublicKey::shared_secret(&secret_key2, &public_key);
+        let (secret_key2, public_key2) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let expected_shared = RistrettoPublicKey::shared_secret(&secret_key2, &public_key).compress();
 
         let mut out = [0; 32];
-        dh.dh(public_key2.as_bytes(), &mut out).unwrap();
+        dh.dh(public_key2.compress().as_bytes(), &mut out).unwrap();
         let shared = CommsPublicKey::from_bytes(&out).unwrap();
 
         assert_eq!(shared, expected_shared);

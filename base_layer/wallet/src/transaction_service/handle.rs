@@ -33,7 +33,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use tari_common_types::types::{CompressedPublicKey, PublicKey};
+use tari_common_types::types::CompressedPublicKey;
 use tari_core::transactions::transaction::TransactionOutput;
 
 /// API Request enum

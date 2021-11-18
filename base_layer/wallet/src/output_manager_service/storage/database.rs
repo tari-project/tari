@@ -33,7 +33,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, CompressedCommitment, HashOutput},
+    types::{BlindingFactor, CompressedCommitment, HashOutput},
 };
 use tari_core::transactions::transaction::TransactionOutput;
 use tari_key_manager::cipher_seed::CipherSeed;

@@ -359,6 +359,7 @@ mod test {
     fn test_is_banned_and_ban_for() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
+        let pk = pk.compress();
         let node_id = NodeId::from_key(&pk);
         let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
         let mut peer: Peer = Peer::new(
@@ -398,6 +399,7 @@ mod test {
     fn test_update() {
         let mut rng = rand::rngs::OsRng;
         let (_sk, public_key1) = RistrettoPublicKey::random_keypair(&mut rng);
+        let public_key1 = public_key1.compress();
         let node_id = NodeId::from_key(&public_key1);
         let net_address1 = "/ip4/124.0.0.124/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut peer: Peer = Peer::new(

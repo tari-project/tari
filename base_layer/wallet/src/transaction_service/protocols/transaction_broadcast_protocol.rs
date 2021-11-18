@@ -38,7 +38,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
-    types::{CompressedSignature, Signature},
+    types::CompressedSignature,
 };
 use tari_core::{
     base_node::{
