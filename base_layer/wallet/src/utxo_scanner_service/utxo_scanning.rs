@@ -33,11 +33,17 @@ use chrono::Utc;
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tokio::{sync::broadcast, task, time};
+use tokio::{
+    sync::{broadcast, watch},
+    task,
+    time,
+    time::MissedTickBehavior,
+};
 
 use tari_common_types::{transaction::TxId, types::HashOutput};
 use tari_comms::{
-    peer_manager::NodeId,
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
     NodeIdentity,
@@ -52,7 +58,7 @@ use tari_core::{
     tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_entities::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -70,8 +76,6 @@ use crate::{
     utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
     WalletSqlite,
 };
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
-use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 

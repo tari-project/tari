@@ -44,9 +44,9 @@
 
 use std::convert::TryFrom;
 
+use randomx_rs::RandomXFlag;
 use tempfile::{tempdir, TempDir};
 
-use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
@@ -62,6 +62,7 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
+    blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     crypto::tari_utilities::Hashable,
     proto::{
@@ -72,7 +73,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_entities::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
@@ -82,7 +83,6 @@ use crate::helpers::{
     block_builders::{chain_block, create_genesis_block_with_coinbase_value},
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
-use tari_core::blocks::ChainBlock;
 
 mod helpers;
 

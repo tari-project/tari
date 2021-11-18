@@ -20,19 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tokio::sync::mpsc::UnboundedSender;
+
+use tari_common_types::types::Signature;
+use tari_comms::peer_manager::NodeId;
+use tari_service_framework::{reply_channel::SenderService, Service};
+
 use crate::{
     mempool::{
         service::{MempoolRequest, MempoolResponse, MempoolServiceError},
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use log::*;
-use tari_common_types::types::Signature;
-use tari_comms::peer_manager::NodeId;
-use tari_service_framework::{reply_channel::SenderService, Service};
-use tokio::sync::mpsc::UnboundedSender;
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 

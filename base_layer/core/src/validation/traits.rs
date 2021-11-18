@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use async_trait::async_trait;
+
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
-use async_trait::async_trait;
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 /// A validator that determines if a block body is valid, assuming that the header has already been
 /// validated

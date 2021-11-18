@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common::configuration::Network;
+use tari_test_utils::unpack_enum;
+
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -33,12 +38,9 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        transaction::{Transaction, UnblindedOutput},
+        transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
     },
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -237,8 +239,9 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
-    use super::*;
     use crate::chain_storage::ChainStorageError;
+
+    use super::*;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -350,17 +353,18 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use super::*;
     use crate::{
         chain_storage::ChainStorageError,
         crypto::tari_utilities::hex::Hex,
         transactions::{
             tari_amount::T,
             test_helpers::{schema_to_transaction, TransactionSchema},
-            transaction::OutputFeatures,
+            transaction_entities::output_features::OutputFeatures,
         },
         txn_schema,
     };
+
+    use super::*;
 
     #[test]
     fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {

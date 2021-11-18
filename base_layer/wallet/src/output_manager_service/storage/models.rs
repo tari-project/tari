@@ -25,7 +25,7 @@ use std::cmp::Ordering;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
-    transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
+    transactions::{transaction_entities::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
 };
 use tari_crypto::script::{ExecutionStack, TariScript};
 

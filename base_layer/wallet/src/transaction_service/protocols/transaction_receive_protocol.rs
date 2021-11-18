@@ -42,7 +42,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::connectivity_service::WalletConnectivityInterface;
 use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
-    transaction::Transaction,
+    transaction_entities::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;

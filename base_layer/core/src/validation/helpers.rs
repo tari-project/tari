@@ -41,7 +41,7 @@ use crate::{
     },
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_entities::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
     validation::ValidationError,

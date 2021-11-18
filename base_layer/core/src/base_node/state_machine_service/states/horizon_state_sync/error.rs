@@ -20,20 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
-    chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction::TransactionError,
-    validation::ValidationError,
-};
 use std::num::TryFromIntError;
+
+use thiserror::Error;
+use tokio::task;
+
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_mmr::error::MerkleMountainRangeError;
-use thiserror::Error;
-use tokio::task;
+
+use crate::{
+    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
+    chain_storage::{ChainStorageError, MmrTree},
+    transactions::transaction_entities::error::TransactionError,
+    validation::ValidationError,
+};
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
