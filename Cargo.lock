@@ -6106,6 +6106,7 @@ dependencies = [
  "tari_app_grpc",
  "tari_common_types",
  "tari_crypto",
+ "tari_key_manager",
  "tari_mmr",
  "tari_utilities",
  "tauri",

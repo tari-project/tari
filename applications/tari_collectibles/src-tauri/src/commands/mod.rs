@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::app_state::ConcurrentAppState;
+
 pub mod accounts;
 pub mod assets;
 pub mod tips;
+pub mod wallets;
+
+#[tauri::command]
+pub async fn create_db(state: tauri::State<'_, ConcurrentAppState>) -> Result<(), String> {
+  let _db = state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not connect to DB: {}", e))?;
+
+  Ok(())
+}

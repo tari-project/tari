@@ -21,4 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod account;
+mod wallet;
+
 pub use account::Account;
+pub use wallet::Wallet;
