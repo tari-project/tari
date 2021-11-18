@@ -34,6 +34,7 @@ use crate::{
             OutputFeatures,
             OutputFlags,
             SideChainCheckpointFeatures,
+            TemplateParameter,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -247,6 +248,7 @@ impl TryFrom<proto::types::AssetOutputFeatures> for AssetOutputFeatures {
         Ok(Self {
             public_key,
             template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|s| s.into()).collect(),
         })
     }
 }
@@ -256,6 +258,27 @@ impl From<AssetOutputFeatures> for proto::types::AssetOutputFeatures {
         Self {
             public_key: features.public_key.as_bytes().to_vec(),
             template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
+        }
+    }
+}
+
+impl From<proto::types::TemplateParameter> for TemplateParameter {
+    fn from(source: proto::types::TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+
+impl From<TemplateParameter> for proto::types::TemplateParameter {
+    fn from(source: TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
         }
     }
 }

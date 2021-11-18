@@ -25,41 +25,28 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{Instruction, TemplateId, TokenId},
     services::MempoolService,
-    storage::{BackendAdapter, ChainStorageService, DbFactory},
+    storage::{ChainStorageService, DbFactory},
     types::{ComSig, PublicKey},
 };
 use tonic::{Request, Response, Status};
 
-pub struct ValidatorNodeGrpcServer<
-    TMempoolService: MempoolService,
-    TBackendAdapter: BackendAdapter,
-    TDbFactory: DbFactory<TBackendAdapter>,
-> {
+pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
     mempool: TMempoolService,
     db_factory: TDbFactory,
-    // TODO: Can probably remove
-    pd: PhantomData<TBackendAdapter>,
 }
 
-impl<TMempoolService: MempoolService, TBackendAdapter: BackendAdapter, TDbFactory: DbFactory<TBackendAdapter>>
-    ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
-{
+impl<TMempoolService: MempoolService, TDbFactory: DbFactory> ValidatorNodeGrpcServer<TMempoolService, TDbFactory> {
     pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
-        Self {
-            mempool,
-            db_factory,
-            pd: PhantomData,
-        }
+        Self { mempool, db_factory }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService, TBackendAdapter, TDbFactory> rpc::validator_node_server::ValidatorNode
-    for ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>
+impl<TMempoolService, TDbFactory> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService, TDbFactory>
 where
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
-    TBackendAdapter: BackendAdapter + Sync + Send + 'static,
-    TDbFactory: DbFactory<TBackendAdapter> + Sync + Send + 'static,
+    TDbFactory: DbFactory + Sync + Send + 'static,
 {
     async fn get_token_data(
         &self,
@@ -108,7 +95,7 @@ where
         request: Request<rpc::GetMetadataRequest>,
     ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
         dbg!(&request);
-        let db = self.db_factory.create();
+        // let db = self.db_factory.create();
         todo!()
         // let mut tx = db.new_unit_of_work();
         // let metadata = db.metadata.read(&mut tx);

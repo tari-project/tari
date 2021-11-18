@@ -56,7 +56,7 @@ pub enum NodeCommsResponse {
         outputs: Vec<UtxoMinedInfo>,
     },
     FetchAssetMetadataResponse {
-        output: Option<UtxoMinedInfo>,
+        output: Box<Option<UtxoMinedInfo>>,
     },
 }
 

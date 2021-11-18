@@ -21,4 +21,5 @@
 --  // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 alter table outputs
-drop column features_asset_template_ids_implemented;
+add features_asset_json text null;
+

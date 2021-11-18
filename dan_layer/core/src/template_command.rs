@@ -20,15 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    storage::{AssetStore, ChainDbUnitOfWork, StateDbUnitOfWork, UnitOfWork},
-};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use crate::{digital_assets_error::DigitalAssetError, storage::state::StateDbUnitOfWork};
 
 pub trait TemplateCommand {
-    fn try_execute<TUnitOfWork: UnitOfWork>(&self, db: TUnitOfWork) -> Result<ExecutionResult, DigitalAssetError>;
+    fn try_execute<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        db: TUnitOfWork,
+    ) -> Result<ExecutionResult, DigitalAssetError>;
 }
 
 pub enum ExecutionResult {

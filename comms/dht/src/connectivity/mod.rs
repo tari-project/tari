@@ -283,7 +283,7 @@ impl DhtConnectivity {
         new_neighbours.retain(|n| !intersection.contains(n));
         self.neighbours.retain(|n| intersection.contains(n));
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Adding {} neighbouring peer(s), removing {} peers",
             new_neighbours.len(),

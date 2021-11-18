@@ -41,7 +41,7 @@ pub struct SqliteDbFactory {
 impl SqliteDbFactory {
   pub fn new(data_dir: &Path) -> Self {
     fs::create_dir_all(data_dir)
-      .expect(&format!("Could not create data directory: {:?}", data_dir));
+      .unwrap_or_else(|_| panic!("Could not create data directory: {:?}", data_dir));
     let database_url = data_dir
       .join("collectibles.sqlite")
       .into_os_string()
@@ -94,12 +94,10 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     let results: Vec<models::Account> = schema::accounts::table
       .order_by(schema::accounts::name.asc())
       .load(&conn)?;
-    Ok(
-      results
-        .iter()
-        .map(SqliteAccountsTableGateway::convert_account)
-        .collect::<Result<_, _>>()?,
-    )
+    results
+      .iter()
+      .map(SqliteAccountsTableGateway::convert_account)
+      .collect::<Result<_, _>>()
   }
 
   fn insert(&self, account: NewAccount) -> Result<Account, StorageError> {

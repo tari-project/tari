@@ -56,13 +56,16 @@ impl WalletClient {
     name: String,
     description: String,
     image: String,
+    template_ids_implemented: Vec<u32>,
+    template_parameters: Vec<grpc::TemplateParameter>,
   ) -> Result<String, String> {
     let inner = self.inner.as_mut().unwrap();
     let request = RegisterAssetRequest {
       name,
-      template_ids_implemented: vec![1],
+      template_ids_implemented,
       description,
       image,
+      template_parameters,
     };
     let result = inner
       .register_asset(request)

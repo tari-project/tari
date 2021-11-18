@@ -22,11 +22,14 @@
 
 use crate::{
   app_state::ConcurrentAppState,
-  models::{AssetInfo, RegisteredAssetInfo},
+  models::{AssetInfo, RegisteredAssetInfo, TemplateParameter},
 };
 use rand::rngs::OsRng;
-use tari_common_types::types::Commitment;
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_app_grpc::tari_rpc::{self};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_crypto::{
+  hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey,
+};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
 
@@ -35,12 +38,23 @@ pub(crate) async fn assets_create(
   name: String,
   description: String,
   image: String,
+  template_ids: Vec<u32>,
+  template_parameters: Vec<TemplateParameter>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<String, String> {
-  // println!("Hello create asset");
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
-  let res = client.register_asset(name, description, image).await?;
+  let tp = template_parameters
+    .into_iter()
+    .map(|t| tari_rpc::TemplateParameter {
+      template_data: t.template_data,
+      template_data_version: 1,
+      template_id: t.template_id,
+    })
+    .collect();
+  let res = client
+    .register_asset(name, description, image, template_ids, tp)
+    .await?;
 
   Ok(res)
 }
@@ -84,35 +98,21 @@ pub(crate) async fn assets_list_registered_assets(
         unique_id: asset.unique_id,
         mined_height: asset.mined_height,
         mined_in_block: asset.mined_in_block,
+        features: asset.features.map(|f| f.into()).unwrap(),
       })
     })
     .collect()
 }
 
 #[tauri::command]
-pub(crate) async fn assets_issue_simple_tokens(
+pub(crate) async fn assets_create_initial_checkpoint(
   asset_pub_key: String,
-  num_tokens: u32,
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), String> {
-  println!("Hello issue simple tokens");
-
-  // let mut pubKeys = vec![];
   let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-  let mut rng = OsRng;
-  for _i in 0..num_tokens {
-    let (_private, public) = RistrettoPublicKey::random_keypair(&mut rng);
-    // lol, best save that private key somewhere...
-    // TODO
-
-    println!("key: {}", public);
-    mmr.push(public.hash()).unwrap();
-  }
 
   let root = mmr.get_merkle_root().unwrap();
-
-  println!("New root: {}", root.to_hex());
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -123,4 +123,28 @@ pub(crate) async fn assets_issue_simple_tokens(
     .unwrap();
 
   Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_registration(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<RegisteredAssetInfo, String> {
+  dbg!("assets_get_registration");
+  let mut client = state.connect_base_node_client().await?;
+  let asset_pub_key =
+    PublicKey::from_hex(&asset_pub_key).map_err(|e| format!("Not a valid public key:{}", e))?;
+  let asset = client.get_asset_metadata(&asset_pub_key).await?;
+
+  dbg!(&asset);
+  let features = asset.features.unwrap();
+
+  Ok(RegisteredAssetInfo {
+    owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
+    asset_public_key: RistrettoPublicKey::from_bytes(features.unique_id.as_ref().unwrap()).ok(),
+    unique_id: features.unique_id.clone().unwrap(),
+    mined_height: asset.mined_height,
+    mined_in_block: asset.mined_in_block,
+    features: features.into(),
+  })
 }

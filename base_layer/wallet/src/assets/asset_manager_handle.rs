@@ -31,7 +31,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFeatures, Transaction};
+use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 #[derive(Clone)]
@@ -99,6 +99,7 @@ impl AssetManagerHandle {
         template_ids_implemented: Vec<u32>,
         description: Option<String>,
         image: Option<String>,
+        template_parameters: Vec<TemplateParameter>,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
@@ -107,6 +108,7 @@ impl AssetManagerHandle {
                 template_ids_implemented,
                 description,
                 image,
+                template_parameters,
             })
             .await??
         {

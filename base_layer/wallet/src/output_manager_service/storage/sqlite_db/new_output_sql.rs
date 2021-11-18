@@ -51,7 +51,6 @@ pub struct NewOutputSql {
     pub input_data: Vec<u8>,
     pub script_private_key: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
-    pub features_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
@@ -62,7 +61,7 @@ pub struct NewOutputSql {
     pub metadata_signature_v_key: Vec<u8>,
     pub received_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
-    pub features_asset_template_ids_implemented: Option<String>,
+    pub features_asset_json: Option<String>,
 }
 
 impl NewOutputSql {
@@ -85,12 +84,6 @@ impl NewOutputSql {
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
             metadata: Some(output.unblinded_output.features.metadata),
-            features_asset_public_key: output
-                .unblinded_output
-                .features
-                .asset
-                .as_ref()
-                .map(|a| a.public_key.to_vec()),
             features_mint_asset_public_key: output
                 .unblinded_output
                 .features
@@ -109,13 +102,17 @@ impl NewOutputSql {
             metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
             metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
             coinbase_block_height: coinbase_block_height.map(|bh| bh as i64),
-            features_asset_template_ids_implemented: output.unblinded_output.features.asset.as_ref().map(|a| {
-                a.template_ids_implemented
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>()
-                    .join(",")
-            }),
+            features_asset_json: output
+                .unblinded_output
+                .features
+                .asset
+                .as_ref()
+                .map(|a| {
+                    serde_json::to_string(a).map_err(|s| OutputManagerStorageError::ConversionError {
+                        reason: format!("Could not parse features from JSON:{}", s),
+                    })
+                })
+                .transpose()?,
         })
     }
 
@@ -154,7 +151,6 @@ impl From<OutputSql> for NewOutputSql {
             input_data: o.input_data,
             script_private_key: o.script_private_key,
             metadata: o.metadata,
-            features_asset_public_key: o.features_asset_public_key,
             features_mint_asset_public_key: o.features_mint_asset_public_key,
             features_mint_asset_owner_commitment: o.features_mint_asset_owner_commitment,
             features_parent_public_key: o.features_parent_public_key,
@@ -165,7 +161,7 @@ impl From<OutputSql> for NewOutputSql {
             metadata_signature_v_key: o.metadata_signature_v_key,
             received_in_tx_id: o.received_in_tx_id,
             coinbase_block_height: o.coinbase_block_height,
-            features_asset_template_ids_implemented: o.features_asset_template_ids_implemented,
+            features_asset_json: o.features_asset_json,
         }
     }
 }

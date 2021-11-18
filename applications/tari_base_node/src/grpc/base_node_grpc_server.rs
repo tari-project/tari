@@ -474,16 +474,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let metadata = handler
             .get_asset_metadata(
                 PublicKey::from_bytes(&request.asset_public_key)
-                    .map_err(|e| Status::invalid_argument("Not a valid asset public key"))?,
+                    .map_err(|_e| Status::invalid_argument("Not a valid asset public key"))?,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         if let Some(m) = metadata {
+            let mined_height = m.mined_height;
+            let mined_in_block = m.header_hash.clone();
             match m.output {
                 PrunedOutput::Pruned {
-                    output_hash,
-                    witness_hash,
+                    output_hash: _,
+                    witness_hash: _,
                 } => return Err(Status::not_found("Output has been pruned")),
                 PrunedOutput::NotPruned { output } => {
                     if let Some(ref asset) = output.features.asset {
@@ -509,6 +511,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                                 image,
                                 owner_commitment: Vec::from(output.commitment.as_bytes()),
                                 features: Some(output.features.clone().into()),
+                                mined_height,
+                                mined_in_block,
                             }));
                         }
                     }
@@ -517,7 +521,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         description: None,
                         image: None,
                         owner_commitment: Vec::from(output.commitment.as_bytes()),
-                        features: Some(output.features.clone().into()),
+                        features: Some(output.features.into()),
+                        mined_height,
+                        mined_in_block,
                     }));
                 },
             };

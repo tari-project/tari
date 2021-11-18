@@ -93,14 +93,13 @@ pub struct OutputSql {
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub metadata: Option<Vec<u8>>,
-    pub features_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
-    pub features_asset_template_ids_implemented: Option<String>,
     pub features_sidechain_committee: Option<String>,
+    pub features_asset_json: Option<String>,
 }
 
 impl OutputSql {
@@ -413,20 +412,13 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let asset_features = match o.features_asset_public_key {
-            Some(ref public_key) => {
-                let template_ids_implemented: Vec<u32> = o
-                    .features_asset_template_ids_implemented
-                    .unwrap_or_default()
-                    .as_str()
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.trim().parse().map_err(|_| OutputManagerStorageError::ConversionError))
-                    .collect::<Result<_, _>>()?;
-                Some(AssetOutputFeatures {
-                    public_key: PublicKey::from_bytes(public_key)?,
-                    template_ids_implemented,
-                })
+        let asset_features = match o.features_asset_json {
+            Some(ref json) => {
+                let asset: AssetOutputFeatures =
+                    serde_json::from_str(json.as_str()).map_err(|s| OutputManagerStorageError::ConversionError {
+                        reason: format!("Could not convert json into AssetOutputFeatures:{}", s),
+                    })?;
+                Some(asset)
             },
             None => None,
         };
@@ -455,7 +447,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         };
 
         let features = OutputFeatures {
-            flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError)?,
+            flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError {
+                reason: "Flags could not be converted from bits".to_string(),
+            })?,
             maturity: o.maturity as u64,
             metadata: o.metadata.unwrap_or_default(),
             unique_id: o.features_unique_id.clone(),
@@ -474,7 +468,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
             features,
             TariScript::from_bytes(o.script.as_slice())?,
@@ -484,14 +480,18 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
             PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
             ComSignature::new(
                 Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
@@ -499,21 +499,27 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PublicKey could not be converted from bytes".to_string(),
+                    }
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
                 })?,
             ),
         );

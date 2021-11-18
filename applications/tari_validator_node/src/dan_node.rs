@@ -66,7 +66,7 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{AssetDataStore, BackendAdapter, DbFactory, LmdbAssetStore},
+    storage::{AssetDataStore, DbFactory, LmdbAssetStore},
     workers::ConsensusWorker,
 };
 use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
@@ -152,7 +152,9 @@ impl DanNode {
         let mut result = vec![];
         for path in paths {
             let path = path.expect("Not a valid file").path();
-            if !path.is_dir() {
+            dbg!(&path.extension());
+
+            if !path.is_dir() && path.extension().unwrap_or_default() == "asset" {
                 let file = File::open(path).expect("could not open file");
                 let reader = BufReader::new(file);
 
@@ -165,8 +167,7 @@ impl DanNode {
 
     async fn start_asset_worker<
         TMempoolService: MempoolService + Clone,
-        TBackendAdapter: BackendAdapter<Payload = TariDanPayload> + Send + Sync,
-        TDbFactory: DbFactory<TBackendAdapter> + Clone + Send + Sync,
+        TDbFactory: DbFactory + Clone + Send + Sync,
     >(
         &self,
         asset_definition: AssetDefinition,
@@ -397,7 +398,7 @@ impl DanNode {
                         // If this fails, we can just use another address
                         load_from_json::<_, TorIdentity>(p).ok()
                     });
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Tor identity at path '{}' {:?}",
                     self.config.base_node_tor_identity_file.to_string_lossy(),

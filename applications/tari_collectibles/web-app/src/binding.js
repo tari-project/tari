@@ -22,8 +22,9 @@
 
 import { invoke } from "@tauri-apps/api/tauri";
 
-async function command_assets_create(name, description, image) {
-  return await invoke("assets_create", { name, description, image });
+async function command_assets_create(name, description, image, templateIds, templateParameters) {
+  console.log("command_assets_create:", templateParameters);
+  return await invoke("assets_create", { name, description, image, templateIds, templateParameters });
 }
 
 async function command_assets_list_owned() {
@@ -34,14 +35,16 @@ async function command_assets_list_registered_assets(offset, count) {
   return await invoke("assets_list_registered_assets", { offset, count });
 }
 
-async function command_asset_issue_simple_tokens(
+async function command_assets_get_registration(assetPubKey) {
+  return await invoke("assets_get_registration", {assetPubKey});
+}
+
+async function command_asset_create_initial_checkpoint(
   assetPubKey,
-  numTokens,
   committee
 ) {
-  return await invoke("assets_issue_simple_tokens", {
+  return await invoke("assets_create_initial_checkpoint", {
     assetPubKey,
-    numTokens,
     committee,
   });
 }
@@ -77,9 +80,10 @@ async function command_create_db() {
 const commands = {
   command_create_db,
   command_assets_create,
+  command_assets_get_registration,
   command_assets_list_owned,
   command_assets_list_registered_assets,
-  command_asset_issue_simple_tokens,
+  command_asset_create_initial_checkpoint,
   command_accounts_create,
   command_accounts_list,
   command_wallets_create,

@@ -99,7 +99,7 @@ impl BaseNodeClient {
       .get_tokens(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|s| format!("Could not get asset sidechain checkpoint"))?;
+      .map_err(|_s| "Could not get asset sidechain checkpoint".to_string())?;
     let mut i = 0;
     // Could def do this better
     #[allow(clippy::never_loop)]

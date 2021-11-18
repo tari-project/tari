@@ -437,7 +437,7 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
-    #[tracing::instrument(skip(self, reply))]
+    #[tracing::instrument(level = "trace", skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,

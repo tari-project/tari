@@ -29,6 +29,7 @@ use tari_core::transactions::transaction::{
     OutputFeatures,
     OutputFlags,
     SideChainCheckpointFeatures,
+    TemplateParameter,
 };
 use tari_crypto::tari_utilities::ByteArray;
 
@@ -77,6 +78,7 @@ impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
         Ok(Self {
             public_key,
             template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
         })
     }
 }
@@ -86,10 +88,30 @@ impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
         Self {
             public_key: features.public_key.as_bytes().to_vec(),
             template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
         }
     }
 }
 
+impl From<grpc::TemplateParameter> for TemplateParameter {
+    fn from(source: grpc::TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+
+impl From<TemplateParameter> for grpc::TemplateParameter {
+    fn from(source: TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
 impl TryFrom<grpc::MintNonFungibleFeatures> for MintNonFungibleFeatures {
     type Error = String;
 

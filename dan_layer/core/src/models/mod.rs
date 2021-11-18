@@ -48,7 +48,7 @@ pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_metadata::SidechainMetadata;
 pub use state_root::StateRoot;
-use tari_crypto::common::Blake256;
+
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
 pub use view_id::ViewId;
@@ -66,7 +66,8 @@ impl InstructionCaller {
 
 #[derive(Copy, Clone, Debug)]
 pub enum TemplateId {
-    EditableMetadata = 2,
+    Tip002 = 2,
+    EditableMetadata = 20,
 }
 
 impl TemplateId {
@@ -86,7 +87,7 @@ impl From<u32> for TemplateId {
     fn from(v: u32) -> Self {
         // Must be an easier way than this
         match v {
-            2 => TemplateId::EditableMetadata,
+            2 => TemplateId::Tip002,
             _ => {
                 unimplemented!()
             },
@@ -205,11 +206,11 @@ pub enum ConsensusWorkerState {
     Idle,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Signature {}
 
 impl Signature {
-    pub fn from_bytes(source: &[u8]) -> Self {
+    pub fn from_bytes(_source: &[u8]) -> Self {
         Self {}
     }
 

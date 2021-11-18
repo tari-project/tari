@@ -22,22 +22,12 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{
-        Committee,
-        HotStuffMessage,
-        HotStuffMessageType,
-        HotStuffTreeNode,
-        Payload,
-        QuorumCertificate,
-        TreeNodeHash,
-        View,
-        ViewId,
-    },
+    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, TreeNodeHash, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         SigningService,
     },
-    storage::UnitOfWork,
+    storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
@@ -83,7 +73,7 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: UnitOfWork>(
+    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
@@ -215,14 +205,14 @@ where
         }
 
         let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node.clone(), None);
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
         for message in self.received_new_view_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: UnitOfWork>(
+    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,

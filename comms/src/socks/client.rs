@@ -104,7 +104,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Connects to a address through a SOCKS5 proxy and returns the 'upgraded' socket. This consumes the
     /// `Socks5Client` as once connected, the socks protocol does not recognise any further commands.
-    #[tracing::instrument(name = "socks::connect", skip(self))]
+    #[tracing::instrument(level = "trace", name = "socks::connect", skip(self))]
     pub async fn connect(mut self, address: &Multiaddr) -> Result<(TSocket, Multiaddr)> {
         let address = self.execute_command(Command::Connect, address).await?;
         Ok((self.protocol.socket, address))

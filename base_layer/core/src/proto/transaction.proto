@@ -88,6 +88,13 @@ message OutputFeatures {
 message AssetOutputFeatures {
     bytes public_key = 1;
     repeated uint32 template_ids_implemented = 2;
+    repeated TemplateParameter template_parameters = 3;
+}
+
+message TemplateParameter {
+    uint32 template_id = 1;
+    uint32 template_data_version = 2;
+    bytes template_data = 3;
 }
 
 message MintNonFungibleFeatures {

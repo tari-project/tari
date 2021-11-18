@@ -172,10 +172,8 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             .chain(self.view_number.as_u64().to_le_bytes());
         if let Some(ref node) = self.node {
             b = b.chain(node.calculate_hash().as_bytes());
-        } else {
-            if let Some(ref node_hash) = self.node_hash {
-                b = b.chain(node_hash.as_bytes());
-            }
+        } else if let Some(ref node_hash) = self.node_hash {
+            b = b.chain(node_hash.as_bytes());
         }
         b.finalize().to_vec()
     }

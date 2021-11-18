@@ -19,21 +19,31 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::models::TemplateParameter;
+use serde::{Deserialize, Serialize};
+use tari_app_grpc::tari_rpc;
 
-use crate::schema::*;
-
-#[derive(Queryable)]
-pub struct StateKeyValue {
-    pub id: i32,
-    pub schema_name: String,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+#[derive(Serialize, Deserialize)]
+pub struct OutputFeatures {
+  template_parameters: Vec<TemplateParameter>,
 }
 
-#[derive(Insertable)]
-#[table_name = "state_key_values"]
-pub struct NewStateKeyValue {
-    pub schema_name: String,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+impl From<tari_rpc::OutputFeatures> for OutputFeatures {
+  fn from(v: tari_rpc::OutputFeatures) -> Self {
+    Self {
+      template_parameters: v
+        .asset
+        .map(|f| {
+          f.template_parameters
+            .into_iter()
+            .map(|tp| TemplateParameter {
+              template_id: tp.template_id,
+              template_data_version: tp.template_data_version,
+              template_data: tp.template_data,
+            })
+            .collect()
+        })
+        .unwrap_or_default(),
+    }
+  }
 }

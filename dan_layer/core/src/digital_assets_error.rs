@@ -40,6 +40,11 @@ pub enum DigitalAssetError {
     ConversionError(String),
     #[error("Branched to an unexpected logic path, this is most likely due to a bug:{reason}")]
     InvalidLogicPath { reason: String },
+    #[error("Could not decode protobuf message for {message_type}:{source}")]
+    ProtoBufDecodeError {
+        source: prost::DecodeError,
+        message_type: String,
+    },
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

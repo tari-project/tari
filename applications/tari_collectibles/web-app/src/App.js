@@ -188,6 +188,7 @@ function App() {
       .command_create_db()
       .then((r) => setLoading(false))
       .catch((e) => console.error(e));
+
   }, []);
   if (loading) return <Spinner />;
 

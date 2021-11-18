@@ -44,4 +44,6 @@ pub enum StorageError {
     InvalidUnitOfWorkTrackerType,
     #[error("Item does not exist")]
     NotFound,
+    #[error("File system path does not exist")]
+    FileSystemPathDoesNotExist,
 }

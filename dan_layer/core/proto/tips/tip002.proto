@@ -1,22 +1,38 @@
+// TODO: this file should be in a single place
+
+syntax = "proto3";
+package tari.dan.tips.tip002;
+
 service Tip002 {
-  rpc Info(InfoRequest) returns InfoResponse;
-  rpc BalanceOf(BalanceOfRequest) returns BalanceOfResponse;
-    }
+  rpc Init(InitRequest) returns (Empty);
+  //  rpc Info(InfoRequest) returns (InfoResponse);
+  //  rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
+}
 
-   message InfoRequest {
 
-   }
+message InitRequest {
+  string symbol = 1;
+  uint32 decimals = 2;
+  uint64 total_supply = 3;
+}
+message Empty{
 
-   message InfoResponse {
-      string symbol = 1;
-      byte decimals = 2;
-      uint256 total_supply =3;
-   }
+}
 
-   message BalanceOfRequest {
-      uint256 owner = 1;
-   }
-
-   message BalanceOfResponse {
-      uint256 balance = 1;
-   }
+//message InfoRequest {
+//
+//}
+//
+//message InfoResponse {
+//  string symbol = 1;
+//  byte decimals = 2;
+//  uint256 total_supply = 3;
+//}
+//
+//message BalanceOfRequest {
+//  uint256 owner = 1;
+//}
+//
+//message BalanceOfResponse {
+//  uint256 balance = 1;
+//}

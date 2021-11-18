@@ -20,11 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::SqliteStorageError, SqliteBackendAdapter};
+use crate::{
+    error::SqliteStorageError,
+    sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter,
+    SqliteChainBackendAdapter,
+};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
+use std::fs::create_dir_all;
 use tari_common::GlobalConfig;
-use tari_dan_core::storage::{ChainDb, DbFactory, StateDb, StateDbUnitOfWorkImpl, StorageError};
+use tari_dan_core::storage::{
+    chain::ChainDb,
+    state::{StateDb, StateDbUnitOfWorkImpl},
+    DbFactory,
+    StorageError,
+};
 
 #[derive(Clone)]
 pub struct SqliteDbFactory {
@@ -35,6 +45,7 @@ impl SqliteDbFactory {
     pub fn new(config: &GlobalConfig) -> Self {
         let database_url = config
             .data_dir
+            .join("asset_data")
             .join("dan_storage.sqlite")
             .into_os_string()
             .into_string()
@@ -42,23 +53,29 @@ impl SqliteDbFactory {
 
         Self { database_url }
     }
-
-    fn create_adapter(&self) -> SqliteBackendAdapter {
-        SqliteBackendAdapter::new(self.database_url.clone())
-    }
 }
 
-impl DbFactory<SqliteBackendAdapter> for SqliteDbFactory {
-    fn create(&self) -> Result<ChainDb<SqliteBackendAdapter>, StorageError> {
+impl DbFactory for SqliteDbFactory {
+    type ChainDbBackendAdapter = SqliteChainBackendAdapter;
+    type StateDbBackendAdapter = SqliteStateDbBackendAdapter;
+
+    fn create_chain_db(&self) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
+        // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection.execute("PRAGMA foreign_keys = ON;");
-        // Create the db
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
-        Ok(ChainDb::new(self.create_adapter()))
+        Ok(ChainDb::new(SqliteChainBackendAdapter::new(self.database_url.clone())))
     }
 
-    fn create_state_db(&self) -> Result<StateDb<StateDbUnitOfWorkImpl>, StorageError> {
-        Ok(StateDb::new())
+    fn create_state_db(&self) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
+        // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
+        let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
+        connection.execute("PRAGMA foreign_keys = ON;");
+        embed_migrations!("./migrations");
+        embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
+        Ok(StateDb::new(SqliteStateDbBackendAdapter::new(
+            self.database_url.clone(),
+        )))
     }
 }

@@ -30,10 +30,10 @@ pub enum SqliteStorageError {
         #[from]
         source: diesel::ConnectionError,
     },
-    #[error("General diesel error: {source}")]
+    #[error("General diesel error during operation {operation}: {source}")]
     DieselError {
-        #[from]
         source: diesel::result::Error,
+        operation: String,
     },
     #[error("Could not migrate the database")]
     MigrationError {

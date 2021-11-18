@@ -305,7 +305,7 @@ where
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
 
-        info!(target: LOG_TARGET, "Transaction Service started");
+        debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
                 // Base Node Monitoring Service event

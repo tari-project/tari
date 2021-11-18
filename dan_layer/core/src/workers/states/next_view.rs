@@ -22,9 +22,9 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, Payload, QuorumCertificate, View},
+    models::{Committee, HotStuffMessage, Payload, View},
     services::infrastructure_services::{NodeAddressable, OutboundService},
-    storage::{BackendAdapter, DbFactory},
+    storage::{chain::ChainDbBackendAdapter, DbFactory},
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -43,8 +43,7 @@ impl NextViewState {
         TPayload: Payload,
         TOutboundService: OutboundService<TAddr, TPayload>,
         TAddr: NodeAddressable + Clone + Send,
-        TBackendAdapter: BackendAdapter<Payload = TPayload>,
-        TDbFactory: DbFactory<TBackendAdapter>,
+        TDbFactory: DbFactory,
     >(
         &mut self,
         current_view: &View,
@@ -54,7 +53,7 @@ impl NextViewState {
         node_id: TAddr,
         _shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        let db = db_factory.create()?;
+        let db = db_factory.create_chain_db()?;
         let prepare_qc = db.find_highest_prepared_qc()?;
         let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
         let next_view = current_view.view_id.next();

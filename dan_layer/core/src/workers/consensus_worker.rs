@@ -22,15 +22,7 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{
-        domain_events::ConsensusWorkerDomainEvent,
-        AssetDefinition,
-        ConsensusWorkerState,
-        Payload,
-        QuorumCertificate,
-        View,
-        ViewId,
-    },
+    models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, Payload, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         BaseNodeClient,
@@ -40,11 +32,16 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StateDbUnitOfWorkImpl, UnitOfWork},
+    storage::{
+        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        state::{StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkImpl},
+        ChainStorageService,
+        DbFactory,
+    },
     workers::{states, states::ConsensusWorkerStateEvent},
 };
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -61,7 +58,7 @@ pub struct ConsensusWorker<
     TPayloadProcessor,
     TCommitteeManager,
     TBaseNodeClient,
-    TBackendAdapter,
+    TStateBackendAdapter,
     TDbFactory,
     TChainStorageService,
 > where
@@ -75,8 +72,8 @@ pub struct ConsensusWorker<
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    TBackendAdapter: BackendAdapter,
-    TDbFactory: DbFactory<TBackendAdapter>,
+    TStateBackendAdapter: StateDbBackendAdapter,
+    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter>,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     inbound_connections: TInboundConnectionService,
@@ -94,10 +91,9 @@ pub struct ConsensusWorker<
     base_node_client: TBaseNodeClient,
     db_factory: TDbFactory,
     chain_storage_service: TChainStorageService,
-    pd: PhantomData<TBackendAdapter>,
     pd2: PhantomData<TPayload>,
-    // TODO: Make generic
-    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl>,
+    // TODO: Switch out for generic
+    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TStateBackendAdapter>>,
 }
 
 impl<
@@ -111,7 +107,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
-        TBackendAdapter,
+        TStateBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -126,7 +122,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
-        TBackendAdapter,
+        TStateBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -141,9 +137,8 @@ where
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    // TODO: REmove this Send
-    TBackendAdapter: BackendAdapter<Payload = TPayload> + Send + Sync,
-    TDbFactory: DbFactory<TBackendAdapter> + Clone,
+    TStateBackendAdapter: StateDbBackendAdapter,
+    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter> + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     pub fn new(
@@ -180,7 +175,6 @@ where
             base_node_client,
             db_factory,
             chain_storage_service,
-            pd: PhantomData,
             pd2: PhantomData,
             state_db_unit_of_work: None,
         }
@@ -251,7 +245,7 @@ where
                     .await
             },
             Prepare => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
                 let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
@@ -276,7 +270,7 @@ where
                 Ok(res)
             },
             PreCommit => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
@@ -297,7 +291,7 @@ where
             },
 
             Commit => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
@@ -319,7 +313,7 @@ where
                 Ok(res)
             },
             Decide => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),

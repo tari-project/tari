@@ -20,5 +20,9 @@
 --  // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 --  // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-alter table outputs
-add features_asset_template_ids_implemented TEXT;
+create table state_keys (
+    schema_name text not null,
+    key_name blob not null,
+    value blob not null,
+    primary key (schema_name, key_name)
+)

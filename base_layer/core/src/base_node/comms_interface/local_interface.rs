@@ -313,7 +313,7 @@ impl LocalNodeCommsInterface {
             .call(NodeCommsRequest::FetchAssetMetadata { asset_public_key })
             .await??
         {
-            NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(output),
+            NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(*output),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

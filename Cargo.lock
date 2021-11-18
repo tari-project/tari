@@ -6441,6 +6441,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "dotenv",
+ "log 0.4.14",
  "tari_common",
  "tari_dan_core",
  "thiserror",

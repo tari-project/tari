@@ -24,14 +24,21 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, StateRoot, TariDanPayload},
     services::{AssetProcessor, MempoolService},
-    storage::{ChainDb, ChainDbUnitOfWork, DbFactory, StateDbUnitOfWork, UnitOfWork},
+    storage::state::StateDbUnitOfWork,
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+
+use crate::models::AssetDefinition;
+use tari_core::transactions::transaction::TemplateParameter;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         payload: &TPayload,
@@ -63,6 +70,16 @@ impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
 impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
     PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
 {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        self.asset_processor
+            .init_template(template_parameter, asset_definition, state_db)
+    }
+
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
         &self,
         payload: &TariDanPayload,

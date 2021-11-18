@@ -35,61 +35,32 @@ class AssetManagerContent extends React.Component {
       error: "",
       loading: true,
       saving: false,
-      numTokens: 0,
+      assetDefinition: {}
     };
-
-    this.onNumTokensToIssueChanged = this.onNumTokensToIssueChanged.bind(this);
-    this.onIssueTokens = this.onIssueTokens.bind(this);
   }
 
   async componentDidMount() {
-    this.setState({ loading: false });
-  }
-
-  onNumTokensToIssueChanged(e) {
-    this.setState({ numTokens: e.target.value });
-  }
-
-  async onIssueTokens() {
-    console.log("About to issue tokens");
-    this.setState({ saving: true, error: "" });
-    // Issue
-
-    try {
-      let res = await binding.command_asset_issue_simple_tokens(
-        this.props.assetPubKey,
-        parseInt(this.state.numTokens)
-      );
-      console.log(res);
-    } catch (e) {
-      this.setState({ error: "Could not issue tokens:" + e });
+    const { assetPubKey } = this.props;
+    let registration = await binding.command_assets_get_registration(assetPubKey);
+    console.log("reigstration:", registration);
+    let assetDefinition = {
+      public_key: assetPubKey,
+      initialCommittee: registration.initialCommitee,
+      checkpointUniqueId: registration.checkpointUniqueId,
+      template_parameters: registration.features.template_parameters
     }
-
-    this.setState({ saving: false });
+    this.setState({ loading: false, assetDefinition });
   }
+
+
 
   render() {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4, py: 8 }}>
         <Typography>Asset: {this.props.assetPubKey}</Typography>
+
         <Box>
-          <TextField
-            id="numTokens"
-            onChange={this.onNumTokensToIssueChanged}
-            value={this.state.numTokens}
-            type="number"
-            disabled={this.state.saving}
-          ></TextField>
-          <Button
-            id="issueTokens"
-            onClick={this.onIssueTokens}
-            disabled={this.state.saving}
-          >
-            Issue Tokens
-          </Button>
-        </Box>
-        <Box>
-          <AssetDefinition assetPubKey={this.props.assetPubKey} />
+          <AssetDefinition assetPubKey={this.props.assetPubKey} assetDefinition={this.state.assetDefinition} />
         </Box>
       </Container>
     );
@@ -97,18 +68,10 @@ class AssetManagerContent extends React.Component {
 }
 
 const AssetDefinition = (props) => {
-  const { assetPubKey } = props;
+  const { assetPubKey, assetDefinition } = props;
   const [msg, setMsg] = useState("");
 
-  const asset = {
-    publicKey: assetPubKey,
-    phaseTimeout: 10,
-    initialCommittee: [],
-    baseLayerConfirmationTime: 5,
-    checkpointUniqueId: [],
-    templates: [],
-  };
-  const contents = JSON.stringify(asset);
+  const contents = JSON.stringify(assetDefinition,null, 2);
   async function save() {
     const filename = `${assetPubKey}.json`;
     try {

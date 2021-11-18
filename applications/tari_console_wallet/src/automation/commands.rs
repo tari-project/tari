@@ -679,7 +679,7 @@ pub async fn command_runner(
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = manager
-                    .create_registration_transaction(name, vec![], None, None)
+                    .create_registration_transaction(name, vec![], None, None, vec![])
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)

@@ -209,6 +209,7 @@ message RegisterAssetRequest {
     repeated uint32 template_ids_implemented = 2;
     string description  =3;
     string image = 4;
+    repeated TemplateParameter template_parameters = 5;
 }
 
 message RegisterAssetResponse {

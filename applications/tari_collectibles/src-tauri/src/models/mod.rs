@@ -30,3 +30,7 @@ mod wallet;
 pub use wallet::{NewWallet, Wallet, WalletInfo};
 mod tip002_info;
 pub use tip002_info::Tip002Info;
+mod template_parameter;
+pub use template_parameter::TemplateParameter;
+mod output_features;
+pub use output_features::OutputFeatures;

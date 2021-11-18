@@ -100,7 +100,16 @@ impl KernelFeatures {
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct AssetOutputFeatures {
     pub public_key: PublicKey,
+    // TODO: remove in favour of template args
     pub template_ids_implemented: Vec<u32>,
+    pub template_parameters: Vec<TemplateParameter>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+pub struct TemplateParameter {
+    pub template_id: u32,
+    pub template_data_version: u32,
+    pub template_data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
@@ -182,6 +191,7 @@ impl OutputFeatures {
         metadata: Vec<u8>,
         public_key: PublicKey,
         template_ids_implemented: Vec<u32>,
+        template_parameters: Vec<TemplateParameter>,
     ) -> OutputFeatures {
         let unique_id = Some(public_key.as_bytes().to_vec());
         Self {
@@ -191,6 +201,7 @@ impl OutputFeatures {
             asset: Some(AssetOutputFeatures {
                 public_key,
                 template_ids_implemented,
+                template_parameters,
             }),
             unique_id,
             ..Default::default()

@@ -21,53 +21,19 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainDbUnitOfWork, DbFactory, StorageError, UnitOfWork},
+    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata},
+    storage::{chain::ChainDbUnitOfWork, StorageError},
 };
 use async_trait::async_trait;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 // TODO: perhaps rename to ChainBusinessLogic
 // One per asset, per network
 #[async_trait]
 pub trait ChainStorageService<TPayload: Payload> {
     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
-    async fn add_node<TUnitOfWork: UnitOfWork>(
+    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
         db: TUnitOfWork,
     ) -> Result<(), StorageError>;
-
-    async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
-        &self,
-        qc: QuorumCertificate,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError>;
 }
-// #[derive(Clone)]
-// pub struct ChainStorageServiceHandle {
-//     service: Arc<RwLock<ChainStorageService>>,
-// }
-//
-// impl ChainStorageServiceHandle {
-//     pub fn new() -> Self {
-//         todo!()
-//         // Self {
-//
-//         // TODO: fix this ordering
-//         // service: Arc::new(RwLock::new(LmdbChainStorageService {})),
-//         // }
-//     }
-// }
-//
-// #[async_trait]
-// impl<TPayload: Payload> ChainStorageService<TPayload> for ChainStorageServiceHandle {
-//     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-//         self.service.read().await.get_metadata().await
-//     }
-//
-//     async fn save_qc(&self, node: &QuorumCertificate<TPayload>, db: ChainDbUnitOfWork) -> Result<(), StorageError> {
-//         self.service.write().await.save_qc(node, db)
-//     }
-// }

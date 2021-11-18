@@ -100,7 +100,7 @@ where T: WalletBackend + 'static
             .expect("Wallet Base Node Service initialized without request_stream")
             .take_until(self.shutdown_signal.clone());
 
-        info!(target: LOG_TARGET, "Wallet Base Node Service started");
+        debug!(target: LOG_TARGET, "Wallet Base Node Service started");
         while let Some(request_context) = request_stream.next().await {
             // Incoming requests
             let (request, reply_tx) = request_context.split();

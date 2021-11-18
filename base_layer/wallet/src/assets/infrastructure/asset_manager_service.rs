@@ -55,7 +55,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
         let request_stream = request_stream.fuse();
         pin_mut!(request_stream);
 
-        info!(target: LOG_TARGET, "Asset Manager Service started");
+        debug!(target: LOG_TARGET, "Asset Manager Service started");
         loop {
             futures::select! {
                 request_context = request_stream.select_next_some() => {
@@ -93,10 +93,17 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                 template_ids_implemented,
                 description,
                 image,
+                template_parameters,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_registration_transaction(name, description, image, template_ids_implemented)
+                    .create_registration_transaction(
+                        name,
+                        description,
+                        image,
+                        template_ids_implemented,
+                        template_parameters,
+                    )
                     .await?;
                 Ok(AssetManagerResponse::CreateRegistrationTransaction {
                     transaction: Box::new(transaction),

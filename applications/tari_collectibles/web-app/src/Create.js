@@ -40,6 +40,7 @@ import { appWindow } from "@tauri-apps/api/window";
 import { dialog } from "@tauri-apps/api";
 import { Command } from "@tauri-apps/api/shell";
 import { fetch, ResponseType } from "@tauri-apps/api/http";
+import protobuf from "protobufjs";
 
 class Create extends React.Component {
   constructor(props) {
@@ -52,11 +53,17 @@ class Create extends React.Component {
       cid: "",
       error: "",
       isSaving: false,
-      contract001: true,
-      contract721: false,
-      contract100: false,
-      numberInitialTokens: 0,
-      committee: [],
+      tip001: true,
+      tip002: false,
+      tip003: true,
+      tip002Data: {
+        totalSupply: 0,
+        symbol: "NAH",
+        decimals: 2
+      },
+      tip003Data:{
+        committee: []
+      },
       newCommitteePubKey: "",
     };
 
@@ -86,17 +93,53 @@ class Create extends React.Component {
     let description = this.state.description;
     let image = this.state.image;
     try {
+      let templateIds = [];
+      let templateParameters = [];
+      if (this.state.tip002) {
+        console.log("tip002");
+        templateIds.push(2);
+        console.log(this.state.tip002Data);
+        let payload = {
+          symbol: this.state.tip002Data.symbol,
+          decimals: parseInt(this.state.tip002Data.decimals),
+          total_supply: parseInt(this.state.tip002Data.totalSupply)
+        };
+
+        await protobuf.load("proto/tip002.proto").then(function (root) {
+
+          let InitRequest = root.lookupType("tip002.InitRequest");
+
+
+          var errMsg = InitRequest.verify(payload);
+          if (errMsg) {
+            throw new Error(errMsg);
+          }
+          var message = InitRequest.create(payload);
+          console.log("msg:", message);
+          var buffer = InitRequest.encode(message);
+          let arr = buffer.finish();
+          console.log("buffer", arr);
+
+          templateParameters.push({
+            template_id: 2,
+            template_data_version: 1,
+            template_data:Array.from(arr)
+          });
+        });
+      }
+
       let publicKey = await binding.command_assets_create(
         name,
         description,
-        image
+        image,
+          templateIds, templateParameters
       );
 
-      if (this.state.contract721 || this.state.contract100) {
-        let res = await binding.command_asset_issue_simple_tokens(
+      // TODO: How to create the initial checkpoint?
+      if (this.state.tip003 ) {
+        let res = await binding.command_asset_create_initial_checkpoint(
           publicKey,
-          parseInt(this.state.numberInitialTokens),
-          this.state.committee
+          this.state.tip003Data.committee
         );
 
         console.log(res);
@@ -117,21 +160,28 @@ class Create extends React.Component {
     this.setState({ name: e.target.value });
   };
 
-  onContract001Changed = (e) => {
-    this.setState({ contract001: e.target.checked });
+  onTip001Changed = (e) => {
+    this.setState({ tip001: e.target.checked });
   };
 
-  onContract721Changed = (e) => {
-    this.setState({ contract721: e.target.checked });
+  onTip002Changed = (e) => {
+    this.setState({ tip002: e.target.checked });
   };
 
-  onContract100Changed = (e) => {
-    this.setState({ contract100: e.target.checked });
+  onTip003Changed = (e) => {
+    this.setState({ tip003: e.target.checked });
   };
 
-  onNumberInitialTokensChanged = (e) => {
-    this.setState({ numberInitialTokens: e.target.value });
-  };
+  onTip002DataChanged = (field, e) =>  {
+    let tip002Data ={};
+    tip002Data[field] = e.target.value;
+    tip002Data = { ...this.state.tip002Data, ...tip002Data};
+    this.setState({ tip002Data: tip002Data})
+  }
+
+  // onNumberInitialTokensChanged = (e) => {
+  //   this.setState({ numberInitialTokens: e.target.value });
+  // };
 
   onDescriptionChanged = (e) => {
     this.setState({
@@ -146,21 +196,23 @@ class Create extends React.Component {
   };
 
   onAddCommitteeMember = () => {
-    let committee = [...this.state.committee];
+    let committee = [...this.state.tip003Data.committee];
     committee.push(this.state.newCommitteePubKey);
+    let tip003Data = {...this.state.tip003Data, ...{committee: committee}};
     console.log(committee);
     this.setState({
-      committee,
+      tip003Data,
       newCommitteePubKey: "",
     });
   };
 
   onDeleteCommitteeMember = (index) => {
-    let committee = this.state.committee.filter(function (_, i, arr) {
+    let committee = this.state.tip003Data.committee.filter(function (_, i, arr) {
       return i !== parseInt(index);
     });
+    let tip003Data = {...this.state.tip003Data, ...{committee}};
 
-    this.setState({ committee });
+    this.setState({ tip003Data });
   };
 
   onImageChanged = (e) => {
@@ -247,8 +299,8 @@ class Create extends React.Component {
           <FormControlLabel
             control={
               <Switch
-                onChange={this.onContract001Changed}
-                checked={this.state.contract001}
+                onChange={this.onTip001Changed}
+                checked={this.state.tip001}
               />
             }
             label="001 Metadata (required)"
@@ -262,7 +314,7 @@ class Create extends React.Component {
               color="primary"
               value={this.state.name}
               onChange={this.onNameChanged}
-              disabled={this.state.isSaving || !this.state.contract001}
+              disabled={this.state.isSaving || !this.state.tip001}
             ></TextField>
             <TextField
               id="description"
@@ -271,7 +323,7 @@ class Create extends React.Component {
               color="primary"
               value={this.state.description}
               onChange={this.onDescriptionChanged}
-              disabled={this.state.isSaving || !this.state.contract001}
+              disabled={this.state.isSaving || !this.state.tip001}
             ></TextField>
 
             <p>Image</p>
@@ -282,39 +334,78 @@ class Create extends React.Component {
               setCid={(cid) => this.setState({ cid })}
               image={this.state.image}
             />
-
+          </FormGroup>
+          <FormGroup>
             <FormControlLabel
-              control={
-                <Switch
-                  onClick={this.onContract721Changed}
-                  checked={this.state.contract721}
-                />
-              }
-              label="721 (ERC 721-like)"
+                control={
+                  <Switch
+                      onClick={this.onTip002Changed}
+                      checked={this.state.tip002}
+                  />
+                }
+                label="002 (ERC 20-like)"
             />
+
             <TextField
-              id="numTokens"
-              value={this.state.numberInitialTokens}
-              onChange={this.onNumberInitialTokensChanged}
-              type="number"
-              label="Number of initial tokens"
-              disabled={this.state.isSaving || !this.state.contract721}
+                id="tip002_symbol"
+                label="Symbol"
+                variant="filled"
+                color="primary"
+                value={this.state.tip002.symbol}
+                onChange={(e) =>  this.onTip002DataChanged("symbol", e)}
+                disabled={this.state.isSaving || !this.state.tip002}
             ></TextField>
+
+            <TextField
+                id="tip002_total_supply"
+                label="Total Supply"
+                variant="filled"
+                color="primary"
+                value={this.state.tip002.totalSupply}
+                type="number"
+                onChange={(e) =>  this.onTip002DataChanged("totalSupply", e)}
+                disabled={this.state.isSaving || !this.state.tip002}
+            ></TextField>
+
+            <TextField
+                id="tip002_decimals"
+                label="Decimals"
+                variant="filled"
+                color="primary"
+                value={this.state.tip002.decimals}
+                onChange={(e) =>  this.onTip002DataChanged("decimals", e)}
+                disabled={this.state.isSaving || !this.state.tip002}
+            ></TextField>
+
           </FormGroup>
           <FormGroup>
             <FormControlLabel
               control={
                 <Switch
-                  onClick={this.onContract100Changed}
-                  checked={this.state.contract100}
+                  onClick={this.onTip003Changed}
+                  checked={this.state.tip003}
                 />
               }
-              label="100 Sidechain with committees"
+              label="721 (ERC 721-like) TODO"
+            />
+
+          </FormGroup>
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Switch
+                  onClick={this.onTip003Changed}
+
+                  checked={this.state.tip003}
+                  disabled={true}
+                />
+              }
+              label="003 Sidechain with committees"
             />
           </FormGroup>
           <FormGroup>
             <List>
-              {this.state.committee.map((item, index) => {
+              {this.state.tip003Data.committee.map((item, index) => {
                 return (
                   <ListItem>
                     <ListItemText primary={item}></ListItemText>
@@ -327,11 +418,11 @@ class Create extends React.Component {
               id="newCommitteePubKey"
               value={this.state.newCommitteePubKey}
               onChange={this.onNewCommitteePubKeyChanged}
-              disabled={this.state.isSaving || !this.state.contract100}
+              disabled={this.state.isSaving || !this.state.tip003}
             ></TextField>
             <Button
               onClick={this.onAddCommitteeMember}
-              disabled={this.state.isSaving || !this.state.contract100}
+              disabled={this.state.isSaving || !this.state.tip003}
             >
               Add
             </Button>

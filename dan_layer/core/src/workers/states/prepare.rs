@@ -40,12 +40,18 @@ use crate::{
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
-use std::{collections::HashMap, marker::PhantomData, sync::Arc, time::Instant};
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use crate::{
     models::TreeNodeHash,
     services::PayloadProcessor,
-    storage::{BackendAdapter, ChainStorageService, DbFactory, StateDbUnitOfWork, StorageError, UnitOfWork},
+    storage::{
+        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        state::StateDbUnitOfWork,
+        ChainStorageService,
+        DbFactory,
+        StorageError,
+    },
 };
 use tokio::time::{sleep, Duration};
 
@@ -59,7 +65,6 @@ pub struct Prepare<
     TPayloadProvider,
     TPayload,
     TPayloadProcessor,
-    TBackendAdapter,
     TDbFactory,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
@@ -69,8 +74,7 @@ pub struct Prepare<
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: BackendAdapter,
-    TDbFactory: DbFactory<TBackendAdapter>,
+    TDbFactory: DbFactory,
 {
     node_id: TAddr,
     // bft_service: Box<dyn BftReplicaService>,
@@ -82,7 +86,6 @@ pub struct Prepare<
     phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     db_factory: TDbFactory,
-    pd: PhantomData<TBackendAdapter>,
 }
 
 impl<
@@ -93,7 +96,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TBackendAdapter,
         TDbFactory,
     >
     Prepare<
@@ -104,7 +106,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TBackendAdapter,
         TDbFactory,
     >
 where
@@ -115,8 +116,7 @@ where
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: BackendAdapter + Send + Sync,
-    TDbFactory: DbFactory<TBackendAdapter> + Clone,
+    TDbFactory: DbFactory + Clone,
 {
     pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
         Self {
@@ -128,14 +128,13 @@ where
             received_new_view_messages: HashMap::new(),
             phantom_processor: PhantomData,
             db_factory,
-            pd: PhantomData,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn next_event<
         TChainStorageService: ChainStorageService<TPayload>,
-        TUnitOfWork: UnitOfWork,
+        TUnitOfWork: ChainDbUnitOfWork,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
         &mut self,
@@ -263,7 +262,7 @@ where
     }
 
     async fn process_replica_message<
-        TUnitOfWork: UnitOfWork,
+        TUnitOfWork: ChainDbUnitOfWork,
         TChainStorageService: ChainStorageService<TPayload>,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
@@ -380,7 +379,7 @@ where
         &from == &node.parent()
     }
 
-    fn is_safe_node<TUnitOfWork: UnitOfWork>(
+    fn is_safe_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate,

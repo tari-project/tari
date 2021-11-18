@@ -22,16 +22,23 @@
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Instruction, InstructionCaller, TemplateId},
-    storage::{AssetStore, ChainDbUnitOfWork, StateDb, StateDbUnitOfWork, UnitOfWork},
-    template_command::{ExecutionResult, TemplateCommand},
-    templates::editable_metadata_template::_EditableMetadataTemplate,
+    models::{AssetDefinition, Instruction, TemplateId},
+    storage::state::StateDbUnitOfWork,
+    template_command::ExecutionResult,
+    templates::tip002_template,
 };
-use async_trait::async_trait;
-use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::RwLock;
+
+use std::collections::VecDeque;
+use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError>;
+
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
@@ -48,6 +55,16 @@ pub struct ConcreteAssetProcessor<TInstructionLog> {
 }
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template_parameter: &TemplateParameter,
+        asset_definition: &AssetDefinition,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        self.template_factory
+            .init(template_parameter, asset_definition, state_db)
+    }
+
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
@@ -77,12 +94,12 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
 
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
-        template_id: TemplateId,
-        method: String,
-        args: VecDeque<Vec<u8>>,
+        _template_id: TemplateId,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
-        hash: Vec<u8>,
-        db: TUnitOfWork,
+        _hash: Vec<u8>,
+        _db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         todo!()
         // let instruction = self.template_factory.create_command(template_id, method, args)?;
@@ -97,11 +114,24 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
+    pub fn init<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        template: &TemplateParameter,
+        asset_definition: &AssetDefinition,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        match TemplateId::from(template.template_id) {
+            TemplateId::Tip002 => tip002_template::init(template, asset_definition, state_db)?,
+            _ => unimplemented!(),
+        }
+        Ok(())
+    }
+
     pub fn create_command(
         &self,
-        template: TemplateId,
-        method: String,
-        args: VecDeque<Vec<u8>>,
+        _template: TemplateId,
+        _method: String,
+        _args: VecDeque<Vec<u8>>,
         // caller: InstructionCaller,
     ) -> Result<(), DigitalAssetError> {
         todo!()

@@ -319,7 +319,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let conn = self.database_connection.acquire_lock();
         let mut o: OutputSql = outputs::table
-            .filter(columns::features_asset_public_key.eq(public_key.to_vec()))
+            .filter(columns::features_unique_id.eq(public_key.to_vec()))
+            .filter(columns::features_parent_public_key.is_null())
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .first(&*conn)?;
         self.decrypt_if_necessary(&mut o)?;
@@ -1485,15 +1486,21 @@ impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
                 target: LOG_TARGET,
                 "Could not create PrivateKey from stored bytes, They might be encrypted"
             );
-            OutputManagerStorageError::ConversionError
+            OutputManagerStorageError::ConversionError {
+                reason: "PrivateKey could not be converted from bytes".to_string(),
+            }
         })?;
         let script = TariScript::from_bytes(&o.script).map_err(|_| {
             error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
-            OutputManagerStorageError::ConversionError
+            OutputManagerStorageError::ConversionError {
+                reason: "Tari Script could not be converted from bytes".to_string(),
+            }
         })?;
         let input = ExecutionStack::from_bytes(&o.input).map_err(|_| {
             error!(target: LOG_TARGET, "Could not create execution stack from stored bytes");
-            OutputManagerStorageError::ConversionError
+            OutputManagerStorageError::ConversionError {
+                reason: "ExecutionStack could not be converted from bytes".to_string(),
+            }
         })?;
         Ok(KnownOneSidedPaymentScript {
             script_hash,

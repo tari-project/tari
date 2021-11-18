@@ -63,7 +63,9 @@ impl TryFrom<i32> for OutputStatus {
             9 => Ok(OutputStatus::SpentMinedUnconfirmed),
             10 => Ok(OutputStatus::AbandonedCoinbase),
             11 => Ok(OutputStatus::NotStored),
-            _ => Err(OutputManagerStorageError::ConversionError),
+            _ => Err(OutputManagerStorageError::ConversionError {
+                reason: "Was expecting value between 0 and 11 for OutputStatus".to_string(),
+            }),
         }
     }
 }

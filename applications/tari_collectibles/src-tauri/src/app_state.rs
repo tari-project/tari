@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-  clients::{BaseNodeClient, GrpcValidatorNodeClient, ValidatorNodeClient, WalletClient},
+  clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
   settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},

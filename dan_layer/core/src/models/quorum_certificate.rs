@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, HotStuffTreeNode, Payload, Signature, TreeNodeHash, ViewId};
+use crate::models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId};
 
 #[derive(Debug, Clone)]
 pub struct QuorumCertificate {

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::models::OutputFeatures;
 use serde::Serialize;
 use tari_common_types::types::{BlockHash, Commitment, PublicKey};
 
@@ -30,4 +31,5 @@ pub struct RegisteredAssetInfo {
   pub unique_id: Vec<u8>,
   pub mined_height: u64,
   pub mined_in_block: BlockHash,
+  pub features: OutputFeatures,
 }

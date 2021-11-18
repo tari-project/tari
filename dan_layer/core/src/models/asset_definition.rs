@@ -23,9 +23,10 @@
 use crate::types::PublicKey;
 use serde::{self, de, Deserialize, Deserializer, Serialize};
 use std::{fmt, marker::PhantomData};
+use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct AssetDefinition {
     #[serde(deserialize_with = "AssetDefinition::deserialize_pub_key_from_hex")]
@@ -37,6 +38,7 @@ pub struct AssetDefinition {
     pub base_layer_confirmation_time: u64,
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
+    pub template_parameters: Vec<TemplateParameter>,
 }
 
 impl Default for AssetDefinition {
@@ -48,6 +50,7 @@ impl Default for AssetDefinition {
             initial_committee: vec![],
             phase_timeout: 10,
             initial_state: Default::default(),
+            template_parameters: vec![],
         }
     }
 }
@@ -79,18 +82,18 @@ impl AssetDefinition {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct InitialState {
     pub schemas: Vec<SchemaState>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct SchemaState {
     pub name: String,
     pub items: Vec<KeyValue>,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct KeyValue {
     pub key: Vec<u8>,
     pub value: Vec<u8>,

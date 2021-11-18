@@ -23,15 +23,14 @@
 use crate::{
   app_state::ConcurrentAppState,
   models::Tip002Info,
-  storage::{AccountsTableGateway, CollectiblesStorage},
 };
 use uuid::Uuid;
 
 #[tauri::command]
 pub async fn tip002_get_info(
-  account_id: Uuid,
-  asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  _account_id: Uuid,
+  _asset_public_key: String,
+  _state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Option<Tip002Info>, String> {
   // let db = state
   //   .create_db()

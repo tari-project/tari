@@ -142,8 +142,8 @@ pub enum OutputManagerStorageError {
     OperationNotSupported,
     #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: {reason}")]
+    ConversionError { reason: String },
     #[error("Output has already been spent")]
     OutputAlreadySpent,
     #[error("Output is already encumbered")]

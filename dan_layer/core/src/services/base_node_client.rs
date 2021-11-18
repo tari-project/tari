@@ -26,8 +26,8 @@ use crate::{
     types::PublicKey,
 };
 use async_trait::async_trait;
-use std::{convert::TryInto, net::SocketAddr};
-use tari_crypto::tari_utilities::ByteArray;
+
+
 
 #[async_trait]
 pub trait BaseNodeClient {
