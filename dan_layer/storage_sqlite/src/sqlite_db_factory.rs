@@ -27,6 +27,7 @@ use crate::{
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
+use std::fs::create_dir_all;
 use tari_common::GlobalConfig;
 use tari_dan_core::storage::{
     chain::ChainDb,
@@ -44,7 +45,7 @@ impl SqliteDbFactory {
     pub fn new(config: &GlobalConfig) -> Self {
         let database_url = config
             .data_dir
-            .join("dan")
+            .join("asset_data")
             .join("dan_storage.sqlite")
             .into_os_string()
             .into_string()
@@ -59,6 +60,7 @@ impl DbFactory for SqliteDbFactory {
     type StateDbBackendAdapter = SqliteStateDbBackendAdapter;
 
     fn create_chain_db(&self) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
+        // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection.execute("PRAGMA foreign_keys = ON;");
         embed_migrations!("./migrations");
@@ -67,6 +69,7 @@ impl DbFactory for SqliteDbFactory {
     }
 
     fn create_state_db(&self) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
+        // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection.execute("PRAGMA foreign_keys = ON;");
         embed_migrations!("./migrations");
