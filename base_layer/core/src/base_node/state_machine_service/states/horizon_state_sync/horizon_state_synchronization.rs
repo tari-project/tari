@@ -120,6 +120,19 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error during sync:{}", err);
+                let data = self.db().inner().fetch_horizon_data()?;
+                error!(
+                    target: LOG_TARGET,
+                    "***************** kernal = {} - utxo = {} ********************* ",
+                    data.kernel_sum().to_hex(),
+                    data.utxo_sum().to_hex()
+                );
+                error!(
+                    target: LOG_TARGET,
+                    "IN MEM: ***************** kernal = {} - utxo = {} ********************* ",
+                    self.kernel_sum.to_hex(),
+                    self.utxo_sum.to_hex()
+                );
                 Err(err)
             },
         }
@@ -159,11 +172,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
 
         let data = self.db().fetch_horizon_data().await?;
+        let dd = crate::chain_storage::HorizonData::default();
         debug!(
             target: LOG_TARGET,
             "Loaded from horizon data utxo_sum = {}, kernel_sum = {}",
             data.utxo_sum().to_hex(),
             data.kernel_sum().to_hex(),
+        );
+        error!(
+            target: LOG_TARGET,
+            "DEFAULT: utxo_sum = {}, kernel_sum = {}",
+            dd.utxo_sum().to_hex(),
+            dd.kernel_sum().to_hex(),
         );
         self.utxo_sum = data.utxo_sum().clone();
         self.kernel_sum = data.kernel_sum().clone();
@@ -418,6 +438,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     witness_hashes.push(output.witness_hash());
                     unpruned_outputs.push(output.clone());
                     self.utxo_sum = &self.utxo_sum + &output.commitment;
+
+                    error!(target: LOG_TARGET, "UTXO = {}", self.utxo_sum.to_hex());
                     txn.insert_output_via_horizon_sync(
                         output,
                         current_header.hash().clone(),
@@ -532,6 +554,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     txn.set_pruned_height(metadata.pruned_height(), self.kernel_sum.clone(), self.utxo_sum.clone());
                     txn.commit().await?;
 
+                    let data = self.db().fetch_horizon_data().await?;
+                    error!(
+                        target: LOG_TARGET,
+                        "***************** kernal = {} - utxo = {} ********************* ",
+                        data.kernel_sum().to_hex(),
+                        data.utxo_sum().to_hex()
+                    );
                     debug!(
                         target: LOG_TARGET,
                         "UTXO: {}, Header #{}, added {} utxos, added {} txos in {:.2?}",
@@ -620,7 +649,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
         // TODO: Use accumulated sums
-        let (utxo_sum, kernel_sum) = self.calculate_commitment_sums(&header).await?;
+        let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
+        let utxo_sum = &self.utxo_sum;
+        let kernel_sum = &self.kernel_sum;
+        if *utxo_sum != calc_utxo_sum {
+            error!(target: LOG_TARGET, "UTXO sum isnt equal!");
+        }
+        if *kernel_sum != calc_kernel_sum {
+            error!(target: LOG_TARGET, "KERNEL sum isnt equal!");
+        }
 
         self.shared
             .sync_validators

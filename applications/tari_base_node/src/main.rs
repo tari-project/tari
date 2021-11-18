@@ -282,6 +282,11 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
     ctx.run().await;
 
+    task::spawn_blocking(|| {
+        std::thread::sleep(Duration::from_secs(100));
+    })
+    .await
+    .unwrap();
     println!("Goodbye!");
     Ok(())
 }

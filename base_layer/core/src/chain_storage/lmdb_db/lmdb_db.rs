@@ -2205,10 +2205,9 @@ fn fetch_horizon_data(txn: &ConstTransaction<'_>, db: &Database) -> Result<Optio
     match val {
         Some(MetadataValue::HorizonData(data)) => Ok(Some(data)),
         None => Ok(None),
-        _ => Err(ChainStorageError::ValueNotFound {
-            entity: "ChainMetadata",
-            field: "HorizonData",
-            value: "".to_string(),
+        Some(k) => Err(ChainStorageError::DataInconsistencyDetected {
+            function: "fetch_horizon_data",
+            details: format!("Received incorrect value {:?} for key horizon data", k),
         }),
     }
 }

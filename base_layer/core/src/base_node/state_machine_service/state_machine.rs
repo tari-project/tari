@@ -36,10 +36,13 @@ use crate::{
 use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
+use tokio::{
+    sync::{broadcast, watch},
+    time,
+};
 
 const LOG_TARGET: &str = "c::bn::base_node";
 
@@ -220,7 +223,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
             let mut mdc = vec![];
             log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
-            let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
+            let next_event = select_next_state_event(delayed(interrupt_signal), next_state_future).await;
             log_mdc::extend(mdc);
             // Publish the event on the event bus
             let _ = self.event_publisher.send(Arc::new(next_event.clone()));
@@ -259,12 +262,24 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
 /// Polls both the interrupt signal and the given future. If the given future `state_fut` is ready first it's value is
 /// returned, otherwise if the interrupt signal is triggered, `StateEvent::UserQuit` is returned.
-async fn select_next_state_event<F>(interrupt_signal: ShutdownSignal, state_fut: F) -> StateEvent
-where F: Future<Output = StateEvent> {
+async fn select_next_state_event<F, I>(interrupt_signal: I, state_fut: F) -> StateEvent
+where
+    F: Future<Output = StateEvent>,
+    I: Future<Output = ()>,
+{
     futures::pin_mut!(state_fut);
+    futures::pin_mut!(interrupt_signal);
     // If future A and B are both ready `future::select` will prefer A
     match future::select(interrupt_signal, state_fut).await {
         Either::Left(_) => StateEvent::UserQuit,
         Either::Right((state, _)) => state,
     }
+}
+
+async fn delayed<F, R>(fut: F) -> R
+where F: Future<Output = R> {
+    let ret = fut.await;
+    error!(target: LOG_TARGET, "SLEEEPIN",);
+    time::sleep(Duration::from_secs(100)).await;
+    ret
 }

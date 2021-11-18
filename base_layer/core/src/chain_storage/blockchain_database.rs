@@ -2088,7 +2088,8 @@ fn prune_database_if_needed<T: BlockchainBackend>(
         pruning_interval,
     );
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
-        prune_to_height(db, abs_pruning_horizon - 1)?;
+        debug!(target: LOG_TARGET, "GONNA PRUNNEEEEE",);
+        // prune_to_height(db, abs_pruning_horizon - 1)?;
     }
 
     Ok(())
