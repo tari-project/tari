@@ -44,7 +44,6 @@ use crate::{
     chain_storage::BlockchainBackend,
     transactions::CryptoFactories,
 };
-use horizon_state_synchronization::HorizonStateSynchronization;
 use log::*;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";

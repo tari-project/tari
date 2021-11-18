@@ -94,12 +94,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             target: LOG_TARGET,
             "Preparing database for horizon sync to height (#{})", self.horizon_sync_height
         );
-        let mut connection = self
-            .shared
-            .connectivity
-            .dial_peer(self.sync_peer.node_id().clone())
-            .await?;
-        let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
 
         let header = self.db().fetch_header(self.horizon_sync_height).await?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {

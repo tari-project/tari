@@ -114,8 +114,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Attempting to synchronize headers with `{}`", node_id
             );
-            match self.attempt_sync(&sync_peer, peer_conn.clone()).await {
-                Ok(()) => return Ok(sync_peer),
+            match self.attempt_sync(sync_peer, peer_conn.clone()).await {
+                Ok(()) => return Ok(sync_peer.clone()),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     warn!(target: LOG_TARGET, "{}", err);
