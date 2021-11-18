@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.13.0"
+version = "0.21.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -17,9 +17,10 @@ tari_app_grpc = { path = "../tari_app_grpc" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 
+sha2 = "0.9.5"
+digest = "0.9.0"
+chrono = { version = "0.4.19", default-features = false }
 bitflags = "1.2.1"
-chrono = { version = "0.4.6", features = ["serde"] }
-chrono-english = "0.1"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 crossterm = { version = "0.17" }
 rand = "0.8"
@@ -35,7 +36,6 @@ strum_macros = "^0.19"
 tokio = { version = "1.11", features = ["signal"] }
 thiserror = "1.0.26"
 tonic = "0.5.2"
-
 tracing = "0.1.26"
 tracing-opentelemetry = "0.15.0"
 tracing-subscriber = "0.2.20"
@@ -50,9 +50,9 @@ default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dependencies.tui]
-version = "^0.13"
+version = "^0.16"
 default-features = false
 features = ["crossterm"]
 
 [features]
-avx2 = []
+avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]

@@ -1173,7 +1173,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    // TODO: #testnetreset clean up this code
+    // TODO: #testnet_reset clean up this code
     let input_mr = if header.version == 1 {
         MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
     } else {

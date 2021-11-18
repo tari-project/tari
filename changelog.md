@@ -1,5 +1,56 @@
 # Changelog
 
+
+### [0.21.1](https://github.com/tari-project/tari/compare/v0.21.0...v0.21.1) (2021-11-17)
+
+
+### Features
+
+* add atomic swap htlc sending and claiming ([#3552](https://github.com/tari-project/tari/issues/3552)) ([a185506](https://github.com/tari-project/tari/commit/a1855065e0f2aaabbb6d7e508f71d6d0eaf6acd5))
+* add error codes to LibWallet for CipherSeed errors ([#3578](https://github.com/tari-project/tari/issues/3578)) ([2913804](https://github.com/tari-project/tari/commit/291380457ba28c6208d2d1ac97757e8cfa8df85c))
+* add support for MultiAddr in RPC config ([#3557](https://github.com/tari-project/tari/issues/3557)) ([9f8e289](https://github.com/tari-project/tari/commit/9f8e2899922c0eec9167ed4f49c5d4c161330221))
+* get fee for transactions for stratum transcoder ([#3571](https://github.com/tari-project/tari/issues/3571)) ([ccf1da0](https://github.com/tari-project/tari/commit/ccf1da02dcbf99fe1872deec73f424b4328c70e0))
+* implement multiple read single write for sqlite ([#3568](https://github.com/tari-project/tari/issues/3568)) ([8d22164](https://github.com/tari-project/tari/commit/8d22164ca10a4493fe73f66d13edf9ddd57cc6d1))
+* implement prometheus metrics for base node ([#3563](https://github.com/tari-project/tari/issues/3563)) ([433bc46](https://github.com/tari-project/tari/commit/433bc46e3d5cd488ec0f29fef6059594cf0cf3e3))
+* one-click installer - cli edition ([#3534](https://github.com/tari-project/tari/issues/3534)) ([ec67798](https://github.com/tari-project/tari/commit/ec677987a712c934168040da07f31fc744f66f71))
+* trigger time lock balance update when block received ([#3567](https://github.com/tari-project/tari/issues/3567)) ([11b8afa](https://github.com/tari-project/tari/commit/11b8afa31abe7e64ff366f8e83e478b017a86da5))
+* **wallet:** import utxo’s as EncumberedToBeReceived rather than Unspent ([#3575](https://github.com/tari-project/tari/issues/3575)) ([c286d40](https://github.com/tari-project/tari/commit/c286d408f5419620a63783c1ae9fe4d9f5cd68d2))
+
+
+### Bug Fixes
+
+* avoid implicit using of the time crate ([#3562](https://github.com/tari-project/tari/issues/3562)) ([23e8398](https://github.com/tari-project/tari/commit/23e83988cb8fe99babd0a96686602added75011a))
+* stop leak of value of recovered output ([#3558](https://github.com/tari-project/tari/issues/3558)) ([e0f2187](https://github.com/tari-project/tari/commit/e0f21876278702aa43096b04aa9e701f0942be67))
+* use time crate instead of chrono ([#3527](https://github.com/tari-project/tari/issues/3527)) ([d211031](https://github.com/tari-project/tari/commit/d211031cfa44ad498706db84e8a919b9babaf422))
+
+## [0.21.0](https://github.com/tari-project/tari/compare/v0.13.0...v0.21.0) (2021-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove outdated wallet_ffi balance methods (#3528)
+* **rpc:** read from substream while streaming to check for interruptions (#3548)
+
+### Features
+
+* add ffi get mnemonic wordlist ([#3538](https://github.com/tari-project/tari/issues/3538)) ([d8e0ced](https://github.com/tari-project/tari/commit/d8e0cedc19ee008a8dd937347d7e2fc5e7fc4c3f))
+* optimize transaction validation for wallet ([#3537](https://github.com/tari-project/tari/issues/3537)) ([9064b83](https://github.com/tari-project/tari/commit/9064b830c04000683aecf7b2972ffeabe5d90f08))
+
+
+### Bug Fixes
+
+* add check for old db encryption and provide warning ([#3549](https://github.com/tari-project/tari/issues/3549)) ([69bbbdf](https://github.com/tari-project/tari/commit/69bbbdfd87fae56d31bcd342fe4dc5c84086402e))
+* add decision step between header sync and pruned/archival ([#3546](https://github.com/tari-project/tari/issues/3546)) ([23e868a](https://github.com/tari-project/tari/commit/23e868a8a4d2d8b673e4bd3df9fb9f4d33d191d9))
+* check for previously cancelled completed txn before accepting a repeat message ([#3542](https://github.com/tari-project/tari/issues/3542)) ([911b83b](https://github.com/tari-project/tari/commit/911b83b675816cd41b4e40e0f001bca6f7037369))
+* prevent race condition between block propagation and sync ([#3536](https://github.com/tari-project/tari/issues/3536)) ([6bbb654](https://github.com/tari-project/tari/commit/6bbb65453ed5d8969e0e659fd855d5183262c6d6))
+* remove dns resolver config from cucumber tests, use default ([#3547](https://github.com/tari-project/tari/issues/3547)) ([e17ee64](https://github.com/tari-project/tari/commit/e17ee645add6c3030d1198d8efe96149fffbb7b6))
+* **rpc:** read from substream while streaming to check for interruptions ([#3548](https://github.com/tari-project/tari/issues/3548)) ([9194501](https://github.com/tari-project/tari/commit/919450186f70f3c00ade937a76288ce00ef2175c))
+* update the seed words used in the Daily tests ([#3545](https://github.com/tari-project/tari/issues/3545)) ([7696840](https://github.com/tari-project/tari/commit/76968400fbb1560d11f3beeecb6d1bb5ba60433b))
+* use tcp tls backend for peer seed DNS resolution ([#3544](https://github.com/tari-project/tari/issues/3544)) ([5b38909](https://github.com/tari-project/tari/commit/5b389098aa0aab9dd723213a29aeebe22e4d9bb6))
+
+
+* remove outdated wallet_ffi balance methods ([#3528](https://github.com/tari-project/tari/issues/3528)) ([413757b](https://github.com/tari-project/tari/commit/413757bcea5474524b18a860a95df255cbe95d33))
+
 ## [0.13.0](https://github.com/tari-project/tari/compare/v0.12.0...v0.13.0) (2021-11-04)
 
 

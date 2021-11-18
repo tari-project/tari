@@ -36,13 +36,17 @@ use crate::{
             send_transaction_cancelled::send_transaction_cancelled_message,
             wait_on_dial::wait_on_dial,
         },
+        utc::utc_duration_since,
     },
 };
 use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::HashOutput,
+};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -81,6 +85,8 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -102,6 +108,8 @@ where
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
         >,
         stage: TransactionSendProtocolStage,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -114,6 +122,8 @@ where
             message,
             service_request_reply_channel,
             stage,
+            prev_header,
+            height,
         }
     }
 
@@ -325,10 +335,7 @@ where
         }
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(outbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&outbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -350,10 +357,7 @@ where
         let resend = match outbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
@@ -457,7 +461,12 @@ where
 
         outbound_tx
             .sender_protocol
-            .finalize(KernelFeatures::empty(), &self.resources.factories)
+            .finalize(
+                KernelFeatures::empty(),
+                &self.resources.factories,
+                self.prev_header.clone(),
+                self.height,
+            )
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,

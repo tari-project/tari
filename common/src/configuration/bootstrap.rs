@@ -66,6 +66,7 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -116,8 +117,10 @@ pub struct ConfigBootstrap {
     /// This will clean out the orphans db at startup
     #[structopt(long, alias = "clean_orphans_db")]
     pub clean_orphans_db: bool,
-    /// Supply the password for the console wallet
-    #[structopt(long)]
+    /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
+    /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
+    /// possible.
+    #[structopt(long, env = "TARI_WALLET_PASSWORD")]
     pub password: Option<String>,
     /// Change the password for the console wallet
     #[structopt(long, alias = "update-password")]
@@ -151,6 +154,12 @@ pub struct ConfigBootstrap {
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]
     pub network: Option<String>,
+    /// Metrics server bind address (prometheus pull)
+    #[structopt(long, alias = "metrics-bind-addr")]
+    pub metrics_server_bind_addr: Option<SocketAddr>,
+    /// Metrics push endpoint (prometheus push)
+    #[structopt(long)]
+    pub metrics_push_endpoint: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -187,6 +196,8 @@ impl Default for ConfigBootstrap {
             miner_max_diff: None,
             tracing_enabled: false,
             network: None,
+            metrics_server_bind_addr: None,
+            metrics_push_endpoint: None,
         }
     }
 }

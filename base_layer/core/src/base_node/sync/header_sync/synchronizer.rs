@@ -34,7 +34,7 @@ use crate::{
     tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::{future, stream::FuturesUnordered, StreamExt, TryFutureExt};
+use futures::StreamExt;
 use log::*;
 use std::{
     convert::TryFrom,
@@ -101,14 +101,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         debug!(target: LOG_TARGET, "Starting header sync.",);
         self.hooks.call_on_starting_hook();
 
-        let sync_peers = self.select_sync_peers().await?;
         info!(
             target: LOG_TARGET,
             "Synchronizing headers ({} candidate peers selected)",
-            sync_peers.len()
+            self.sync_peers.len()
         );
 
-        for (sync_peer, peer_conn) in sync_peers {
+        for sync_peer in self.sync_peers {
+            let peer_conn = self.dial_sync_peer(sync_peer).await?;
             let node_id = peer_conn.peer_node_id().clone();
             debug!(
                 target: LOG_TARGET,
@@ -169,36 +169,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Err(BlockHeaderSyncError::SyncFailedAllPeers)
     }
 
-    async fn select_sync_peers(&self) -> Result<Vec<(SyncPeer, PeerConnection)>, BlockHeaderSyncError> {
-        let tasks = self
-            .sync_peers
-            .iter()
-            .cloned()
-            .map(|sync_peer| {
-                debug!(target: LOG_TARGET, "Dialing {} sync peer", sync_peer.node_id());
-                self.connectivity
-                    .dial_peer(sync_peer.node_id().clone())
-                    .and_then(|conn| future::ready(Ok((sync_peer, conn))))
-            })
-            .collect::<FuturesUnordered<_>>();
-
-        let connections = tasks
-            .filter_map(|r| match r {
-                Ok((sync_peer, conn)) => future::ready(Some((sync_peer, conn))),
-                Err(err) => {
-                    debug!(target: LOG_TARGET, "Failed to dial sync peer: {}", err);
-                    future::ready(None)
-                },
-            })
-            .collect::<Vec<_>>()
-            .await;
+    async fn dial_sync_peer(&self, sync_peer: &SyncPeer) -> Result<PeerConnection, BlockHeaderSyncError> {
+        let timer = Instant::now();
+        debug!(target: LOG_TARGET, "Dialing {} sync peer", sync_peer.node_id());
+        let conn = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
         info!(
             target: LOG_TARGET,
-            "Successfully dialed {} of {} sync peer(s)",
-            connections.len(),
-            self.sync_peers.len()
+            "Successfully dialed sync peer {} in {:.2?}",
+            sync_peer,
+            timer.elapsed()
         );
-        Ok(connections)
+        Ok(conn)
     }
 
     async fn ban_peer_long(&mut self, node_id: NodeId, reason: BanReason) -> Result<(), BlockHeaderSyncError> {

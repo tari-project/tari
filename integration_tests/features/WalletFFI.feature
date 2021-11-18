@@ -30,6 +30,18 @@ Feature: Wallet FFI
         And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
+    Scenario: As a client I want to retrieve the mnemonic word list for a given language
+        Given I have a base node BASE
+        And I have a ffi wallet FFI_WALLET connected to base node BASE
+        Then I retrieve the mnemonic word list for CHINESE_SIMPLIFIED from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for ENGLISH from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for FRENCH from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for ITALIAN from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for JAPANESE from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for KOREAN from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for SPANISH from ffi wallet FFI_WALLET
+        And I stop ffi wallet FFI_WALLET
+
     Scenario: As a client I want to set the base node
         Given I have a base node BASE1
         Given I have a base node BASE2
@@ -144,7 +156,7 @@ Feature: Wallet FFI
     # Scenario: As a client I want feedback about my connection status to the specifed Base Node
 
     # Scenario: As a client I want feedback about the wallet restoration process
-    # As a client I want to be able to restore my wallet from seed words
+    # It's a subtest of "As a client I want to be able to restore my wallet from seed words"
 
     # Scenario: As a client I want feedback about TXO and TX validation processes
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"

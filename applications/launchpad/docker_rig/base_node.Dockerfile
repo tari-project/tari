@@ -1,4 +1,4 @@
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-08-18 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18 as builder
 
 WORKDIR /tari
 
@@ -12,20 +12,21 @@ ADD common common
 ADD comms comms
 ADD infrastructure infrastructure
 ADD meta meta
-ADD rust-toolchain .
+ADD rust-toolchain.toml .
 
-# RUN rustup component add rustfmt --toolchain nightly-2020-08-13-x86_64-unknown-linux-gnu
-#ARG TBN_ARCH=native
-ARG TBN_ARCH=x86-64
-#ARG TBN_FEATURES=avx2
-ARG TBN_FEATURES=safe
-ENV RUSTFLAGS="-C target_cpu=$TBN_ARCH"
-ENV ROARING_ARCH=$TBN_ARCH
+ARG ARCH=native
+ARG FEATURES=avx2
+ENV RUSTFLAGS="-C target_cpu=$ARCH"
+ENV ROARING_ARCH=$ARCH
+ENV CARGO_HTTP_MULTIPLEXING=false
 
-RUN cargo build --bin tari_base_node --release --features $TBN_FEATURES --locked
+# Caches downloads across docker builds
+RUN cargo build --bin deps_only --release
+
+RUN cargo build --bin tari_base_node --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
-FROM quay.io/bitnami/minideb:buster as base
+FROM quay.io/bitnami/minideb:bullseye as base
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
@@ -36,18 +37,25 @@ RUN apt update && apt -y install \
   gpg \
   iputils-ping \
   less \
-  libreadline7 \
+  libreadline8 \
   libreadline-dev \
   libsqlite3-0 \
   openssl \
   telnet
 
-# Now create a new image with only the essentials and throw everything else away
-FROM base
+RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
+
+RUN mkdir -p "/var/tari/base_node/weatherwax" \
+    && mkdir -p "/var/tari/base_node/igor" \
+    && mkdir -p "/var/tari/base_node/mainnet" \
+    && chown -R tari.tari "/var/tari/base_node"
+
+USER tari
+
 ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
-COPY buildtools/docker_rig/start_base_node.sh /usr/bin/start_tari_app.sh
+COPY applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
 
 ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
 # CMD [ "--non-interactive-mode" ]

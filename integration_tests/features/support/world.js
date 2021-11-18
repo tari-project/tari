@@ -75,8 +75,8 @@ class CustomWorld {
   }
 
   async createAndAddNode(name, addresses) {
+    console.log(`Creating node ${name} connected to ${addresses}`);
     const node = this.createNode(name);
-    console.log(`Creating node ${name} with ${addresses}`);
     if (addresses) {
       if (Array.isArray(addresses)) {
         node.setPeerSeeds(addresses);
@@ -102,6 +102,7 @@ class CustomWorld {
   }
 
   async createAndAddWallet(name, nodeAddresses, options = {}) {
+    console.log(`Creating wallet ${name} connected to ${nodeAddresses}`);
     const wallet = new WalletProcess(
       name,
       false,
@@ -266,6 +267,21 @@ class CustomWorld {
       throw new Error(`Miner not found with name '${name}'`);
     }
     return miner;
+  }
+
+  async createMiningNode(name, node, wallet) {
+    const baseNode = this.getNode(node);
+    const walletNode = await this.getOrCreateWallet(wallet);
+    const miningNode = new MiningNodeProcess(
+      name,
+      baseNode.getGrpcAddress(),
+      this.getClient(node),
+      walletNode.getGrpcAddress(),
+      this.logFilePathMiningNode,
+      true
+    );
+    this.addMiningNode(name, miningNode);
+    return miningNode;
   }
 
   getWallet(name) {
@@ -467,11 +483,12 @@ function attachLogs(path, context) {
     archive.pipe(zipFile);
 
     glob(path + "/**/*.log", {}, function (err, files) {
-      console.log(files);
       for (let i = 0; i < files.length; i++) {
         // Append the file name at the bottom
         fs.appendFileSync(files[i], `>>>> End of ${files[i]}`);
-        archive.append(fs.createReadStream(files[i]), { name: files[i] });
+        archive.append(fs.createReadStream(files[i]), {
+          name: files[i].replace("./temp", ""),
+        });
       }
       archive.finalize().then(function () {
         context.attach(

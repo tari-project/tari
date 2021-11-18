@@ -23,11 +23,14 @@
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::Balance,
-    storage::models::KnownOneSidedPaymentScript,
+    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
 };
 use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
-use tari_common_types::{transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{HashOutput, PublicKey},
+};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionOutput, UnblindedOutput},
@@ -43,8 +46,9 @@ use tower::Service;
 /// API Request enum
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput(Box<UnblindedOutput>),
-    AddOutputWithTxId((TxId, Box<UnblindedOutput>)),
+    AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
+    AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
+    AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
@@ -73,6 +77,8 @@ pub enum OutputManagerRequest {
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     ReinstateCancelledInboundTx(TxId),
     SetCoinbaseAbandoned(TxId, bool),
+    CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
+    CreateHtlcRefundTransaction(HashOutput, MicroTari),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -80,8 +86,11 @@ impl fmt::Display for OutputManagerRequest {
         use OutputManagerRequest::*;
         match self {
             GetBalance => write!(f, "GetBalance"),
-            AddOutput(v) => write!(f, "AddOutput ({})", v.value),
-            AddOutputWithTxId((t, v)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
+            AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            AddUnvalidatedOutput((t, v, _)) => {
+                write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
+            },
             UpdateOutputMetadataSignature(v) => write!(
                 f,
                 "UpdateOutputMetadataSignature ({}, {}, {})",
@@ -120,6 +129,19 @@ impl fmt::Display for OutputManagerRequest {
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
             SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
+            CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
+                f,
+                "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
+                output.to_hex(),
+                pre_image,
+                fee_per_gram,
+            ),
+            CreateHtlcRefundTransaction(output, fee_per_gram) => write!(
+                f,
+                "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
+                output.to_hex(),
+                fee_per_gram,
+            ),
         }
     }
 }
@@ -153,6 +175,7 @@ pub enum OutputManagerResponse {
     AddKnownOneSidedPaymentScript,
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
+    ClaimHtlcTransaction((u64, MicroTari, MicroTari, Transaction)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -196,10 +219,14 @@ impl OutputManagerHandle {
         self.event_stream_sender.subscribe()
     }
 
-    pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
+    pub async fn add_output(
+        &mut self,
+        output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
+    ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::AddOutput(Box::new(output)))
+            .call(OutputManagerRequest::AddOutput((Box::new(output), spend_priority)))
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
@@ -211,10 +238,35 @@ impl OutputManagerHandle {
         &mut self,
         tx_id: TxId,
         output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::AddOutputWithTxId((tx_id, Box::new(output))))
+            .call(OutputManagerRequest::AddOutputWithTxId((
+                tx_id,
+                Box::new(output),
+                spend_priority,
+            )))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_unvalidated_output(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddUnvalidatedOutput((
+                tx_id,
+                Box::new(output),
+                spend_priority,
+            )))
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
@@ -421,6 +473,41 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_htlc_refund_transaction(
+        &mut self,
+        output: HashOutput,
+        fee_per_gram: MicroTari,
+    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram))
+            .await??
+        {
+            OutputManagerResponse::ClaimHtlcTransaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_claim_sha_atomic_swap_transaction(
+        &mut self,
+        output: HashOutput,
+        pre_image: PublicKey,
+        fee_per_gram: MicroTari,
+    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(
+                output,
+                pre_image,
+                fee_per_gram,
+            ))
+            .await??
+        {
+            OutputManagerResponse::ClaimHtlcTransaction(ct) => Ok(ct),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

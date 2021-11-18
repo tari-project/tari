@@ -37,9 +37,10 @@ impl NotificationTab {
             .constraints([Constraint::Min(42)].as_ref())
             .margin(1)
             .split(area);
-        let mut text: Vec<Spans> = app_state
+        let text = app_state
             .get_notifications()
             .iter()
+            .rev()
             .map(|(time, line)| {
                 Spans::from(vec![
                     Span::styled(
@@ -49,9 +50,8 @@ impl NotificationTab {
                     Span::raw(line),
                 ])
             })
-            .collect();
-        text.reverse();
-        let paragraph = Paragraph::new(text.clone()).wrap(Wrap { trim: true });
+            .collect::<Vec<_>>();
+        let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
         f.render_widget(paragraph, notifications_area[0]);
     }
 }

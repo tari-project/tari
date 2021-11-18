@@ -30,6 +30,10 @@ use crate::{
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
 };
+use tari_comms::NodeIdentity;
+
+use std::sync::Arc;
+
 use futures::future;
 use log::*;
 pub(crate) use master_key_manager::MasterKeyManager;
@@ -64,6 +68,7 @@ where T: OutputManagerBackend
     factories: CryptoFactories,
     network: NetworkConsensus,
     master_seed: CipherSeed,
+    node_identity: Arc<NodeIdentity>,
 }
 
 impl<T> OutputManagerServiceInitializer<T>
@@ -75,6 +80,7 @@ where T: OutputManagerBackend + 'static
         factories: CryptoFactories,
         network: NetworkConsensus,
         master_seed: CipherSeed,
+        node_identity: Arc<NodeIdentity>,
     ) -> Self {
         Self {
             config,
@@ -82,6 +88,7 @@ where T: OutputManagerBackend + 'static
             factories,
             network,
             master_seed,
+            node_identity,
         }
     }
 }
@@ -112,6 +119,7 @@ where T: OutputManagerBackend + 'static
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
         let master_seed = self.master_seed.clone();
+        let node_identity = self.node_identity.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -127,6 +135,7 @@ where T: OutputManagerBackend + 'static
                 base_node_service_handle,
                 connectivity,
                 master_seed,
+                node_identity,
             )
             .await
             .expect("Could not initialize Output Manager Service")

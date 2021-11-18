@@ -30,7 +30,7 @@ use crate::{
     chain_storage::BlockchainBackend,
 };
 use log::*;
-use std::time::Instant;
+use std::{cmp::Ordering, time::Instant};
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -41,7 +41,15 @@ pub struct HeaderSync {
 }
 
 impl HeaderSync {
-    pub fn new(sync_peers: Vec<SyncPeer>) -> Self {
+    pub fn new(mut sync_peers: Vec<SyncPeer>) -> Self {
+        // Sort by latency lowest to highest
+        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
+            (None, None) => Ordering::Equal,
+            // No latency goes to the end
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(la), Some(lb)) => la.cmp(&lb),
+        });
         Self {
             sync_peers,
             is_synced: false,
@@ -50,6 +58,10 @@ impl HeaderSync {
 
     pub fn is_synced(&self) -> bool {
         self.is_synced
+    }
+
+    pub fn into_sync_peers(self) -> Vec<SyncPeer> {
+        self.sync_peers
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -99,22 +111,28 @@ impl HeaderSync {
         });
 
         let timer = Instant::now();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok(sync_peer) => {
+                log_mdc::extend(mdc);
                 info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
             },
             Err(err @ BlockHeaderSyncError::SyncFailedAllPeers) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}. Continuing...", err);
                 StateEvent::Continue
             },
             Err(err @ BlockHeaderSyncError::NetworkSilence) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}", err);
                 self.is_synced = true;
                 StateEvent::NetworkSilence
             },
             Err(err) => {
+                log_mdc::extend(mdc);
                 debug!(target: LOG_TARGET, "Header sync failed: {}", err);
                 StateEvent::HeaderSyncFailed
             },

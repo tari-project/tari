@@ -29,7 +29,10 @@ mod config;
 pub use self::config::HorizonSyncConfig;
 
 mod error;
+pub use error::HorizonSyncError;
+
 mod horizon_state_synchronization;
+use horizon_state_synchronization::HorizonStateSynchronization;
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
@@ -56,8 +59,8 @@ impl HorizonStateSync {
         Self { sync_peer }
     }
 
-    pub fn sync_peer(&self) -> &SyncPeer {
-        &self.sync_peer
+    pub fn into_sync_peer(self) -> SyncPeer {
+        self.sync_peer
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -88,8 +91,7 @@ impl HorizonStateSync {
         shared.set_state_info(StateInfo::HorizonSync(info));
 
         let prover = CryptoFactories::default().range_proof;
-        let mut horizon_state =
-            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), horizon_sync_height, prover);
+        let mut horizon_state = HorizonStateSynchronization::new(shared, &self.sync_peer, horizon_sync_height, prover);
 
         match horizon_state.synchronize().await {
             Ok(()) => {
@@ -101,5 +103,11 @@ impl HorizonStateSync {
                 StateEvent::HorizonStateSyncFailure
             },
         }
+    }
+}
+
+impl From<SyncPeer> for HorizonStateSync {
+    fn from(sync_peer: SyncPeer) -> Self {
+        Self { sync_peer }
     }
 }

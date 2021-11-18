@@ -29,6 +29,7 @@ use crate::transaction_service::{
         models::{CompletedTransaction, InboundTransaction},
     },
     tasks::send_transaction_reply::send_transaction_reply,
+    utc::utc_duration_since,
 };
 use chrono::Utc;
 use futures::future::FutureExt;
@@ -39,6 +40,7 @@ use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connectivity_service::WalletConnectivityInterface;
+use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
@@ -63,6 +65,8 @@ pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -78,6 +82,8 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -87,6 +93,8 @@ where
             resources,
             transaction_finalize_receiver: Some(transaction_finalize_receiver),
             cancellation_receiver: Some(cancellation_receiver),
+            prev_header,
+            height,
         }
     }
 
@@ -236,10 +244,7 @@ where
         };
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(inbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&inbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -261,10 +266,7 @@ where
         let resend = match inbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
@@ -366,7 +368,13 @@ where
             );
 
             finalized_transaction
-                .validate_internal_consistency(true, &self.resources.factories, None)
+                .validate_internal_consistency(
+                    true,
+                    &self.resources.factories,
+                    None,
+                    self.prev_header.clone(),
+                    self.height,
+                )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction

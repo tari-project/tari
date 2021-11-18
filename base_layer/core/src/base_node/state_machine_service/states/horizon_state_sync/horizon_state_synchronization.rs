@@ -61,7 +61,7 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sy
 
 pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peer: SyncPeer,
+    sync_peer: &'a SyncPeer,
     horizon_sync_height: u64,
     prover: Arc<RangeProofService>,
     num_kernels: u64,
@@ -73,7 +73,7 @@ pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     pub fn new(
         shared: &'a mut BaseNodeStateMachine<B>,
-        sync_peer: SyncPeer,
+        sync_peer: &'a SyncPeer,
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,
     ) -> Self {
@@ -108,6 +108,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 value: self.horizon_sync_height.to_string(),
             }
         })?;
+
+        let mut connection = self
+            .shared
+            .connectivity
+            .dial_peer(self.sync_peer.node_id().clone())
+            .await?;
+        let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
 
         match self.begin_sync(&mut client, &header).await {
             Ok(_) => match self.finalize_horizon_sync().await {

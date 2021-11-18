@@ -34,6 +34,7 @@ use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use std::{
     cmp,
+    convert::TryFrom,
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -46,6 +47,7 @@ use std::{
 };
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -70,20 +72,24 @@ pub struct MergeMiningProxyConfig {
     pub wait_for_initial_sync_at_startup: bool,
 }
 
-impl From<GlobalConfig> for MergeMiningProxyConfig {
-    fn from(config: GlobalConfig) -> Self {
-        Self {
+impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
+    type Error = std::io::Error;
+
+    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
+        let grpc_base_node_address = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+        let grpc_console_wallet_address = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
+        Ok(Self {
             network: config.network,
             monerod_url: config.monerod_url,
             monerod_username: config.monerod_username,
             monerod_password: config.monerod_password,
             monerod_use_auth: config.monerod_use_auth,
-            grpc_base_node_address: config.grpc_base_node_address,
-            grpc_console_wallet_address: config.grpc_console_wallet_address,
+            grpc_base_node_address,
+            grpc_console_wallet_address,
             proxy_host_address: config.proxy_host_address,
             proxy_submit_to_origin: config.proxy_submit_to_origin,
             wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
-        }
+        })
     }
 }
 

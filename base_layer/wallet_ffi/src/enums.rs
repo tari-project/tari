@@ -26,4 +26,5 @@ pub enum SeedWordPushResult {
     SuccessfulPush,
     SeedPhraseComplete,
     InvalidSeedPhrase,
+    InvalidObject,
 }

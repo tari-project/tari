@@ -208,6 +208,7 @@ impl CoinbaseBuilder {
             script_private_key,
             sender_offset_public_key,
             metadata_sig,
+            0,
         );
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
@@ -235,7 +236,7 @@ impl CoinbaseBuilder {
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
-            .build(&self.factories)
+            .build(&self.factories, None, Some(height))
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         Ok((tx, unblinded_output))
     }
@@ -525,7 +526,9 @@ mod test {
                 &PrivateKey::default(),
                 false,
                 block_reward,
-                &factories
+                &factories,
+                None,
+                Some(u64::MAX)
             ),
             Ok(())
         );

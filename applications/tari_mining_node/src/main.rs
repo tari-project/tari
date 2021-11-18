@@ -223,12 +223,12 @@ async fn connect(
     config: &MinerConfig,
     global: &GlobalConfig,
 ) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_addr(global);
+    let base_node_addr = config.base_node_addr(global)?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
-    let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
-    let wallet_addr = config.wallet_addr(global);
+    let node_conn = BaseNodeClient::connect(base_node_addr).await?;
+    let wallet_addr = config.wallet_addr(global)?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
-    let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
+    let wallet_conn = WalletClient::connect(wallet_addr).await?;
 
     Ok((node_conn, wallet_conn))
 }

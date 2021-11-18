@@ -23,7 +23,10 @@
 use crate::{
     error::WalletStorageError,
     output_manager_service::error::OutputManagerError,
-    transaction_service::storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
+    transaction_service::{
+        storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
+        utc::NegativeDurationError,
+    },
 };
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
@@ -36,7 +39,6 @@ use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
-use time::OutOfRangeError;
 use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Debug, Error)]
@@ -113,8 +115,8 @@ pub enum TransactionServiceError {
     TransactionError(#[from] TransactionError),
     #[error("Conversion error: `{0}`")]
     ConversionError(#[from] TransactionConversionError),
-    #[error("duration::OutOfRangeError: {0}")]
-    DurationOutOfRange(#[from] OutOfRangeError),
+    #[error("duration::NegativeDurationError: {0}")]
+    DurationOutOfRange(#[from] NegativeDurationError),
     #[error("Node ID error: `{0}`")]
     NodeIdError(#[from] NodeIdError),
     #[error("Broadcast recv error: `{0}`")]
@@ -166,6 +168,10 @@ pub enum TransactionKeyError {
     Source(ByteArrayError),
     #[error("Invalid destination PublicKey")]
     Destination(ByteArrayError),
+    #[error("Invalid transaction signature nonce")]
+    SignatureNonce(ByteArrayError),
+    #[error("Invalid transaction signature key")]
+    SignatureKey(ByteArrayError),
 }
 
 #[derive(Debug, Error)]
@@ -187,15 +193,15 @@ pub enum TransactionStorageError {
     #[error("Transaction direction error: `{0}`")]
     TransactionDirectionError(#[from] TransactionDirectionError),
     #[error("Error converting a type: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
+    NegativeDurationError(#[from] NegativeDurationError),
     #[error("Error converting a type: `{0}`")]
     ConversionError(#[from] TransactionConversionError),
     #[error("Completed transaction conversion error: `{0}`")]
     CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

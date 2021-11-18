@@ -98,13 +98,17 @@ impl BlockSync {
         });
 
         let timer = Instant::now();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok(()) => {
+                log_mdc::extend(mdc);
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed
             },
@@ -117,7 +121,16 @@ impl BlockSync {
 }
 
 impl From<HorizonStateSync> for BlockSync {
-    fn from(state: HorizonStateSync) -> Self {
-        BlockSync::new(state.sync_peer().clone())
+    fn from(sync: HorizonStateSync) -> Self {
+        BlockSync::new(sync.into_sync_peer())
+    }
+}
+
+impl From<SyncPeer> for BlockSync {
+    fn from(sync_peer: SyncPeer) -> Self {
+        Self {
+            sync_peer,
+            is_synced: false,
+        }
     }
 }
