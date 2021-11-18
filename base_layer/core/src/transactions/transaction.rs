@@ -1627,18 +1627,6 @@ mod test {
     }
 
     #[test]
-    fn unblinded_input() {
-        let test_params = TestParams::new();
-        let factory = PedersenCommitmentFactory::default();
-
-        let i = test_params.create_unblinded_output(Default::default());
-        let input = i
-            .as_transaction_input(&factory)
-            .expect("Should be able to create transaction input");
-        assert!(input.opened_by(&i, &factory).unwrap());
-    }
-
-    #[test]
     fn with_maturity() {
         let features = OutputFeatures::with_maturity(42);
         assert_eq!(features.maturity, 42);
@@ -1679,7 +1667,12 @@ mod test {
 
         let value = 2u64.pow(32) + 1;
         let v = PrivateKey::from(value);
-        let c = factories.commitment.commit(&test_params_2.spend_key, &v);
+        let c = factories
+            .commitment
+            .commit(&test_params_2.spend_key, &v)
+            .as_public_key()
+            .compress();
+
         let proof = factories
             .range_proof
             .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
@@ -1698,7 +1691,8 @@ mod test {
                 &output_features,
                 &test_params_2.sender_offset_private_key,
             )
-            .unwrap(),
+            .unwrap()
+            .compress(),
         );
         assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
     }
@@ -1721,20 +1715,22 @@ mod test {
 
         tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
-        tx_output.sender_offset_public_key = PublicKey::default();
+        tx_output.sender_offset_public_key = CompressedPublicKey::default();
         assert!(tx_output.verify_metadata_signature().is_err());
     }
 
     #[test]
     fn kernel_hash() {
         let s = PrivateKey::from_hex("6c6eebc5a9c02e1f3c16a69ba4331f9f63d0718401dea10adc4f9d3b879a2c09").unwrap();
-        let r = PublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
-        let sig = Signature::new(r, s);
-        let excess = Commitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
+        let r =
+            CompressedPublicKey::from_hex("28e8efe4e5576aac931d358d0f6ace43c55fa9d4186d1d259d1436caa876d43b").unwrap();
+        let sig = CompressedSignature::new(r, s);
+        let excess =
+            CompressedCommitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
         let k = KernelBuilder::new()
             .with_signature(&sig.compress())
             .with_fee(100.into())
-            .with_excess(&excess.compress())
+            .with_excess(&excess)
             .with_lock_height(500)
             .build()
             .unwrap();
@@ -1747,13 +1743,15 @@ mod test {
     #[test]
     fn kernel_metadata() {
         let s = PrivateKey::from_hex("df9a004360b1cf6488d8ff7fb625bc5877f4b013f9b2b20d84932172e605b207").unwrap();
-        let r = PublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
-        let sig = Signature::new(r, s);
-        let excess = Commitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
+        let r =
+            CompressedPublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
+        let sig = CompressedSignature::new(r, s);
+        let excess =
+            CompressedCommitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
         let k = KernelBuilder::new()
             .with_signature(&sig.compress())
             .with_fee(100.into())
-            .with_excess(&excess.compress())
+            .with_excess(&excess)
             .with_lock_height(500)
             .build()
             .unwrap();
@@ -1768,12 +1766,12 @@ mod test {
         let factories = CryptoFactories::new(32);
         let k = BlindingFactor::random(&mut OsRng);
         let v = PrivateKey::from(2u64.pow(32) + 1);
-        let c = factories.commitment.commit(&k, &v);
+        let c = factories.commitment.commit(&k, &v).compress();
 
         let script = TariScript::default();
         let input_data = ExecutionStack::default();
-        let script_signature = ComSignature::default();
-        let offset_pub_key = PublicKey::default();
+        let script_signature = CompressedComSig::default();
+        let offset_pub_key = CompressedPublicKey::default();
         let mut input = TransactionInput::new_with_output_data(
             OutputFeatures::with_maturity(5),
             c,
@@ -1920,9 +1918,9 @@ mod test {
         let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
         let random_key = PrivateKey::random(&mut OsRng);
-        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
-        let public_random_key = PublicKey::from_secret_key(&random_key);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key).compress();
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key).compress();
+        let public_random_key = PublicKey::from_secret_key(&random_key).compress();
         let proof_message = b"testing12345678910111";
 
         let rewind_data = RewindData {
@@ -1942,7 +1940,7 @@ mod test {
         assert_eq!(
             output.rewind_range_proof_value_only(
                 &factories.range_proof,
-                &public_random_key,
+                &public_random_key.compress(),
                 &rewind_blinding_public_key
             ),
             Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))

@@ -41,7 +41,7 @@ use crate::{
     },
     validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::PublicKey;
 use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
 #[test]

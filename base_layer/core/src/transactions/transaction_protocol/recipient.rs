@@ -34,12 +34,7 @@ use crate::transactions::{
         TransactionProtocolError,
     },
 };
-use tari_common_types::types::{
-    CompressedPublicKey,
-    CompressedSignature,
-    MessageHash,
-    PrivateKey,
-};
+use tari_common_types::types::{CompressedPublicKey, CompressedSignature, MessageHash, PrivateKey};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -234,6 +229,7 @@ mod test {
         },
     };
     use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+    use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
     #[test]
     fn single_round_recipient() {
@@ -249,8 +245,8 @@ mod test {
         let msg = SingleRoundSenderData {
             tx_id: 15,
             amount,
-            public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
+            public_excess: PublicKey::from_secret_key(&p.spend_key).compress(), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key).compress(), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             features: features.clone(),
@@ -268,7 +264,7 @@ mod test {
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
             .commitment
-            .open_value(&p.spend_key, 500, &data.output.commitment));
+            .open_value(&p.spend_key, 500, &data.output.commitment.decompress().unwrap()));
         assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
