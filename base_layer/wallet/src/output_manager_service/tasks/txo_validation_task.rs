@@ -34,7 +34,7 @@ use crate::{
 use log::*;
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use tari_common_types::types::BlockHash;
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
+use tari_comms::protocol::rpc::RpcError::RequestFailed;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -353,7 +353,7 @@ where
                 info!(target: LOG_TARGET, "Error asking base node for header:{}", rpc_error);
                 match &rpc_error {
                     RequestFailed(status) => {
-                        if status.status_code() == NotFound {
+                        if status.as_status_code().is_not_found() {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());

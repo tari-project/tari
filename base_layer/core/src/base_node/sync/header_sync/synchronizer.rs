@@ -315,7 +315,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
             let resp = match client.find_chain_split(request).await {
                 Ok(r) => r,
-                Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
+                Err(RpcError::RequestFailed(err)) if err.as_status_code().is_not_found() => {
                     // This round we sent less hashes than the max, so the next round will not have any more hashes to
                     // send. Exit early in this case.
                     if block_hashes.len() < NUM_CHAIN_SPLIT_HEADERS {

@@ -20,16 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::NodeId, protocol::ProtocolId};
+use crate::{
+    peer_manager::NodeId,
+    protocol::{rpc::RpcStatusCode, ProtocolId},
+};
 use once_cell::sync::Lazy;
 use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
-pub fn sessions_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
+pub fn num_sessions(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::server::num_sessions",
-            "The number of active server sessions per node per protocol",
-            &["peer", "protocol"],
+            "The number of active server sessions per peer per protocol",
+            &["peer_id", "protocol"],
         )
         .unwrap()
     });
@@ -37,12 +40,12 @@ pub fn sessions_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
     METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
-pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
-    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
-            "comms::rpc::server::handshake_errors",
-            "The number of handshake errors per node per protocol",
-            &["peer", "protocol"],
+pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::rpc::server::handshake_error_count",
+            "The number of handshake errors per peer per protocol",
+            &["peer_id", "protocol"],
         )
         .unwrap()
     });
@@ -54,8 +57,8 @@ pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::error_count",
-            "The number of RPC errors per node per protocol",
-            &["peer", "protocol"],
+            "The number of RPC errors per peer per protocol",
+            &["peer_id", "protocol"],
         )
         .unwrap()
     });
@@ -63,12 +66,29 @@ pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
     METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
+pub fn status_error_counter(node_id: &NodeId, protocol: &ProtocolId, status_code: RpcStatusCode) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::rpc::server::status_error_count",
+            "The number of RPC errors by status code per peer per protocol",
+            &["peer_id", "protocol", "status"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[
+        node_id.to_string().as_str(),
+        String::from_utf8_lossy(protocol).as_ref(),
+        status_code.to_debug_string().as_str(),
+    ])
+}
+
 pub fn inbound_requests_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
         tari_metrics::register_histogram_vec(
             "comms::rpc::server::inbound_request_bytes",
-            "Avg. request bytes per node per protocol",
-            &["peer", "protocol"],
+            "Avg. request bytes per peer per protocol",
+            &["peer_id", "protocol"],
         )
         .unwrap()
     });
@@ -81,7 +101,7 @@ pub fn outbound_response_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histo
         tari_metrics::register_histogram_vec(
             "comms::rpc::server::outbound_response_bytes",
             "Avg. response bytes per peer per protocol",
-            &["peer", "protocol"],
+            &["peer_id", "protocol"],
         )
         .unwrap()
     });

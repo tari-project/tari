@@ -129,15 +129,18 @@ function WashingMachine(options) {
       `🚀 Launching washing machine (numTransactions = ${numTransactions}, numRounds = ${numRounds}, sleep = ${sleepAfterRound}s)`
     );
 
+    debug(`Connecting to wallet1 at ${wallet1Grpc}...`);
     await this.wallet1.connect(wallet1Grpc);
+    debug(`Connected.`);
 
-    debug("Compiling and starting applications...");
     let wallet2Process = null;
     // Start wallet2
     if (wallet2Grpc) {
       this.wallet2 = new WalletClient();
+      debug(`Connecting to wallet2 at ${wallet1Grpc}...`);
       await this.wallet2.connect(wallet2Grpc);
     } else {
+      debug("Compiling wallet2...");
       const port = await getFreePort(20000, 25000);
       wallet2Process = createGrpcWallet(
         baseNodeSeed,
@@ -148,6 +151,7 @@ function WashingMachine(options) {
         true
       );
       wallet2Process.baseDir = "./wallet";
+      debug("Starting wallet2...");
       await wallet2Process.startNew();
       this.wallet2 = await wallet2Process.connectClient();
     }

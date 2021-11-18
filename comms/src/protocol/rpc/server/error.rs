@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::protocol::rpc::handshake::RpcHandshakeError;
+use crate::{proto, protocol::rpc::handshake::RpcHandshakeError};
 use prost::DecodeError;
 use std::io;
 use tokio::sync::oneshot;
@@ -42,7 +42,11 @@ pub enum RpcServerError {
     #[error("Service not found for protocol `{0}`")]
     ProtocolServiceNotFound(String),
     #[error("Unexpected incoming message")]
-    UnexpectedIncomingMessage,
+    UnexpectedIncomingMessage(proto::rpc::RpcRequest),
+    #[error("Unexpected incoming MALFORMED message")]
+    UnexpectedIncomingMessageMalformed,
+    #[error("Client interrupted stream")]
+    ClientInterruptedStream,
 }
 
 impl From<oneshot::error::RecvError> for RpcServerError {
