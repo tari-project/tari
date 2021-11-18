@@ -95,9 +95,9 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
       .order_by(schema::accounts::name.asc())
       .load(&conn)?;
     results
-        .iter()
-        .map(SqliteAccountsTableGateway::convert_account)
-        .collect::<Result<_, _>>()
+      .iter()
+      .map(SqliteAccountsTableGateway::convert_account)
+      .collect::<Result<_, _>>()
   }
 
   fn insert(&self, account: NewAccount) -> Result<Account, StorageError> {

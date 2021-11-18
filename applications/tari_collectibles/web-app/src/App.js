@@ -179,7 +179,6 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState("");
   const [password, setPassword] = useState("");
-  const [accounts, setAccounts] = useState([]);
 
   // todo: screen lock after x mins no activity
 
@@ -189,8 +188,7 @@ function App() {
       .command_create_db()
       .then((r) => setLoading(false))
       .catch((e) => console.error(e));
-    let a = await binding.command_accounts_list();
-    setAccounts(a);
+
   }, []);
   if (loading) return <Spinner />;
 
