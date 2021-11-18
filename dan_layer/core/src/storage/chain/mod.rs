@@ -22,17 +22,15 @@
 
 use crate::models::{HotStuffMessageType, Instruction, Signature, TreeNodeHash, ViewId};
 
-mod chain_backend_adapter;
 mod chain_db;
+mod chain_db_backend_adapter;
 mod chain_db_unit_of_work;
-mod chain_unit_of_work;
 mod db_instruction;
 mod db_node;
 mod db_qc;
-pub use chain_backend_adapter::ChainBackendAdapter;
 pub use chain_db::ChainDb;
+pub use chain_db_backend_adapter::ChainDbBackendAdapter;
 pub use chain_db_unit_of_work::ChainDbUnitOfWork;
-pub use chain_unit_of_work::ChainUnitOfWork;
 pub use db_instruction::DbInstruction;
 pub use db_node::DbNode;
 pub use db_qc::DbQc;

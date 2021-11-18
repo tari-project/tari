@@ -20,20 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::schema::*;
-
-#[derive(Queryable)]
-pub struct StateKeyValue {
-    pub id: i32,
-    pub schema_name: String,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
-}
-
-#[derive(Insertable)]
-#[table_name = "state_key_values"]
-pub struct NewStateKeyValue {
-    pub schema_name: String,
+#[derive(Debug)]
+pub struct DbKeyValue {
+    pub schema: String,
     pub key: Vec<u8>,
     pub value: Vec<u8>,
 }

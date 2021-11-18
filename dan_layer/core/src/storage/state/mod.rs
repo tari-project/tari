@@ -19,3 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+mod state_db_unit_of_work;
+pub use state_db_unit_of_work::{StateDbUnitOfWork, StateDbUnitOfWorkImpl};
+mod db_key_value;
+mod state_db;
+pub use state_db::StateDb;
+mod state_db_backend_adapter;
+pub use state_db_backend_adapter::StateDbBackendAdapter;

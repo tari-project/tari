@@ -66,7 +66,7 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{AssetDataStore, BackendAdapter, DbFactory, LmdbAssetStore},
+    storage::{AssetDataStore, DbFactory, LmdbAssetStore},
     workers::ConsensusWorker,
 };
 use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
@@ -167,8 +167,7 @@ impl DanNode {
 
     async fn start_asset_worker<
         TMempoolService: MempoolService + Clone,
-        TBackendAdapter: BackendAdapter<Payload = TariDanPayload> + Send + Sync,
-        TDbFactory: DbFactory<TBackendAdapter> + Clone + Send + Sync,
+        TDbFactory: DbFactory + Clone + Send + Sync,
     >(
         &self,
         asset_definition: AssetDefinition,

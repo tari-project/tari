@@ -23,7 +23,7 @@
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{AssetDefinition, Instruction, TemplateId},
-    storage::StateDbUnitOfWork,
+    storage::state::StateDbUnitOfWork,
     template_command::ExecutionResult,
     templates::tip002_template,
 };

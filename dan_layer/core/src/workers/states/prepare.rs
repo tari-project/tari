@@ -46,10 +46,10 @@ use crate::{
     models::TreeNodeHash,
     services::PayloadProcessor,
     storage::{
-        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        state::StateDbUnitOfWork,
         ChainStorageService,
         DbFactory,
-        StateDbUnitOfWork,
         StorageError,
     },
 };
@@ -65,7 +65,6 @@ pub struct Prepare<
     TPayloadProvider,
     TPayload,
     TPayloadProcessor,
-    TBackendAdapter,
     TDbFactory,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
@@ -75,7 +74,6 @@ pub struct Prepare<
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: ChainBackendAdapter,
     TDbFactory: DbFactory,
 {
     node_id: TAddr,
@@ -88,7 +86,6 @@ pub struct Prepare<
     phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
     db_factory: TDbFactory,
-    pd: PhantomData<TBackendAdapter>,
 }
 
 impl<
@@ -99,7 +96,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TBackendAdapter,
         TDbFactory,
     >
     Prepare<
@@ -110,7 +106,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TBackendAdapter,
         TDbFactory,
     >
 where
@@ -121,7 +116,6 @@ where
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TBackendAdapter: ChainBackendAdapter + Send + Sync,
     TDbFactory: DbFactory + Clone,
 {
     pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
@@ -134,14 +128,13 @@ where
             received_new_view_messages: HashMap::new(),
             phantom_processor: PhantomData,
             db_factory,
-            pd: PhantomData,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn next_event<
         TChainStorageService: ChainStorageService<TPayload>,
-        TUnitOfWork: ChainUnitOfWork,
+        TUnitOfWork: ChainDbUnitOfWork,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
         &mut self,
@@ -269,7 +262,7 @@ where
     }
 
     async fn process_replica_message<
-        TUnitOfWork: ChainUnitOfWork,
+        TUnitOfWork: ChainDbUnitOfWork,
         TChainStorageService: ChainStorageService<TPayload>,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
@@ -386,7 +379,7 @@ where
         &from == &node.parent()
     }
 
-    fn is_safe_node<TUnitOfWork: ChainUnitOfWork>(
+    fn is_safe_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
         quorum_certificate: &QuorumCertificate,

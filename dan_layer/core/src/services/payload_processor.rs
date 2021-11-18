@@ -24,7 +24,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, StateRoot, TariDanPayload},
     services::{AssetProcessor, MempoolService},
-    storage::StateDbUnitOfWork,
+    storage::state::StateDbUnitOfWork,
 };
 use async_trait::async_trait;
 

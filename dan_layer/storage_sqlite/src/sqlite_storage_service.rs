@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tari_dan_core::{
     models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
-    storage::{ChainStorageService, StorageError, UnitOfWork},
+    storage::{chain::ChainDbUnitOfWork, ChainStorageService, StorageError},
 };
 use tokio::sync::RwLock;
 
@@ -38,7 +38,7 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
         todo!()
     }
 
-    async fn add_node<TUnitOfWork: UnitOfWork>(
+    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TariDanPayload>,
         db: TUnitOfWork,
@@ -48,16 +48,6 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
             db.add_instruction(node.hash().clone(), instruction.clone())?;
         }
         db.add_node(node.hash().clone(), node.parent().clone(), node.height())?;
-        Ok(())
-    }
-
-    async fn set_locked_qc<TUnitOfWork: UnitOfWork>(
-        &self,
-        qc: QuorumCertificate,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        db.set_locked_qc(&qc)?;
         Ok(())
     }
 }

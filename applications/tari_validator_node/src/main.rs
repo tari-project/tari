@@ -37,7 +37,7 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_dan_core::{
     services::{MempoolService, MempoolServiceHandle},
-    storage::{BackendAdapter, ChainStorageService, DbFactory},
+    storage::{ChainStorageService, DbFactory},
 };
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -77,7 +77,6 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
     let mempool_service = MempoolServiceHandle::new();
-    // let chain_storage = ChainStorageServiceHandle::new();
     let db_factory = SqliteDbFactory::new(&config);
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory);
@@ -107,10 +106,9 @@ async fn run_dan_node(
 
 async fn run_grpc<
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
-    TBackendAdapter: BackendAdapter + Sync + Send + 'static,
-    TDbFactory: DbFactory<TBackendAdapter> + Sync + Send + 'static,
+    TDbFactory: DbFactory + Sync + Send + 'static,
 >(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TBackendAdapter, TDbFactory>,
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

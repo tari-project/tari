@@ -22,7 +22,7 @@
 
 use crate::{
     models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata},
-    storage::{chain::ChainUnitOfWork, StorageError},
+    storage::{chain::ChainDbUnitOfWork, StorageError},
 };
 use async_trait::async_trait;
 
@@ -31,15 +31,9 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait ChainStorageService<TPayload: Payload> {
     async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError>;
-    async fn add_node<TUnitOfWork: ChainUnitOfWork>(
+    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
         node: &HotStuffTreeNode<TPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError>;
-
-    async fn set_locked_qc<TUnitOfWork: ChainUnitOfWork>(
-        &self,
-        qc: QuorumCertificate,
         db: TUnitOfWork,
     ) -> Result<(), StorageError>;
 }

@@ -40,14 +40,19 @@ table! {
 }
 
 table! {
-    state_key_values (id) {
-        id -> Integer,
+    state_keys (schema_name, key_name) {
         schema_name -> Text,
-        key -> Binary,
+        key_name -> Binary,
         value -> Binary,
     }
 }
 
 joinable!(instructions -> nodes (node_id));
 
-allow_tables_to_appear_in_same_query!(instructions, locked_qc, nodes, prepare_qc, state_key_values,);
+allow_tables_to_appear_in_same_query!(
+    instructions,
+    locked_qc,
+    nodes,
+    prepare_qc,
+    state_keys,
+);

@@ -20,16 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{digital_assets_error::DigitalAssetError, storage::state::StateDbUnitOfWork};
+use crate::schema::*;
 
-pub trait TemplateCommand {
-    fn try_execute<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        db: TUnitOfWork,
-    ) -> Result<ExecutionResult, DigitalAssetError>;
-}
-
-pub enum ExecutionResult {
-    Ok,
-    // Error,
+#[derive(Queryable, Insertable, Identifiable)]
+#[primary_key(schema_name, key_name)]
+pub struct StateKey {
+    pub schema_name: String,
+    pub key_name: Vec<u8>,
+    pub value: Vec<u8>,
 }

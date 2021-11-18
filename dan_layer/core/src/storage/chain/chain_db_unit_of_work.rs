@@ -23,22 +23,35 @@
 use crate::{
     models::{Instruction, QuorumCertificate, TreeNodeHash},
     storage::{
-        chain::{db_node::DbNode, ChainBackendAdapter, ChainUnitOfWork, DbInstruction, DbQc},
+        chain::{db_node::DbNode, ChainDbBackendAdapter, DbInstruction, DbQc},
         unit_of_work_tracker::UnitOfWorkTracker,
         StorageError,
     },
 };
 use std::{
     fmt::{Debug, Formatter},
+    ops::DerefMut,
     sync::{Arc, RwLock},
 };
 
+pub trait ChainDbUnitOfWork: Clone + Send + Sync {
+    fn commit(&mut self) -> Result<(), StorageError>;
+    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash, height: u32) -> Result<(), StorageError>;
+    fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
+    fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
+    fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
+    fn get_prepare_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
+    fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
+    fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
+    // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
+}
+
 // Cloneable, Send, Sync wrapper
-pub struct ChainDbUnitOfWork<TBackendAdapter: ChainBackendAdapter> {
+pub struct ChainDbUnitOfWorkImpl<TBackendAdapter: ChainDbBackendAdapter> {
     inner: Arc<RwLock<ChainDbUnitOfWorkInner<TBackendAdapter>>>,
 }
 
-impl<TBackendAdapter: ChainBackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWorkImpl<TBackendAdapter> {
     pub fn new(adapter: TBackendAdapter) -> Self {
         Self {
             inner: Arc::new(RwLock::new(ChainDbUnitOfWorkInner::new(adapter))),
@@ -46,7 +59,7 @@ impl<TBackendAdapter: ChainBackendAdapter> ChainDbUnitOfWork<TBackendAdapter> {
     }
 }
 
-impl<TBackendAdapter: ChainBackendAdapter> Clone for ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> Clone for ChainDbUnitOfWorkImpl<TBackendAdapter> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -54,7 +67,7 @@ impl<TBackendAdapter: ChainBackendAdapter> Clone for ChainDbUnitOfWork<TBackendA
     }
 }
 
-impl<TBackendAdapter: ChainBackendAdapter> ChainUnitOfWork for ChainDbUnitOfWork<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOfWorkImpl<TBackendAdapter> {
     // pub fn register_clean(&mut self, item: UnitOfWorkTracker) {
     //     self.clean.push(item);
     // }
@@ -256,7 +269,7 @@ impl<TBackendAdapter: ChainBackendAdapter> ChainUnitOfWork for ChainDbUnitOfWork
     }
 }
 
-pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainBackendAdapter> {
+pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainDbBackendAdapter> {
     backend_adapter: TBackendAdapter,
     nodes: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbNode>)>,
     instructions: Vec<(Option<TBackendAdapter::Id>, UnitOfWorkTracker<DbInstruction>)>,
@@ -264,12 +277,12 @@ pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainBackendAdapter> {
     prepare_qc: Option<UnitOfWorkTracker<DbQc>>,
 }
 
-impl<T: ChainBackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
+impl<T: ChainDbBackendAdapter> Debug for ChainDbUnitOfWorkInner<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Nodes:{:?}", self.nodes)
     }
 }
-impl<TBackendAdapter: ChainBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdapter> {
     pub fn new(backend_adapter: TBackendAdapter) -> Self {
         Self {
             backend_adapter,

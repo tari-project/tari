@@ -36,23 +36,27 @@ use log::*;
 use std::convert::TryFrom;
 use tari_dan_core::{
     models::{HotStuffMessageType, Payload, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
-    storage::{BackendAdapter, DbInstruction, DbNode, DbQc, StorageError, UnitOfWorkTracker},
+    storage::{
+        chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
+        StorageError,
+        UnitOfWorkTracker,
+    },
 };
 
-const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_backend_adapter";
+const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_chain_backend_adapter";
 
 #[derive(Clone)]
-pub struct SqliteBackendAdapter {
+pub struct SqliteChainBackendAdapter {
     database_url: String,
 }
 
-impl SqliteBackendAdapter {
-    pub fn new(database_url: String) -> SqliteBackendAdapter {
+impl SqliteChainBackendAdapter {
+    pub fn new(database_url: String) -> SqliteChainBackendAdapter {
         Self { database_url }
     }
 }
 
-impl BackendAdapter for SqliteBackendAdapter {
+impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     type BackendTransaction = SqliteTransaction;
     type Error = SqliteStorageError;
     type Id = i32;
@@ -221,7 +225,7 @@ impl BackendAdapter for SqliteBackendAdapter {
             .execute("COMMIT TRANSACTION;")
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
-                operation: "commit".to_string(),
+                operation: "commit::chain".to_string(),
             })?;
         Ok(())
     }

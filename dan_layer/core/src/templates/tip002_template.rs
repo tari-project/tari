@@ -19,7 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{models::AssetDefinition, storage::StateDbUnitOfWork, templates::proto::tips::tip002, DigitalAssetError};
+use crate::{
+    models::AssetDefinition,
+    storage::state::StateDbUnitOfWork,
+    templates::proto::tips::tip002,
+    DigitalAssetError,
+};
 use prost::Message;
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::ByteArray;

@@ -29,7 +29,7 @@ use crate::{
 };
 use std::fmt::Debug;
 
-pub trait ChainBackendAdapter: Send + Sync + Clone {
+pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
     type Error: Into<StorageError>;
     type Id: Copy + Send + Sync + Debug + PartialEq;

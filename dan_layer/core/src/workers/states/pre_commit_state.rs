@@ -27,7 +27,7 @@ use crate::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
         SigningService,
     },
-    storage::chain::ChainUnitOfWork,
+    storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
@@ -73,7 +73,7 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: ChainUnitOfWork>(
+    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
@@ -212,7 +212,7 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: ChainUnitOfWork>(
+    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,

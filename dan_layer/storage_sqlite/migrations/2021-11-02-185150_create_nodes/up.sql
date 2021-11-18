@@ -33,11 +33,3 @@ create table prepare_qc (
                            node_hash blob not null,
                            signature blob null
 );
-
-
-create table state_key_values (
-    id integer primary key autoincrement  not null,
-    schema_name text not null,
-    key blob not null,
-    value blob not null
-);

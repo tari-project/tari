@@ -20,19 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{Instruction, QuorumCertificate, TreeNodeHash},
-    storage::StorageError,
-};
+use crate::storage::StorageError;
 
-pub trait ChainUnitOfWork: Clone + Send + Sync {
-    fn commit(&mut self) -> Result<(), StorageError>;
-    fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash, height: u32) -> Result<(), StorageError>;
-    fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
-    fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
-    fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
-    fn get_prepare_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
-    fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
-    fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
-    // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
+pub trait StateDbBackendAdapter: Send + Sync + Clone {
+    type BackendTransaction;
+    type Error: Into<StorageError>;
+
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
+    fn update_key_value(
+        &self,
+        schema: &str,
+        key: &[u8],
+        value: &[u8],
+        tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error>;
+    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }

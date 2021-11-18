@@ -23,7 +23,7 @@
 use crate::{
     models::{HotStuffMessageType, HotStuffTreeNode, Instruction, QuorumCertificate, Signature, TreeNodeHash, ViewId},
     storage::{
-        chain::{ChainBackendAdapter, ChainDbUnitOfWork, ChainUnitOfWork},
+        chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter, ChainDbUnitOfWork},
         StorageError,
         UnitOfWorkTracker,
     },
@@ -34,11 +34,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-pub struct ChainDb<TBackendAdapter: ChainBackendAdapter> {
+pub struct ChainDb<TBackendAdapter: ChainDbBackendAdapter> {
     adapter: TBackendAdapter,
 }
 
-impl<TBackendAdapter: ChainBackendAdapter> ChainDb<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn new(adapter: TBackendAdapter) -> ChainDb<TBackendAdapter> {
         ChainDb { adapter }
     }
@@ -54,12 +54,12 @@ impl<TBackendAdapter: ChainBackendAdapter> ChainDb<TBackendAdapter> {
     }
 }
 
-impl<TBackendAdapter: ChainBackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
-    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWork<TBackendAdapter> {
-        ChainDbUnitOfWork::new(self.adapter.clone())
+impl<TBackendAdapter: ChainDbBackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
+    pub fn new_unit_of_work(&self) -> ChainDbUnitOfWorkImpl<TBackendAdapter> {
+        ChainDbUnitOfWorkImpl::new(self.adapter.clone())
     }
 }
-impl<TBackendAdapter: ChainBackendAdapter> ChainDb<TBackendAdapter> {
+impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn is_empty(&self) -> Result<bool, StorageError> {
         self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
     }

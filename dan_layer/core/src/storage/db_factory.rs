@@ -21,14 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::storage::{
-    chain::{ChainBackendAdapter, ChainDb},
-    StateDb,
-    StateDbBackendAdapter,
+    chain::{ChainDb, ChainDbBackendAdapter},
+    state::{StateDb, StateDbBackendAdapter},
     StorageError,
 };
 
 pub trait DbFactory {
-    type ChainDbBackendAdapter: ChainBackendAdapter;
+    type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type StateDbBackendAdapter: StateDbBackendAdapter;
     fn create_chain_db(&self) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
     fn create_state_db(&self) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;

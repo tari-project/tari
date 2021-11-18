@@ -33,11 +33,10 @@ use crate::{
         SigningService,
     },
     storage::{
-        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        state::{StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkImpl},
         ChainStorageService,
         DbFactory,
-        StateDbUnitOfWork,
-        StateDbUnitOfWorkImpl,
     },
     workers::{states, states::ConsensusWorkerStateEvent},
 };
@@ -59,7 +58,7 @@ pub struct ConsensusWorker<
     TPayloadProcessor,
     TCommitteeManager,
     TBaseNodeClient,
-    TBackendAdapter,
+    TStateBackendAdapter,
     TDbFactory,
     TChainStorageService,
 > where
@@ -73,8 +72,8 @@ pub struct ConsensusWorker<
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    TBackendAdapter: ChainBackendAdapter,
-    TDbFactory: DbFactory,
+    TStateBackendAdapter: StateDbBackendAdapter,
+    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter>,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     inbound_connections: TInboundConnectionService,
@@ -92,8 +91,9 @@ pub struct ConsensusWorker<
     base_node_client: TBaseNodeClient,
     db_factory: TDbFactory,
     chain_storage_service: TChainStorageService,
-    pd: PhantomData<TBackendAdapter>,
     pd2: PhantomData<TPayload>,
+    // TODO: Switch out for generic
+    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TStateBackendAdapter>>,
 }
 
 impl<
@@ -107,7 +107,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
-        TBackendAdapter,
+        TStateBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -122,7 +122,7 @@ impl<
         TPayloadProcessor,
         TCommitteeManager,
         TBaseNodeClient,
-        TBackendAdapter,
+        TStateBackendAdapter,
         TDbFactory,
         TChainStorageService,
     >
@@ -137,9 +137,8 @@ where
     TPayloadProcessor: PayloadProcessor<TPayload>,
     TCommitteeManager: CommitteeManager<TAddr>,
     TBaseNodeClient: BaseNodeClient,
-    // TODO: REmove this Send
-    TBackendAdapter: ChainBackendAdapter<Payload = TPayload> + Send + Sync,
-    TDbFactory: DbFactory + Clone,
+    TStateBackendAdapter: StateDbBackendAdapter,
+    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter> + Clone,
     TChainStorageService: ChainStorageService<TPayload>,
 {
     pub fn new(
@@ -176,7 +175,6 @@ where
             base_node_client,
             db_factory,
             chain_storage_service,
-            pd: PhantomData,
             pd2: PhantomData,
             state_db_unit_of_work: None,
         }
@@ -247,7 +245,7 @@ where
                     .await
             },
             Prepare => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
                 let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
@@ -272,7 +270,7 @@ where
                 Ok(res)
             },
             PreCommit => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
@@ -293,7 +291,7 @@ where
             },
 
             Commit => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
@@ -315,7 +313,7 @@ where
                 Ok(res)
             },
             Decide => {
-                let db = self.db_factory.create()?;
+                let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),

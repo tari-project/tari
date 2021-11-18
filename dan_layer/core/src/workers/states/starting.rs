@@ -32,10 +32,10 @@ use crate::{
         PayloadProvider,
     },
     storage::{
-        chain::{ChainBackendAdapter, ChainUnitOfWork},
+        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        state::StateDbUnitOfWork,
         ChainStorageService,
         DbFactory,
-        StateDbUnitOfWork,
     },
     workers::states::ConsensusWorkerStateEvent,
 };
@@ -63,7 +63,6 @@ where TBaseNodeClient: BaseNodeClient
         TPayload: Payload,
         TPayloadProvider: PayloadProvider<TPayload>,
         TPayloadProcessor: PayloadProcessor<TPayload>,
-        TBackendAdapter: ChainBackendAdapter,
         TDbFactory: DbFactory,
         TChainStorageService: ChainStorageService<TPayload>,
     >(
@@ -105,7 +104,7 @@ where TBaseNodeClient: BaseNodeClient
 
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let chain_db = db_factory.create()?;
+        let chain_db = db_factory.create_chain_db()?;
         if chain_db.is_empty()? {
             info!(target: LOG_TARGET, "DB is empty, initializing");
             let mut tx = chain_db.new_unit_of_work();
@@ -139,7 +138,7 @@ where TBaseNodeClient: BaseNodeClient
             chain_storage_service.add_node(&node, tx.clone()).await?;
             tx.commit_node(node.hash())?;
             debug!(target: LOG_TARGET, "Setting locked QC");
-            chain_storage_service.set_locked_qc(genesis_qc, tx.clone()).await?;
+            tx.set_locked_qc(&genesis_qc)?;
             debug!(target: LOG_TARGET, "Committing state");
             state_tx.commit()?;
             debug!(target: LOG_TARGET, "Committing node");

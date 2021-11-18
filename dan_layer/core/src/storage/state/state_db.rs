@@ -20,16 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{digital_assets_error::DigitalAssetError, storage::state::StateDbUnitOfWork};
+use crate::storage::state::{state_db_unit_of_work::StateDbUnitOfWorkImpl, StateDbBackendAdapter};
+use std::marker::PhantomData;
 
-pub trait TemplateCommand {
-    fn try_execute<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        db: TUnitOfWork,
-    ) -> Result<ExecutionResult, DigitalAssetError>;
+pub struct StateDb<TStateDbBackendAdapter: StateDbBackendAdapter> {
+    backend_adapter: TStateDbBackendAdapter,
 }
 
-pub enum ExecutionResult {
-    Ok,
-    // Error,
+impl<TStateDbBackendAdapter: StateDbBackendAdapter> StateDb<TStateDbBackendAdapter> {
+    pub fn new(backend_adapter: TStateDbBackendAdapter) -> Self {
+        Self { backend_adapter }
+    }
+
+    pub fn new_unit_of_work(&self) -> StateDbUnitOfWorkImpl<TStateDbBackendAdapter> {
+        StateDbUnitOfWorkImpl::new(self.backend_adapter.clone())
+
+        // let mut unit_of_work = self.current_unit_of_work_mut();
+        // if unit_of_work.is_none() {
+        //     self.unit_of_work = Some(StateDbUnitOfWork {});
+        //     unit_of_work = self.unit_of_work
+        // };
+        // unit_of_work.as_mut().unwrap()
+    }
 }
