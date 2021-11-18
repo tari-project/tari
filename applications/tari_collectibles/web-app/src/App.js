@@ -25,21 +25,26 @@ import {
   Route,
   BrowserRouter as Router,
   Switch,
+  Redirect,
   Link as RouterLink,
 } from "react-router-dom";
 import { createTheme } from "@mui/material/styles";
 import {
   AppBar,
   Box,
-  CssBaseline, Divider,
-  Drawer, IconButton,
+  CssBaseline,
+  Divider,
+  Drawer,
+  IconButton,
   List,
   ListItem,
   ListItemIcon,
-  ListItemText, ListSubheader,
+  ListItemText,
+  ListSubheader,
   Toolbar,
   Typography,
 } from "@mui/material";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import CreateIcon from "@mui/icons-material/Create";
 import AddIcon from "@mui/icons-material/Add";
@@ -54,8 +59,10 @@ import Manage from "./Manage";
 import AssetManager from "./AssetManager";
 import AccountDashboard from "./AccountDashboard";
 import NewAccount from "./NewAccount";
-import {useEffect, useState} from "react";
+import Setup, { UnlockWallet } from "./Setup";
+import { useEffect, useState } from "react";
 import binding from "./binding";
+import { Spinner } from "./components";
 
 const mdTheme = createTheme({
   palette: {
@@ -66,16 +73,19 @@ const mdTheme = createTheme({
 });
 
 function IconButtonLink(props) {
-  const { icon, to} = props;
+  const { icon, to } = props;
   const renderLink = React.useMemo(
-      () => React.forwardRef(function Link(itemProps, ref) {
+    () =>
+      React.forwardRef(function Link(itemProps, ref) {
         return <RouterLink to={to} ref={ref} {...itemProps} role={undefined} />;
       }),
-        [to]
-  )
+    [to]
+  );
 
   return (
-      <IconButton edge="end" aria-label="add" component={renderLink} >{icon}</IconButton>
+    <IconButton edge="end" aria-label="add" component={renderLink}>
+      {icon}
+    </IconButton>
   );
 }
 
@@ -91,12 +101,10 @@ function ListItemLink(props) {
   );
 
   return (
-    <li>
-      <ListItem button component={renderLink}>
-        {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
-        <ListItemText primary={primary} />
-      </ListItem>
-    </li>
+    <ListItem button component={renderLink}>
+      {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
+      <ListItemText primary={primary} />
+    </ListItem>
   );
 }
 
@@ -106,15 +114,82 @@ ListItemLink.propTypes = {
   to: PropTypes.string.isRequired,
 };
 
-function App() {
+const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
 
-  useEffect(async () => {
-   let a = await binding.command_accounts_list();
-  console.log(a);
-  setAccounts(a);
+  useEffect(() => {
+    binding
+      .command_accounts_list()
+      .then((accounts) => {
+        console.log("accounts", accounts);
+        setAccounts(accounts);
+      })
+      .catch((e) => {
+        // todo error handling
+        console.error("accounts_list error:", e);
+      });
+  }, []);
 
-  });
+  // todo: hide accounts when not authenticated
+  return (
+    <div>
+      <ListSubheader>
+        <ListItem
+          component="div"
+          disableGutters={true}
+          secondaryAction={
+            <IconButtonLink
+              icon={<AddIcon />}
+              to="/accounts/new"
+            ></IconButtonLink>
+          }
+        >
+          My Assets
+        </ListItem>
+      </ListSubheader>
+      <List>
+        {accounts.map((item) => {
+          return (
+            <ListItemLink
+              primary={item.name || item.assetPublicKey}
+              to={`/accounts/${item.asset_public_key}`}
+            ></ListItemLink>
+          );
+        })}
+      </List>
+    </div>
+  );
+};
+
+// only allow access to a Protected Route if the wallet is unlocked
+const ProtectedRoute = ({ authenticated, path, children }) => {
+  if (!authenticated) return <Redirect to="/" />;
+
+  return <Route path={path}>{children}</Route>;
+};
+
+ProtectedRoute.propTypes = {
+  authenticated: PropTypes.bool.isRequired,
+  path: PropTypes.string.isRequired,
+  children: PropTypes.node.isRequired,
+};
+
+function App() {
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [walletId, setWalletId] = useState("");
+  const [password, setPassword] = useState("");
+
+  // todo: screen lock after x mins no activity
+
+  // ensure db created or open before other components try to make db calls
+  useEffect(() => {
+    binding
+      .command_create_db()
+      .then((r) => setLoading(false))
+      .catch((e) => console.error(e));
+  }, []);
+  if (loading) return <Spinner />;
 
   return (
     <div className="App">
@@ -128,7 +203,11 @@ function App() {
               </Toolbar>
             </AppBar>
             <Drawer variant="permanent">
-              <Toolbar sx={{ display: "flex" }}>Tari Collectibles</Toolbar>
+              <RouterLink to="/">
+                <Toolbar sx={{ display: "flex", color: "white" }}>
+                  Tari Collectibles
+                </Toolbar>
+              </RouterLink>
               <List>
                 <ListItemLink
                   primary="Dashboard"
@@ -136,13 +215,7 @@ function App() {
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
-                <ListSubheader ><ListItem disableGutters={true} secondaryAction={
-                  <IconButtonLink icon={<AddIcon />} to="/accounts/new">
-                  </IconButtonLink>
-                }>My Assets</ListItem></ListSubheader>
-                { accounts.map((item) => {
-                return (<ListItemLink primary={item.name || item.assetPublicKey} to={`/accounts/${item.asset_public_key}`}></ListItemLink>);
-              })}
+                <AccountsMenu />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -154,6 +227,13 @@ function App() {
                   to="/create"
                   icon={<CreateIcon />}
                 />
+                <Divider></Divider>
+                <ListSubheader>My Wallet</ListSubheader>
+                <ListItemLink
+                  primary="Main"
+                  to={`/wallets/${walletId}`}
+                  icon={<AccountBalanceWalletIcon />}
+                />
               </List>
             </Drawer>
             <Box
@@ -161,25 +241,44 @@ function App() {
               sx={{ flexGrow: 1, height: "100vh", overflow: "auto" }}
             >
               <Switch>
-                <Route path="/accounts/new" >
+                <ProtectedRoute
+                  path="/accounts/new"
+                  authenticated={authenticated}
+                >
                   <NewAccount />
-                </Route>
-                <Route path="/accounts/:assetPubKey">
+                </ProtectedRoute>
+                <ProtectedRoute
+                  path="/accounts/:assetPubKey"
+                  authenticated={authenticated}
+                >
                   <AccountDashboard />
-                </Route>
-
-
-                <Route path="/create">
+                </ProtectedRoute>
+                <ProtectedRoute path="/create" authenticated={authenticated}>
                   <Create />
-                </Route>
-                <Route path="/manage">
+                </ProtectedRoute>
+                <ProtectedRoute path="/manage" authenticated={authenticated}>
                   <Manage />
-                </Route>
-                <Route path="/assets/manage/:assetPubKey">
+                </ProtectedRoute>
+                <ProtectedRoute
+                  path="/assets/manage/:assetPubKey"
+                  authenticated={authenticated}
+                >
                   <AssetManager />
+                </ProtectedRoute>
+                <ProtectedRoute path="/dashboard" authenticated={authenticated}>
+                  <Dashboard />
+                </ProtectedRoute>
+                <Route path="/wallets/:id">
+                  <UnlockWallet
+                    setAuthenticated={(id, password) => {
+                      setWalletId(id);
+                      setPassword(password);
+                      setAuthenticated(true);
+                    }}
+                  />
                 </Route>
                 <Route path="/">
-                  <Dashboard />
+                  <Setup />
                 </Route>
               </Switch>
             </Box>

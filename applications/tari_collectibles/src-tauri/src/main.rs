@@ -26,12 +26,17 @@ fn main() {
   tauri::Builder::default()
     .manage(state)
     .invoke_handler(tauri::generate_handler![
+      commands::create_db,
       commands::assets::assets_create,
       commands::assets::assets_list_owned,
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_issue_simple_tokens,
       commands::accounts::accounts_create,
-      commands::accounts::accounts_list
+      commands::accounts::accounts_list,
+      commands::wallets::wallets_create,
+      commands::wallets::wallets_list,
+      commands::wallets::wallets_find,
+      commands::wallets::wallets_seed_words,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

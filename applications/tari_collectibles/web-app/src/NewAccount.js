@@ -20,70 +20,79 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import React, { useState, useMemo } from "react";
-import {withRouter} from "react-router-dom";
-import {Alert, Button, Container, Stack, TextField, Typography} from "@mui/material";
+import React from "react";
+import { withRouter } from "react-router-dom";
+import {
+  Alert,
+  Button,
+  Container,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
 import binding from "./binding";
 
 class NewAccount extends React.Component {
-    constructor(props) {
-        super(props);
+  constructor(props) {
+    super(props);
 
-        this.state = {
-            error: null,
-            isSaving: false,
-            assetPublicKey: ""
-        };
-    }
-
-    onAssetPublicKeyChanged = (e) => {
-        this.setState({ assetPublicKey: e.target.value });
+    this.state = {
+      error: null,
+      isSaving: false,
+      assetPublicKey: "",
     };
+  }
 
-    onSave = async (e) => {
-        e.preventDefault();
-        console.log(this.state.assetPublicKey);
-        this.setState({isSaving: true, error: null});
-        try{
-            await binding.command_accounts_create(this.state.assetPublicKey);
-            let history = this.props.history;
-let path =`/assets/watched/details/${this.state.assetPublicKey}`;
-console.log(path);
-            history.push(path);
-            return;
-        }catch(e) {
-            this.setState({error: e});
-            console.error(e);
-        }
-        this.setState({isSaving: false});
-    }
+  onAssetPublicKeyChanged = (e) => {
+    this.setState({ assetPublicKey: e.target.value });
+  };
 
-    render() {
-       return   (<Container maxWidth="lg" sx={{ mt: 4, mb: 4, py: 8 }}>
-           <Typography variant="h3" sx={{ mb: "30px" }}>
-               New asset account
-           </Typography>
-           <Stack>
-               {this.state.error ? (
-                   <Alert severity="error">{this.state.error}</Alert>
-               ) : (
-                   <span />
-               )}
-               <TextField
-                   id="publicKey"
-                   label="Asset Public Key"
-                   variant="filled"
-                   color="primary"
-                   value={this.state.assetPublicKey}
-                   onChange={this.onAssetPublicKeyChanged}
-                   disabled={this.state.isSaving}
-               ></TextField>
-               <Button onClick={this.onSave} disabled={this.state.isSaving}>
-                   Save
-               </Button>
-           </Stack>
-       </Container>);
+  onSave = async (e) => {
+    e.preventDefault();
+    console.log(this.state.assetPublicKey);
+    this.setState({ isSaving: true, error: null });
+    try {
+      await binding.command_accounts_create(this.state.assetPublicKey);
+      let history = this.props.history;
+      let path = `/assets/watched/details/${this.state.assetPublicKey}`;
+      console.log(path);
+      history.push(path);
+      return;
+    } catch (e) {
+      this.setState({ error: e });
+      console.error(e);
     }
+    this.setState({ isSaving: false });
+  };
+
+  render() {
+    return (
+      <Container maxWidth="lg" sx={{ mt: 4, mb: 4, py: 8 }}>
+        <Typography variant="h3" sx={{ mb: "30px" }}>
+          New asset account
+        </Typography>
+        <Stack>
+          {this.state.error ? (
+            <Alert severity="error">{this.state.error}</Alert>
+          ) : (
+            <span />
+          )}
+          <TextField
+            id="publicKey"
+            label="Asset Public Key"
+            variant="filled"
+            color="primary"
+            value={this.state.assetPublicKey}
+            onChange={this.onAssetPublicKeyChanged}
+            disabled={this.state.isSaving}
+          ></TextField>
+          <Button onClick={this.onSave} disabled={this.state.isSaving}>
+            Save
+          </Button>
+        </Stack>
+      </Container>
+    );
+  }
 }
 
 export default withRouter(NewAccount);
