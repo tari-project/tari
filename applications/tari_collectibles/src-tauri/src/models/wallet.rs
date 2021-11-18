@@ -20,8 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod account;
-mod wallet;
+use serde::{Deserialize, Serialize};
+use tari_key_manager::cipher_seed::CipherSeed;
+use uuid::Uuid;
 
-pub use account::Account;
-pub use wallet::Wallet;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Wallet {
+  pub id: Uuid,
+  pub name: Option<String>,
+  pub cipher_seed: CipherSeed,
+}
+
+pub struct NewWallet {
+  pub name: Option<String>,
+  pub cipher_seed: CipherSeed,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WalletInfo {
+  pub id: Uuid,
+  pub name: Option<String>,
+}
+
+impl From<Wallet> for WalletInfo {
+  fn from(wallet: Wallet) -> Self {
+    WalletInfo {
+      id: wallet.id,
+      name: wallet.name,
+    }
+  }
+}

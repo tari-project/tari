@@ -9,3 +9,11 @@ table! {
         committee_pub_keys -> Binary,
     }
 }
+
+table! {
+    wallets (id) {
+        id -> Binary,
+        name -> Nullable<Text>,
+        cipher_seed -> Binary,
+    }
+}

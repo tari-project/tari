@@ -1,12 +1,3 @@
-use crate::{
-  models::{Account, NewAccount},
-  storage::{AccountsTableGateway, CollectiblesStorage, StorageError},
-};
-use diesel::{Connection, SqliteConnection};
-use std::path::Path;
-use tari_utilities::ByteArray;
-use uuid::Uuid;
-
 //  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -28,15 +19,25 @@ use uuid::Uuid;
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub mod models;
-use crate::schema::{self};
-use diesel::prelude::*;
-use std::fs;
+
+use crate::{
+  models::{Account, NewAccount, NewWallet, Wallet, WalletInfo},
+  schema::{self, *},
+  storage::{AccountsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway},
+};
+use diesel::{prelude::*, Connection, SqliteConnection};
+use std::{fs, path::Path};
 use tari_common_types::types::PublicKey;
+use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
+use tari_utilities::ByteArray;
+use uuid::Uuid;
+
+pub mod models;
 
 pub struct SqliteDbFactory {
   database_url: String,
 }
+
 impl SqliteDbFactory {
   pub fn new(data_dir: &Path) -> Self {
     fs::create_dir_all(data_dir)
@@ -52,7 +53,7 @@ impl SqliteDbFactory {
 
   pub fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
     let connection = SqliteConnection::establish(self.database_url.as_str())?;
-    connection.execute("PRAGMA foreign_keys = ON;");
+    connection.execute("PRAGMA foreign_keys = ON;")?;
     // Create the db
     embed_migrations!("./migrations");
     embedded_migrations::run(&connection)?;
@@ -68,9 +69,16 @@ pub struct SqliteCollectiblesStorage {
 
 impl CollectiblesStorage for SqliteCollectiblesStorage {
   type Accounts = SqliteAccountsTableGateway;
+  type Wallets = SqliteWalletsTableGateway;
 
   fn accounts(&self) -> Self::Accounts {
     SqliteAccountsTableGateway {
+      database_url: self.database_url.clone(),
+    }
+  }
+
+  fn wallets(&self) -> Self::Wallets {
+    SqliteWalletsTableGateway {
       database_url: self.database_url.clone(),
     }
   }
@@ -88,7 +96,7 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
       .load(&conn)?;
     results
         .iter()
-        .map(|r| SqliteAccountsTableGateway::convert_account(r))
+        .map(SqliteAccountsTableGateway::convert_account)
         .collect::<Result<_, _>>()
   }
 
@@ -117,7 +125,6 @@ impl AccountsTableGateway for SqliteAccountsTableGateway {
     };
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
 
-    use crate::schema::accounts;
     diesel::insert_into(accounts::table)
       .values(sql_model)
       .execute(&conn)?;
@@ -160,5 +167,82 @@ impl SqliteAccountsTableGateway {
         Some(committee)
       },
     })
+  }
+}
+
+pub struct SqliteWalletsTableGateway {
+  database_url: String,
+}
+
+impl SqliteWalletsTableGateway {
+  fn convert_wallet(w: &models::Wallet, pass: Option<String>) -> Result<Wallet, StorageError> {
+    let cipher_seed = match CipherSeed::from_enciphered_bytes(&w.cipher_seed, pass) {
+      Ok(seed) => seed,
+      Err(e) if matches!(e, KeyManagerError::DecryptionFailed) => {
+        return Err(StorageError::WrongPassword)
+      }
+      Err(e) => return Err(e.into()),
+    };
+
+    Ok(Wallet {
+      id: Uuid::from_slice(&w.id)?,
+      name: w.name.clone(),
+      cipher_seed,
+    })
+  }
+}
+
+impl WalletsTableGateway for SqliteWalletsTableGateway {
+  type Passphrase = Option<String>;
+
+  fn list(&self) -> Result<Vec<WalletInfo>, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let results: Vec<models::Wallet> = schema::wallets::table.load(&conn)?;
+    Ok(
+      results
+        .iter()
+        .map(|w| WalletInfo {
+          id: Uuid::from_slice(&w.id).unwrap(),
+          name: w.name.clone(),
+        })
+        .collect(),
+    )
+  }
+
+  fn insert(
+    &self,
+    wallet: NewWallet,
+    passphrase: Self::Passphrase,
+  ) -> Result<Wallet, StorageError> {
+    let id = Uuid::new_v4();
+
+    // todo: error
+    let sql_model = models::Wallet {
+      id: Vec::from(id.as_bytes().as_slice()),
+      name: wallet.name.clone(),
+      cipher_seed: wallet.cipher_seed.encipher(passphrase).unwrap(),
+    };
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+
+    // use crate::schema::wallets;
+    diesel::insert_into(wallets::table)
+      .values(sql_model)
+      .execute(&conn)?;
+
+    let result = Wallet {
+      id,
+      name: wallet.name,
+      cipher_seed: wallet.cipher_seed,
+    };
+    Ok(result)
+  }
+
+  fn find(&self, id: Uuid, passphrase: Self::Passphrase) -> Result<Wallet, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let db_wallet = schema::wallets::table
+      .find(Vec::from(id.as_bytes().as_slice()))
+      .get_result(&conn)?;
+
+    SqliteWalletsTableGateway::convert_wallet(&db_wallet, passphrase)
   }
 }

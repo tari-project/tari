@@ -19,6 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import { invoke } from "@tauri-apps/api/tauri";
 
 async function command_assets_create(name, description, image, templateIds, templateParameters) {
@@ -48,22 +49,47 @@ async function command_asset_create_initial_checkpoint(
   });
 }
 
+async function command_wallets_create(passphrase, name) {
+  return await invoke("wallets_create", { passphrase, name });
+}
+
+async function command_wallets_find(id, passphrase) {
+  return await invoke("wallets_find", { id, passphrase });
+}
+
+async function command_wallets_seed_words(id, passphrase) {
+  return await invoke("wallets_seed_words", { id, passphrase });
+}
+
+async function command_wallets_list() {
+  return await invoke("wallets_list");
+}
+
 async function command_accounts_create(assetPubKey) {
-  return await invoke("accounts_create", {assetPubKey});
+  return await invoke("accounts_create", { assetPubKey });
 }
 
 async function command_accounts_list() {
   return await invoke("accounts_list", {});
 }
 
+async function command_create_db() {
+  return await invoke("create_db", {});
+}
+
 const commands = {
+  command_create_db,
   command_assets_create,
   command_assets_get_registration,
   command_assets_list_owned,
   command_assets_list_registered_assets,
   command_asset_create_initial_checkpoint,
   command_accounts_create,
-  command_accounts_list
+  command_accounts_list,
+  command_wallets_create,
+  command_wallets_list,
+  command_wallets_find,
+  command_wallets_seed_words,
 };
 
 export default commands;

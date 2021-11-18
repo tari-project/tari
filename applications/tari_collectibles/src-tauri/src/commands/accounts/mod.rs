@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
   app_state::ConcurrentAppState,
-  models::{Account, NewAccount},
-  storage::{AccountsTableGateway, CollectiblesStorage},
+  models::{Account, NewAccount, NewWallet, Wallet},
+  storage::{AccountsTableGateway, CollectiblesStorage, WalletsTableGateway},
 };
 use tari_common_types::types::PublicKey;
 use tari_utilities::hex::Hex;

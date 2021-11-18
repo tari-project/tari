@@ -38,6 +38,8 @@
     "@wasm-tool/wasm-pack-plugin": "1.5.0",
     "customize-cra": "^1.0.0",
     "react-app-rewired": "^2.1.8",
+    "sass": "^1.43.4",
+    "scss": "^0.2.4",
     "text-encoding": "^0.7.0",
     "wasm-loader": "^1.3.0"
   },

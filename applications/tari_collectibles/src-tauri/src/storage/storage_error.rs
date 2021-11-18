@@ -35,9 +35,21 @@ pub enum StorageError {
     #[from]
     source: diesel::result::Error,
   },
-  #[error("Could not migrate the database")]
+  #[error("Could not migrate the database: {source}")]
   MigrationError {
     #[from]
     source: diesel_migrations::RunMigrationsError,
   },
+  #[error("UUID error: {source}")]
+  UuidError {
+    #[from]
+    source: uuid::Error,
+  },
+  #[error("KeyManager error: {source}")]
+  KeyManagerError {
+    #[from]
+    source: tari_key_manager::error::KeyManagerError,
+  },
+  #[error("The password is incorrect")]
+  WrongPassword,
 }

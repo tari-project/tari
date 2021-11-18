@@ -527,7 +527,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     }));
                 },
             };
-            Err(Status::unknown("Could not find a matching arm"))
+            // Err(Status::unknown("Could not find a matching arm"))
         } else {
             Err(Status::not_found("Could not find any utxo"))
         }

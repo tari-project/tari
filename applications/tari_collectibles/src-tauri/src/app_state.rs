@@ -28,7 +28,6 @@ use crate::{
     StorageError,
   },
 };
-
 use std::sync::Arc;
 use tari_common_types::types::PublicKey;
 use tauri::async_runtime::RwLock;
@@ -36,6 +35,7 @@ use tauri::async_runtime::RwLock;
 pub struct AppState {
   config: Settings,
   db_factory: SqliteDbFactory,
+  passphrase: Option<String>,
 }
 
 #[derive(Clone)]
@@ -50,8 +50,17 @@ impl ConcurrentAppState {
       inner: Arc::new(RwLock::new(AppState {
         db_factory: SqliteDbFactory::new(settings.data_dir.as_path()),
         config: settings,
+        passphrase: None,
       })),
     }
+  }
+
+  pub async fn passphrase(&self) -> Option<String> {
+    self.inner.read().await.passphrase.clone()
+  }
+
+  pub async fn set_passphrase(&mut self, pass: Option<String>) {
+    self.inner.write().await.passphrase = pass;
   }
 
   pub async fn create_wallet_client(&self) -> WalletClient {

@@ -26,8 +26,7 @@ import { AssetCard, Spinner } from "./components";
 import binding from "./binding";
 import { toHexString } from "./helpers";
 
-const explorerUrl = (blockHash) =>
-  `https:://explore.tari.com/block/${blockHash.toString("hex")}`;
+// const explorerUrl = (blockHash) => `https:://explore.tari.com/block/${blockHash.toString("hex")}`;
 
 class DashboardContent extends React.Component {
   constructor(props) {
@@ -85,7 +84,13 @@ class DashboardContent extends React.Component {
       );
 
       return (
-        <Grid item key={asset.public_key} xs={12} sm={6} md={4}>
+        <Grid
+          item
+          key={`${asset.name}-${asset.public_key}`}
+          xs={12}
+          sm={6}
+          md={4}
+        >
           <AssetCard asset={asset} actions={actions} />
         </Grid>
       );

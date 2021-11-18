@@ -20,8 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod account;
-mod wallet;
+use crate::schema::*;
+// use diesel::prelude::*;
 
-pub use account::Account;
-pub use wallet::Wallet;
+#[derive(Queryable, Insertable, Identifiable)]
+pub struct Wallet {
+  pub id: Vec<u8>,
+  pub name: Option<String>,
+  pub cipher_seed: Vec<u8>,
+}
