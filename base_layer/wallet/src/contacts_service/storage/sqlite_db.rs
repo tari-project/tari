@@ -223,7 +223,7 @@ mod test {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
                 contacts.push(Contact {
                     alias: names[i].clone(),
-                    public_key: pub_key,
+                    public_key: pub_key.compress(),
                 });
                 ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
             }

@@ -39,7 +39,8 @@ use tari_comms::{
     Bytes,
 };
 use tari_crypto::{
-    keys::PublicKey,
+    keys::{CompressedPublicKey, PublicKey},
+    ristretto::RistrettoPublicKey,
     tari_utilities::{message_format::MessageFormat, ByteArray},
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
@@ -98,7 +99,8 @@ pub fn make_dht_header(
         );
         origin_mac = make_valid_origin_mac(node_identity, challenge);
         if flags.is_encrypted() {
-            let shared_secret = crypt::generate_ecdh_secret(e_sk, node_identity.public_key());
+            let shared_secret =
+                crypt::generate_ecdh_secret(e_sk, &node_identity.public_key().decompress().unwrap()).compress();
             origin_mac = crypt::encrypt(&shared_secret, &origin_mac).unwrap()
         }
     }
@@ -151,7 +153,8 @@ pub fn make_dht_inbound_message(
 }
 
 pub fn make_keypair() -> (CommsSecretKey, CommsPublicKey) {
-    CommsPublicKey::random_keypair(&mut OsRng)
+    let (sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+    (sk, pk.compress())
 }
 
 pub fn make_dht_envelope(
@@ -164,7 +167,8 @@ pub fn make_dht_envelope(
 ) -> DhtEnvelope {
     let (e_sk, e_pk) = make_keypair();
     if flags.is_encrypted() {
-        let shared_secret = crypt::generate_ecdh_secret(&e_sk, node_identity.public_key());
+        let shared_secret =
+            crypt::generate_ecdh_secret(&e_sk, &node_identity.public_key().decompress().unwrap()).compress();
         message = crypt::encrypt(&shared_secret, &message).unwrap();
     }
     let header = make_dht_header(

@@ -46,6 +46,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{DhtOutboundError, OutboundMessageRequester},
 };
+
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
 use tokio::{time, time::MissedTickBehavior};
@@ -324,7 +325,7 @@ mod test {
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
         DhtProtocolVersion,
     };
-    use tari_crypto::keys::PublicKey;
+    use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tokio::{
@@ -402,7 +403,8 @@ mod test {
         // Run the LivenessService
         task::spawn(service.run());
 
-        let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rngs::OsRng);
+        let (_, pk) = RistrettoPublicKey::random_keypair(&mut rand::rngs::OsRng);
+        let pk = pk.compress();
         let node_id = NodeId::from_key(&pk);
         // Receive outbound request
         task::spawn(async move {
@@ -424,7 +426,8 @@ mod test {
     }
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
-        let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let pk = pk.compress();
         let source_peer = Peer::new(
             pk.clone(),
             NodeId::from_key(&pk),

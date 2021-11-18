@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_crypto::{commitment::HomomorphicCommitment, script};
+use tari_crypto::script;
 
 use tari_common::configuration::Network;
 
@@ -41,7 +41,8 @@ use crate::{
     },
     validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
-use tari_common_types::types::Commitment;
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {
@@ -99,25 +100,25 @@ fn chain_balance_validation() {
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key, _) = create_utxo(faucet_value, &factories, OutputFeatures::default(), &script!(Nop));
     let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let excess = pk.compress();
     let kernel = TransactionKernel {
         features: KernelFeatures::empty(),
         fee: MicroTari::from(0),
         lock_height: 0,
         excess,
-        excess_sig: sig,
+        excess_sig: sig.compress(),
     };
     // let _faucet_hash = faucet_utxo.hash();
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
     gen_block.body.add_kernels(&mut vec![kernel]);
-    let mut utxo_sum = HomomorphicCommitment::default();
-    let mut kernel_sum = HomomorphicCommitment::default();
+    let mut utxo_sum = PublicKey::default();
+    let mut kernel_sum = PublicKey::default();
     for output in gen_block.body.outputs() {
-        utxo_sum = &output.commitment + &utxo_sum;
+        utxo_sum = &output.commitment.decompress().unwrap() + &utxo_sum;
     }
     for kernel in gen_block.body.kernels() {
-        kernel_sum = &kernel.excess + &kernel_sum;
+        kernel_sum = &kernel.excess.decompress().unwrap() + &kernel_sum;
     }
     let genesis = ChainBlock::try_construct(Arc::new(gen_block), genesis.accumulated_data().clone()).unwrap();
     let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
@@ -151,9 +152,9 @@ fn chain_balance_validation() {
     );
     // let _coinbase_hash = coinbase.hash();
     let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let excess = pk.compress();
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(&sig.compress())
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -184,8 +185,8 @@ fn chain_balance_validation() {
     txn.insert_utxo(coinbase.clone(), header1.hash().clone(), 1, mmr_leaf_index);
 
     db.commit(txn).unwrap();
-    utxo_sum = &coinbase.commitment + &utxo_sum;
-    kernel_sum = &kernel.excess + &kernel_sum;
+    utxo_sum = &coinbase.commitment.decompress().unwrap() + &utxo_sum;
+    kernel_sum = &kernel.excess.decompress().unwrap() + &kernel_sum;
     validator
         .validate(&*db.db_read_access().unwrap(), 1, &utxo_sum, &kernel_sum)
         .unwrap();
@@ -196,9 +197,9 @@ fn chain_balance_validation() {
     let v = consensus_manager.get_block_reward_at(2) + uT;
     let (coinbase, key, _) = create_utxo(v, &factories, OutputFeatures::create_coinbase(1), &script!(Nop));
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let excess = pk.compress();
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(&sig.compress())
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -221,8 +222,8 @@ fn chain_balance_validation() {
         .unwrap();
     let header2 = ChainHeader::try_construct(header2, accumulated_data).unwrap();
     txn.insert_chain_header(header2.clone());
-    utxo_sum = &coinbase.commitment + &utxo_sum;
-    kernel_sum = &kernel.excess + &kernel_sum;
+    utxo_sum = &coinbase.commitment.decompress().unwrap() + &utxo_sum;
+    kernel_sum = &kernel.excess.decompress().unwrap() + &kernel_sum;
     mmr_leaf_index += 1;
     txn.insert_utxo(coinbase, header2.hash().clone(), 2, mmr_leaf_index);
     mmr_position += 1;

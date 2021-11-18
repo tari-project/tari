@@ -612,7 +612,8 @@ mod test {
 
         let other_peer = {
             let mut p = example_peer.clone();
-            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+            let (_, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+            let pk = pk.compress();
             p.node_id = NodeId::from_key(&pk);
             p.public_key = pk;
             p

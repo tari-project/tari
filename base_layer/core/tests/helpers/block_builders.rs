@@ -69,10 +69,10 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
     let p = TestParams::new();
 
-    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
+    let excess = PublicKey::from_secret_key(&p.spend_key).compress();
     let sig = create_signature(p.spend_key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(&sig.compress())
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -110,9 +110,9 @@ pub fn _create_act_gen_block() {
     let value = consensus_manager.emission_schedule().block_reward(0);
     let (utxo, key, _) = create_utxo(value, &factories, OutputFeatures::create_coinbase(1), &script![Nop]);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let excess = pk.compress();
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(&sig.compress())
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()

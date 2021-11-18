@@ -2081,7 +2081,7 @@ mod test {
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
-        types::{HashDigest, PrivateKey, PublicKey, Signature},
+        types::{CompressedSignature, HashDigest, PrivateKey, PublicKey},
     };
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -2152,7 +2152,7 @@ mod test {
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -2167,7 +2167,7 @@ mod test {
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
             tx_id: 2u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -2208,7 +2208,7 @@ mod test {
 
         let inbound_tx1 = InboundTransaction {
             tx_id: 2,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
@@ -2221,7 +2221,7 @@ mod test {
         };
         let inbound_tx2 = InboundTransaction {
             tx_id: 3,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             receiver_protocol: rtp,
             status: TransactionStatus::Pending,
@@ -2263,8 +2263,8 @@ mod test {
 
         let completed_tx1 = CompletedTransaction {
             tx_id: 2,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2277,15 +2277,18 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2298,7 +2301,10 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2414,8 +2420,8 @@ mod test {
 
         let coinbase_tx1 = CompletedTransaction {
             tx_id: 101,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2428,7 +2434,10 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2436,8 +2445,8 @@ mod test {
 
         let coinbase_tx2 = CompletedTransaction {
             tx_id: 102,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2450,7 +2459,10 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2458,8 +2470,8 @@ mod test {
 
         let coinbase_tx3 = CompletedTransaction {
             tx_id: 103,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
@@ -2472,7 +2484,10 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2518,7 +2533,7 @@ mod test {
 
         let inbound_tx = InboundTransaction {
             tx_id: 1,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: MicroTari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
@@ -2540,7 +2555,7 @@ mod test {
 
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: MicroTari::from(100),
             fee: MicroTari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
@@ -2564,8 +2579,8 @@ mod test {
 
         let completed_tx = CompletedTransaction {
             tx_id: 3,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
             transaction: Transaction::new(
@@ -2584,7 +2599,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: Signature::default(),
+            transaction_signature: CompressedSignature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2622,7 +2637,7 @@ mod test {
 
             let inbound_tx = InboundTransaction {
                 tx_id: 1,
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 amount: MicroTari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
@@ -2638,7 +2653,7 @@ mod test {
 
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64,
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
@@ -2655,8 +2670,8 @@ mod test {
 
             let completed_tx = CompletedTransaction {
                 tx_id: 3,
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(100),
                 transaction: Transaction::new(
@@ -2675,7 +2690,7 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 valid: true,
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
@@ -2748,8 +2763,8 @@ mod test {
             };
             let completed_tx = CompletedTransaction {
                 tx_id: i,
-                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(100),
                 transaction: Transaction::new(
@@ -2768,7 +2783,7 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 valid,
-                transaction_signature: Signature::default(),
+                transaction_signature: CompressedSignature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,

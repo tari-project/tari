@@ -378,11 +378,12 @@ fn determine_sync_mode(
 mod test {
     use super::*;
     use rand::rngs::OsRng;
-    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-    use tari_crypto::keys::PublicKey;
+    use tari_comms::peer_manager::NodeId;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
 
     fn random_node_id() -> NodeId {
-        let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+        let (_secret_key, public_key) = RistrettoPublicKey::random_keypair(&mut OsRng);
+        let public_key = public_key.compress();
         NodeId::from_key(&public_key)
     }
 

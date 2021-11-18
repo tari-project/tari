@@ -91,6 +91,7 @@ mod get_tx_state_by_excess_sig {
         proto::types::Signature,
         tari_utilities::ByteArray,
     };
+    use tari_common_types::types::CompressedSignature;
     use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
     use tari_test_utils::unpack_enum;
@@ -104,7 +105,7 @@ mod get_tx_state_by_excess_sig {
         let public_nonce = RistrettoPublicKey::default();
         let signature = RistrettoSecretKey::default();
 
-        let sig = Signature {
+        let sig = CompressedSignature {
             public_nonce: public_nonce.to_vec(),
             signature: signature.to_vec(),
         };

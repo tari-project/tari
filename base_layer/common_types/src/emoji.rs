@@ -172,12 +172,13 @@ pub struct EmojiIdError;
 
 #[cfg(test)]
 mod test {
-    use crate::{emoji::EmojiId, types::PublicKey};
+    use crate::{emoji::EmojiId, types::CompressedPublicKey};
     use tari_crypto::tari_utilities::hex::Hex;
 
     #[test]
     fn convert_key() {
-        let pubkey = PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+        let pubkey =
+            CompressedPublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
         assert_eq!(
             eid.as_str(),

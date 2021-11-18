@@ -350,10 +350,10 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         key.clone(),
         Default::default(),
         script,
-        inputs!(PublicKey::from_secret_key(&key)),
+        inputs!(PublicKey::from_secret_key(&key).compress()),
         key,
-        PublicKey::from_secret_key(&offset),
-        metadata_signature,
+        PublicKey::from_secret_key(&offset).compress(),
+        metadata_signature.compress(),
     );
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);

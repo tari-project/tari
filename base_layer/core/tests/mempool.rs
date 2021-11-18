@@ -1053,7 +1053,7 @@ async fn consensus_validation_large_tx() {
     let public_nonce = PublicKey::from_secret_key(&nonce);
     let offset_blinding_factor = &excess_blinding_factor - &offset;
     let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-    let e = build_challenge(&public_nonce, &tx_meta);
+    let e = build_challenge(&public_nonce.compress(), &tx_meta);
     let k = offset_blinding_factor;
     let r = nonce;
     let s = Signature::sign(k, r, &e).unwrap();
@@ -1061,8 +1061,8 @@ async fn consensus_validation_large_tx() {
     let kernel = KernelBuilder::new()
         .with_fee(fee)
         .with_lock_height(0)
-        .with_excess(&Commitment::from_public_key(&excess))
-        .with_signature(&s)
+        .with_excess(&excess.compress())
+        .with_signature(&s.compress())
         .build()
         .unwrap();
     let kernels = vec![kernel];

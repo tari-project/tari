@@ -225,7 +225,7 @@ async fn inputs_are_not_malleable() {
     let (malicious_input, _) = malicious_test_params.create_input(UtxoTestParams {
         value: spent_output.value,
         script: spent_output.script.clone(),
-        input_data: Some(inputs![malicious_script_public_key]),
+        input_data: Some(inputs![malicious_script_public_key.compress()]),
         output_features: spent_output.features,
     });
 

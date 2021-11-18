@@ -31,7 +31,7 @@ use helpers::{
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 use tari_common::configuration::Network;
-use tari_common_types::types::CommitmentFactory;
+use tari_common_types::types::{Commitment, CommitmentFactory};
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
@@ -43,6 +43,7 @@ use tari_core::{
     },
     txn_schema,
 };
+use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 use tari_test_utils::runtime::test_async;
 
 #[allow(dead_code)]
@@ -52,7 +53,11 @@ mod helpers;
 /// sorted in blocks, and so the order they were inserted in can change.
 fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactory) -> Option<TransactionOutput> {
     for utxo in block.body.outputs().iter() {
-        if factory.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
+        if factory.open_value(
+            &output.spending_key,
+            output.value.into(),
+            &Commitment::from_public_key(&utxo.commitment.decompress().unwrap()),
+        ) {
             return Some(utxo.clone());
         }
     }

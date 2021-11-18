@@ -451,6 +451,7 @@ mod test {
         test_utils::mocks::create_connectivity_mock,
         wrap_in_envelope_body,
     };
+    use tari_crypto::keys::CompressedPublicKey;
     use tari_shutdown::Shutdown;
     use tokio::{sync::mpsc, task, time};
     use tower::{layer::Layer, Service};
@@ -590,7 +591,11 @@ mod test {
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
-        let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
+        let ecdh_key = crypt::generate_ecdh_secret(
+            node_identity2.secret_key(),
+            &node_identity2.public_key().decompress().unwrap(),
+        )
+        .compress();
         let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
         let dht_envelope = make_dht_envelope(
             &node_identity2,

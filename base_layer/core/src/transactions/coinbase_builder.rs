@@ -257,8 +257,11 @@ mod test {
     };
     use rand::rngs::OsRng;
     use tari_common::configuration::Network;
-    use tari_common_types::types::{BlindingFactor, PrivateKey};
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+    use tari_common_types::types::{BlindingFactor, Commitment, PrivateKey};
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{CompressedPublicKey, SecretKey as SecretKeyTrait},
+    };
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -320,9 +323,11 @@ mod test {
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
-        assert!(factories
-            .commitment
-            .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
+        assert!(factories.commitment.open_value(
+            &p.spend_key,
+            block_reward.into(),
+            &Commitment::from_public_key(&utxo.commitment().decompress().unwrap())
+        ));
         assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
         assert_eq!(
