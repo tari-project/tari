@@ -980,7 +980,7 @@ impl TransactionOutput {
         let e = TransactionOutput::build_metadata_signature_challenge(
             script,
             output_features,
-            &sender_offset_public_key,
+            sender_offset_public_key,
             &nonce_commitment.as_public_key().compress(),
             &commitment.as_public_key().compress(),
         );
