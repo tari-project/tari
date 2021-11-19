@@ -39,7 +39,7 @@ use crate::transactions::{
     },
 };
 use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
-use tari_crypto::keys::CompressedPublicKey;
+use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -158,7 +158,8 @@ mod test {
             TransactionProtocolError,
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_common_types::types::{Commitment, PrivateKey, PublicKey};
+    use tari_crypto::keys::CompressedPublicKey;
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);
@@ -192,15 +193,15 @@ mod test {
             lock_height: 0,
         };
         let script_offset_secret_key = PrivateKey::random(&mut OsRng);
-        let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key).compress();
         let private_commitment_nonce = PrivateKey::random(&mut OsRng);
-        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
+        let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce).compress();
         let script = TariScript::default();
         let info = SingleRoundSenderData {
             tx_id: 500,
             amount: MicroTari(1500),
-            public_excess: pub_xs,
-            public_nonce: pub_rs.clone(),
+            public_excess: pub_xs.compress(),
+            public_nonce: pub_rs.clone().compress(),
             metadata: m.clone(),
             message: "".to_string(),
             features: of.clone(),
@@ -211,16 +212,23 @@ mod test {
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
-        assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
-        let e = build_challenge(&(&pub_rs + &pubnonce), &m);
+        assert_eq!(prot.public_spend_key, pubkey.compress(), "Public key is incorrect");
+        let e = build_challenge(&(&pub_rs + &pubnonce).compress(), &m);
         assert!(
-            prot.partial_signature.verify_challenge(&pubkey, &e),
+            prot.partial_signature
+                .decompress()
+                .unwrap()
+                .verify_challenge(&pubkey, &e),
             "Partial signature is incorrect"
         );
         let out = &prot.output;
         // Check the output that was constructed
         assert!(
-            factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
+            factories.commitment.open_value(
+                &k,
+                info.amount.into(),
+                &Commitment::from_public_key(&out.commitment.decompress().unwrap())
+            ),
             "Output commitment is invalid"
         );
         assert!(

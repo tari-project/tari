@@ -1605,7 +1605,7 @@ mod test {
         txn_schema,
     };
     use rand::{self, rngs::OsRng};
-    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
+    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         ristretto::pedersen::PedersenCommitmentFactory,
@@ -1728,7 +1728,7 @@ mod test {
         let excess =
             CompressedCommitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
         let k = KernelBuilder::new()
-            .with_signature(&sig.compress())
+            .with_signature(&sig)
             .with_fee(100.into())
             .with_excess(&excess)
             .with_lock_height(500)
@@ -1749,7 +1749,7 @@ mod test {
         let excess =
             CompressedCommitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
         let k = KernelBuilder::new()
-            .with_signature(&sig.compress())
+            .with_signature(&sig)
             .with_fee(100.into())
             .with_excess(&excess)
             .with_lock_height(500)
@@ -1766,7 +1766,7 @@ mod test {
         let factories = CryptoFactories::new(32);
         let k = BlindingFactor::random(&mut OsRng);
         let v = PrivateKey::from(2u64.pow(32) + 1);
-        let c = factories.commitment.commit(&k, &v).compress();
+        let c = factories.commitment.commit(&k, &v).as_public_key().compress();
 
         let script = TariScript::default();
         let input_data = ExecutionStack::default();
@@ -1940,7 +1940,7 @@ mod test {
         assert_eq!(
             output.rewind_range_proof_value_only(
                 &factories.range_proof,
-                &public_random_key.compress(),
+                &public_random_key,
                 &rewind_blinding_public_key
             ),
             Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))

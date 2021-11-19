@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{CompressedSignature, Signature};
 use tari_comms::{
     protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus},
     PeerConnection,
@@ -81,8 +81,8 @@ where T: From<RpcClient> + NamedProtocolService {
 #[derive(Clone, Debug)]
 pub struct BaseNodeWalletRpcMockState {
     submit_transaction_calls: Arc<Mutex<Vec<Transaction>>>,
-    transaction_query_calls: Arc<Mutex<Vec<Signature>>>,
-    transaction_batch_query_calls: Arc<Mutex<Vec<Vec<Signature>>>>,
+    transaction_query_calls: Arc<Mutex<Vec<CompressedSignature>>>,
+    transaction_batch_query_calls: Arc<Mutex<Vec<Vec<CompressedSignature>>>>,
     utxo_query_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     query_deleted_calls: Arc<Mutex<Vec<QueryDeletedRequest>>>,
     get_header_by_height_calls: Arc<Mutex<Vec<u64>>>,
@@ -242,19 +242,19 @@ impl BaseNodeWalletRpcMockState {
         acquire_lock!(self.submit_transaction_calls).pop()
     }
 
-    pub fn take_transaction_query_calls(&self) -> Vec<Signature> {
+    pub fn take_transaction_query_calls(&self) -> Vec<CompressedSignature> {
         acquire_lock!(self.transaction_query_calls).drain(..).collect()
     }
 
-    pub fn pop_transaction_query_call(&self) -> Option<Signature> {
+    pub fn pop_transaction_query_call(&self) -> Option<CompressedSignature> {
         acquire_lock!(self.transaction_query_calls).pop()
     }
 
-    pub fn take_transaction_batch_query_calls(&self) -> Vec<Vec<Signature>> {
+    pub fn take_transaction_batch_query_calls(&self) -> Vec<Vec<CompressedSignature>> {
         acquire_lock!(self.transaction_batch_query_calls).drain(..).collect()
     }
 
-    pub fn pop_transaction_batch_query_call(&self) -> Option<Vec<Signature>> {
+    pub fn pop_transaction_batch_query_call(&self) -> Option<Vec<CompressedSignature>> {
         acquire_lock!(self.transaction_batch_query_calls).pop()
     }
 
@@ -322,7 +322,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Signature>, String> {
+    ) -> Result<Vec<CompressedSignature>, String> {
         let now = Instant::now();
         let mut count = 0usize;
         while now.elapsed() < timeout {
@@ -344,7 +344,7 @@ impl BaseNodeWalletRpcMockState {
         &self,
         num_calls: usize,
         timeout: Duration,
-    ) -> Result<Vec<Vec<Signature>>, String> {
+    ) -> Result<Vec<Vec<CompressedSignature>>, String> {
         let now = Instant::now();
         let mut count = 0usize;
         while now.elapsed() < timeout {
@@ -488,7 +488,8 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         }
 
         let message = request.into_message();
-        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+        let signature =
+            CompressedSignature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
         log::info!("Transaction Query call received: {:?}", signature);
 
         let mut transaction_query_calls_lock = acquire_lock!(self.state.transaction_query_calls);
@@ -516,7 +517,8 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         let message = request.into_message();
         let mut signatures = Vec::new();
         for s in message.sigs {
-            let signature = Signature::try_from(s).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            let signature =
+                CompressedSignature::try_from(s).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
             signatures.push(signature);
         }
         log::info!("Transaction Batch Query call received: {:?}", signatures);

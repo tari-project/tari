@@ -155,6 +155,7 @@ use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
 };
+use tari_common_types::types::CompressedSignature;
 
 fn create_runtime() -> Runtime {
     Builder::new_multi_thread()
@@ -1447,7 +1448,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let mut wrong_tx_id = tx_reply.clone();
     wrong_tx_id.tx_id = 2;
     let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
-    tx_reply.public_spend_key = pub_key;
+    tx_reply.public_spend_key = pub_key.compress();
     runtime
         .block_on(alice_tx_ack_sender.send(create_dummy_message(wrong_tx_id.into(), bob_node_identity.public_key())))
         .unwrap();
@@ -1582,7 +1583,7 @@ fn finalize_tx_with_incorrect_pubkey() {
     runtime
         .block_on(alice_tx_finalized.send(create_dummy_message(
             finalized_transaction_message,
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         )))
         .unwrap();
 
@@ -1933,8 +1934,8 @@ fn test_power_mode_updates() {
     let tx_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
 
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
-        .with_signature(&Signature::default())
+        .with_excess(&factories.commitment.zero().as_public_key().compress())
+        .with_signature(&CompressedSignature::default())
         .build()
         .unwrap();
     let tx = Transaction::new(
@@ -1946,8 +1947,8 @@ fn test_power_mode_updates() {
     );
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount: 5000 * uT,
         fee: MicroTari::from(100),
         transaction: tx.clone(),
@@ -1960,7 +1961,10 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
-        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+        transaction_signature: tx
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -1968,8 +1972,8 @@ fn test_power_mode_updates() {
 
     let completed_tx2 = CompletedTransaction {
         tx_id: 2,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount: 6000 * uT,
         fee: MicroTari::from(200),
         transaction: tx.clone(),
@@ -1982,7 +1986,10 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
-        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+        transaction_signature: tx
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -2357,7 +2364,7 @@ fn test_transaction_cancellation() {
     runtime
         .block_on(alice_tx_cancelled_sender.send(create_dummy_message(
             proto_message,
-            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            &PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         )))
         .unwrap();
 
@@ -2937,7 +2944,7 @@ fn test_restarting_transaction_protocols() {
         )
         .with_change_script(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
             script_private_key,
         );
     let mut bob_stp = builder.build::<Blake256>(&factories).unwrap();
@@ -4120,7 +4127,7 @@ fn test_resend_on_startup() {
     let tx_id = stp.get_tx_id().unwrap();
     let mut outbound_tx = OutboundTransaction {
         tx_id,
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount,
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
@@ -4253,7 +4260,7 @@ fn test_resend_on_startup() {
 
     let mut inbound_tx = InboundTransaction {
         tx_id,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount,
         receiver_protocol: rtp,
         status: TransactionStatus::Pending,
@@ -4627,7 +4634,7 @@ fn test_transaction_timeout_cancellation() {
     let tx_id = stp.get_tx_id().unwrap();
     let outbound_tx = OutboundTransaction {
         tx_id,
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount,
         fee: stp.get_fee_amount().unwrap(),
         sender_protocol: stp,
@@ -5107,8 +5114,8 @@ fn broadcast_all_completed_transactions_on_startup() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let db = TransactionServiceSqliteDatabase::new(connection.clone(), None);
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
-        .with_signature(&Signature::default())
+        .with_excess(&factories.commitment.zero().as_public_key().compress())
+        .with_signature(&CompressedSignature::default())
         .build()
         .unwrap();
 
@@ -5122,8 +5129,8 @@ fn broadcast_all_completed_transactions_on_startup() {
 
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
         transaction: tx.clone(),
@@ -5136,7 +5143,10 @@ fn broadcast_all_completed_transactions_on_startup() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
-        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+        transaction_signature: tx
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -5253,8 +5263,8 @@ fn dont_broadcast_invalid_transactions() {
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
 
     let kernel = KernelBuilder::new()
-        .with_excess(&factories.commitment.zero())
-        .with_signature(&Signature::default())
+        .with_excess(&factories.commitment.zero().as_public_key().compress())
+        .with_signature(&CompressedSignature::default())
         .build()
         .unwrap();
 
@@ -5268,8 +5278,8 @@ fn dont_broadcast_invalid_transactions() {
 
     let completed_tx1 = CompletedTransaction {
         tx_id: 1,
-        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
         transaction: tx.clone(),
@@ -5282,7 +5292,10 @@ fn dont_broadcast_invalid_transactions() {
         send_count: 0,
         last_send_timestamp: None,
         valid: false,
-        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+        transaction_signature: tx
+            .first_kernel_excess_sig()
+            .unwrap_or(&CompressedSignature::default())
+            .clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,

@@ -276,7 +276,7 @@ async fn test_wallet() {
 
         contacts.push(Contact {
             alias: random::string(8),
-            public_key,
+            public_key: public_key.compress(),
         });
 
         alice_wallet
@@ -718,7 +718,7 @@ async fn test_import_utxo() {
     .await
     .unwrap();
     let key = PrivateKey::random(&mut OsRng);
-    let claim = PublicKey::from_secret_key(&key);
+    let claim = PublicKey::from_secret_key(&key).compress();
     let script = script!(Nop);
     let input = inputs!(claim);
     let features = OutputFeatures::create_coinbase(50);

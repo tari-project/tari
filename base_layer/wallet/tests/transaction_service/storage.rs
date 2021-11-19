@@ -28,7 +28,7 @@ use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus},
-    types::{HashDigest, PrivateKey, PublicKey, Signature},
+    types::{CompressedSignature, HashDigest, PrivateKey, PublicKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
@@ -103,7 +103,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         outbound_txs.push(OutboundTransaction {
             tx_id: (i + 10) as u64,
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: amounts[i],
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
@@ -172,7 +172,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         inbound_txs.push(InboundTransaction {
             tx_id: i as u64,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
@@ -248,8 +248,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     for i in 0..messages.len() {
         completed_txs.push(CompletedTransaction {
             tx_id: outbound_txs[i].tx_id,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             amount: outbound_txs[i].amount,
             fee: MicroTari::from(200),
             transaction: tx.clone(),
@@ -266,7 +266,10 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
+            transaction_signature: tx
+                .first_kernel_excess_sig()
+                .unwrap_or(&CompressedSignature::default())
+                .clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -387,7 +390,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             999,
             InboundTransaction::new(
                 999u64,
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 22 * uT,
                 rtp,
                 TransactionStatus::Pending,
@@ -461,7 +464,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             998,
             OutboundTransaction::new(
                 998u64,
-                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
                 22 * uT,
                 stp.get_fee_amount().unwrap(),
                 stp,

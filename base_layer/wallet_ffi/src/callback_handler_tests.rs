@@ -206,7 +206,7 @@ mod test {
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
             1u64,
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             22 * uT,
             rtp,
             TransactionStatus::Pending,
@@ -215,8 +215,8 @@ mod test {
         );
         let completed_tx = CompletedTransaction::new(
             2u64,
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             MicroTari::from(100),
             MicroTari::from(2000),
             Transaction::new(
@@ -235,7 +235,7 @@ mod test {
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(
             3u64,
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             22 * uT,
             23 * uT,
             stp,
@@ -303,7 +303,7 @@ mod test {
             oms_handle,
             dht_event_receiver,
             shutdown_signal.to_signal(),
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)).compress(),
             received_tx_callback,
             received_tx_reply_callback,
             received_tx_finalized_callback,

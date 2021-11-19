@@ -399,6 +399,7 @@ mod test {
     fn test_parse_command() {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
+        let public_key = public_key.compress();
         let command_str = "";
         let parsed = parse_command(command_str);
         assert!(parsed.is_err());

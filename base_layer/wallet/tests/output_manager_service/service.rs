@@ -307,7 +307,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         )
         .with_change_script(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
+            inputs!(PublicKey::from_secret_key(&script_private_key).compress()),
             script_private_key,
         );
 
@@ -1012,8 +1012,8 @@ async fn handle_coinbase() {
     let rewind_result = output
         .rewind_range_proof_value_only(
             &factories.range_proof,
-            &rewind_public_keys.rewind_public_key,
-            &rewind_public_keys.rewind_blinding_public_key,
+            &rewind_public_keys.rewind_public_key.compress(),
+            &rewind_public_keys.rewind_blinding_public_key.compress(),
         )
         .unwrap();
     assert_eq!(rewind_result.committed_value, value3);

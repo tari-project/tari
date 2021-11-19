@@ -64,7 +64,7 @@ use tari_common_types::types::{
 };
 use tari_crypto::{
     keys::{CompressedPublicKey as CompressedPublicKeyTrait, PublicKey as PublicKeyTrait},
-    ristretto::pedersen::{PedersenCommitmentFactory},
+    ristretto::pedersen::PedersenCommitmentFactory,
     script::TariScript,
     tari_utilities::ByteArray,
 };
@@ -781,7 +781,7 @@ mod test {
         let sender_public_commitment_nonce = PublicKey::from_secret_key(&sender_private_commitment_nonce);
         let value = 1000u64;
         let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key).compress();
 
         // Shared contract data
         let script = Default::default();
@@ -810,11 +810,11 @@ mod test {
 
         let mut output = TransactionOutput::new(
             Default::default(),
-            commitment.clone(),
+            commitment.as_public_key().compress(),
             proof,
             script,
             sender_offset_public_key,
-            partial_metadata_signature.clone(),
+            partial_metadata_signature.compress(),
         );
         assert!(!output.verify_metadata_signature().is_ok());
         assert!(partial_metadata_signature.verify_challenge(
@@ -830,7 +830,8 @@ mod test {
             &output,
             &commitment_factory,
         )
-        .unwrap();
+        .unwrap()
+        .compress();
         assert!(output.verify_metadata_signature().is_ok());
     }
 
@@ -986,7 +987,7 @@ mod test {
             bob_info.public_spend_key.to_hex(),
             bob_info.partial_signature.get_public_nonce().to_hex(),
             bob_info.partial_signature.get_signature().to_hex(),
-            bob_info.output.commitment.as_public_key().to_hex()
+            bob_info.output.commitment.to_hex()
         );
         // Alice gets message back, deserializes it, etc
         alice
@@ -1135,8 +1136,8 @@ mod test {
         // Rewind params
         let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key).compress();
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key).compress();
         let proof_message = b"alice__12345678910111";
 
         let rewind_data = RewindData {

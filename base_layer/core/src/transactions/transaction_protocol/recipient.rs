@@ -228,7 +228,7 @@ mod test {
             ReceiverTransactionProtocol,
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+    use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
     use tari_crypto::keys::CompressedPublicKey as CompressedPublicKeyTrait;
 
     #[test]
@@ -255,20 +255,22 @@ mod test {
             public_commitment_nonce: p.sender_public_commitment_nonce,
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
-        let pubkey = PublicKey::from_secret_key(&p.spend_key);
+        let pubkey = PublicKey::from_secret_key(&p.spend_key).compress();
         let receiver =
             ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.tx_id, 15);
         assert_eq!(data.public_spend_key, pubkey);
-        assert!(factories
-            .commitment
-            .open_value(&p.spend_key, 500, &data.output.commitment.decompress().unwrap()));
+        assert!(factories.commitment.open_value(
+            &p.spend_key,
+            500,
+            &Commitment::from_public_key(&data.output.commitment.decompress().unwrap())
+        ));
         assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
-        let r_sum = &msg.public_nonce + &p.public_nonce;
-        let e = build_challenge(&r_sum, &m);
-        let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
+        let r_sum = &msg.public_nonce.decompress().unwrap() + &p.public_nonce.decompress().unwrap();
+        let e = build_challenge(&r_sum.compress(), &m);
+        let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap().compress();
         assert_eq!(data.partial_signature, s);
     }
 
@@ -279,8 +281,8 @@ mod test {
         // Rewind params
         let rewind_key = PrivateKey::random(&mut OsRng);
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
-        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key).compress();
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key).compress();
         let message = b"alice__12345678910111";
         let amount = MicroTari(500);
         let m = TransactionMetadata {
@@ -292,8 +294,8 @@ mod test {
         let msg = SingleRoundSenderData {
             tx_id: 15,
             amount,
-            public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
-            public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
+            public_excess: PublicKey::from_secret_key(&p.spend_key).compress(), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_spend_key).compress(), // any random key will do
             metadata: m,
             message: "".to_string(),
             features: features.clone(),

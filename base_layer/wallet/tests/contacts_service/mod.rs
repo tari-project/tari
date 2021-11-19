@@ -68,7 +68,7 @@ pub fn test_contacts_service() {
 
         contacts.push(Contact {
             alias: random::string(8),
-            public_key,
+            public_key: public_key.compress(),
         });
 
         runtime
@@ -85,7 +85,7 @@ pub fn test_contacts_service() {
     assert_eq!(contact, contacts[0]);
 
     let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-
+    let public_key = public_key.compress();
     let contact = runtime.block_on(contacts_service.get_contact(public_key.clone()));
     assert_eq!(
         contact,
