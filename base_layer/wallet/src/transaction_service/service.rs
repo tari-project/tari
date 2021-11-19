@@ -1014,8 +1014,8 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: blinding_key.clone(),
