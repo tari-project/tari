@@ -187,7 +187,7 @@ impl RpcClient {
         &mut self,
         request: BaseRequest<Bytes>,
     ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError> {
-        let svc = self.connector.ready_and().await?;
+        let svc = self.connector.ready().await?;
         let resp = svc.call(request).await?;
         Ok(resp)
     }
