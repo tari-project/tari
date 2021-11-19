@@ -1071,7 +1071,8 @@ pub unsafe extern "C" fn seed_words_push_word(
         return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
             log::error!(
                 target: LOG_TARGET,
-                "Problem building valid private seed from seed phrase"
+                "Problem building valid private seed from seed phrase: {}",
+                e
             );
             error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4380,6 +4381,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
+    // Todo the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
@@ -4391,6 +4393,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         ComSignature::default(),
         &(*spending_key).clone(),
         &Default::default(),
+        0,
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)

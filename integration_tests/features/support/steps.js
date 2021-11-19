@@ -1909,7 +1909,85 @@ When(
         const wait_seconds = 5;
         console.log(
           "  " +
-            lastResult.results.failure_message +
+            this.lastResult.results.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.results.transaction_id
+      );
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.results.transaction_id
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
+  /I claim an HTLC refund transaction with wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (source, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    console.log("Claiming HTLC refund transaction of", source);
+    let success = false;
+    let retries = 1;
+    let hash = this.lastResult.output_hash;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.claimHtlcRefund({
+              output_hash: hash,
+              fee_per_gram: feePerGram,
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.results.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            this.lastResult.results.failure_message +
             ", trying again after " +
             wait_seconds +
             "s (" +

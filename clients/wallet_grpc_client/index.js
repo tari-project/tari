@@ -44,6 +44,7 @@ function Client(address) {
     "revalidateAllTransactions",
     "SendShaAtomicSwapTransaction",
     "claimShaAtomicSwapTransaction",
+    "ClaimHtlcRefundTransaction",
   ];
 
   this.waitForReady = (...args) => {

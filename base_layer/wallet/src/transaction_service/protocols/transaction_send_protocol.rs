@@ -43,7 +43,10 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use std::sync::Arc;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus},
+    types::HashOutput,
+};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -82,6 +85,8 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -103,6 +108,8 @@ where
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
         >,
         stage: TransactionSendProtocolStage,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -115,6 +122,8 @@ where
             message,
             service_request_reply_channel,
             stage,
+            prev_header,
+            height,
         }
     }
 
@@ -452,7 +461,12 @@ where
 
         outbound_tx
             .sender_protocol
-            .finalize(KernelFeatures::empty(), &self.resources.factories)
+            .finalize(
+                KernelFeatures::empty(),
+                &self.resources.factories,
+                self.prev_header.clone(),
+                self.height,
+            )
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,

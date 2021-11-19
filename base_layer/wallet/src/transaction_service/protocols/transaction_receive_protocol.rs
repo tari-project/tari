@@ -40,6 +40,7 @@ use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connectivity_service::WalletConnectivityInterface;
+use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
@@ -64,6 +65,8 @@ pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -79,6 +82,8 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -88,6 +93,8 @@ where
             resources,
             transaction_finalize_receiver: Some(transaction_finalize_receiver),
             cancellation_receiver: Some(cancellation_receiver),
+            prev_header,
+            height,
         }
     }
 
@@ -361,7 +368,13 @@ where
             );
 
             finalized_transaction
-                .validate_internal_consistency(true, &self.resources.factories, None)
+                .validate_internal_consistency(
+                    true,
+                    &self.resources.factories,
+                    None,
+                    self.prev_header.clone(),
+                    self.height,
+                )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction
