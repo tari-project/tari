@@ -22,14 +22,17 @@
 
 #[cfg(test)]
 mod test {
-    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
-    use chrono::Utc;
-    use rand::rngs::OsRng;
     use std::{
         sync::{Arc, Mutex},
         thread,
         time::Duration,
     };
+
+    use chrono::Utc;
+    use rand::rngs::OsRng;
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
+
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
@@ -37,11 +40,10 @@ mod test {
     use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::Transaction,
+        transaction_entities::Transaction,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
@@ -59,7 +61,8 @@ mod test {
             },
         },
     };
-    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
+
+    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
 
     struct CallbackState {
         pub received_tx_callback_called: bool,

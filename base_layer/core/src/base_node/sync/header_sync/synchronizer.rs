@@ -218,7 +218,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         mut conn: PeerConnection,
     ) -> Result<(), BlockHeaderSyncError> {
         let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating header sync with peer `{}` (sync latency = {}ms)",

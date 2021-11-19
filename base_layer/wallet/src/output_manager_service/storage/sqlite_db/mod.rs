@@ -45,7 +45,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey},
 };
-use tari_core::transactions::transaction::TransactionOutput;
+use tari_core::transactions::transaction_entities::TransactionOutput;
 use tari_key_manager::cipher_seed::CipherSeed;
 
 use crate::{
@@ -1654,7 +1654,7 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        transaction_entities::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
     use tari_crypto::script;

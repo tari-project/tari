@@ -26,7 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::{
-    transaction::{TransactionOutput, UnblindedOutput},
+    transaction_entities::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{

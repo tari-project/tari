@@ -158,7 +158,7 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::OutputFeatures, CryptoFactories};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
@@ -210,7 +210,7 @@ pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
-pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction_entities::TransactionKernel;
 
 pub struct TariContacts(Vec<TariContact>);
 

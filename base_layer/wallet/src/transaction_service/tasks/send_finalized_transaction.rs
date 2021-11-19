@@ -1,3 +1,16 @@
+use std::time::Duration;
+
+use log::*;
+
+use tari_common_types::transaction::TxId;
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
+};
+use tari_core::transactions::{transaction_entities::Transaction, transaction_protocol::proto};
+use tari_p2p::tari_message::TariMessageType;
+
 // Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -24,16 +37,6 @@ use crate::transaction_service::{
     error::TransactionServiceError,
     tasks::wait_on_dial::wait_on_dial,
 };
-use log::*;
-use std::time::Duration;
-use tari_common_types::transaction::TxId;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
-};
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
-use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";
 const LOG_TARGET_STRESS: &str = "stress_test::send_finalized_transaction";
