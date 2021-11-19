@@ -716,7 +716,7 @@ void balance_destroy(struct TariBalance *balance);
 void file_partial_backup(const char *original_file_path, const char *backup_file_path, int *error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
-void log_debug_message(const char *msg);
+void log_debug_message(const char *msg, int *error_out);
 
 struct EmojiSet *get_emoji_set();
 
