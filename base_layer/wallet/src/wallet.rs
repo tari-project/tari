@@ -355,6 +355,7 @@ where
         metadata_signature: ComSignature,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
+        script_lock_height: u64,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -365,6 +366,7 @@ where
             script_private_key.clone(),
             sender_offset_public_key.clone(),
             metadata_signature,
+            script_lock_height,
         );
 
         let tx_id = self
@@ -373,7 +375,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -408,7 +410,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_output_with_tx_id(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -559,6 +561,7 @@ pub async fn persist_one_sided_payment_script_for_node_identity(
         private_key: node_identity.secret_key().clone(),
         script,
         input: ExecutionStack::default(),
+        script_lock_height: 0,
     };
 
     output_manager_service.add_known_script(known_script).await?;
