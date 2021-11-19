@@ -63,23 +63,6 @@
 //!  |             END                |
 //! ```
 
-#[cfg(test)]
-mod test;
-
-mod error;
-use error::MempoolProtocolError;
-
-mod initializer;
-pub use initializer::MempoolSyncInitializer;
-
-use crate::{
-    mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
-    proto as shared_proto,
-    transactions::transaction::Transaction,
-};
-use futures::{stream, SinkExt, Stream, StreamExt};
-use log::*;
-use prost::Message;
 use std::{
     convert::TryFrom,
     iter,
@@ -88,6 +71,19 @@ use std::{
         Arc,
     },
 };
+
+use futures::{stream, SinkExt, Stream, StreamExt};
+use log::*;
+use prost::Message;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::Semaphore,
+    task,
+};
+
+use error::MempoolProtocolError;
+pub use initializer::MempoolSyncInitializer;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx},
     framing,
@@ -98,12 +94,18 @@ use tari_comms::{
     Bytes,
     PeerConnection,
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::Semaphore,
-    task,
+
+use crate::{
+    mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
+    proto as shared_proto,
+    transactions::transaction_entities::transaction::Transaction,
 };
+
+#[cfg(test)]
+mod test;
+
+mod error;
+mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";

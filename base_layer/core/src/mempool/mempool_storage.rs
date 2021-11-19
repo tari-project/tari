@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use log::*;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+
+use tari_common_types::types::Signature;
+
 use crate::{
     blocks::Block,
     consensus::ConsensusManager,
@@ -32,13 +39,9 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction_entities::transaction::Transaction, weight::TransactionWeight},
     validation::{MempoolTransactionValidation, ValidationError},
 };
-use log::*;
-use std::sync::Arc;
-use tari_common_types::types::Signature;
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 

@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tokio::sync::broadcast;
+
+use tari_common_types::types::Signature;
+use tari_service_framework::{reply_channel::SenderService, Service};
+
 use crate::{
     mempool::{
         service::{MempoolRequest, MempoolResponse, MempoolServiceError},
@@ -28,11 +33,8 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use tari_common_types::types::Signature;
-use tari_service_framework::{reply_channel::SenderService, Service};
-use tokio::sync::broadcast;
 
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
@@ -116,14 +118,16 @@ impl LocalMempoolService {
 
 #[cfg(test)]
 mod test {
+    use futures::StreamExt;
+    use tokio::{sync::broadcast, task};
+
+    use tari_service_framework::reply_channel::{unbounded, Receiver};
+
     use crate::mempool::{
         service::{local_service::LocalMempoolService, MempoolRequest, MempoolResponse},
         MempoolServiceError,
         StatsResponse,
     };
-    use futures::StreamExt;
-    use tari_service_framework::reply_channel::{unbounded, Receiver};
-    use tokio::{sync::broadcast, task};
 
     pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 

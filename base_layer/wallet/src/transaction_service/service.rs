@@ -73,7 +73,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_entities::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto,
             recipient::RecipientSignedMessage,

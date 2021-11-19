@@ -72,7 +72,7 @@ mod sync_protocol;
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 
-use crate::transactions::transaction::Transaction;
+use crate::transactions::transaction_entities::transaction::Transaction;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::Signature;

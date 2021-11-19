@@ -49,7 +49,7 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_entities::{OutputFeatures, OutputFlags, UnblindedOutput},
         CryptoFactories,
     },
 };
