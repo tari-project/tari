@@ -41,6 +41,8 @@ const LOG_TARGET: &str = "wallet_ffi::error";
 pub enum InterfaceError {
     #[error("An error has occurred due to one of the parameters being null: `{0}`")]
     NullError(String),
+    #[error("An invalid pointer was passed into the function")]
+    PointerError(String),
     #[error("An error has occurred when checking the length of the allocated object")]
     AllocationError,
     #[error("An error because the supplied position was out of range")]
@@ -100,6 +102,10 @@ impl From<InterfaceError> for LibWalletError {
             InterfaceError::BalanceError => Self {
                 code: 8,
                 message: "Balance Unavailable".to_string(),
+            },
+            InterfaceError::PointerError(ref p) => Self {
+                code: 9,
+                message: format!("Pointer error on {}:{:?}", p, v),
             },
         }
     }
