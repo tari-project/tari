@@ -20,8 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod account;
+mod address;
+mod asset;
+mod asset_wallet;
+mod tip002_address;
 mod wallet;
 
-pub use account::Account;
+pub use address::Address;
+pub use asset::Asset;
+pub use asset_wallet::AssetWallet;
+pub use tip002_address::Tip002Address;
 pub use wallet::Wallet;

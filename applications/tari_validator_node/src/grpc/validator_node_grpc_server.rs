@@ -80,11 +80,13 @@ where
             Ok(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),
+                    result: None,
                 }))
             },
             Err(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Errored".to_string(),
+                    result: None,
                 }))
             },
         }
@@ -103,5 +105,13 @@ where
         // Ok(Response::new(rpc::GetMetadataResponse {
         //     sidechains: vec![metadata.into()],
         // }))
+    }
+
+    async fn invoke_read_method(
+        &self,
+        request: Request<rpc::InvokeReadMethodRequest>,
+    ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
+        dbg!(&request);
+        todo!()
     }
 }

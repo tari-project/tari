@@ -93,7 +93,7 @@ class Create extends React.Component {
     let description = this.state.description;
     let image = this.state.image;
     try {
-      let templateIds = [];
+      let templateIds = [1];
       let templateParameters = [];
       if (this.state.tip002) {
         console.log("tip002");

@@ -73,7 +73,7 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
         self.execute(
             instruction.template_id(),
             instruction.method().to_owned(),
-            instruction.args().to_vec().into(),
+            instruction.args().into(),
             // InstructionCaller {
             //     owner_token_id: instruction.from_owner().to_owned(),
             // },
@@ -96,7 +96,7 @@ impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
         &self,
         _template_id: TemplateId,
         _method: String,
-        _args: VecDeque<Vec<u8>>,
+        _args: Vec<u8>,
         // caller: InstructionCaller,
         _hash: Vec<u8>,
         _db: TUnitOfWork,

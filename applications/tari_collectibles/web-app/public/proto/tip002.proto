@@ -5,8 +5,9 @@ package tari.dan.tips.tip002;
 
 service Tip002 {
   rpc Init(InitRequest) returns (Empty);
-//  rpc Info(InfoRequest) returns (InfoResponse);
-//  rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
+  //  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
+  rpc Tranfer(TransferRequest) returns (TransferResponse);
 }
 
 
@@ -19,6 +20,17 @@ message Empty{
 
 }
 
+message TransferRequest {
+  bytes to = 1;
+  uint64 amount = 2;
+  bytes from = 3;
+  bytes caller = 4;
+}
+
+message TransferResponse {
+  // TODO? maybe errors?
+}
+
 //message InfoRequest {
 //
 //}
@@ -28,11 +40,11 @@ message Empty{
 //  byte decimals = 2;
 //  uint256 total_supply = 3;
 //}
-//
-//message BalanceOfRequest {
-//  uint256 owner = 1;
-//}
-//
-//message BalanceOfResponse {
-//  uint256 balance = 1;
-//}
+
+message BalanceOfRequest {
+  bytes owner = 1;
+}
+
+message BalanceOfResponse {
+  uint64 balance = 1;
+}

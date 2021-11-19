@@ -119,7 +119,7 @@ const AccountsMenu = (props) => {
 
   useEffect(() => {
     binding
-      .command_accounts_list()
+      .command_asset_wallets_list()
       .then((accounts) => {
         console.log("accounts", accounts);
         setAccounts(accounts);
@@ -198,11 +198,7 @@ function App() {
         <ThemeProvider theme={mdTheme}>
           <Box sx={{ display: "flex" }}>
             <CssBaseline />
-            <AppBar position="absolute">
-              <Toolbar>
-                <Typography component="h1">Hello world</Typography>
-              </Toolbar>
-            </AppBar>
+
             <Drawer variant="permanent">
               <RouterLink to="/">
                 <Toolbar sx={{ display: "flex", color: "white" }}>
@@ -212,7 +208,7 @@ function App() {
               <List>
                 <ListItemLink
                   primary="Dashboard"
-                  to="/"
+                  to="/dashboard"
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
@@ -266,9 +262,9 @@ function App() {
                 >
                   <AssetManager />
                 </ProtectedRoute>
-                <ProtectedRoute path="/dashboard" authenticated={authenticated}>
+                <Route path="/dashboard" authenticated={authenticated}>
                   <Dashboard />
-                </ProtectedRoute>
+                </Route>
                 <Route path="/wallets/:id">
                   <UnlockWallet
                     setAuthenticated={(id, password) => {

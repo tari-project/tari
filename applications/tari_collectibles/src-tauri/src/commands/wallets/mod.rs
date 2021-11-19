@@ -23,7 +23,7 @@
 use crate::{
   app_state::ConcurrentAppState,
   models::{NewWallet, Wallet, WalletInfo},
-  storage::{CollectiblesStorage, WalletsTableGateway},
+  storage::{models::wallet_row::WalletRow, CollectiblesStorage, WalletsTableGateway},
 };
 use tari_key_manager::{
   cipher_seed::CipherSeed,
@@ -36,10 +36,11 @@ pub(crate) async fn wallets_create(
   name: Option<String>,
   passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Wallet, String> {
-  let new_wallet = NewWallet {
+) -> Result<(), String> {
+  let new_wallet = WalletRow {
+    id: Uuid::new_v4(),
     name,
-    cipher_seed: CipherSeed::new(),
+    // cipher_seed: CipherSeed::new(),
   };
 
   let result = state
@@ -49,13 +50,13 @@ pub(crate) async fn wallets_create(
     .wallets()
     .insert(new_wallet, passphrase)
     .map_err(|e| format!("Could not save wallet: {}", e))?;
-  Ok(result)
+  Ok(())
 }
 
 #[tauri::command]
 pub(crate) async fn wallets_list(
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Vec<WalletInfo>, String> {
+) -> Result<Vec<WalletRow>, String> {
   let db = state
     .create_db()
     .await
@@ -71,9 +72,8 @@ pub(crate) async fn wallets_list(
 #[tauri::command]
 pub(crate) async fn wallets_find(
   id: String,
-  passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Wallet, String> {
+) -> Result<WalletRow, String> {
   let db = state
     .create_db()
     .await
@@ -81,10 +81,7 @@ pub(crate) async fn wallets_find(
 
   let uuid = Uuid::parse_str(&id).map_err(|e| format!("Failed to parse UUID: {}", e))?;
 
-  let result = db
-    .wallets()
-    .find(uuid, passphrase)
-    .map_err(|e| e.to_string())?;
+  let result = db.wallets().find(uuid).map_err(|e| e.to_string())?;
 
   Ok(result)
 }
@@ -102,13 +99,12 @@ pub(crate) async fn wallets_seed_words(
 
   let uuid = Uuid::parse_str(&id).map_err(|e| format!("Failed to parse UUID: {}", e))?;
 
-  let wallet = db
+  let cipher_seed = db
     .wallets()
-    .find(uuid, passphrase.clone())
+    .get_cipher_seed(uuid, passphrase.clone())
     .map_err(|e| e.to_string())?;
 
-  let seed_words = wallet
-    .cipher_seed
+  let seed_words = cipher_seed
     .to_mnemonic(&MnemonicLanguage::English, passphrase)
     .map_err(|e| format!("Failed to convert cipher seed to seed words: {}", e))?;
 

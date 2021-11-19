@@ -6100,12 +6100,15 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "futures 0.3.17",
+ "prost",
+ "prost-types",
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_json",
  "tari_app_grpc",
  "tari_common_types",
  "tari_crypto",
+ "tari_dan_common_types",
  "tari_key_manager",
  "tari_mmr",
  "tari_utilities",
@@ -6398,6 +6401,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_dan_common_types"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tari_common",
+]
+
+[[package]]
 name = "tari_dan_core"
 version = "0.1.0"
 dependencies = [
@@ -6421,6 +6433,7 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_core",
  "tari_crypto",
+ "tari_dan_common_types",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",

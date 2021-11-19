@@ -20,50 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod models;
-pub mod sqlite;
-mod storage_error;
+use crate::storage::Tip002AddressesTableGateway;
 
-use crate::storage::models::{asset_row::AssetRow, wallet_row::WalletRow};
-pub use storage_error::StorageError;
-use tari_key_manager::cipher_seed::CipherSeed;
-use uuid::Uuid;
+pub struct SqliteTip002AddressesTableGateway {}
 
-pub trait CollectiblesStorage {
-  type Addresses: AddressesTableGateway;
-  type Assets: AssetsTableGateway;
-  type AssetWallets: AssetWalletsTableGateway;
-  type IssuedAssets: IssuedAssetsTableGateway;
-  type Tip002Addresses: Tip002AddressesTableGateway;
-  type Wallets: WalletsTableGateway;
-
-  fn addresses(&self) -> Self::Addresses;
-  fn assets(&self) -> Self::Assets;
-  fn asset_wallets(&self) -> Self::AssetWallets;
-  fn issued_assets(&self) -> Self::IssuedAssets;
-  fn tip002_addresses(&self) -> Self::Tip002Addresses;
-  fn wallets(&self) -> Self::Wallets;
-}
-
-pub trait AssetsTableGateway {
-  fn list(&self) -> Result<Vec<AssetRow>, StorageError>;
-  fn insert(&self, asset: AssetRow) -> Result<(), StorageError>;
-  fn find(&self, asset_id: Uuid) -> Result<AssetRow, StorageError>;
-}
-
-pub trait WalletsTableGateway {
-  type Passphrase;
-
-  fn list(&self) -> Result<Vec<WalletRow>, StorageError>;
-  fn insert(&self, wallet: WalletRow, pass: Self::Passphrase) -> Result<(), StorageError>;
-  fn find(&self, id: Uuid) -> Result<WalletRow, StorageError>;
-  fn get_cipher_seed(&self, id: Uuid, pass: Self::Passphrase) -> Result<CipherSeed, StorageError>;
-}
-
-pub trait AssetWalletsTableGateway {}
-
-pub trait AddressesTableGateway {}
-
-pub trait IssuedAssetsTableGateway {}
-
-pub trait Tip002AddressesTableGateway {}
+impl Tip002AddressesTableGateway for SqliteTip002AddressesTableGateway {}

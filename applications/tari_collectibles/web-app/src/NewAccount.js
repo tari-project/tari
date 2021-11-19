@@ -52,7 +52,7 @@ class NewAccount extends React.Component {
     console.log(this.state.assetPublicKey);
     this.setState({ isSaving: true, error: null });
     try {
-      await binding.command_accounts_create(this.state.assetPublicKey);
+      await binding.command_asset_wallets_create(this.state.assetPublicKey);
       let history = this.props.history;
       let path = `/assets/watched/details/${this.state.assetPublicKey}`;
       console.log(path);

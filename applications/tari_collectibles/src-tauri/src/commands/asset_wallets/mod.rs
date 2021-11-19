@@ -21,21 +21,27 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
   app_state::ConcurrentAppState,
-  models::{Account, NewAccount, NewWallet, Wallet},
-  storage::{AccountsTableGateway, CollectiblesStorage, WalletsTableGateway},
+  models::{NewWallet, Wallet},
+  storage::{
+    models::asset_row::AssetRow, AssetsTableGateway, CollectiblesStorage, WalletsTableGateway,
+  },
 };
+use prost::Message;
 use tari_common_types::types::PublicKey;
-use tari_utilities::hex::Hex;
+use tari_dan_common_types::proto::tips::tip002;
+use tari_utilities::{hex::Hex, ByteArray};
+use uuid::Uuid;
 
 #[tauri::command]
-pub(crate) async fn accounts_create(
-  asset_pub_key: String,
+pub(crate) async fn asset_wallets_create(
+  asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Account, String> {
-  let asset_pub_key =
-    PublicKey::from_hex(asset_pub_key.as_str()).map_err(|e| format!("Invalid public key:{}", e))?;
-  let mut new_account = NewAccount {
-    asset_public_key: asset_pub_key.clone(),
+) -> Result<(), String> {
+  let asset_public_key = PublicKey::from_hex(asset_public_key.as_str())
+    .map_err(|e| format!("Invalid public key:{}", e))?;
+  let mut new_account = AssetRow {
+    id: Uuid::new_v4(),
+    asset_public_key: asset_public_key.clone(),
     name: None,
     description: None,
     image: None,
@@ -43,12 +49,12 @@ pub(crate) async fn accounts_create(
   };
 
   let mut client = state.connect_base_node_client().await?;
-  let chain_registration_data = client.get_asset_metadata(&asset_pub_key).await?;
+  let chain_registration_data = client.get_asset_metadata(&asset_public_key).await?;
   new_account.name = chain_registration_data.name.clone();
   new_account.description = chain_registration_data.description.clone();
   new_account.image = chain_registration_data.image.clone();
 
-  let sidechain_committee = match client.get_sidechain_committee(&asset_pub_key).await {
+  let sidechain_committee = match client.get_sidechain_committee(&asset_public_key).await {
     Ok(s) => {
       if s.is_empty() {
         None
@@ -63,26 +69,66 @@ pub(crate) async fn accounts_create(
   };
   new_account.committee = sidechain_committee;
 
-  let result = state
+  state
     .create_db()
     .await
     .map_err(|e| format!("Could not connect to DB:{}", e))?
-    .accounts()
+    .assets()
     .insert(new_account)
     .map_err(|e| format!("Could not save account: {}", e))?;
-  Ok(result)
+  Ok(())
 }
 
 #[tauri::command]
-pub(crate) async fn accounts_list(
+pub(crate) async fn asset_wallets_get_balance(
+  asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Vec<Account>, String> {
+) -> Result<u64, String> {
+  dbg!(&asset_public_key);
+  let asset_public_key =
+    PublicKey::from_hex(&asset_public_key).map_err(|s| format!("Not a valid public key:{}", s))?;
+
+  let owner = PublicKey::default();
+
+  let mut client = state.connect_validator_node_client().await?;
+  let args = tip002::BalanceOfRequest {
+    owner: Vec::from(owner.as_bytes()),
+  };
+  dbg!(&args);
+  let mut args_bytes = vec![];
+  args.encode(&mut args_bytes).unwrap();
+  // let req = grpc::InvokeReadMethodRequest{
+  //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
+  //   template_id: 2,
+  //   method: "BalanceOf",
+  //   args
+  // };
+
+  let resp = client
+    .invoke_read_method(asset_public_key, 2, "BalanceOf".to_string(), args_bytes)
+    .await?;
+
+  dbg!(&resp);
+  match resp {
+    Some(mut resp) => {
+      let proto_resp: tip002::BalanceOfResponse =
+        Message::decode(&*resp).map_err(|e| format!("Invalid proto:{}", e))?;
+      Ok(proto_resp.balance)
+    }
+    None => Ok(0),
+  }
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_list(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<AssetRow>, String> {
   let db = state
     .create_db()
     .await
     .map_err(|e| format!("Could not connect to DB:{}", e))?;
   let result = db
-    .accounts()
+    .assets()
     .list()
     .map_err(|e| format!("Could list accounts from DB: {}", e))?;
   Ok(result)

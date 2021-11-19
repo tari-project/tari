@@ -19,17 +19,47 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::{
+  models::{NewWallet, Wallet, WalletInfo},
+  schema::{self, *},
+  storage::{
+    models::{asset_row::AssetRow, wallet_row::WalletRow},
+    sqlite::SqliteCollectiblesStorage,
+    AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
+  },
+};
+use diesel::{prelude::*, Connection, SqliteConnection};
+use std::{fs, path::Path};
+use tari_common_types::types::PublicKey;
+use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
+use tari_utilities::ByteArray;
+use uuid::Uuid;
 
-use crate::schema::*;
-use diesel::prelude::*;
+pub struct SqliteDbFactory {
+  database_url: String,
+}
 
-#[derive(Queryable, Insertable, Identifiable)]
-pub struct Account {
-  pub id: Vec<u8>,
-  pub asset_public_key: Vec<u8>,
-  pub name: Option<String>,
-  pub description: Option<String>,
-  pub image: Option<String>,
-  pub committee_length: i32,
-  pub committee_pub_keys: Vec<u8>,
+impl SqliteDbFactory {
+  pub fn new(data_dir: &Path) -> Self {
+    fs::create_dir_all(data_dir)
+      .unwrap_or_else(|_| panic!("Could not create data directory: {:?}", data_dir));
+    let database_url = data_dir
+      .join("collectibles.sqlite")
+      .into_os_string()
+      .into_string()
+      .unwrap();
+
+    Self { database_url }
+  }
+
+  pub fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
+    let connection = SqliteConnection::establish(self.database_url.as_str())?;
+    connection.execute("PRAGMA foreign_keys = ON;")?;
+    // Create the db
+    embed_migrations!("./migrations");
+    embedded_migrations::run(&connection)?;
+    Ok(SqliteCollectiblesStorage {
+      database_url: self.database_url.clone(),
+    })
+  }
 }

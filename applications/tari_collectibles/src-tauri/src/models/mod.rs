@@ -24,8 +24,6 @@ mod asset_info;
 pub use asset_info::AssetInfo;
 mod registered_asset_info;
 pub use registered_asset_info::RegisteredAssetInfo;
-mod account;
-pub use account::{Account, NewAccount};
 mod wallet;
 pub use wallet::{NewWallet, Wallet, WalletInfo};
 mod tip002_info;

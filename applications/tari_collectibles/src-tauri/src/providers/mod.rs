@@ -19,28 +19,3 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
-use prost::Message;
-use tari_core::transactions::transaction::TemplateParameter;
-use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_common_types::proto::tips::tip002;
-
-pub fn init<TUnitOfWork: StateDbUnitOfWork>(
-    template_parameter: &TemplateParameter,
-    asset_definition: &AssetDefinition,
-    state_db: &mut TUnitOfWork,
-) -> Result<(), DigitalAssetError> {
-    let params = tip002::InitRequest::decode(&*template_parameter.template_data).map_err(|e| {
-        DigitalAssetError::ProtoBufDecodeError {
-            source: e,
-            message_type: "tip002::InitRequest".to_string(),
-        }
-    })?;
-    dbg!(&params);
-    state_db.set_value(
-        "owners".to_string(),
-        asset_definition.public_key.to_vec(),
-        Vec::from(params.total_supply.to_le_bytes()),
-    );
-    Ok(())
-}

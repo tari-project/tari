@@ -19,25 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
-use uuid::Uuid;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Account {
-  pub id: Uuid,
-  pub asset_public_key: PublicKey,
-  pub name: Option<String>,
-  pub description: Option<String>,
-  pub image: Option<String>,
-  pub committee: Option<Vec<PublicKey>>,
-}
-
-pub struct NewAccount {
-  pub asset_public_key: PublicKey,
-  pub name: Option<String>,
-  pub description: Option<String>,
-  pub image: Option<String>,
-  pub committee: Option<Vec<PublicKey>>,
+use crate::schema::*;
+use diesel::prelude::*;
+#[derive(Queryable, Insertable, Identifiable)]
+#[table_name = "tip002_address"]
+pub struct Tip002Address {
+  pub id: Vec<u8>,
+  pub address_id: Vec<u8>,
+  pub balance: i64,
 }

@@ -16,6 +16,7 @@ mod app_state;
 mod clients;
 mod commands;
 mod models;
+mod providers;
 mod schema;
 mod settings;
 mod storage;
@@ -32,8 +33,9 @@ fn main() {
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_create_initial_checkpoint,
       commands::assets::assets_get_registration,
-      commands::accounts::accounts_create,
-      commands::accounts::accounts_list,
+      commands::asset_wallets::asset_wallets_create,
+      commands::asset_wallets::asset_wallets_list,
+      commands::asset_wallets::asset_wallets_get_balance,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
       commands::wallets::wallets_find,

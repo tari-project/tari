@@ -65,16 +65,20 @@ async function command_wallets_list() {
   return await invoke("wallets_list");
 }
 
-async function command_accounts_create(assetPubKey) {
-  return await invoke("accounts_create", { assetPubKey });
+async function command_asset_wallets_create(assetPublicKey) {
+  return await invoke("asset_wallets_create", { assetPublicKey });
 }
 
-async function command_accounts_list() {
-  return await invoke("accounts_list", {});
+async function command_asset_wallets_list() {
+  return await invoke("asset_wallets_list", {});
 }
 
 async function command_create_db() {
   return await invoke("create_db", {});
+}
+
+async function command_asset_wallets_get_balance(assetPublicKey) {
+  return await invoke("asset_wallets_get_balance", {assetPublicKey});
 }
 
 const commands = {
@@ -84,8 +88,9 @@ const commands = {
   command_assets_list_owned,
   command_assets_list_registered_assets,
   command_asset_create_initial_checkpoint,
-  command_accounts_create,
-  command_accounts_list,
+  command_asset_wallets_create,
+  command_asset_wallets_get_balance,
+  command_asset_wallets_list,
   command_wallets_create,
   command_wallets_list,
   command_wallets_find,

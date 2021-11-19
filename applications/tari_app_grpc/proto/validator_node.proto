@@ -28,6 +28,7 @@ service ValidatorNode {
     rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
     rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
     rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
+    rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
 }
 
 message GetMetadataRequest {
@@ -57,11 +58,23 @@ message ExecuteInstructionRequest{
     bytes asset_public_key = 1;
     uint32 template_id = 2;
     string method = 3;
-    repeated bytes args = 4;
+     bytes args = 4;
 //    bytes token_id = 5;
 //    bytes signature = 6;
 }
 
 message ExecuteInstructionResponse {
     string status = 1;
+    optional bytes result = 2;
+}
+
+message InvokeReadMethodRequest{
+    bytes asset_public_key = 1;
+    uint32 template_id = 2;
+    string method = 3;
+     bytes args = 4;
+}
+
+message InvokeReadMethodResponse {
+    optional bytes result = 1;
 }

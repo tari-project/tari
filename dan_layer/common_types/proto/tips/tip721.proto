@@ -1,0 +1,15 @@
+syntax = "proto3";
+package tari.dan.tips.tip721;
+
+service Tip721 {
+  rpc Init(InitRequest) returns (Empty);
+  //  rpc Transfer(TransferRequest) returns (TransferResponse);
+}
+
+message InitRequest{
+
+}
+
+message Empty {
+
+}

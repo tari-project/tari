@@ -74,10 +74,7 @@ impl ConcurrentAppState {
     Ok(client)
   }
 
-  pub async fn connect_validator_node_client(
-    &self,
-    _public_key: PublicKey,
-  ) -> Result<GrpcValidatorNodeClient, String> {
+  pub async fn connect_validator_node_client(&self) -> Result<GrpcValidatorNodeClient, String> {
     // todo: convert this GRPC to tari comms
     let lock = self.inner.read().await;
     let client = GrpcValidatorNodeClient::connect(format!(

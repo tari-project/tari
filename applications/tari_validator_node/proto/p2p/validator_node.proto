@@ -39,7 +39,7 @@ message SubmitInstructionRequest {
   bytes asset_public_key = 1;
   uint32 template_id = 2;
   string method = 3;
-  repeated bytes args = 4;
+  bytes args = 4;
 //  bytes token_id = 5;
 //  bytes signature = 6;
 }
