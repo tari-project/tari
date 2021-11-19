@@ -132,11 +132,10 @@ impl Dht {
             saf_response_signal_sender,
             connectivity,
             discovery_sender,
-            event_publisher: event_publisher.clone(),
+            event_publisher,
         };
 
         let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
-            .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
