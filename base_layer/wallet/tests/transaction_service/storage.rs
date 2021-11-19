@@ -93,7 +93,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<HashDigest>(&factories).unwrap();
+    let stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];

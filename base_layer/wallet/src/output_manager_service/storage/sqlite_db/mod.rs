@@ -51,7 +51,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        service::Balance,
+        service::{Balance, UTXOSelectionStrategy},
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
@@ -171,6 +171,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &conn) {
+                Ok(mut o) => {
+                    self.decrypt_if_necessary(&mut o)?;
+                    Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                },
+                Err(e) => {
+                    match e {
+                        OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
+                        e => return Err(e),
+                    };
+                    None
+                },
+            },
+            DbKey::UnspentOutputHash(hash) => match OutputSql::find_by_hash(hash, OutputStatus::Unspent, &(*conn)) {
                 Ok(mut o) => {
                     self.decrypt_if_necessary(&mut o)?;
                     Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
@@ -386,6 +399,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     }
                 },
                 DbKey::SpentOutput(_s) => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::UnspentOutputHash(_h) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutput(_k) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
@@ -1166,6 +1180,61 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
         Ok(())
     }
+
+    fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+
+        if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn).is_ok() {
+            return Err(OutputManagerStorageError::DuplicateOutput);
+        }
+        let mut new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id), None)?;
+        self.encrypt_if_necessary(&mut new_output)?;
+        new_output.commit(&conn)?;
+
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
+    }
+
+    /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
+    fn fetch_unspent_outputs_for_spending(
+        &self,
+        strategy: UTXOSelectionStrategy,
+        amount: u64,
+        tip_height: Option<u64>,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let start = Instant::now();
+        let conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let tip = match tip_height {
+            Some(v) => v as i64,
+            None => i64::MAX,
+        };
+        let mut outputs = OutputSql::fetch_unspent_outputs_for_spending(strategy, amount, tip, &conn)?;
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
+        }
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - fetch_unspent_outputs_for_spending: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+        outputs
+            .iter()
+            .map(|o| DbUnblindedOutput::try_from(o.clone()))
+            .collect::<Result<Vec<_>, _>>()
+    }
 }
 
 impl TryFrom<i32> for OutputStatus {
@@ -1412,6 +1481,7 @@ pub struct KnownOneSidedPaymentScriptSql {
     pub private_key: Vec<u8>,
     pub script: Vec<u8>,
     pub input: Vec<u8>,
+    pub script_lock_height: i64,
 }
 
 /// These are the fields that can be updated for an Output
@@ -1512,11 +1582,13 @@ impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
             error!(target: LOG_TARGET, "Could not create execution stack from stored bytes");
             OutputManagerStorageError::ConversionError
         })?;
+        let script_lock_height = o.script_lock_height as u64;
         Ok(KnownOneSidedPaymentScript {
             script_hash,
             private_key,
             script,
             input,
+            script_lock_height,
         })
     }
 }
@@ -1524,6 +1596,7 @@ impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
 /// Conversion from an KnownOneSidedPaymentScriptSQL to the datatype form
 impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
     fn from(known_script: KnownOneSidedPaymentScript) -> Self {
+        let script_lock_height = known_script.script_lock_height as i64;
         let script_hash = known_script.script_hash;
         let private_key = known_script.private_key.as_bytes().to_vec();
         let script = known_script.script.as_bytes().to_vec();
@@ -1533,6 +1606,7 @@ impl From<KnownOneSidedPaymentScript> for KnownOneSidedPaymentScriptSql {
             private_key,
             script,
             input,
+            script_lock_height,
         }
     }
 }
@@ -1620,7 +1694,7 @@ mod test {
 
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
@@ -1629,7 +1703,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
@@ -1744,7 +1818,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
@@ -1862,12 +1936,12 @@ mod test {
             let _state_sql = NewKeyManagerStateSql::from(starting_state).commit(&conn).unwrap();
 
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+            let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             output.commit(&conn).unwrap();
 
             let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
-            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
+            let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None).unwrap();
             let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None).unwrap();
             output2.commit(&conn).unwrap();
         }

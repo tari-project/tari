@@ -37,6 +37,7 @@ use crate::{
 };
 use aes_gcm::Aes256Gcm;
 
+use crate::output_manager_service::service::UTXOSelectionStrategy;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use std::convert::TryFrom;
@@ -86,6 +87,8 @@ pub struct OutputSql {
     pub received_in_tx_id: Option<i64>,
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
+    pub script_lock_height: i64,
+    pub spend_priority: i32,
 }
 
 impl OutputSql {
@@ -100,6 +103,55 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
+    pub fn fetch_unspent_outputs_for_spending(
+        mut strategy: UTXOSelectionStrategy,
+        amount: u64,
+        tip_height: i64,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        if strategy == UTXOSelectionStrategy::Default {
+            // lets get the max value for all utxos
+            let max: Vec<i64> = outputs::table
+                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                .filter(outputs::script_lock_height.le(tip_height))
+                .filter(outputs::maturity.le(tip_height))
+                .order(outputs::value.desc())
+                .select(outputs::value)
+                .limit(1)
+                .load(conn)?;
+            if max.is_empty() {
+                strategy = UTXOSelectionStrategy::Smallest
+            } else if amount > max[0] as u64 {
+                strategy = UTXOSelectionStrategy::Largest
+            } else {
+                strategy = UTXOSelectionStrategy::MaturityThenSmallest
+            }
+        }
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::script_lock_height.le(tip_height))
+            .filter(outputs::maturity.le(tip_height))
+            .order_by(outputs::spending_priority.asc());
+        match strategy {
+            UTXOSelectionStrategy::Smallest => {
+                query = query.then_order_by(outputs::value.asc());
+            },
+            UTXOSelectionStrategy::MaturityThenSmallest => {
+                query = query
+                    .then_order_by(outputs::maturity.asc())
+                    .then_order_by(outputs::value.asc());
+            },
+            UTXOSelectionStrategy::Largest => {
+                query = query.then_order_by(outputs::value.desc());
+            },
+            UTXOSelectionStrategy::Default => {},
+        };
+        Ok(query.load(conn)?)
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip
@@ -176,7 +228,7 @@ impl OutputSql {
                  FROM outputs WHERE status = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? \
+                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ? \
@@ -188,6 +240,7 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
@@ -334,6 +387,18 @@ impl OutputSql {
     }
 
     /// Find a particular Output, if it exists and is in the specified Spent state
+    pub fn find_by_hash(
+        hash: &[u8],
+        status: OutputStatus,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.eq(status as i32))
+            .filter(outputs::hash.eq(Some(hash)))
+            .first::<OutputSql>(conn)?)
+    }
+
+    /// Find a particular Output, if it exists and is in the specified Spent state
     pub fn find_pending_coinbase_at_block_height(
         block_height: u64,
         conn: &SqliteConnection,
@@ -439,6 +504,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     OutputManagerStorageError::ConversionError
                 })?,
             ),
+            o.script_lock_height as u64,
         );
 
         let hash = match o.hash {
@@ -457,7 +523,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
-
+        let spend_priority = (o.spend_priority as u32).into();
         Ok(Self {
             commitment,
             unblinded_output,
@@ -467,6 +533,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
+            spend_priority,
         })
     }
 }

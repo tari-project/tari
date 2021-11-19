@@ -23,6 +23,9 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use tari_common_types::types::HashOutput;
+use tari_crypto::script::ScriptContext;
+
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -302,6 +305,7 @@ pub struct UnblindedOutput {
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComSignature,
+    pub script_lock_height: u64,
 }
 
 impl UnblindedOutput {
@@ -316,6 +320,7 @@ impl UnblindedOutput {
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
+        script_lock_height: u64,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -326,6 +331,7 @@ impl UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
+            script_lock_height,
         }
     }
 
@@ -534,8 +540,9 @@ impl TransactionInput {
 
     /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
     /// public key.
-    pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
-        match self.script.execute(&self.input_data)? {
+    pub fn run_script(&self, context: Option<ScriptContext>) -> Result<PublicKey, TransactionError> {
+        let context = context.unwrap_or_default();
+        match self.script.execute_with_context(&self.input_data, &context)? {
             StackItem::PublicKey(pubkey) => Ok(pubkey),
             _ => Err(TransactionError::ScriptExecutionError(
                 "The script executed successfully but it did not leave a public key on the stack".to_string(),
@@ -569,8 +576,12 @@ impl TransactionInput {
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
     /// from the script.
-    pub fn run_and_verify_script(&self, factory: &CommitmentFactory) -> Result<PublicKey, TransactionError> {
-        let key = self.run_script()?;
+    pub fn run_and_verify_script(
+        &self,
+        factory: &CommitmentFactory,
+        context: Option<ScriptContext>,
+    ) -> Result<PublicKey, TransactionError> {
+        let key = self.run_script(context)?;
         self.validate_script_signature(&key, factory)?;
         Ok(key)
     }
@@ -1236,6 +1247,8 @@ impl Transaction {
         bypass_range_proof_verification: bool,
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
         self.body.validate_internal_consistency(
@@ -1244,6 +1257,8 @@ impl Transaction {
             bypass_range_proof_verification,
             reward,
             factories,
+            prev_header,
+            height,
         )
     }
 
@@ -1382,11 +1397,16 @@ impl TransactionBuilder {
     }
 
     /// Build the transaction.
-    pub fn build(self, factories: &CryptoFactories) -> Result<Transaction, TransactionError> {
+    pub fn build(
+        self,
+        factories: &CryptoFactories,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
+    ) -> Result<Transaction, TransactionError> {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();
             let tx = Transaction::new(i, o, k, offset, script_offset);
-            tx.validate_internal_consistency(true, factories, self.reward)?;
+            tx.validate_internal_consistency(true, factories, self.reward, prev_header, height)?;
             Ok(tx)
         } else {
             Err(TransactionError::ValidationError(
@@ -1639,7 +1659,9 @@ mod test {
         let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .is_ok());
     }
 
     #[test]
@@ -1652,7 +1674,9 @@ mod test {
         assert_eq!(tx.body.kernels().len(), 1);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
         let (tx2, _outputs, _) = test_helpers::spend_utxos(schema);
@@ -1683,11 +1707,13 @@ mod test {
         }
 
         // Validate basis transaction where cut-through has not been applied.
-        assert!(tx3.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx3
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .is_ok());
 
         // tx3_cut_through has manual cut-through, it should not be possible so this should fail
         assert!(tx3_cut_through
-            .validate_internal_consistency(false, &factories, None)
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
             .is_err());
     }
 
@@ -1725,7 +1751,9 @@ mod test {
         tx.body.inputs_mut()[0].input_data = stack;
 
         let factories = CryptoFactories::default();
-        let err = tx.validate_internal_consistency(false, &factories, None).unwrap_err();
+        let err = tx
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .unwrap_err();
         assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
     }
 
