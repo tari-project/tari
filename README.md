@@ -422,7 +422,7 @@ The Tari Base Node, Tari Console Wallet, Tari Stratum Transcoder and Tari Mining
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
-For MiningCore see [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-linux) and [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-windows).
+For MiningCore see [here](https://github.com/tari-project/miningcore/master/tari#runtime-requirements-on-linux) and [here](https://github.com/tari-project/miningcore/tree/master#runtime-requirements-on-windows).
 
 #### Configuration prerequisites
 
@@ -453,7 +453,7 @@ transcoder_host_address = "127.0.0.1:7879"
 
 For MiningCore:
 
-See example configuration [here](https://github.com/StriderDM/miningcore/blob/tari/examples/tari_pool.json).
+See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
 
 For the Tari Mining Node there are some additional settings under section **`mining_node`** that can be changed:
 * For SHA3 Mining:
