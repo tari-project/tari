@@ -135,7 +135,7 @@ async fn request_response_errors_and_streaming() {
         .unwrap();
 
     // Latency is available "for free" as part of the connect protocol
-    assert!(client.get_last_request_latency().await.unwrap().is_some());
+    assert!(client.get_last_request_latency().is_some());
 
     let resp = client
         .say_hello(SayHelloRequest {

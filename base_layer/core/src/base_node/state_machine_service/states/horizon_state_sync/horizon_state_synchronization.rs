@@ -159,7 +159,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             remote_num_kernels - local_num_kernels,
         );
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating kernel sync with peer `{}` (latency = {}ms)",
@@ -287,7 +287,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let end = remote_num_outputs;
         let end_hash = to_header.hash();
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating output sync with peer `{}` (latency = {}ms)",
