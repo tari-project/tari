@@ -61,7 +61,7 @@ async function run(options) {
     "true";
   // Set pruning horizon in config file if `pruned` command line arg is present
   if (options.syncType === SyncType.Pruned) {
-    process.env[`TARI_BASE_NODE__${NETWORK}__PRUNING_HORIZON`] = 1000;
+    process.env[`TARI_BASE_NODE__${NETWORK}__PRUNING_HORIZON`] = 20;
   }
 
   if (options.forceSyncPeer) {
