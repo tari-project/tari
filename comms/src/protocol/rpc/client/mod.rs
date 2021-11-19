@@ -73,7 +73,7 @@ use std::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, oneshot, watch, Mutex},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -105,7 +105,8 @@ impl RpcClient {
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
-        let connector = ClientConnector::new(request_tx, shutdown);
+        let (last_request_latency_tx, last_request_latency_rx) = watch::channel(None);
+        let connector = ClientConnector::new(request_tx, last_request_latency_rx, shutdown);
         let (ready_tx, ready_rx) = oneshot::channel();
         let tracing_id = tracing::Span::current().id();
         task::spawn({
@@ -116,6 +117,7 @@ impl RpcClient {
                 config,
                 node_id,
                 request_rx,
+                last_request_latency_tx,
                 framed,
                 ready_tx,
                 protocol_name,
@@ -172,7 +174,7 @@ impl RpcClient {
     }
 
     /// Return the latency of the last request
-    pub fn get_last_request_latency(&mut self) -> impl Future<Output = Result<Option<Duration>, RpcError>> + '_ {
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
         self.connector.get_last_request_latency()
     }
 
@@ -315,13 +317,19 @@ impl Default for RpcClientConfig {
 #[derive(Clone)]
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
+    last_request_latency_rx: watch::Receiver<Option<Duration>>,
     shutdown: Arc<Mutex<Shutdown>>,
 }
 
 impl ClientConnector {
-    pub(self) fn new(sender: mpsc::Sender<ClientRequest>, shutdown: Shutdown) -> Self {
+    pub(self) fn new(
+        sender: mpsc::Sender<ClientRequest>,
+        last_request_latency_rx: watch::Receiver<Option<Duration>>,
+        shutdown: Shutdown,
+    ) -> Self {
         Self {
             inner: sender,
+            last_request_latency_rx,
             shutdown: Arc::new(Mutex::new(shutdown)),
         }
     }
@@ -331,14 +339,8 @@ impl ClientConnector {
         lock.trigger();
     }
 
-    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
-        let (reply, reply_rx) = oneshot::channel();
-        self.inner
-            .send(ClientRequest::GetLastRequestLatency(reply))
-            .await
-            .map_err(|_| RpcError::ClientClosed)?;
-
-        reply_rx.await.map_err(|_| RpcError::RequestCancelled)
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
+        *self.last_request_latency_rx.borrow()
     }
 
     pub async fn send_ping(&mut self) -> Result<Duration, RpcError> {
@@ -391,12 +393,12 @@ struct RpcClientWorker<TSubstream> {
     config: RpcClientConfig,
     node_id: NodeId,
     request_rx: mpsc::Receiver<ClientRequest>,
+    last_request_latency_tx: watch::Sender<Option<Duration>>,
     framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
     // sent determines the byte size. A u16 will be more than enough for the purpose
     next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
-    last_request_latency: Option<Duration>,
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
 }
@@ -404,10 +406,12 @@ struct RpcClientWorker<TSubstream> {
 impl<TSubstream> RpcClientWorker<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 {
+    #[allow(clippy::too_many_arguments)]
     pub(self) fn new(
         config: RpcClientConfig,
         node_id: NodeId,
         request_rx: mpsc::Receiver<ClientRequest>,
+        last_request_latency_tx: watch::Sender<Option<Duration>>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
@@ -420,7 +424,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             framed,
             next_request_id: 0,
             ready_tx: Some(ready_tx),
-            last_request_latency: None,
+            last_request_latency_tx,
             protocol_id,
             shutdown_signal,
         }
@@ -454,7 +458,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     self.protocol_name(),
                     latency
                 );
-                self.last_request_latency = Some(latency);
+                let _ = self.last_request_latency_tx.send(Some(latency));
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Ok(()));
                 }
@@ -513,9 +517,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         match req {
             SendRequest { request, reply } => {
                 self.do_request_response(request, reply).await?;
-            },
-            GetLastRequestLatency(reply) => {
-                let _ = reply.send(self.last_request_latency);
             },
             SendPing(reply) => {
                 self.do_ping_pong(reply).await?;
@@ -647,7 +648,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             let resp = match self.read_response(request_id).await {
                 Ok(resp) => {
                     if let Some(t) = timer.take() {
-                        self.last_request_latency = Some(t.elapsed());
+                        let _ = self.last_request_latency_tx.send(Some(t.elapsed()));
                     }
                     event!(Level::TRACE, "Message received");
                     trace!(
@@ -821,7 +822,6 @@ pub enum ClientRequest {
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     },
-    GetLastRequestLatency(oneshot::Sender<Option<Duration>>),
     SendPing(oneshot::Sender<Result<Duration, RpcStatus>>),
 }
 
