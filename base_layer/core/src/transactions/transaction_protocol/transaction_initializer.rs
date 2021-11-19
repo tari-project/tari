@@ -26,7 +26,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction::{
+        transaction_entities::{
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -652,7 +652,7 @@ mod test {
             fee::Fee,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
-            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction_entities::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
                 transaction_initializer::SenderTransactionInitializer,

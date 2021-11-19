@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::transaction::{self as tx, TxId};
 use tari_core::{
     crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::Transaction,
 };
+
+use crate::tari_rpc as grpc;
 
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {

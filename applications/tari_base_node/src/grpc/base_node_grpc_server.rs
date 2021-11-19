@@ -1,3 +1,39 @@
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+};
+
+use either::Either;
+use futures::{channel::mpsc, SinkExt};
+use log::*;
+use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
+use tokio::task;
+use tonic::{Request, Response, Status};
+
+use tari_app_grpc::{
+    tari_rpc,
+    tari_rpc::{CalcType, Sorting},
+};
+use tari_app_utilities::consts;
+use tari_common_types::types::Signature;
+use tari_comms::{Bytes, CommsNode};
+use tari_core::{
+    base_node::{
+        comms_interface::{Broadcast, CommsInterfaceError},
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::ChainStorageError,
+    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
+    crypto::tari_utilities::{hex::Hex, ByteArray},
+    iterators::NonOverlappingIntegerPairIter,
+    mempool::{service::LocalMempoolService, TxStorageResponse},
+    proof_of_work::PowAlgorithm,
+    transactions::transaction_entities::Transaction,
+};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -26,39 +62,6 @@ use crate::{
         helpers::{mean, median},
     },
 };
-use either::Either;
-use futures::{channel::mpsc, SinkExt};
-use log::*;
-use std::{
-    cmp,
-    convert::{TryFrom, TryInto},
-};
-use tari_app_grpc::{
-    tari_rpc,
-    tari_rpc::{CalcType, Sorting},
-};
-use tari_app_utilities::consts;
-use tari_common_types::types::Signature;
-use tari_comms::{Bytes, CommsNode};
-use tari_core::{
-    base_node::{
-        comms_interface::{Broadcast, CommsInterfaceError},
-        LocalNodeCommsInterface,
-        StateMachineHandle,
-    },
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::ChainStorageError,
-    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
-    crypto::tari_utilities::{hex::Hex, ByteArray},
-    iterators::NonOverlappingIntegerPairIter,
-    mempool::{service::LocalMempoolService, TxStorageResponse},
-    proof_of_work::PowAlgorithm,
-    transactions::transaction::Transaction,
-};
-use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
-use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
-use tokio::task;
-use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;

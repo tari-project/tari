@@ -22,28 +22,31 @@
 
 //! Impls for transaction proto
 
+use std::convert::{TryFrom, TryInto};
+
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, ByteArrayError},
+};
+
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+
 use crate::{
     proto,
     tari_utilities::convert::try_convert_all,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_entities::{
+            output_features::OutputFeatures,
+            transaction::Transaction,
+            transaction_input::TransactionInput,
+            transaction_kernel::TransactionKernel,
+            transaction_output::TransactionOutput,
             KernelFeatures,
-            OutputFeatures,
             OutputFlags,
-            Transaction,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
         },
     },
-};
-use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
 };
 
 //---------------------------------- TransactionKernel --------------------------------------------//

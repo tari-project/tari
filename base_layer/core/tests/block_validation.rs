@@ -20,19 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::{
-    block_builders::{
-        chain_block_with_coinbase,
-        chain_block_with_new_coinbase,
-        create_coinbase,
-        create_genesis_block_with_utxos,
-        find_header_with_achieved_difficulty,
-    },
-    test_blockchain::TestBlockchain,
-};
+use std::sync::Arc;
+
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
-use std::sync::Arc;
+use tari_crypto::{inputs, script};
+
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
@@ -51,7 +44,7 @@ use tari_core::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
-        transaction::OutputFeatures,
+        transaction_entities::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -67,7 +60,17 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, script};
+
+use crate::helpers::{
+    block_builders::{
+        chain_block_with_coinbase,
+        chain_block_with_new_coinbase,
+        create_coinbase,
+        create_genesis_block_with_utxos,
+        find_header_with_achieved_difficulty,
+    },
+    test_blockchain::TestBlockchain,
+};
 
 mod helpers;
 

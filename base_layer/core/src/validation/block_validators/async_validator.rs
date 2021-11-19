@@ -28,7 +28,7 @@ use crate::{
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_entities::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
     validation::{

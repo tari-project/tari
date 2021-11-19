@@ -20,7 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::HorizonSyncError;
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
+
+use croaring::Bitmap;
+use futures::StreamExt;
+use log::*;
+use tari_crypto::{
+    commitment::HomomorphicCommitment,
+    tari_utilities::{hex::Hex, Hashable},
+};
+
+use tari_common_types::types::{HashDigest, RangeProofService};
+use tari_mmr::{MerkleMountainRange, MutableMmr};
+
 use crate::{
     base_node::{
         state_machine_service::{
@@ -39,21 +54,13 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
-use croaring::Bitmap;
-use futures::StreamExt;
-use log::*;
-use std::{
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
-use tari_common_types::types::{HashDigest, RangeProofService};
-use tari_crypto::{
-    commitment::HomomorphicCommitment,
-    tari_utilities::{hex::Hex, Hashable},
-};
-use tari_mmr::{MerkleMountainRange, MutableMmr};
+
+use super::error::HorizonSyncError;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
@@ -159,7 +166,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             remote_num_kernels - local_num_kernels,
         );
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating kernel sync with peer `{}` (latency = {}ms)",
@@ -287,7 +294,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let end = remote_num_outputs;
         let end_hash = to_header.hash();
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating output sync with peer `{}` (latency = {}ms)",

@@ -1,3 +1,11 @@
+use croaring::Bitmap;
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
+use tari_mmr::Hash;
+
 use crate::{
     blocks::{
         Block,
@@ -20,14 +28,8 @@ use crate::{
         MmrTree,
         UtxoMinedInfo,
     },
-    transactions::transaction::{TransactionInput, TransactionKernel},
+    transactions::transaction_entities::{transaction_input::TransactionInput, transaction_kernel::TransactionKernel},
 };
-use croaring::Bitmap;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
-};
-use tari_mmr::Hash;
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
 /// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every

@@ -27,7 +27,7 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction_entities::Transaction, weight::TransactionWeight},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -487,7 +487,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction::KernelFeatures,
+            transaction_entities::KernelFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
