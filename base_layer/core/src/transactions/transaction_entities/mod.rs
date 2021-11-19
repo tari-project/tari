@@ -118,7 +118,7 @@ mod test {
         let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
         let input = i.as_transaction_input(&factory).unwrap();
         assert_eq!(output.hash(), input.output_hash());
-        assert_eq!(output.hash(), i.hash());
+        assert_eq!(output.hash(), i.hash(&CryptoFactories::default()));
     }
 
     #[test]

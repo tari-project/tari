@@ -30,7 +30,6 @@ use crate::{
         range_proof::{RangeProofError, RangeProofService},
         script::{ExecutionStack, TariScript},
     },
-    tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
         transaction_entities,
@@ -195,6 +194,13 @@ impl UnblindedOutput {
         self.features.consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
     }
+
+    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not
+    // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
+    pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
+        let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
+        transaction_entities::hash_output(&self.features, &commitment, &self.script)
+    }
 }
 
 // These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
@@ -215,14 +221,5 @@ impl PartialOrd<UnblindedOutput> for UnblindedOutput {
 impl Ord for UnblindedOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.value.cmp(&other.value)
-    }
-}
-
-/// Implement the canonical hashing function for UnblindedOutput for use in ordering.
-impl Hashable for UnblindedOutput {
-    fn hash(&self) -> Vec<u8> {
-        let factories = CryptoFactories::default();
-        let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction_entities::hash_output(&self.features, &commitment, &self.script)
     }
 }
