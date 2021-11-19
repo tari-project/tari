@@ -22,7 +22,10 @@
 
 use crate::{
     peer_manager::NodeId,
-    protocol::{rpc::RpcStatusCode, ProtocolId},
+    protocol::{
+        rpc::{RpcServerError, RpcStatusCode},
+        ProtocolId,
+    },
 };
 use once_cell::sync::Lazy;
 use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
@@ -53,17 +56,21 @@ pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCo
     METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
 }
 
-pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
+pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId, err: &RpcServerError) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
             "comms::rpc::server::error_count",
             "The number of RPC errors per peer per protocol",
-            &["peer_id", "protocol"],
+            &["peer_id", "protocol", "error"],
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[node_id.to_string().as_str(), String::from_utf8_lossy(protocol).as_ref()])
+    METER.with_label_values(&[
+        node_id.to_string().as_str(),
+        String::from_utf8_lossy(protocol).as_ref(),
+        err.to_debug_string().as_str(),
+    ])
 }
 
 pub fn status_error_counter(node_id: &NodeId, protocol: &ProtocolId, status_code: RpcStatusCode) -> IntCounter {

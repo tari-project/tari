@@ -47,10 +47,32 @@ pub enum RpcServerError {
     UnexpectedIncomingMessageMalformed,
     #[error("Client interrupted stream")]
     ClientInterruptedStream,
+    #[error("Service call exceeded deadline")]
+    ServiceCallExceededDeadline,
+    #[error("Stream read exceeded deadline")]
+    ReadStreamExceededDeadline,
 }
 
 impl From<oneshot::error::RecvError> for RpcServerError {
     fn from(_: oneshot::error::RecvError) -> Self {
         RpcServerError::RequestCanceled
+    }
+}
+
+impl RpcServerError {
+    pub fn to_debug_string(&self) -> String {
+        use RpcServerError::*;
+        match self {
+            DecodeError(_) => "DecodeError".to_string(),
+            Io(err) => {
+                format!("Io({:?})", err.kind())
+            },
+            HandshakeError(_) => "HandshakeError".to_string(),
+            ProtocolServiceNotFound(_) => "ProtocolServiceNotFound".to_string(),
+            UnexpectedIncomingMessage(_) => "UnexpectedIncomingMessage".to_string(),
+            err => {
+                format!("{:?}", err)
+            },
+        }
     }
 }

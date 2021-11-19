@@ -443,7 +443,7 @@ where
             "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
-            metrics::error_counter(&self.node_id, &self.protocol).inc();
+            metrics::error_counter(&self.node_id, &self.protocol, &err).inc();
             error!(
                 target: LOG_TARGET,
                 "({}) Rpc server exited with an error: {}", self.logging_context_string, err
@@ -580,7 +580,12 @@ where
                     deadline,
                 );
 
-                metrics::error_counter(&self.node_id, &self.protocol).inc();
+                metrics::error_counter(
+                    &self.node_id,
+                    &self.protocol,
+                    &RpcServerError::ServiceCallExceededDeadline,
+                )
+                .inc();
                 return Ok(());
             },
         };
@@ -680,7 +685,12 @@ where
                         deadline
                     );
 
-                    metrics::error_counter(&self.node_id, &self.protocol).inc();
+                    metrics::error_counter(
+                        &self.node_id,
+                        &self.protocol,
+                        &RpcServerError::ReadStreamExceededDeadline,
+                    )
+                    .inc();
                     break;
                 },
             }
