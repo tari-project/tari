@@ -137,7 +137,7 @@ function WashingMachine(options) {
     // Start wallet2
     if (wallet2Grpc) {
       this.wallet2 = new WalletClient();
-      debug(`Connecting to wallet2 at ${wallet1Grpc}...`);
+      debug(`Connecting to wallet2 at ${wallet2Grpc}...`);
       await this.wallet2.connect(wallet2Grpc);
     } else {
       debug("Compiling wallet2...");
