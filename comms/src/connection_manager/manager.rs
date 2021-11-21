@@ -29,6 +29,7 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
+    connection_manager::{metrics, ConnectionDirection},
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity},
@@ -397,10 +398,14 @@ where
                     node_id.short_str(),
                     proto_str
                 );
+                metrics::inbound_substream_counter(&node_id, &protocol).inc();
                 let notify_fut = self
                     .protocols
                     .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
+                    Ok(Ok(_)) => {
+                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                    },
                     Ok(Err(err)) => {
                         error!(
                             target: LOG_TARGET,
@@ -413,12 +418,21 @@ where
                             "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
                         );
                     },
-                    _ => {
-                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
-                    },
                 }
             },
 
+            PeerConnected(conn) => {
+                metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
+                self.publish_event(PeerConnected(conn));
+            },
+            PeerConnectFailed(peer, err) => {
+                metrics::failed_connections(&peer, ConnectionDirection::Outbound).inc();
+                self.publish_event(PeerConnectFailed(peer, err));
+            },
+            PeerInboundConnectFailed(err) => {
+                metrics::failed_connections(&Default::default(), ConnectionDirection::Inbound).inc();
+                self.publish_event(PeerInboundConnectFailed(err));
+            },
             event => {
                 self.publish_event(event);
             },

@@ -20,26 +20,55 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection_manager::ConnectionDirection;
+use crate::peer_manager::NodeId;
 use once_cell::sync::Lazy;
-use tari_metrics::{IntGauge, IntGaugeVec};
+use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
 
-pub fn connections(direction: ConnectionDirection) -> IntGauge {
-    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
-            "comms::connectivity::num_connections",
-            "Number of active connections by direction",
-            &["direction"],
+pub fn num_sessions() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "comms::messaging::num_sessions",
+            "The number of active messaging sessions",
         )
         .unwrap()
     });
 
-    METER.with_label_values(&[direction.as_str()])
+    METER.clone()
 }
 
-pub fn uptime() -> IntGauge {
-    static METER: Lazy<IntGauge> =
-        Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
+pub fn outbound_message_count(peer: &NodeId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::messaging::outbound_message_count",
+            "The number of handshakes per peer",
+            &["peer_id"],
+        )
+        .unwrap()
+    });
 
-    METER.clone()
+    METER.with_label_values(&[peer.to_string().as_str()])
+}
+
+pub fn inbound_message_count(peer: &NodeId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::messaging::inbound_message_count",
+            "The number of handshakes per peer",
+            &["peer_id"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[peer.to_string().as_str()])
+}
+
+pub fn error_count(peer: &NodeId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec("comms::messaging::errors", "The number of errors per peer", &[
+            "peer_id",
+        ])
+        .unwrap()
+    });
+
+    METER.with_label_values(&[peer.to_string().as_str()])
 }

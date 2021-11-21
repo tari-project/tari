@@ -20,5 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "metrics")]
+mod metrics;
+
 mod yamux;
 pub use self::yamux::{ConnectionError, Control, IncomingSubstreams, Substream, Yamux};

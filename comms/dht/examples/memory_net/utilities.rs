@@ -245,7 +245,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
     total += t;
     avg += a;
     println!(
-        "{} total connections on the network. ({} per node on average)",
+        "{} total connections on the network. ({} per peer on average)",
         total,
         avg / (wallets.len() + nodes.len())
     );

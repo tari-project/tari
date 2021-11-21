@@ -23,6 +23,7 @@
 mod dial_state;
 mod dialer;
 mod listener;
+mod metrics;
 
 mod common;
 pub use common::validate_peer_addresses;
