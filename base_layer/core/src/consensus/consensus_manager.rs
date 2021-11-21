@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use thiserror::Error;
+
+use tari_common::configuration::Network;
+
 #[cfg(feature = "base_node")]
 use crate::{
     blocks::ChainBlock,
@@ -27,7 +33,6 @@ use crate::{
     proof_of_work::PowAlgorithm,
     proof_of_work::TargetDifficultyWindow,
 };
-
 use crate::{
     consensus::{
         emission::{Emission, EmissionSchedule},
@@ -35,11 +40,8 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
+    transactions::{tari_amount::MicroTari, transaction_entities::transaction_kernel::TransactionKernel},
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]

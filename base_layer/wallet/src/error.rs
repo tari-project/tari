@@ -39,7 +39,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_core::transactions::transaction::TransactionError;
+use tari_core::transactions::transaction_entities::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};

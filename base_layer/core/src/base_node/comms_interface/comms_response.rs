@@ -20,14 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{self, Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+
 use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::Difficulty,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
-use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
-use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]

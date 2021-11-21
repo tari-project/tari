@@ -62,7 +62,7 @@ mod sync_blocks {
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let err = service.sync_blocks(req).await.unwrap_err();
-        unpack_enum!(RpcStatusCode::NotFound = err.status_code());
+        unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
     }
 
     #[tokio::test]

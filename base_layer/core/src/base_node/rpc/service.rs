@@ -1,3 +1,8 @@
+use std::convert::TryFrom;
+
+use tari_common_types::types::Signature;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+
 //  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -44,11 +49,8 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use std::convert::TryFrom;
-use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";
 

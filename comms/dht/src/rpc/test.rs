@@ -159,7 +159,7 @@ mod get_closer_peers {
         let node_id = NodeId::default();
         let req = mock.request_with_context(node_id, req);
         let err = service.get_closer_peers(req).await.unwrap_err();
-        assert_eq!(err.status_code(), RpcStatusCode::BadRequest);
+        assert_eq!(err.as_status_code(), RpcStatusCode::BadRequest);
     }
 }
 

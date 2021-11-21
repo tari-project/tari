@@ -124,7 +124,7 @@ mod get_tx_state_by_excess_sig {
             .await
             .unwrap_err();
 
-        unpack_enum!(RpcStatusCode::BadRequest = status.status_code());
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
     }
 }
 
@@ -174,6 +174,6 @@ mod submit_transaction {
             .await
             .unwrap_err();
 
-        unpack_enum!(RpcStatusCode::BadRequest = status.status_code());
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
     }
 }

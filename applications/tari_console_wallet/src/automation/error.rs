@@ -23,12 +23,15 @@
 use std::num::{ParseFloatError, ParseIntError};
 
 use log::*;
+use thiserror::Error;
+use tokio::task::JoinError;
+
 use tari_common::exit_codes::ExitCodes;
 use tari_core::{
     tari_utilities::hex::HexError,
     transactions::{
         tari_amount::{MicroTariError, TariConversionError},
-        transaction::TransactionError,
+        transaction_entities::TransactionError,
     },
 };
 use tari_wallet::{
@@ -36,8 +39,6 @@ use tari_wallet::{
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
-use thiserror::Error;
-use tokio::task::JoinError;
 
 pub const LOG_TARGET: &str = "wallet::automation::error";
 
