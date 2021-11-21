@@ -24,9 +24,11 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 
+use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
+
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::{OutputFeatures, TransactionOutput},
+    transaction_entities::{output_features::OutputFeatures, transaction_output::TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -34,7 +36,6 @@ use crate::transactions::{
         TransactionProtocolError,
     },
 };
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -212,13 +213,15 @@ mod test {
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
     };
 
+    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
+
     use crate::{
         crypto::script::TariScript,
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction::OutputFeatures,
+            transaction_entities::output_features::OutputFeatures,
             transaction_protocol::{
                 build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
@@ -228,7 +231,6 @@ mod test {
             ReceiverTransactionProtocol,
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 
     #[test]
     fn single_round_recipient() {

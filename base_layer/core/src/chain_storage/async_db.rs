@@ -20,6 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
+
+use croaring::Bitmap;
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, Signature},
+};
+use tari_mmr::pruned_hashset::PrunedHashSet;
+
 use crate::{
     blocks::{
         Block,
@@ -52,15 +64,10 @@ use crate::{
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
-};
-use croaring::Bitmap;
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";

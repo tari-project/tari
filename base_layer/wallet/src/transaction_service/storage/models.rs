@@ -22,6 +22,7 @@
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey, Signature},
@@ -29,7 +30,7 @@ use tari_common_types::{
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::Transaction,
+    transaction_entities::Transaction,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

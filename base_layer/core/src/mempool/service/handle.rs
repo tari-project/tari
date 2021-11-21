@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::Signature;
+use tari_service_framework::{reply_channel::TrySenderService, Service};
+
 use crate::{
     mempool::{
         service::{MempoolRequest, MempoolResponse},
@@ -28,10 +31,8 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use tari_common_types::types::Signature;
-use tari_service_framework::{reply_channel::TrySenderService, Service};
 
 #[derive(Clone)]
 pub struct MempoolHandle {

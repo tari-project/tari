@@ -1,3 +1,24 @@
+use std::{
+    cmp,
+    cmp::Ordering,
+    collections::VecDeque,
+    convert::TryFrom,
+    mem,
+    ops::{Bound, RangeBounds},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    time::Instant,
+};
+
+use croaring::Bitmap;
+use log::*;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+};
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -57,7 +78,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::transaction::TransactionKernel,
+    transactions::transaction_entities::transaction_kernel::TransactionKernel,
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -67,24 +88,6 @@ use crate::{
         ValidationError,
     },
 };
-use croaring::Bitmap;
-use log::*;
-use std::{
-    cmp,
-    cmp::Ordering,
-    collections::VecDeque,
-    convert::TryFrom,
-    mem,
-    ops::{Bound, RangeBounds},
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-    time::Instant,
-};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
-};
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
-use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -2189,7 +2192,11 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use std::{collections::HashMap, sync};
+
+    use tari_common::configuration::Network;
+    use tari_test_utils::unpack_enum;
+
     use crate::{
         block_specs,
         consensus::{
@@ -2211,9 +2218,8 @@ mod test {
         },
         validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
-    use std::{collections::HashMap, sync};
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
+
+    use super::*;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {

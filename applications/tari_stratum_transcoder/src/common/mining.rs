@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::StratumTranscoderProxyError;
 use std::convert::TryFrom;
+
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_entities::{TransactionKernel, TransactionOutput},
 };
+
+use crate::error::StratumTranscoderProxyError;
 
 pub fn add_coinbase(
     coinbase: Option<grpc::Transaction>,

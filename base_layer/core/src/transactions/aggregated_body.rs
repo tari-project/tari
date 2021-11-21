@@ -24,7 +24,7 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_entities::{
             KernelFeatures,
             KernelSum,
             OutputFlags,

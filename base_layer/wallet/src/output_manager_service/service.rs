@@ -55,7 +55,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_entities::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::sender::TransactionSenderMessage,
         CoinbaseBuilder,
         CryptoFactories,
@@ -1230,8 +1230,8 @@ where
             )
             .as_bytes(),
         )?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         let rewound =
             output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
 
@@ -1422,8 +1422,8 @@ where
                     )
                     .as_bytes(),
                 )?;
-                let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-                let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+                let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
+                let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
                 let rewound =
                     output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key);
 

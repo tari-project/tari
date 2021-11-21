@@ -26,7 +26,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_entities::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -305,7 +305,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction::OutputFeatures::default()
+            features: $crate::transactions::transaction_entities::OutputFeatures::default()
         )
     };
 

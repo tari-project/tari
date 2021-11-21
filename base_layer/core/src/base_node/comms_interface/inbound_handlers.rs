@@ -1,3 +1,16 @@
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use log::*;
+use strum_macros::Display;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tokio::sync::Semaphore;
+
+use tari_common_types::types::{BlockHash, HashOutput};
+use tari_comms::peer_manager::NodeId;
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -32,18 +45,8 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction::TransactionKernel,
+    transactions::transaction_entities::transaction_kernel::TransactionKernel,
 };
-use log::*;
-use std::{
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
-use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;

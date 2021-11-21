@@ -288,16 +288,14 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     parsed_args.push(ParsedArgument::PublicKey(pubkey));
 
     // transaction type
-    let txn_type = args
-        .next()
-        .ok_or_else(|| ParseError::Empty("transaction type".to_string()))?;
+    let txn_type = args.next();
     let negotiated = match txn_type {
-        "negotiated" => true,
-        "one_sided" => false,
+        Some("negotiated") | Some("interactive") => true,
+        Some("one_sided") | Some("one-sided") | Some("onesided") => false,
         _ => {
-            println!("Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'\n");
+            println!("Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'\n");
             return Err(ParseError::Invalid(
-                "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string(),
+                "Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'".to_string(),
             ));
         },
     };
@@ -531,7 +529,7 @@ mod test {
             Err(e) => match e {
                 ParseError::Invalid(e) => assert_eq!(
                     e,
-                    "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string()
+                    "Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'".to_string()
                 ),
                 _ => panic!("Expected parsing <transaction type> to return an error here"),
             },

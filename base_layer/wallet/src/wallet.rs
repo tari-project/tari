@@ -47,7 +47,7 @@ use tari_core::{
     consensus::NetworkConsensus,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction_entities::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };

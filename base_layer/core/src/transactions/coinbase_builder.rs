@@ -39,7 +39,7 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
-        transaction::{
+        transaction_entities::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -251,7 +251,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction_entities::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
