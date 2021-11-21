@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.21.1"
+version = "0.21.2"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -36,8 +36,8 @@ serde_derive = "1.0.90"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["macros"] }
 tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
-tower = "0.3.0-alpha.2"
-tower-service = { version = "0.3.0-alpha.2" }
+tower = "0.4.11"
+tower-service = { version = "0.3.1" }
 trust-dns-client = { version = "0.21.0-alpha.4", features = ["dns-over-rustls"] }
 rustls = "0.19.1"
 webpki = "0.21"

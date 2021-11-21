@@ -27,9 +27,11 @@ use tari_crypto::{
     tari_utilities::byte_array::ByteArray,
 };
 
+use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
+
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::{OutputFeatures, TransactionOutput},
+    transaction_entities::{output_features::OutputFeatures, transaction_output::TransactionOutput},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -38,7 +40,6 @@ use crate::transactions::{
         TransactionProtocolError as TPE,
     },
 };
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -142,10 +143,12 @@ mod test {
         script::TariScript,
     };
 
+    use tari_common_types::types::{PrivateKey, PublicKey};
+
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction::OutputFeatures,
+        transaction_entities::output_features::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -154,7 +157,6 @@ mod test {
             TransactionProtocolError,
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey};
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);

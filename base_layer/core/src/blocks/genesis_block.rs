@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use chrono::DateTime;
+use tari_crypto::{
+    script::TariScript,
+    tari_utilities::{hash::Hashable, hex::*},
+};
+
+use tari_common::configuration::Network;
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+
 // This file is used to store the genesis block
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
@@ -27,16 +38,14 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
+        transaction_entities::{
+            output_features::OutputFeatures,
+            transaction_kernel::TransactionKernel,
+            transaction_output::TransactionOutput,
+            KernelFeatures,
+            OutputFlags,
+        },
     },
-};
-use chrono::DateTime;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
-use tari_crypto::{
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::*},
 };
 
 /// Returns the genesis block for the selected network.
@@ -465,8 +474,9 @@ pub fn get_igor_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::transactions::CryptoFactories;
+
+    use super::*;
 
     #[test]
     fn weatherwax_genesis_sanity_check() {

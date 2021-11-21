@@ -25,7 +25,7 @@ use crate::{
     protocol::{
         rpc::{
             test::{
-                greeting_service::{GreetingClient, GreetingServer, GreetingService},
+                greeting_service::{GreetingClient, GreetingServer, GreetingService, SlowStreamRequest},
                 mock::create_mocked_rpc_context,
             },
             NamedProtocolService,
@@ -39,9 +39,11 @@ use crate::{
     runtime::task,
     test_utils::mocks::{new_peer_connection_mock_pair, PeerConnectionMockState},
 };
+use std::{env, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{async_assert_eventually, unpack_enum};
 use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
 
 async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
     let (conn1, conn1_state, conn2, conn2_state) = new_peer_connection_mock_pair().await;
@@ -169,5 +171,35 @@ mod lazy_pool {
         peer_conn.disconnect().await.unwrap();
         let err = pool.get_least_used_or_connect().await.unwrap_err();
         unpack_enum!(RpcClientPoolError::PeerConnectionDropped { .. } = err);
+    }
+}
+
+mod last_request_latency {
+    use super::*;
+
+    #[runtime::test]
+    async fn it_returns_the_latency_until_the_first_response() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+
+        let mut client = conn.connect_rpc::<GreetingClient>().await.unwrap();
+
+        let resp = client
+            .slow_stream(SlowStreamRequest {
+                num_items: 100,
+                item_size: 10,
+                delay_ms: 10,
+            })
+            .await
+            .unwrap();
+
+        resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
+            r.unwrap();
+        });
+
+        let latency = client.get_last_request_latency().unwrap();
+        // CI could be really slow, so to prevent flakiness exclude the assert
+        if env::var("CI").is_err() {
+            assert!(latency < Duration::from_millis(100));
+        }
     }
 }

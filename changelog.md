@@ -1,6 +1,13 @@
 # Changelog
 
 
+### [0.21.2](https://github.com/tari-project/tari/compare/v0.21.1...v0.21.2) (2021-11-19)
+
+### Features
+
+* add atomic swap refund transaction handling ([#3573](https://github.com/tari-project/tari/issues/3573)) ([337bc6f](https://github.com/tari-project/tari/commit/337bc6f1b11abc0f53cdc3a82a0aa5110e1fe856))
+* improve wallet connectivity status for console wallet ([#3577](https://github.com/tari-project/tari/issues/3577)) ([e191e27](https://github.com/tari-project/tari/commit/e191e27ed79aff5cfe4d76effe77473a03eb31f6))
+
 ### [0.21.1](https://github.com/tari-project/tari/compare/v0.21.0...v0.21.1) (2021-11-17)
 
 

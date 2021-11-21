@@ -33,11 +33,17 @@ use chrono::Utc;
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tokio::{sync::broadcast, task, time};
+use tokio::{
+    sync::{broadcast, watch},
+    task,
+    time,
+    time::MissedTickBehavior,
+};
 
 use tari_common_types::{transaction::TxId, types::HashOutput};
 use tari_comms::{
-    peer_manager::NodeId,
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
     NodeIdentity,
@@ -52,7 +58,7 @@ use tari_core::{
     tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_entities::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -70,8 +76,6 @@ use crate::{
     utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
     WalletSqlite,
 };
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
-use tokio::{sync::watch, time::MissedTickBehavior};
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
@@ -268,7 +272,7 @@ where TBackend: WalletBackend + 'static
             .connect_rpc_using_builder(BaseNodeSyncRpcClient::builder().with_deadline(Duration::from_secs(60)))
             .await?;
 
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         self.publish_event(UtxoScannerEvent::ConnectedToBaseNode(
             peer.clone(),
             latency.unwrap_or_default(),
@@ -350,7 +354,7 @@ where TBackend: WalletBackend + 'static
         // this returns the index of the vec of hashes we sent it, that is the last hash it knows of.
         match client.find_chain_split(request).await {
             Ok(_) => Ok(metadata.utxo_index + 1),
-            Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
+            Err(RpcError::RequestFailed(err)) if err.as_status_code().is_not_found() => {
                 warn!(target: LOG_TARGET, "Reorg detected: {}", err);
                 // The node does not know of the last hash we scanned, thus we had a chain split.
                 // We now start at 0 again.

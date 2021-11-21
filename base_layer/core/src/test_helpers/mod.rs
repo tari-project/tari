@@ -23,11 +23,14 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-#[macro_use]
-mod block_spec;
-pub use block_spec::{BlockSpec, BlockSpecs};
+use std::{iter, path::Path, sync::Arc};
 
-pub mod blockchain;
+use rand::{distributions::Alphanumeric, Rng};
+
+pub use block_spec::{BlockSpec, BlockSpecs};
+use tari_common::configuration::Network;
+use tari_comms::PeerManager;
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -35,16 +38,15 @@ use crate::{
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction::{Transaction, UnblindedOutput},
+        transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },
 };
-use rand::{distributions::Alphanumeric, Rng};
-use std::{iter, path::Path, sync::Arc};
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+
+#[macro_use]
+mod block_spec;
+pub mod blockchain;
 
 pub fn create_consensus_rules() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()

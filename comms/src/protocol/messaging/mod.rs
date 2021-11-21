@@ -29,6 +29,7 @@ pub use extension::MessagingProtocolExtension;
 mod error;
 mod forward;
 mod inbound;
+mod metrics;
 mod outbound;
 mod protocol;
 pub use protocol::{

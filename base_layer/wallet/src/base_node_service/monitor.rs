@@ -151,7 +151,7 @@ where
             );
 
             let timer = Instant::now();
-            let latency = match client.get_last_request_latency().await? {
+            let latency = match client.get_last_request_latency() {
                 Some(latency) => latency,
                 None => continue,
             };

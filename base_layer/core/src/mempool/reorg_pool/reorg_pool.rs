@@ -20,18 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use serde::{Deserialize, Serialize};
+
+use tari_common::configuration::seconds;
+use tari_common_types::types::Signature;
+
 use crate::{
     blocks::Block,
     mempool::{
         consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
         reorg_pool::{ReorgPoolError, ReorgPoolStorage},
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use serde::{Deserialize, Serialize};
-use std::{sync::Arc, time::Duration};
-use tari_common::configuration::seconds;
-use tari_common_types::types::Signature;
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -113,15 +116,18 @@ impl ReorgPool {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    use std::{thread, time::Duration};
+
+    use tari_common::configuration::Network;
+
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
         transactions::tari_amount::MicroTari,
         tx,
     };
-    use std::{thread, time::Duration};
-    use tari_common::configuration::Network;
+
+    use super::*;
 
     #[test]
     fn test_insert_rlu_and_ttl() {

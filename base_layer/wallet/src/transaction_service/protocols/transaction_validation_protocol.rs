@@ -327,7 +327,7 @@ where
                 warn!(target: LOG_TARGET, "Error asking base node for header:{}", rpc_error);
                 match &rpc_error {
                     RequestFailed(status) => {
-                        if status.status_code() == NotFound {
+                        if status.as_status_code() == NotFound {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());
