@@ -24,7 +24,7 @@ use log::*;
 
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::{transaction::Transaction, CryptoFactories},
+    transactions::{transaction_entities::Transaction, CryptoFactories},
     validation::{
         helpers::{check_inputs_are_utxos, check_not_duplicate_txos},
         MempoolTransactionValidation,

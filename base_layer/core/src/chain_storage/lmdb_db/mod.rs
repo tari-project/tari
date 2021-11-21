@@ -20,14 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
+
+pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
+use tari_common_types::types::HashOutput;
+
+use crate::transactions::transaction_entities::{
+    transaction_input::TransactionInput,
+    transaction_kernel::TransactionKernel,
+    transaction_output::TransactionOutput,
+};
+
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
-
-use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
-pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::HashOutput;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {

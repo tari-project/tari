@@ -53,7 +53,7 @@ async function runWalletRecoveryTest(instances) {
       recoveredAmount,
     } = await walletRecoveryTest({
       seedWords:
-        "abandon rely pave boil case broken volume bracket own false sketch ordinary gown bitter strong unhappy shoulder salad season student public will monkey inquiry",
+        "cactus pool fuel skull chair casino season disorder flat crash wrist whisper decorate narrow oxygen remember minor among happy cricket embark blue ship sick",
       log: LOG_FILE,
       numWallets: instances,
       baseDir,
@@ -126,13 +126,13 @@ async function main() {
   });
 
   // ------------------------- CRON ------------------------- //
-  new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
+  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1)).start();
   //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
-  new CronJob("0 6 * * *", () =>
+  new CronJob("0 1 * * *", () =>
     runBaseNodeSyncTest(SyncType.Archival)
   ).start();
-  new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
-  new CronJob("0 4 * * *", () =>
+  new CronJob("30 1 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
+  new CronJob("0 0 * * *", () =>
     git.pull(__dirname).catch((err) => {
       failed("Failed to update git repo");
       console.error(err);

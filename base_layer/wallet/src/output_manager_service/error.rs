@@ -20,20 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 use diesel::result::Error as DieselError;
+use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
+use thiserror::Error;
+
 use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction::TransactionError,
+    transaction_entities::TransactionError,
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
-use thiserror::Error;
+
+use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {

@@ -286,7 +286,7 @@ mod test {
 
         block_on(future::join(
             async move {
-                let err = requestor.ready_and().await.unwrap().call("PING").await.unwrap_err();
+                let err = requestor.ready().await.unwrap().call("PING").await.unwrap_err();
                 assert_eq!(err, TransportChannelError::Canceled);
             },
             async move {

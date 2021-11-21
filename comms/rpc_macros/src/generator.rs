@@ -208,8 +208,8 @@ impl RpcCodeGenerator {
 
             #client_methods
 
-            pub async fn get_last_request_latency(&mut self) -> Result<Option<std::time::Duration>, #dep_mod::RpcError> {
-                self.inner.get_last_request_latency().await
+            pub fn get_last_request_latency(&mut self) -> Option<std::time::Duration> {
+                self.inner.get_last_request_latency()
             }
 
             pub async fn ping(&mut self) -> Result<std::time::Duration, #dep_mod::RpcError> {

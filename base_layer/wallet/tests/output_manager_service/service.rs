@@ -45,7 +45,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::OutputFeatures,
+        transaction_entities::OutputFeatures,
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         SenderTransactionProtocol,
