@@ -152,7 +152,7 @@ async fn request_response_errors_and_streaming() {
 
     let err = client.return_error().await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    assert_eq!(status.status_code(), RpcStatusCode::NotImplemented);
+    assert_eq!(status.as_status_code(), RpcStatusCode::NotImplemented);
     assert_eq!(status.details(), "I haven't gotten to this yet :(");
 
     let stream = client.streaming_error("Gurglesplurb".to_string()).await.unwrap();
@@ -164,7 +164,7 @@ async fn request_response_errors_and_streaming() {
         .into_iter()
         .collect::<Result<String, _>>()
         .unwrap_err();
-    assert_eq!(status.status_code(), RpcStatusCode::BadRequest);
+    assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(status.details(), "What does 'Gurglesplurb' mean?");
 
     let stream = client.streaming_error2().await.unwrap();
@@ -174,7 +174,7 @@ async fn request_response_errors_and_streaming() {
     assert_eq!(first_reply, "This is ok");
 
     let second_reply = results.get(1).unwrap().as_ref().unwrap_err();
-    assert_eq!(second_reply.status_code(), RpcStatusCode::BadRequest);
+    assert_eq!(second_reply.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(second_reply.details(), "This is a problem");
 
     let pk_hex = client.get_public_key_hex().await.unwrap();
@@ -262,7 +262,7 @@ async fn response_too_big() {
         .await
         .unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    unpack_enum!(RpcStatusCode::MalformedResponse = status.status_code());
+    unpack_enum!(RpcStatusCode::MalformedResponse = status.as_status_code());
 
     // Check that the exact frame size boundary works and that the session is still going
     let _ = client
@@ -314,7 +314,7 @@ async fn timeout() {
 
     let err = client.say_hello(Default::default()).await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    assert_eq!(status.status_code(), RpcStatusCode::Timeout);
+    assert_eq!(status.as_status_code(), RpcStatusCode::Timeout);
 
     *delay.write().await = Duration::from_secs(0);
 

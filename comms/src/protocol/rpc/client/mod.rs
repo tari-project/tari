@@ -187,7 +187,7 @@ impl RpcClient {
         &mut self,
         request: BaseRequest<Bytes>,
     ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError> {
-        let svc = self.connector.ready_and().await?;
+        let svc = self.connector.ready().await?;
         let resp = svc.call(request).await?;
         Ok(resp)
     }
@@ -462,8 +462,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Ok(()));
                 }
+                metrics::handshake_counter(&self.node_id, &self.protocol_id).inc();
             },
             Err(err) => {
+                metrics::handshake_errors(&self.node_id, &self.protocol_id).inc();
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Err(err.into()));
                 }
@@ -472,8 +474,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             },
         }
 
-        let session_counter = metrics::sessions_counter(&self.node_id, &self.protocol_id);
-        session_counter.inc();
+        metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
         loop {
             tokio::select! {
                 biased;
@@ -484,6 +485,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     match req {
                         Some(req) => {
                             if let Err(err) = self.handle_request(req).await {
+                                metrics::client_errors(&self.node_id, &self.protocol_id).inc();
                                 error!(target: LOG_TARGET, "(stream={}) Unexpected error: {}. Worker is terminating.", self.stream_id(), err);
                                 break;
                             }
@@ -493,21 +495,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 }
             }
         }
-        session_counter.dec();
+        metrics::num_sessions(&self.node_id, &self.protocol_id).dec();
 
         if let Err(err) = self.framed.close().await {
             debug!(
                 target: LOG_TARGET,
-                "(stream={}) IO Error when closing substream: {}",
+                "(stream: {}, peer: {}) IO Error when closing substream: {}",
                 self.stream_id(),
+                self.node_id,
                 err
             );
         }
 
         debug!(
             target: LOG_TARGET,
-            "(stream={}) RpcClientWorker ({}) terminated.",
+            "(stream: {}, peer: {}) RpcClientWorker ({}) terminated.",
             self.stream_id(),
+            self.node_id,
             self.protocol_name()
         );
     }
@@ -552,6 +556,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     self.stream_id(),
                     start.elapsed()
                 );
+                metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
                 let _ = reply.send(Err(RpcStatus::timed_out("Response timed out")));
                 return Ok(());
             },
@@ -583,7 +588,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
-    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_size = request.message.len()))]
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_body_size = request.message.len()))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -629,6 +634,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let mut metrics_timer = Some(latency.start_timer());
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
+            metrics::client_errors(&self.node_id, &self.protocol_id).inc();
             let _ = response_tx.send(Err(err.into()));
             return Ok(());
         }
@@ -637,7 +643,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             if self.shutdown_signal.is_triggered() {
                 debug!(
                     target: LOG_TARGET,
-                    "[{}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream early",
+                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream \
+                     early",
+                    self.node_id,
                     self.protocol_name(),
                     self.stream_id(),
                     request_id
@@ -671,7 +679,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         "Request {} (method={}) timed out", request_id, method,
                     );
                     event!(Level::ERROR, "Response timed out");
-                    if !response_tx.is_closed() {
+                    metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
+                    if response_tx.is_closed() {
+                        let req = proto::rpc::RpcRequest {
+                            request_id: request_id as u32,
+                            method,
+                            flags: RpcMessageFlags::FIN.bits().into(),
+                            ..Default::default()
+                        };
+
+                        self.send_request(req).await?;
+                    } else {
                         let _ = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
                     }
                     break;
@@ -713,9 +731,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         let req = proto::rpc::RpcRequest {
                             request_id: request_id as u32,
                             method,
-                            deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
                             flags: RpcMessageFlags::FIN.bits().into(),
-                            payload: vec![],
+                            ..Default::default()
                         };
 
                         self.send_request(req).await?;
@@ -773,7 +790,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     break resp;
                 },
                 Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
-                    if actual.saturating_add(1) == request_id =>
+                    if actual.wrapping_add(1) == request_id =>
                 {
                     warn!(
                         target: LOG_TARGET,
@@ -783,7 +800,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
                     // Be lenient for a number of messages that may have been buffered to come through for the previous
                     // request.
-                    const MAX_ALLOWED_IGNORED: usize = 5;
+                    const MAX_ALLOWED_IGNORED: usize = 20;
                     if num_ignored > MAX_ALLOWED_IGNORED {
                         return Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected });
                     }
@@ -798,7 +815,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     fn next_request_id(&mut self) -> u16 {
         let next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
-        self.next_request_id = self.next_request_id.checked_add(1).unwrap_or(0);
+        self.next_request_id = self.next_request_id.wrapping_add(1);
         next_id
     }
 

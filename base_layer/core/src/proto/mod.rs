@@ -51,4 +51,4 @@ mod block;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 mod block_header;
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod utils;
+mod utils;

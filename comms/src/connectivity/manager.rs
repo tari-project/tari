@@ -510,10 +510,7 @@ impl ConnectivityManagerActor {
                     _ => {},
                 }
             },
-            #[cfg(feature = "metrics")]
-            NewInboundSubstream(node_id, protocol, _) => {
-                super::metrics::substream_request_count(node_id, protocol).inc();
-            },
+
             _ => {},
         }
 

@@ -20,26 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection_manager::ConnectionDirection;
 use once_cell::sync::Lazy;
-use tari_metrics::{IntGauge, IntGaugeVec};
+use tari_metrics::IntCounter;
 
-pub fn connections(direction: ConnectionDirection) -> IntGauge {
-    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
-            "comms::connectivity::num_connections",
-            "Number of active connections by direction",
-            &["direction"],
-        )
-        .unwrap()
-    });
+pub static TOTAL_BYTES_READ: Lazy<IntCounter> = Lazy::new(|| {
+    tari_metrics::register_int_counter("comms::substream::total_bytes_read", "The total inbound bytes").unwrap()
+});
 
-    METER.with_label_values(&[direction.as_str()])
-}
-
-pub fn uptime() -> IntGauge {
-    static METER: Lazy<IntGauge> =
-        Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
-
-    METER.clone()
-}
+pub static TOTAL_BYTES_WRITTEN: Lazy<IntCounter> = Lazy::new(|| {
+    tari_metrics::register_int_counter("comms::substream::total_bytes_written", "The total outbound bytes").unwrap()
+});
