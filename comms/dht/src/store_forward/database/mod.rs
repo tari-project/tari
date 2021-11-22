@@ -203,28 +203,20 @@ impl StoreAndForwardDatabase {
 
     pub(crate) fn truncate_messages(&self, max_size: usize) -> Result<usize, StorageError> {
         let mut num_removed = 0;
-        let msg_count = {
-            let conn = self.connection.get_pooled_connection()?;
-            stored_messages::table
-                .select(dsl::count(stored_messages::id))
-                .first::<i64>(&conn)? as usize
-        };
+        let conn = self.connection.get_pooled_connection()?;
+        let msg_count = stored_messages::table
+            .select(dsl::count(stored_messages::id))
+            .first::<i64>(&conn)? as usize;
         if msg_count > max_size {
             let remove_count = msg_count - max_size;
-            let message_ids: Vec<i32> = {
-                let conn = self.connection.get_pooled_connection()?;
-                stored_messages::table
-                    .select(stored_messages::id)
-                    .order_by(stored_messages::stored_at.asc())
-                    .limit(remove_count as i64)
-                    .get_results(&conn)?
-            };
-            num_removed = {
-                let conn = self.connection.get_pooled_connection()?;
-                diesel::delete(stored_messages::table)
-                    .filter(stored_messages::id.eq_any(message_ids))
-                    .execute(&conn)?
-            };
+            let message_ids: Vec<i32> = stored_messages::table
+                .select(stored_messages::id)
+                .order_by(stored_messages::stored_at.asc())
+                .limit(remove_count as i64)
+                .get_results(&conn)?;
+            num_removed = diesel::delete(stored_messages::table)
+                .filter(stored_messages::id.eq_any(message_ids))
+                .execute(&conn)?;
         }
         Ok(num_removed)
     }
