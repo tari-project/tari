@@ -34,6 +34,7 @@ use crate::{
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
             transaction_validation_protocol::TransactionValidationProtocol,
+            TxRejection,
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
@@ -1301,7 +1302,10 @@ where
 
         let _ = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(tx_id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                tx_id,
+                TxRejection::UserCancelled,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

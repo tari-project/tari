@@ -26,6 +26,7 @@ use crate::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionServiceResponse},
+        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
@@ -826,7 +827,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

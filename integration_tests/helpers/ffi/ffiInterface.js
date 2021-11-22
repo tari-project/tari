@@ -1129,7 +1129,7 @@ class InterfaceFFI {
   }
 
   static createCallbackTransactionCancellation(fn) {
-    return ffi.Callback(this.void, [this.ptr], fn);
+    return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
   static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
