@@ -20,15 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-  models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
-  AssetWalletsTableGateway, StorageError,
-};
+use std::fmt::Display;
+use tari_common_types::types::PublicKey;
 
-pub struct SqliteAssetWalletsTableGateway {}
-
-impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGateway {
-  fn insert(&self, row: AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    todo!()
-  }
+pub trait KeyManagerProvider {
+  type Error: Display;
+  fn generate_asset_public_key(&self) -> Result<(String, PublicKey), Self::Error>;
 }

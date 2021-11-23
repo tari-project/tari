@@ -29,7 +29,7 @@ use crate::{
       sqlite_asset_wallets_table_gateway::SqliteAssetWalletsTableGateway,
       sqlite_issued_assets_table_gateway::SqliteIssuedAssetsTableGateway,
       sqlite_tip002_addresses_table_gateway::SqliteTip002AddressesTableGateway,
-      SqliteAssetsTableGateway, SqliteWalletsTableGateway,
+      sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway, SqliteWalletsTableGateway,
     },
     AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
   },
@@ -52,6 +52,15 @@ impl CollectiblesStorage for SqliteCollectiblesStorage {
   type IssuedAssets = SqliteIssuedAssetsTableGateway;
   type Tip002Addresses = SqliteTip002AddressesTableGateway;
   type Wallets = SqliteWalletsTableGateway;
+  type Transaction = SqliteTransaction;
+
+  fn create_transaction(&self) -> Result<Self::Transaction, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    conn.execute("PRAGMA foreign_keys = ON;")?;
+    conn.execute("BEGIN EXCLUSIVE TRANSACTION;")?;
+
+    Ok(SqliteTransaction::new(conn))
+  }
 
   fn addresses(&self) -> Self::Addresses {
     SqliteAddressesTableGateway {}

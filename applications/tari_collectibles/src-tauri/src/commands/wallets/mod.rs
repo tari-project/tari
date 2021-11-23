@@ -23,7 +23,9 @@
 use crate::{
   app_state::ConcurrentAppState,
   models::{NewWallet, Wallet, WalletInfo},
-  storage::{models::wallet_row::WalletRow, CollectiblesStorage, WalletsTableGateway},
+  storage::{
+    models::wallet_row::WalletRow, CollectiblesStorage, StorageTransaction, WalletsTableGateway,
+  },
 };
 use tari_key_manager::{
   cipher_seed::CipherSeed,
@@ -43,13 +45,19 @@ pub(crate) async fn wallets_create(
     // cipher_seed: CipherSeed::new(),
   };
 
-  let result = state
+  let db = state
     .create_db()
     .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?
+    .map_err(|e| format!("Could not connect to DB: {}", e))?;
+  let tx = db
+    .create_transaction()
+    .map_err(|e| format!("Could not start transaction:{}", e))?;
+  let result = db
     .wallets()
-    .insert(new_wallet, passphrase)
+    .insert(new_wallet, passphrase, &tx)
     .map_err(|e| format!("Could not save wallet: {}", e))?;
+  tx.commit()
+    .map_err(|e| format!("Could not commit transaction:{}", e))?;
   Ok(())
 }
 
@@ -64,7 +72,7 @@ pub(crate) async fn wallets_list(
 
   let result = db
     .wallets()
-    .list()
+    .list(None)
     .map_err(|e| format!("Could list wallets from DB: {}", e))?;
   Ok(result)
 }
@@ -81,7 +89,7 @@ pub(crate) async fn wallets_find(
 
   let uuid = Uuid::parse_str(&id).map_err(|e| format!("Failed to parse UUID: {}", e))?;
 
-  let result = db.wallets().find(uuid).map_err(|e| e.to_string())?;
+  let result = db.wallets().find(uuid, None).map_err(|e| e.to_string())?;
 
   Ok(result)
 }
@@ -101,7 +109,7 @@ pub(crate) async fn wallets_seed_words(
 
   let cipher_seed = db
     .wallets()
-    .get_cipher_seed(uuid, passphrase.clone())
+    .get_cipher_seed(uuid, passphrase.clone(), None)
     .map_err(|e| e.to_string())?;
 
   let seed_words = cipher_seed

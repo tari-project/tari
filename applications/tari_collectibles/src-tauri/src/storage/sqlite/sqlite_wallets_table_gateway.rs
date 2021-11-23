@@ -24,7 +24,7 @@ use crate::{
   schema::{self, *},
   storage::{
     models::{asset_row::AssetRow, wallet_row::WalletRow},
-    sqlite::models,
+    sqlite::{models, sqlite_transaction::SqliteTransaction},
     AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
   },
 };
@@ -48,10 +48,10 @@ impl SqliteWalletsTableGateway {
   }
 }
 
-impl WalletsTableGateway for SqliteWalletsTableGateway {
+impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
   type Passphrase = Option<String>;
 
-  fn list(&self) -> Result<Vec<WalletRow>, StorageError> {
+  fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<WalletRow>, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let results: Vec<models::Wallet> = schema::wallets::table.load(&conn)?;
     Ok(
@@ -66,7 +66,12 @@ impl WalletsTableGateway for SqliteWalletsTableGateway {
     )
   }
 
-  fn insert(&self, wallet: WalletRow, passphrase: Self::Passphrase) -> Result<(), StorageError> {
+  fn insert(
+    &self,
+    wallet: WalletRow,
+    passphrase: Self::Passphrase,
+    tx: &SqliteTransaction,
+  ) -> Result<(), StorageError> {
     let id = Uuid::new_v4();
     let cipher_seed = CipherSeed::new();
     // todo: error
@@ -85,7 +90,7 @@ impl WalletsTableGateway for SqliteWalletsTableGateway {
     Ok(())
   }
 
-  fn find(&self, id: Uuid) -> Result<WalletRow, StorageError> {
+  fn find(&self, id: Uuid, tx: Option<&SqliteTransaction>) -> Result<WalletRow, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let db_wallet = schema::wallets::table
       .find(Vec::from(id.as_bytes().as_slice()))
@@ -94,7 +99,12 @@ impl WalletsTableGateway for SqliteWalletsTableGateway {
     SqliteWalletsTableGateway::convert_wallet(&db_wallet)
   }
 
-  fn get_cipher_seed(&self, id: Uuid, pass: Self::Passphrase) -> Result<CipherSeed, StorageError> {
+  fn get_cipher_seed(
+    &self,
+    id: Uuid,
+    pass: Self::Passphrase,
+    tx: Option<&SqliteTransaction>,
+  ) -> Result<CipherSeed, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let w: models::Wallet = schema::wallets::table
       .find(Vec::from(id.as_bytes().as_slice()))

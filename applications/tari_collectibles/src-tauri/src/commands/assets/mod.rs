@@ -23,6 +23,11 @@
 use crate::{
   app_state::ConcurrentAppState,
   models::{AssetInfo, RegisteredAssetInfo, TemplateParameter},
+  providers::KeyManagerProvider,
+  storage::{
+    models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
+    AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
+  },
 };
 use rand::rngs::OsRng;
 use tari_app_grpc::tari_rpc::{self};
@@ -32,6 +37,7 @@ use tari_crypto::{
 };
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn assets_create(
@@ -52,9 +58,57 @@ pub(crate) async fn assets_create(
       template_id: t.template_id,
     })
     .collect();
+
+  // TODO: Generate and pass public key to wallet....
+  let (key_manager_path, asset_public_key) = state
+    .key_manager()
+    .await
+    .generate_asset_public_key()
+    .map_err(|e| format!("could not generate asset public key: {}", e))?;
+
   let res = client
-    .register_asset(name, description, image, template_ids, tp)
+    .register_asset(
+      name.clone(),
+      description.clone(),
+      image.clone(),
+      template_ids,
+      tp,
+    )
     .await?;
+
+  let db = state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not create db:{}", e))?;
+  let transaction = db
+    .create_transaction()
+    .map_err(|e| format!("Could not start transaction: {}", e))?;
+  let asset_id = Uuid::new_v4();
+  let asset_row = AssetRow {
+    id: asset_id,
+    asset_public_key,
+    name: Some(name),
+    description: Some(description),
+    image: Some(image),
+    committee: None,
+  };
+  db.assets()
+    .insert(asset_row, &transaction)
+    .map_err(|e| format!("Could not insert asset:{}", e))?;
+  let asset_wallet_row = AssetWalletRow {
+    id: Uuid::new_v4(),
+    asset_id,
+    wallet_id: state
+      .current_wallet_id()
+      .await
+      .ok_or_else(|| "Current wallet not set".to_string())?,
+  };
+  db.asset_wallets()
+    .insert(asset_wallet_row, &transaction)
+    .map_err(|e| format!("Could not insert asset wallet:{}", e))?;
+  transaction
+    .commit()
+    .map_err(|e| format!("Could not commit transaction: {}", e))?;
 
   Ok(res)
 }

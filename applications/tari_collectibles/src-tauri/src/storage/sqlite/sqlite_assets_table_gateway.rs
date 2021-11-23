@@ -24,7 +24,7 @@ use crate::{
   schema::{self, *},
   storage::{
     models::{asset_row::AssetRow, wallet_row::WalletRow},
-    sqlite::models,
+    sqlite::{models, sqlite_transaction::SqliteTransaction},
     AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
   },
 };
@@ -39,8 +39,8 @@ pub struct SqliteAssetsTableGateway {
   pub database_url: String,
 }
 
-impl AssetsTableGateway for SqliteAssetsTableGateway {
-  fn list(&self) -> Result<Vec<AssetRow>, StorageError> {
+impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
+  fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<AssetRow>, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let results: Vec<models::Asset> = schema::assets::table
       .order_by(schema::assets::name.asc())
@@ -51,7 +51,7 @@ impl AssetsTableGateway for SqliteAssetsTableGateway {
       .collect::<Result<_, _>>()
   }
 
-  fn insert(&self, asset: AssetRow) -> Result<(), StorageError> {
+  fn insert(&self, asset: AssetRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
     let id = Uuid::new_v4();
     let mut committee_pub_keys = vec![];
     if let Some(pub_keys) = asset.committee.as_ref() {
@@ -83,7 +83,7 @@ impl AssetsTableGateway for SqliteAssetsTableGateway {
     Ok(())
   }
 
-  fn find(&self, asset_id: Uuid) -> Result<AssetRow, StorageError> {
+  fn find(&self, asset_id: Uuid, tx: Option<&SqliteTransaction>) -> Result<AssetRow, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let db_account = schema::assets::table
       .find(Vec::from(asset_id.as_bytes().as_slice()))

@@ -24,19 +24,27 @@ pub mod models;
 pub mod sqlite;
 mod storage_error;
 
-use crate::storage::models::{asset_row::AssetRow, wallet_row::WalletRow};
+use crate::storage::models::{
+  asset_row::AssetRow, asset_wallet_row::AssetWalletRow, wallet_row::WalletRow,
+};
 pub use storage_error::StorageError;
 use tari_key_manager::cipher_seed::CipherSeed;
 use uuid::Uuid;
 
+pub trait StorageTransaction {
+  fn commit(self) -> Result<(), StorageError>;
+}
+
 pub trait CollectiblesStorage {
   type Addresses: AddressesTableGateway;
-  type Assets: AssetsTableGateway;
-  type AssetWallets: AssetWalletsTableGateway;
+  type Assets: AssetsTableGateway<Self::Transaction>;
+  type AssetWallets: AssetWalletsTableGateway<Self::Transaction>;
   type IssuedAssets: IssuedAssetsTableGateway;
   type Tip002Addresses: Tip002AddressesTableGateway;
-  type Wallets: WalletsTableGateway;
+  type Wallets: WalletsTableGateway<Self::Transaction>;
+  type Transaction: StorageTransaction;
 
+  fn create_transaction(&self) -> Result<Self::Transaction, StorageError>;
   fn addresses(&self) -> Self::Addresses;
   fn assets(&self) -> Self::Assets;
   fn asset_wallets(&self) -> Self::AssetWallets;
@@ -45,22 +53,29 @@ pub trait CollectiblesStorage {
   fn wallets(&self) -> Self::Wallets;
 }
 
-pub trait AssetsTableGateway {
-  fn list(&self) -> Result<Vec<AssetRow>, StorageError>;
-  fn insert(&self, asset: AssetRow) -> Result<(), StorageError>;
-  fn find(&self, asset_id: Uuid) -> Result<AssetRow, StorageError>;
+pub trait AssetsTableGateway<T: StorageTransaction> {
+  fn list(&self, tx: Option<&T>) -> Result<Vec<AssetRow>, StorageError>;
+  fn insert(&self, asset: AssetRow, tx: &T) -> Result<(), StorageError>;
+  fn find(&self, asset_id: Uuid, tx: Option<&T>) -> Result<AssetRow, StorageError>;
 }
 
-pub trait WalletsTableGateway {
+pub trait WalletsTableGateway<T: StorageTransaction> {
   type Passphrase;
 
-  fn list(&self) -> Result<Vec<WalletRow>, StorageError>;
-  fn insert(&self, wallet: WalletRow, pass: Self::Passphrase) -> Result<(), StorageError>;
-  fn find(&self, id: Uuid) -> Result<WalletRow, StorageError>;
-  fn get_cipher_seed(&self, id: Uuid, pass: Self::Passphrase) -> Result<CipherSeed, StorageError>;
+  fn list(&self, tx: Option<&T>) -> Result<Vec<WalletRow>, StorageError>;
+  fn insert(&self, wallet: WalletRow, pass: Self::Passphrase, tx: &T) -> Result<(), StorageError>;
+  fn find(&self, id: Uuid, tx: Option<&T>) -> Result<WalletRow, StorageError>;
+  fn get_cipher_seed(
+    &self,
+    id: Uuid,
+    pass: Self::Passphrase,
+    tx: Option<&T>,
+  ) -> Result<CipherSeed, StorageError>;
 }
 
-pub trait AssetWalletsTableGateway {}
+pub trait AssetWalletsTableGateway<T: StorageTransaction> {
+  fn insert(&self, row: AssetWalletRow, tx: &T) -> Result<(), StorageError>;
+}
 
 pub trait AddressesTableGateway {}
 

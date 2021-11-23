@@ -21,4 +21,5 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod asset_row;
+pub mod asset_wallet_row;
 pub mod wallet_row;

@@ -20,15 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-  models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
-  AssetWalletsTableGateway, StorageError,
-};
+use crate::storage::{StorageError, StorageTransaction};
+use diesel::{prelude::*, SqliteConnection};
 
-pub struct SqliteAssetWalletsTableGateway {}
+pub struct SqliteTransaction {
+  connection: SqliteConnection,
+}
 
-impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGateway {
-  fn insert(&self, row: AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    todo!()
+impl SqliteTransaction {
+  pub fn new(connection: SqliteConnection) -> Self {
+    Self { connection }
+  }
+}
+
+impl StorageTransaction for SqliteTransaction {
+  fn commit(self) -> Result<(), StorageError> {
+    self.connection.execute("COMMIT TRANSACTION;")?;
+
+    Ok(())
   }
 }

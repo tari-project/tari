@@ -22,6 +22,7 @@
 
 use crate::{
   clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
+  providers::{mocks::MockKeyManagerProvider, KeyManagerProvider},
   settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
@@ -31,11 +32,13 @@ use crate::{
 use std::sync::Arc;
 use tari_common_types::types::PublicKey;
 use tauri::async_runtime::RwLock;
+use uuid::Uuid;
 
 pub struct AppState {
   config: Settings,
   db_factory: SqliteDbFactory,
   passphrase: Option<String>,
+  current_wallet_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -51,6 +54,7 @@ impl ConcurrentAppState {
         db_factory: SqliteDbFactory::new(settings.data_dir.as_path()),
         config: settings,
         passphrase: None,
+        current_wallet_id: None,
       })),
     }
   }
@@ -87,5 +91,13 @@ impl ConcurrentAppState {
 
   pub async fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
     self.inner.read().await.db_factory.create_db()
+  }
+
+  pub async fn key_manager(&self) -> impl KeyManagerProvider {
+    MockKeyManagerProvider {}
+  }
+
+  pub async fn current_wallet_id(&self) -> Option<Uuid> {
+    self.inner.read().await.current_wallet_id
   }
 }

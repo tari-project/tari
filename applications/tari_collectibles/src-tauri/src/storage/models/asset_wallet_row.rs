@@ -20,15 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-  models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
-  AssetWalletsTableGateway, StorageError,
-};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-pub struct SqliteAssetWalletsTableGateway {}
-
-impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGateway {
-  fn insert(&self, row: AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    todo!()
-  }
+#[derive(Serialize, Deserialize)]
+pub struct AssetWalletRow {
+  pub id: Uuid,
+  pub asset_id: Uuid,
+  pub wallet_id: Uuid,
 }

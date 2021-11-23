@@ -23,7 +23,8 @@ use crate::{
   app_state::ConcurrentAppState,
   models::{NewWallet, Wallet},
   storage::{
-    models::asset_row::AssetRow, AssetsTableGateway, CollectiblesStorage, WalletsTableGateway,
+    models::asset_row::AssetRow, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
+    WalletsTableGateway,
   },
 };
 use prost::Message;
@@ -68,14 +69,18 @@ pub(crate) async fn asset_wallets_create(
     }
   };
   new_account.committee = sidechain_committee;
-
-  state
+  let db = state
     .create_db()
     .await
-    .map_err(|e| format!("Could not connect to DB:{}", e))?
-    .assets()
-    .insert(new_account)
+    .map_err(|e| format!("Could not connect to DB:{}", e))?;
+  let tx = db
+    .create_transaction()
+    .map_err(|e| format!("Could not start transaction:{}", e))?;
+  db.assets()
+    .insert(new_account, &tx)
     .map_err(|e| format!("Could not save account: {}", e))?;
+  tx.commit()
+    .map_err(|e| format!("Could not commit transaction:{}", e))?;
   Ok(())
 }
 
@@ -129,7 +134,7 @@ pub(crate) async fn asset_wallets_list(
     .map_err(|e| format!("Could not connect to DB:{}", e))?;
   let result = db
     .assets()
-    .list()
+    .list(None)
     .map_err(|e| format!("Could list accounts from DB: {}", e))?;
   Ok(result)
 }
