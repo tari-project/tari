@@ -252,6 +252,7 @@ class WalletProcess {
   }
 
   async exportSpentOutputs() {
+    await this.stop();
     const args = [
       "--init",
       "--base-path",
@@ -262,11 +263,13 @@ class WalletProcess {
       "--command",
       "export-spent-utxos --csv-file exported_outputs.csv",
     ];
+    let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
-    await this.run(outputProcess, args, true);
+    await this.run(outputProcess, args, true, "\n", output, true);
   }
 
   async exportUnspentOutputs() {
+    await this.stop();
     const args = [
       "--init",
       "--base-path",
@@ -277,8 +280,9 @@ class WalletProcess {
       "--command",
       "export-utxos --csv-file exported_outputs.csv",
     ];
+    let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
-    await this.run(outputProcess, args, true);
+    await this.run(outputProcess, args, true, "\n", output, true);
   }
 
   async readExportedOutputs() {

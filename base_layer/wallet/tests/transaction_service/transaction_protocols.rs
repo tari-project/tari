@@ -370,7 +370,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                     cancelled = true;
                 }
             },
@@ -547,7 +547,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                 cancelled = true;
                 }
             },

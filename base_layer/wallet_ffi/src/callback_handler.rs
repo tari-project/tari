@@ -88,7 +88,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
-    callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
@@ -123,7 +123,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
-        callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
@@ -242,8 +242,8 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_store_and_forward_send_result(tx_id, result);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionCancelled(tx_id) => {
-                                    self.receive_transaction_cancellation(tx_id).await;
+                                TransactionEvent::TransactionCancelled(tx_id, reason) => {
+                                    self.receive_transaction_cancellation(tx_id, reason as u64).await;
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
@@ -425,7 +425,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
+    async fn receive_transaction_cancellation(&mut self, tx_id: TxId, reason: u64) {
         let mut transaction = None;
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
             transaction = Some(tx);
@@ -451,7 +451,7 @@ where TBackend: TransactionBackend + 'static
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
-                    (self.callback_transaction_cancellation)(boxing);
+                    (self.callback_transaction_cancellation)(boxing, reason);
                 }
             },
         }

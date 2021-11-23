@@ -245,11 +245,11 @@ class Wallet {
     this.minedunconfirmed += 1;
   };
 
-  onTransactionCancellation = (ptr) => {
+  onTransactionCancellation = (ptr, reason) => {
     let tx = new CompletedTransaction();
     tx.pointerAssign(ptr);
     console.log(
-      `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} was cancelled`
+      `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} was cancelled with reason code ${reason}.`
     );
     tx.destroy();
     this.cancelled += 1;
