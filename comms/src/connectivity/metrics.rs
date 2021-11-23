@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connection_manager::ConnectionDirection;
+use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId};
 use once_cell::sync::Lazy;
-use tari_metrics::{IntGauge, IntGaugeVec};
+use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 pub fn connections(direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
@@ -42,4 +42,17 @@ pub fn uptime() -> IntGauge {
         Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
 
     METER.clone()
+}
+
+pub fn banned_peers_counter(peer: &NodeId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::connectivity::banned_peers",
+            "The number of peer bans by peer",
+            &["peer_id"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[peer.to_string().as_str()])
 }
