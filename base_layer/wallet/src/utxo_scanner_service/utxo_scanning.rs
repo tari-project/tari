@@ -338,14 +338,15 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn get_start_utxo_mmr_pos(&self, client: &mut BaseNodeSyncRpcClient) -> Result<u64, UtxoScannerError> {
-        let metadata = self.get_metadata().await?.unwrap_or_default();
-        if metadata.height_hash.is_empty() {
-            // Set a value in here so that if the recovery fails on the genesis block the client will know a
-            // recover was started. Important on Console wallet that otherwise makes this decision based on the
-            // presence of the data file
-            self.set_metadata(metadata).await?;
-            return Ok(0);
-        }
+        let metadata = match self.get_metadata().await? {
+            None => {
+                let birthday_metadata = self.get_birthday_metadata(client).await?;
+                self.set_metadata(birthday_metadata.clone()).await?;
+                return Ok(birthday_metadata.utxo_index);
+            },
+            Some(m) => m,
+        };
+
         // if it's none, we return 0 above.
         let request = FindChainSplitRequest {
             block_hashes: vec![metadata.height_hash],
@@ -635,6 +636,30 @@ where TBackend: WalletBackend + 'static
         self.peer_index += 1;
         peer
     }
+
+    async fn get_birthday_metadata(
+        &self,
+        client: &mut BaseNodeSyncRpcClient,
+    ) -> Result<ScanningMetadata, UtxoScannerError> {
+        let birthday = self.resources.db.get_wallet_birthday().await?;
+        // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
+        // issues
+        let epoch_time = (birthday.saturating_sub(2) as u64) * 60 * 60 * 24;
+        let block_height = client.get_height_at_time(epoch_time).await?;
+        let header = client.get_header_by_height(block_height).await?;
+        let header = BlockHeader::try_from(header).map_err(|_| UtxoScannerError::ConversionError)?;
+
+        info!(
+            target: LOG_TARGET,
+            "Fresh wallet recovery starting at Block {}", block_height
+        );
+        Ok(ScanningMetadata {
+            total_amount: Default::default(),
+            number_of_utxos: 0,
+            utxo_index: header.output_mmr_size,
+            height_hash: header.hash(),
+        })
+    }
 }
 
 pub struct UtxoScannerService<TBackend>
@@ -783,7 +808,7 @@ fn convert_response_to_transaction_outputs(
     Ok((outputs, current_utxo_index))
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 struct ScanningMetadata {
     pub total_amount: MicroTari,
     pub number_of_utxos: u64,

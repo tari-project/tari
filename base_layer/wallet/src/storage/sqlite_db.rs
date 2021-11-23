@@ -83,7 +83,9 @@ impl WalletSqliteDatabase {
         match cipher.as_ref() {
             None => {
                 let seed_bytes = seed.encipher(None)?;
+                let birthday = seed.birthday();
                 WalletSettingSql::new(DbKey::MasterSeed.to_string(), seed_bytes.to_hex()).set(conn)?;
+                WalletSettingSql::new(DbKey::WalletBirthday.to_string(), birthday.to_string()).set(conn)?;
             },
             Some(cipher) => {
                 let seed_bytes = seed.encipher(None)?;
@@ -305,6 +307,9 @@ impl WalletSqliteDatabase {
             DbKey::EncryptionSalt => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
+            DbKey::WalletBirthday => {
+                return Err(WalletStorageError::OperationNotSupported);
+            },
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -346,6 +351,7 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&conn)?.map(DbValue::BaseNodeChainMetadata),
             DbKey::PassphraseHash => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::PassphraseHash),
             DbKey::EncryptionSalt => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::EncryptionSalt),
+            DbKey::WalletBirthday => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::WalletBirthday),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(

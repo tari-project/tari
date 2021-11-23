@@ -63,6 +63,7 @@ mod test {
     };
 
     use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
+    use tari_wallet::transaction_service::protocols::TxRejection;
 
     struct CallbackState {
         pub received_tx_callback_called: bool,
@@ -168,7 +169,7 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction, _reason: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match (*tx).tx_id {
             3 => lock.tx_cancellation_callback_called_inbound = true,
@@ -415,7 +416,10 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 4 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(3u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                3u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -431,11 +435,17 @@ mod test {
         assert_eq!(callback_balance_updated, 4);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(4u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                4u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                5u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
 
         oms_event_sender
