@@ -291,7 +291,7 @@ before being executed.
 
 For instance, 
 
-```
+```ignore
 xor(
     filter_output_hash_eq(Hash(0e0411c70df0ea4243a363fcbf161ebe6e2c1f074faf1c6a316a386823c3753c)),
     filter_relative_height(10),
@@ -300,7 +300,7 @@ xor(
 
 is represented in hex bytes as `23 30 01 a8b3f48e39449e89f7ff699b3eb2b080a2479b09a600a19d8ba48d765fe5d47d 35 07 0a`.
 Let's unpack that as follows:
-```
+```ignore
 23 // xor - consume two covenant args
 30 // filter_output_hash_eq - consume a hash arg
 01 // 32-byte hash
@@ -365,7 +365,7 @@ one or more outputs.
 
 Spend within 10 blocks or burn
 
-```
+```ignore
 not(filter_relative_height(10))
 ```
 
@@ -377,13 +377,13 @@ the miner.
 Output features as detailed in [RFC-310-AssetImplementation] (early draft stages, still to be finalised) contain the 
 NFT details. This covenant preserves both the covenant protecting the token, and the token itself. 
 
-```
+```ignore
 filter_fields_preserved([field::features, field::covenant])
 ```
 
 ### Side-chain checkpointing
 
-```
+```ignore
 and(
    filter_field_int_eq(field::feature_flags, 16) // SIDECHAIN CHECKPOINT = 16
    filter_fields_preserved([field::features, field::covenant, field::script])
@@ -392,7 +392,7 @@ and(
 
 ### Restrict spending to a particular commitment if not spent within 100 blocks
 
-```
+```ignore
 or(
    not(filter_relative_height(100)),
    filter_fields_hashed_eq([field::commmitment], Hash(xxxx))
@@ -401,7 +401,7 @@ or(
 
 ### Output must preserve covenant, features and script or be burnt
 
-```
+```ignore
 xor(
     filter_fields_preserved([field::features, field::covenant, field::script]),
     and(
@@ -413,7 +413,7 @@ xor(
 
 ### Commission for NFT transfer
 
-```
+```ignore
 // Must be different outputs
 xor(
     and(
