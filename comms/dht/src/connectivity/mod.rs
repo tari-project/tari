@@ -117,9 +117,13 @@ impl DhtConnectivity {
     pub fn spawn(mut self) -> JoinHandle<Result<(), DhtConnectivityError>> {
         // Listen to events as early as possible
         let connectivity_events = self.connectivity.get_event_subscription();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         task::spawn(async move {
+            log_mdc::extend(mdc.clone());
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
             let _ = self.connectivity.wait_started().await;
+            log_mdc::extend(mdc.clone());
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
@@ -330,7 +334,7 @@ impl DhtConnectivity {
             .fetch_random_peers(self.config.num_random_nodes, &self.neighbours)
             .await?;
         if random_peers.is_empty() {
-            warn!(
+            info!(
                 target: LOG_TARGET,
                 "Unable to refresh random peer pool because there are insufficient known peers",
             );
@@ -489,7 +493,7 @@ impl DhtConnectivity {
                     self.connectivity.request_many_dials(vec![new_peer]).await?;
                 },
                 None => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Unable to fetch new random peer to replace disconnected peer '{}' because not enough peers \
                          are known. Random pool size is {}.",
@@ -516,7 +520,7 @@ impl DhtConnectivity {
                     self.connectivity.request_many_dials(vec![node_id]).await?;
                 },
                 None => {
-                    warn!(
+                    info!(
                         target: LOG_TARGET,
                         "Unable to fetch new neighbouring peer to replace disconnected peer '{}'. Neighbour pool size \
                          is {}.",

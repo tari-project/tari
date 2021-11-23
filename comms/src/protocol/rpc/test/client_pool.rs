@@ -74,7 +74,7 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
 
 mod lazy_pool {
     use super::*;
-    use crate::protocol::rpc::client_pool::{LazyPool, RpcClientPoolError};
+    use crate::protocol::rpc::client::pool::{LazyPool, RpcClientPoolError};
 
     #[runtime::test]
     async fn it_connects_lazily() {

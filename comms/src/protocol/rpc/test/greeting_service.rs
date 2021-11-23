@@ -398,7 +398,13 @@ impl __rpc_deps::NamedProtocolService for GreetingClient {
 
 impl GreetingClient {
     pub async fn connect(framed: __rpc_deps::CanonicalFraming<Substream>) -> Result<Self, RpcError> {
-        let inner = __rpc_deps::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
+        let inner = __rpc_deps::RpcClient::connect(
+            Default::default(),
+            Default::default(),
+            framed,
+            Self::PROTOCOL_NAME.into(),
+        )
+        .await?;
         Ok(Self { inner })
     }
 
@@ -441,8 +447,8 @@ impl GreetingClient {
         self.inner.server_streaming(request, 8).await
     }
 
-    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
-        self.inner.get_last_request_latency().await
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
+        self.inner.get_last_request_latency()
     }
 
     pub async fn ping(&mut self) -> Result<Duration, RpcError> {

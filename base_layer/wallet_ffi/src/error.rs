@@ -26,14 +26,13 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::error::MnemonicError;
+use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -42,6 +41,8 @@ const LOG_TARGET: &str = "wallet_ffi::error";
 pub enum InterfaceError {
     #[error("An error has occurred due to one of the parameters being null: `{0}`")]
     NullError(String),
+    #[error("An invalid pointer was passed into the function")]
+    PointerError(String),
     #[error("An error has occurred when checking the length of the allocated object")]
     AllocationError,
     #[error("An error because the supplied position was out of range")]
@@ -52,6 +53,10 @@ pub enum InterfaceError {
     NetworkError(String),
     #[error("Emoji ID is invalid")]
     InvalidEmojiId,
+    #[error("An error has occurred due to an invalid argument: `{0}`")]
+    InvalidArgument(String),
+    #[error("Balance Unavailable")]
+    BalanceError,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -89,6 +94,18 @@ impl From<InterfaceError> for LibWalletError {
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
                 message: format!("{:?}", v),
+            },
+            InterfaceError::InvalidArgument(_) => Self {
+                code: 7,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::BalanceError => Self {
+                code: 8,
+                message: "Balance Unavailable".to_string(),
+            },
+            InterfaceError::PointerError(ref p) => Self {
+                code: 9,
+                message: format!("Pointer error on {}:{:?}", p, v),
             },
         }
     }
@@ -272,6 +289,22 @@ impl From<WalletError> for LibWalletError {
             },
             WalletError::WalletStorageError(WalletStorageError::InvalidPassphrase) => Self {
                 code: 428,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::InvalidData) => Self {
+                code: 429,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::VersionMismatch) => Self {
+                code: 430,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::DecryptionFailed) => Self {
+                code: 431,
+                message: format!("{:?}", w),
+            },
+            WalletError::KeyManagerError(KeyManagerError::CrcError) => Self {
+                code: 432,
                 message: format!("{:?}", w),
             },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code

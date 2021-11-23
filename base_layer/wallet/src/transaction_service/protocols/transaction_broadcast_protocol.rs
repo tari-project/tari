@@ -20,22 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{database::TransactionBackend, models::CompletedTransaction},
-    },
-};
-use futures::FutureExt;
-use log::*;
 use std::{
     convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use futures::FutureExt;
+use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::{sync::watch, time::sleep};
+
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::Signature,
@@ -45,10 +40,18 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::Transaction,
 };
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::watch, time::sleep};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        service::TransactionServiceResources,
+        storage::{database::TransactionBackend, models::CompletedTransaction},
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 

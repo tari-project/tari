@@ -3,11 +3,11 @@ name = "tari_stratum_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.13.0"
+version = "0.21.2"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.13", path = "../../comms" }
+tari_comms = { version = "^0.21", path = "../../comms" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = {  path = "../../common" }
 tari_app_grpc = { path = "../../applications/tari_app_grpc" }

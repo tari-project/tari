@@ -46,6 +46,14 @@ impl PeerFeatures {
     pub fn is_node(self) -> bool {
         self == PeerFeatures::COMMUNICATION_NODE
     }
+
+    pub fn as_role_str(self) -> &'static str {
+        match self {
+            PeerFeatures::COMMUNICATION_NODE => "node",
+            PeerFeatures::COMMUNICATION_CLIENT => "client",
+            _ => "unknown",
+        }
+    }
 }
 
 impl Default for PeerFeatures {

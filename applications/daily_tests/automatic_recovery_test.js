@@ -16,7 +16,7 @@ async function main() {
       description: "Seed words to use during recovery",
       type: "string",
       default:
-        "pigeon marble letter canal hard close kit cash coin still melt random require long shaft antenna tent turkey neck divert enrich iron analyst abandon",
+        "cactus pool fuel skull chair casino season disorder flat crash wrist whisper decorate narrow oxygen remember minor among happy cricket embark blue ship sick",
     })
     .option("log", {
       alias: "l",
@@ -34,19 +34,19 @@ async function main() {
     .alias("help", "h").argv;
 
   for (let i = 0; i < argv.numWallets; i++) {
-    let { identity, timeDiffMinutes, height, blockRate, recoveredAmount } =
+    let { identity, timeDiffMinutes, numOutputs, rate, recoveredAmount } =
       await run(argv);
 
     console.log(
       "Wallet (Pubkey:",
       identity.public_key,
-      ") recovered to a block height of",
-      height,
-      "completed in",
+      ") scanned",
+        numOutputs,
+      "outputs, completed in",
       timeDiffMinutes,
       "minutes (",
-      blockRate,
-      "blocks/min).",
+        rate,
+      "outputs/min).",
       recoveredAmount,
       "µT recovered for instance ",
       i,

@@ -22,20 +22,23 @@
 
 use std::num::{ParseFloatError, ParseIntError};
 
-use chrono_english::DateError;
 use log::*;
+use thiserror::Error;
+use tokio::task::JoinError;
+
 use tari_common::exit_codes::ExitCodes;
-use tari_core::transactions::{
-    tari_amount::{MicroTariError, TariConversionError},
-    transaction::TransactionError,
+use tari_core::{
+    tari_utilities::hex::HexError,
+    transactions::{
+        tari_amount::{MicroTariError, TariConversionError},
+        transaction_entities::TransactionError,
+    },
 };
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
-use thiserror::Error;
-use tokio::task::JoinError;
 
 pub const LOG_TARGET: &str = "wallet::automation::error";
 
@@ -64,6 +67,10 @@ pub enum CommandError {
     WalletError(#[from] WalletError),
     #[error("Wallet storage error `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
+    #[error("Hex error `{0}`")]
+    HexError(#[from] HexError),
+    #[error("Error `{0}`")]
+    ShaError(String),
 }
 
 impl From<CommandError> for ExitCodes {
@@ -81,6 +88,8 @@ pub enum ParseError {
     MicroTariAmount(#[from] MicroTariError),
     #[error("Failed to parse public key or emoji id.")]
     PublicKey,
+    #[error("Failed to parse hash")]
+    Hash,
     #[error("Failed to parse a missing {0}")]
     Empty(String),
     #[error("Failed to parse float.")]
@@ -88,7 +97,7 @@ pub enum ParseError {
     #[error("Failed to parse int.")]
     Int(#[from] ParseIntError),
     #[error("Failed to parse date. {0}")]
-    Date(#[from] DateError),
+    Date(#[from] chrono::ParseError),
     #[error("Failed to parse a net address.")]
     Address,
     #[error("Invalid combination of arguments ({0}).")]

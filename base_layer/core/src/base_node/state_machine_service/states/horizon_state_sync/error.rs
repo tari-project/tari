@@ -20,24 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::num::TryFromIntError;
+
+use thiserror::Error;
+use tokio::task;
+
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
+use tari_mmr::error::MerkleMountainRangeError;
+
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
     chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction::TransactionError,
+    transactions::transaction_entities::error::TransactionError,
     validation::ValidationError,
 };
-use std::num::TryFromIntError;
-use tari_comms::protocol::rpc::{RpcError, RpcStatus};
-use tari_mmr::error::MerkleMountainRangeError;
-use thiserror::Error;
-use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
     #[error("Peer sent an invalid response: {0}")]
     IncorrectResponse(String),
-    // #[error("Exceeded maximum sync attempts")]
-    // MaxSyncAttemptsReached,
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Comms interface error: {0}")]
@@ -67,6 +71,8 @@ pub enum HorizonSyncError {
     ConversionError(String),
     #[error("MerkleMountainRangeError: {0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+    #[error("Connectivity Error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

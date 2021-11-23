@@ -38,7 +38,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
+        transaction_entities::{OutputFeatures, TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
@@ -354,6 +354,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         key,
         PublicKey::from_secret_key(&offset),
         metadata_signature,
+        0,
     );
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);

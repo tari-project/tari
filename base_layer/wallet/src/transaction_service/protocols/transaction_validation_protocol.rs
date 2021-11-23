@@ -29,7 +29,7 @@ use crate::{
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::CompletedTransaction,
+            sqlite_db::UnconfirmedTransactionInfo,
         },
     },
 };
@@ -39,7 +39,10 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
-use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
+use tari_common_types::{
+    transaction::{TransactionStatus, TxId},
+    types::BlockHash,
+};
 use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
 use tari_core::{
     base_node::{
@@ -61,6 +64,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
+use tari_common_types::types::Signature;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
@@ -99,14 +103,15 @@ where
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked"
         );
-        let unmined_transactions = self
+        // Fetch completed but unconfirmed transactions that were not imported
+        let unconfirmed_transactions = self
             .db
-            .fetch_unconfirmed_transactions()
+            .fetch_unconfirmed_transactions_info()
             .await
             .for_protocol(self.operation_id)
             .unwrap();
 
-        for batch in unmined_transactions.chunks(self.config.max_tx_query_batch_size) {
+        for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
@@ -117,22 +122,28 @@ where
                 mined.len(),
                 unmined.len()
             );
-            for (tx, mined_height, mined_in_block, num_confirmations) in &mined {
-                info!(target: LOG_TARGET, "Updating transaction {} as mined", tx.tx_id);
-                self.update_transaction_as_mined(tx, mined_in_block, *mined_height, *num_confirmations)
-                    .await?;
+            for (mined_tx, mined_height, mined_in_block, num_confirmations) in &mined {
+                info!(target: LOG_TARGET, "Updating transaction {} as mined", mined_tx.tx_id);
+                self.update_transaction_as_mined(
+                    mined_tx.tx_id,
+                    &mined_tx.status,
+                    mined_in_block,
+                    *mined_height,
+                    *num_confirmations,
+                )
+                .await?;
             }
             if let Some((tip_height, tip_block)) = tip_info {
-                for tx in &unmined {
+                for unmined_tx in &unmined {
                     // Treat coinbases separately
-                    if tx.is_coinbase() {
-                        if tx.coinbase_block_height.unwrap_or_default() <= tip_height {
-                            info!(target: LOG_TARGET, "Updated coinbase {} as abandoned", tx.tx_id);
+                    if unmined_tx.is_coinbase() {
+                        if unmined_tx.coinbase_block_height.unwrap_or_default() <= tip_height {
+                            info!(target: LOG_TARGET, "Updated coinbase {} as abandoned", unmined_tx.tx_id);
                             self.update_coinbase_as_abandoned(
-                                tx,
+                                unmined_tx.tx_id,
                                 &tip_block,
                                 tip_height,
-                                tip_height.saturating_sub(tx.coinbase_block_height.unwrap_or_default()),
+                                tip_height.saturating_sub(unmined_tx.coinbase_block_height.unwrap_or_default()),
                             )
                             .await?;
                         } else {
@@ -140,13 +151,17 @@ where
                                 target: LOG_TARGET,
                                 "Coinbase not found, but it is for a block that is not yet in the chain. Coinbase \
                                  height: {}, tip height:{}",
-                                tx.coinbase_block_height.unwrap_or_default(),
+                                unmined_tx.coinbase_block_height.unwrap_or_default(),
                                 tip_height
                             );
                         }
                     } else {
-                        info!(target: LOG_TARGET, "Updated transaction {} as unmined", tx.tx_id);
-                        self.update_transaction_as_unmined(tx).await?;
+                        info!(
+                            target: LOG_TARGET,
+                            "Updated transaction {} as unmined", unmined_tx.tx_id
+                        );
+                        self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
+                            .await?;
                     }
                 }
             }
@@ -216,7 +231,8 @@ where
                         .map(|k| k.excess.to_hex())
                         .unwrap()
                 );
-                self.update_transaction_as_unmined(&last_mined_transaction).await?;
+                self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
+                    .await?;
             } else {
                 info!(
                     target: LOG_TARGET,
@@ -230,12 +246,12 @@ where
 
     async fn query_base_node_for_transactions(
         &self,
-        batch: &[CompletedTransaction],
+        batch: &[UnconfirmedTransactionInfo],
         base_node_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<
         (
-            Vec<(CompletedTransaction, u64, BlockHash, u64)>,
-            Vec<CompletedTransaction>,
+            Vec<(UnconfirmedTransactionInfo, u64, BlockHash, u64)>,
+            Vec<UnconfirmedTransactionInfo>,
             Option<(u64, BlockHash)>,
         ),
         TransactionServiceError,
@@ -244,10 +260,10 @@ where
         let mut unmined = vec![];
 
         let mut batch_signatures = HashMap::new();
-        for tx in batch.iter() {
-            // Imported transactions do not have a signature
-            if let Some(sig) = tx.transaction.first_kernel_excess_sig() {
-                batch_signatures.insert(sig.clone(), tx);
+        for tx_info in batch.iter() {
+            // Imported transactions do not have a signature; this is represented by the default signature in info
+            if tx_info.signature != Signature::default() {
+                batch_signatures.insert(tx_info.signature.clone(), tx_info);
             }
         }
 
@@ -259,7 +275,7 @@ where
         info!(
             target: LOG_TARGET,
             "Asking base node for location of {} transactions by excess signature",
-            batch.len()
+            batch_signatures.len()
         );
 
         let batch_response = base_node_client
@@ -275,16 +291,16 @@ where
             let response = TxQueryBatchResponse::try_from(response_proto)
                 .map_err(TransactionServiceError::ProtobufConversionError)?;
             let sig = response.signature;
-            if let Some(completed_tx) = batch_signatures.get(&sig) {
+            if let Some(unconfirmed_tx) = batch_signatures.get(&sig) {
                 if response.location == TxLocation::Mined {
                     mined.push((
-                        (*completed_tx).clone(),
+                        (*unconfirmed_tx).clone(),
                         response.block_height,
                         response.block_hash.unwrap(),
                         response.confirmations,
                     ));
                 } else {
-                    unmined.push((*completed_tx).clone());
+                    unmined.push((*unconfirmed_tx).clone());
                 }
             }
         }
@@ -311,7 +327,7 @@ where
                 warn!(target: LOG_TARGET, "Error asking base node for header:{}", rpc_error);
                 match &rpc_error {
                     RequestFailed(status) => {
-                        if status.status_code() == NotFound {
+                        if status.as_status_code() == NotFound {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());
@@ -333,14 +349,15 @@ where
     #[allow(clippy::ptr_arg)]
     async fn update_transaction_as_mined(
         &mut self,
-        tx: &CompletedTransaction,
+        tx_id: TxId,
+        status: &TransactionStatus,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
     ) -> Result<(), TransactionServiceProtocolError> {
         self.db
             .set_transaction_mined_height(
-                tx.tx_id,
+                tx_id,
                 true,
                 mined_height,
                 mined_in_block.clone(),
@@ -351,23 +368,20 @@ where
             .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
-            self.publish_event(TransactionEvent::TransactionMined {
-                tx_id: tx.tx_id,
-                is_valid: true,
-            })
+            self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
         } else {
             self.publish_event(TransactionEvent::TransactionMinedUnconfirmed {
-                tx_id: tx.tx_id,
+                tx_id,
                 num_confirmations,
                 is_valid: true,
             })
         }
 
-        if tx.status == TransactionStatus::Coinbase {
-            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, false).await {
+        if *status == TransactionStatus::Coinbase {
+            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx.tx_id, e
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx_id, e
                 );
             };
         }
@@ -378,14 +392,14 @@ where
     #[allow(clippy::ptr_arg)]
     async fn update_coinbase_as_abandoned(
         &mut self,
-        tx: &CompletedTransaction,
+        tx_id: TxId,
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
     ) -> Result<(), TransactionServiceProtocolError> {
         self.db
             .set_transaction_mined_height(
-                tx.tx_id,
+                tx_id,
                 false,
                 mined_height,
                 mined_in_block.clone(),
@@ -395,37 +409,38 @@ where
             .await
             .for_protocol(self.operation_id)?;
 
-        if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, true).await {
+        if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
             warn!(
                 target: LOG_TARGET,
-                "Could not mark coinbase output for TxId: {} as abandoned: {}", tx.tx_id, e
+                "Could not mark coinbase output for TxId: {} as abandoned: {}", tx_id, e
             );
         };
 
-        self.publish_event(TransactionEvent::TransactionCancelled(tx.tx_id));
+        self.publish_event(TransactionEvent::TransactionCancelled(tx_id));
 
         Ok(())
     }
 
     async fn update_transaction_as_unmined(
         &mut self,
-        tx: &CompletedTransaction,
+        tx_id: TxId,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError> {
         self.db
-            .set_transaction_as_unmined(tx.tx_id)
+            .set_transaction_as_unmined(tx_id)
             .await
             .for_protocol(self.operation_id)?;
 
-        if tx.status == TransactionStatus::Coinbase {
-            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx.tx_id, false).await {
+        if *status == TransactionStatus::Coinbase {
+            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx.tx_id, e
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx_id, e
                 );
             };
         }
 
-        self.publish_event(TransactionEvent::TransactionBroadcast(tx.tx_id));
+        self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
         Ok(())
     }
 }

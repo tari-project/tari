@@ -27,7 +27,7 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction_entities::Transaction, weight::TransactionWeight},
 };
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -487,7 +487,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction::KernelFeatures,
+            transaction_entities::KernelFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
@@ -596,8 +596,12 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();
-        stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+        let mut stx_protocol = stx_builder
+            .build::<HashDigest>(&factories, None, Some(u64::MAX))
+            .unwrap();
+        stx_protocol
+            .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+            .unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
 

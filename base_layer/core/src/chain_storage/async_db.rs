@@ -20,6 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
+
+use croaring::Bitmap;
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, Signature},
+};
+use tari_mmr::pruned_hashset::PrunedHashSet;
+
 use crate::{
     blocks::{
         Block,
@@ -51,17 +63,11 @@ use crate::{
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
-use croaring::Bitmap;
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
-};
-use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 
@@ -93,8 +99,11 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
-                trace_log($name, move || db.$fn())
+                    log_mdc::extend(mdc.clone());
+                    trace_log($name, move || db.$fn())
             })
             .await?
         }
@@ -107,7 +116,10 @@ macro_rules! make_async_fn {
         $(#[$outer])*
         pub async fn $fn$(< $( $lt $( : $clt )? ),+ +Sync+Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
             let db = self.db.clone();
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
+                log_mdc::extend(mdc.clone());
                 trace_log($name, move || db.$fn($($param),+))
             })
             .await?

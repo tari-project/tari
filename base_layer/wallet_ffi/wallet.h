@@ -163,6 +163,9 @@ void private_key_destroy(struct TariPrivateKey *pk);
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
 
+// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char *language, int *error_out);
+
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int *error_out);
 
@@ -474,6 +477,9 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  bool *recovery_in_progress,
                                  int *error_out);
 
+// Gets the balance
+struct TariBalance *wallet_get_balance(struct TariWallet *wallet, int *error_out);
+
 // Signs a message
 char *wallet_sign_message(struct TariWallet *wallet, const char *msg, int *error_out);
 
@@ -500,15 +506,6 @@ unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int
 
 // Gets the available balance from a TariBalance
 unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
-
-// Gets the available balance from a TariWallet
-unsigned long long wallet_get_available_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the incoming balance from a TariWallet
-unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the outgoing balance from a TariWallet
-unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet, int *error_out);
 
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);
@@ -719,7 +716,7 @@ void balance_destroy(struct TariBalance *balance);
 void file_partial_backup(const char *original_file_path, const char *backup_file_path, int *error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
-void log_debug_message(const char *msg);
+void log_debug_message(const char *msg, int *error_out);
 
 struct EmojiSet *get_emoji_set();
 

@@ -24,6 +24,22 @@
 // let's ignore this clippy error in this module
 #![allow(clippy::ptr_arg)]
 
+use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
+
+use croaring::Bitmap;
+use fs2::FileExt;
+use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
+
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
+};
+use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
+use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+
 use crate::{
     blocks::{
         Block,
@@ -71,22 +87,13 @@ use crate::{
     crypto::tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_entities::{
+            transaction_input::TransactionInput,
+            transaction_kernel::TransactionKernel,
+            transaction_output::TransactionOutput,
+        },
     },
 };
-use croaring::Bitmap;
-use fs2::FileExt;
-use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
-};
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
-use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -115,7 +122,8 @@ const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
-    let _ = std::fs::create_dir_all(&path);
+    debug!(target: LOG_TARGET, "Creating LMDB database at {:?}", path.as_ref());
+    std::fs::create_dir_all(&path)?;
 
     let file_lock = acquire_exclusive_file_lock(&path.as_ref().to_path_buf())?;
 
@@ -147,6 +155,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
+    debug!(target: LOG_TARGET, "LMDB database creation successful");
     LMDBDatabase::new(lmdb_store, file_lock)
 }
 

@@ -23,7 +23,7 @@
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::handle::OutputManagerHandle,
+    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -44,6 +44,7 @@ use crate::{
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
         },
+        utc::utc_duration_since,
     },
     types::HashDigest,
     util::watch::Watch,
@@ -54,6 +55,7 @@ use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
+use sha2::Sha256;
 use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
@@ -62,7 +64,7 @@ use std::{
 };
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PrivateKey,
+    types::{PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
@@ -71,7 +73,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction},
+        transaction_entities::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto,
             recipient::RecipientSignedMessage,
@@ -82,7 +84,12 @@ use tari_core::{
         ReceiverTransactionProtocol,
     },
 };
-use tari_crypto::{keys::DiffieHellmanSharedSecret, script, tari_utilities::ByteArray};
+use tari_crypto::{
+    inputs,
+    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait},
+    script,
+    tari_utilities::ByteArray,
+};
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -551,6 +558,18 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
+            TransactionServiceRequest::SendShaAtomicSwapTransaction(dest_pubkey, amount, fee_per_gram, message) => {
+                Ok(TransactionServiceResponse::ShaAtomicSwapTransactionSent(
+                    self.send_sha_atomic_swap_transaction(
+                        dest_pubkey,
+                        amount,
+                        fee_per_gram,
+                        message,
+                        transaction_broadcast_join_handles,
+                    )
+                    .await?,
+                ))
+            },
             TransactionServiceRequest::CancelTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .await
@@ -596,8 +615,8 @@ where
                 .add_utxo_import_transaction(value, source_public_key, message, maturity)
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
-            TransactionServiceRequest::SubmitCoinSplitTransaction(tx_id, tx, fee, amount, message) => self
-                .submit_coin_split_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
+            TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
+                .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
@@ -772,12 +791,164 @@ where
             message,
             Some(reply_channel),
             TransactionSendProtocolStage::Initial,
+            None,
+            self.last_seen_tip_height,
         );
 
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
         Ok(())
+    }
+
+    /// broadcasts a SHA-XTR atomic swap transaction
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of Tari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    pub async fn send_sha_atomic_swap_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
+        let tx_id = OsRng.next_u64();
+        // this can be anything, so lets generate a random private key
+        let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+        let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+
+        // lets make the unlock height a day from now, 2 min blocks * 30 blocks per hour * 24 hours
+        let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
+
+        // lets create the HTLC script
+        let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pubkey.clone())) Else CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone())) EndIf);
+
+        // Prepare sender part of the transaction
+        let mut stp = self
+            .output_manager_service
+            .prepare_transaction_to_send(tx_id, amount, fee_per_gram, None, message.clone(), script.clone())
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
+        // but the returned value is not used
+        let _ = stp
+            .build_single_round_message()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is converted to
+        // bytes to enable conversion into a private key to be used as the spending key
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key(0)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
+        // TODO: then come back and use it here.
+        let spend_key = PrivateKey::from_bytes(
+            CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
+        )
+        .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: blinding_key.clone(),
+            proof_message: [0u8; 21],
+        };
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spend_key.clone(),
+            OutputFeatures::default(),
+            &self.resources.factories,
+            &rewind_data,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+        let output = recipient_reply.output.clone();
+        let unblinded_output = UnblindedOutput::new(
+            amount,
+            spend_key,
+            OutputFeatures::default(),
+            script,
+            inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
+            self.node_identity.secret_key().clone(),
+            output.sender_offset_public_key.clone(),
+            output.metadata_signature.clone(),
+            height,
+        );
+
+        // Start finalizing
+
+        stp.add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height,
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _ = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.output_manager_service
+            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
+            .await?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.node_identity.public_key().clone(),
+                dest_pubkey.clone(),
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+            ),
+        )
+        .await?;
+
+        Ok(Box::new((tx_id, pre_image, output)))
     }
 
     /// Sends a one side payment transaction to a recipient
@@ -837,14 +1008,14 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
         // TODO: then come back and use it here.
-        let spending_key = PrivateKey::from_bytes(
+        let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spending_key))?;
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: blinding_key.clone(),
@@ -854,7 +1025,7 @@ where
         let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            spending_key,
+            spend_key,
             OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
@@ -869,14 +1040,19 @@ where
 
         // Finalize
 
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories)
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-                );
-                TransactionServiceProtocolError::new(tx_id, e.into())
-            })?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &self.resources.factories,
+            None,
+            self.last_seen_tip_height,
+        )
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+            );
+            TransactionServiceProtocolError::new(tx_id, e.into())
+        })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -1140,19 +1316,6 @@ where
         Ok(())
     }
 
-    // async fn set_completed_transaction_validity(
-    //     &mut self,
-    //     tx_id: TxId,
-    //     valid: bool,
-    // ) -> Result<(), TransactionServiceError> {
-    //     self.resources
-    //         .db
-    //         .set_completed_transaction_validity(tx_id, valid)
-    //         .await?;
-    //
-    //     Ok(())
-    // }
-
     /// Handle a Transaction Cancelled message received from the Comms layer
     pub async fn handle_transaction_cancelled_message(
         &mut self,
@@ -1206,6 +1369,8 @@ where
                     tx.message,
                     None,
                     TransactionSendProtocolStage::WaitForReply,
+                    None,
+                    self.last_seen_tip_height,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());
@@ -1267,7 +1432,7 @@ where
                 }
                 // Check if the last reply is beyond the resend cooldown
                 if let Some(timestamp) = inbound_tx.last_send_timestamp {
-                    let elapsed_time = Utc::now().naive_utc().signed_duration_since(timestamp).to_std()?;
+                    let elapsed_time = utc_duration_since(&timestamp)?;
                     if elapsed_time < self.resources.config.resend_response_cooldown {
                         trace!(
                             target: LOG_TARGET,
@@ -1328,6 +1493,8 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
+                None,
+                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -1512,6 +1679,8 @@ where
                 self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
+                None,
+                self.last_seen_tip_height,
             );
 
             let join_handle = tokio::spawn(protocol.execute());
@@ -1828,7 +1997,7 @@ where
 
     /// Submit a completed coin split transaction to the Transaction Manager. This is different from
     /// `submit_transaction` in that it will expose less information about the completed transaction.
-    pub async fn submit_coin_split_transaction(
+    pub async fn submit_transaction_to_self(
         &mut self,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,

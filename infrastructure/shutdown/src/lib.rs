@@ -30,7 +30,7 @@
 pub mod oneshot_trigger;
 
 use crate::oneshot_trigger::OneshotSignal;
-use futures::future::FusedFuture;
+use futures::{future, future::FusedFuture};
 use std::{
     future::Future,
     pin::Pin,
@@ -81,6 +81,10 @@ impl ShutdownSignal {
     /// Wait for the shutdown signal to trigger.
     pub fn wait(&mut self) -> &mut Self {
         self
+    }
+
+    pub fn select<T: Future + Unpin>(self, other: T) -> future::Select<Self, T> {
+        future::select(self, other)
     }
 }
 

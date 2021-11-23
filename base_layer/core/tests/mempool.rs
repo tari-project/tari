@@ -51,7 +51,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
-        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
+        transaction_entities::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
     },
@@ -1066,7 +1066,9 @@ async fn consensus_validation_large_tx() {
 
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
-    assert!(tx.validate_internal_consistency(true, &factories, None).is_ok());
+    assert!(tx
+        .validate_internal_consistency(true, &factories, None, None, Some(u64::MAX))
+        .is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
 

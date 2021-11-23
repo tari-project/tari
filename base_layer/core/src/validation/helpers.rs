@@ -41,7 +41,7 @@ use crate::{
     },
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_entities::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
     validation::ValidationError,
@@ -233,6 +233,8 @@ pub fn check_accounting_balance(
             bypass_range_proof_verification,
             total_coinbase,
             factories,
+            Some(block.header.prev_hash.clone()),
+            Some(block.header.height),
         )
         .map_err(|err| {
             warn!(

@@ -20,15 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletStorageError,
-    schema::{client_key_values, wallet_settings},
-    storage::{
-        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
-        sqlite_utilities::WalletDbConnection,
-    },
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
+use std::{
+    str::{from_utf8, FromStr},
+    sync::{Arc, RwLock},
 };
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, Aead},
     Aes256Gcm,
@@ -40,18 +36,25 @@ use argon2::{
 };
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
-use std::{
-    str::{from_utf8, FromStr},
-    sync::{Arc, RwLock},
-};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     message_format::MessageFormat,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::time::Instant;
+
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
+use tari_key_manager::cipher_seed::CipherSeed;
+
+use crate::{
+    error::WalletStorageError,
+    schema::{client_key_values, wallet_settings},
+    storage::{
+        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+        sqlite_utilities::wallet_db_connection::WalletDbConnection,
+    },
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
+};
 
 const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 
@@ -208,7 +211,7 @@ impl WalletSqliteDatabase {
 
     fn insert_key_value_pair(&self, kvp: DbKeyValuePair) -> Result<Option<DbValue>, WalletStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let kvp_text;
         match kvp {
@@ -237,13 +240,15 @@ impl WalletSqliteDatabase {
                 self.encrypt_if_necessary(&mut client_key_value)?;
 
                 client_key_value.set(&conn)?;
-                trace!(
-                    target: LOG_TARGET,
-                    "sqlite profile - insert_key_value_pair 'ClientKeyValue': lock {} + db_op {} = {} ms",
-                    acquire_lock.as_millis(),
-                    (start.elapsed() - acquire_lock).as_millis(),
-                    start.elapsed().as_millis()
-                );
+                if start.elapsed().as_millis() > 0 {
+                    trace!(
+                        target: LOG_TARGET,
+                        "sqlite profile - insert_key_value_pair 'ClientKeyValue': lock {} + db_op {} = {} ms",
+                        acquire_lock.as_millis(),
+                        (start.elapsed() - acquire_lock).as_millis(),
+                        start.elapsed().as_millis()
+                    );
+                }
 
                 return Ok(value_to_return.map(|v| DbValue::ClientValue(v.value)));
             },
@@ -256,20 +261,22 @@ impl WalletSqliteDatabase {
                 WalletSettingSql::new(DbKey::CommsFeatures.to_string(), cf.bits().to_string()).set(&conn)?;
             },
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - insert_key_value_pair '{}': lock {} + db_op {} = {} ms",
-            kvp_text,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - insert_key_value_pair '{}': lock {} + db_op {} = {} ms",
+                kvp_text,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(None)
     }
 
     fn remove_key(&self, k: DbKey) -> Result<Option<DbValue>, WalletStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         match k {
             DbKey::MasterSeed => {
@@ -299,14 +306,16 @@ impl WalletSqliteDatabase {
                 return Err(WalletStorageError::OperationNotSupported);
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - remove_key '{}': lock {} + db_op {} = {} ms",
-            k,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - remove_key '{}': lock {} + db_op {} = {} ms",
+                k,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(None)
     }
 
@@ -319,7 +328,7 @@ impl WalletSqliteDatabase {
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let result = match key {
@@ -338,14 +347,16 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::PassphraseHash => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::PassphraseHash),
             DbKey::EncryptionSalt => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::EncryptionSalt),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
-            key,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
+                key,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(result)
     }
@@ -364,7 +375,7 @@ impl WalletBackend for WalletSqliteDatabase {
         }
 
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         // Check if there is an existing passphrase applied
@@ -424,13 +435,15 @@ impl WalletBackend for WalletSqliteDatabase {
         }
 
         (*current_cipher) = Some(cipher.clone());
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(cipher)
     }
@@ -443,7 +456,7 @@ impl WalletBackend for WalletSqliteDatabase {
             return Ok(());
         };
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let master_seed_str = match WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)? {
             None => return Err(WalletStorageError::ValueNotFound(DbKey::MasterSeed)),
@@ -482,13 +495,15 @@ impl WalletBackend for WalletSqliteDatabase {
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(())
     }
@@ -504,7 +519,7 @@ fn check_db_encryption_status(
     passphrase: Option<String>,
 ) -> Result<Option<Aes256Gcm>, WalletStorageError> {
     let start = Instant::now();
-    let conn = database_connection.acquire_lock();
+    let conn = database_connection.get_pooled_connection()?;
     let acquire_lock = start.elapsed();
 
     let db_passphrase_hash = WalletSettingSql::get(DbKey::PassphraseHash.to_string(), &conn)?;
@@ -592,13 +607,15 @@ fn check_db_encryption_status(
             },
         };
     }
-    trace!(
-        target: LOG_TARGET,
-        "sqlite profile - check_db_encryption_status: lock {} + db_op {} = {} ms",
-        acquire_lock.as_millis(),
-        (start.elapsed() - acquire_lock).as_millis(),
-        start.elapsed().as_millis()
-    );
+    if start.elapsed().as_millis() > 0 {
+        trace!(
+            target: LOG_TARGET,
+            "sqlite profile - check_db_encryption_status: lock {} + db_op {} = {} ms",
+            acquire_lock.as_millis(),
+            (start.elapsed() - acquire_lock).as_millis(),
+            start.elapsed().as_millis()
+        );
+    }
 
     Ok(cipher)
 }
@@ -707,26 +724,28 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::tari_utilities::hex::Hex;
+    use tempfile::tempdir;
+
+    use tari_key_manager::cipher_seed::CipherSeed;
+    use tari_test_utils::random::string;
+
     use crate::storage::{
         database::{DbKey, DbValue, WalletBackend},
         sqlite_db::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-    use tari_crypto::tari_utilities::hex::Hex;
-    use tari_key_manager::cipher_seed::CipherSeed;
-    use tari_test_utils::random::string;
-    use tempfile::tempdir;
 
     #[test]
     fn test_unencrypted_secret_public_key_setting() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let tempdir = tempdir().unwrap();
         let db_folder = tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
         let secret_seed1 = CipherSeed::new();
 
         {
-            let conn = connection.acquire_lock();
+            let conn = connection.get_pooled_connection().unwrap();
             WalletSettingSql::new(
                 DbKey::MasterSeed.to_string(),
                 secret_seed1.encipher(None).unwrap().to_hex(),
@@ -746,7 +765,7 @@ mod test {
         let secret_seed2 = CipherSeed::new();
 
         {
-            let conn = connection.acquire_lock();
+            let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&secret_seed2, &conn).unwrap();
         }
 
@@ -762,7 +781,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
 
         let passphrase = "an example very very secret key.".to_string();
 
@@ -770,7 +789,7 @@ mod test {
 
         let seed = CipherSeed::new();
         {
-            let conn = connection.acquire_lock();
+            let conn = connection.get_pooled_connection().unwrap();
             WalletSettingSql::new(DbKey::MasterSeed.to_string(), seed.encipher(None).unwrap().to_hex())
                 .set(&conn)
                 .unwrap();
@@ -792,7 +811,7 @@ mod test {
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let db_path = format!("{}/{}", db_folder, db_name);
-        let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
         let seed = CipherSeed::new();
         let key_values = vec![
@@ -802,7 +821,7 @@ mod test {
         ];
         let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
         {
-            let conn = connection.acquire_lock();
+            let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
             for kv in key_values.iter() {
                 kv.set(&conn).unwrap();
@@ -839,7 +858,7 @@ mod test {
 
         assert_eq!(seed, read_seed2);
         {
-            let conn = connection.acquire_lock();
+            let conn = connection.get_pooled_connection().unwrap();
             let secret_key_str = WalletSettingSql::get(DbKey::MasterSeed.to_string(), &conn)
                 .unwrap()
                 .unwrap();
@@ -877,8 +896,8 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
-        let conn = connection.acquire_lock();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name), 16).unwrap();
+        let conn = connection.get_pooled_connection().unwrap();
 
         let key1 = "key1".to_string();
         let value1 = "value1".to_string();

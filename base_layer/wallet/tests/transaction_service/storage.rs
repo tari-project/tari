@@ -28,12 +28,12 @@ use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus},
-    types::{HashDigest, PrivateKey, PublicKey},
+    types::{HashDigest, PrivateKey, PublicKey, Signature},
 };
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     test_helpers::{create_unblinded_output, TestParams},
-    transaction::{OutputFeatures, Transaction},
+    transaction_entities::{OutputFeatures, Transaction},
     transaction_protocol::sender::TransactionSenderMessage,
     CryptoFactories,
     ReceiverTransactionProtocol,
@@ -93,7 +93,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<HashDigest>(&factories).unwrap();
+    let stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];
@@ -266,6 +266,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -533,7 +534,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled outbound tx");
     }
 
-    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
 
     assert_eq!(unmined_txs.len(), 4);
 
@@ -541,7 +542,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
         .unwrap();
 
-    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions()).unwrap();
+    let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
     assert_eq!(unmined_txs.len(), 5);
 }
 
@@ -551,7 +552,7 @@ pub fn test_transaction_service_sqlite_db() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, None));
 }
@@ -562,7 +563,7 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
     let key = GenericArray::from_slice(b"an example very very secret key.");
     let cipher = Aes256Gcm::new(key);

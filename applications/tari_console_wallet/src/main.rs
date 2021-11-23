@@ -5,6 +5,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![deny(clippy::redundant_clone)]
 #![recursion_limit = "1024"]
 use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
 use init::{

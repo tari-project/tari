@@ -20,21 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
+use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
+use thiserror::Error;
+
 use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction::TransactionError,
+    transaction_entities::TransactionError,
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
-use thiserror::Error;
-use time::OutOfRangeError;
+
+use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -46,8 +47,6 @@ pub enum OutputManagerError {
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
@@ -145,10 +144,8 @@ pub enum OutputManagerStorageError {
     OutputAlreadySpent,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Diesel error: `{0}`")]

@@ -246,6 +246,7 @@ async fn build_node_context(
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),
             config.base_node_bypass_range_proof_verification,
+            blockchain_db.clone(),
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),

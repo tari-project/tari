@@ -114,10 +114,10 @@ impl RpcStatus {
     }
 
     pub fn as_code(&self) -> u32 {
-        self.code as u32
+        self.code.as_u32()
     }
 
-    pub fn status_code(&self) -> RpcStatusCode {
+    pub fn as_status_code(&self) -> RpcStatusCode {
         self.code
     }
 
@@ -211,6 +211,14 @@ impl RpcStatusCode {
 
     pub fn is_timeout(self) -> bool {
         self == Self::Timeout
+    }
+
+    pub fn as_u32(&self) -> u32 {
+        *self as u32
+    }
+
+    pub fn to_debug_string(&self) -> String {
+        format!("{:?}", self)
     }
 }
 

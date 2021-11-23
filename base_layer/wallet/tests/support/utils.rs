@@ -20,17 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{CryptoRng, Rng};
 use std::{fmt::Debug, thread, time::Duration};
+
+use rand::{CryptoRng, Rng};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    script,
+};
+
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
+    transaction_entities::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)

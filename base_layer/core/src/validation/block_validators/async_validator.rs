@@ -28,7 +28,7 @@ use crate::{
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_entities::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
     validation::{
@@ -41,9 +41,9 @@ use crate::{
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use std::{cmp, cmp::Ordering, thread, time::Instant};
+use std::{cmp, cmp::Ordering, convert::TryInto, thread, time::Instant};
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
 use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.
@@ -229,12 +229,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let block_height = header.height;
         let commitment_factory = self.factories.commitment.clone();
         let db = self.db.inner().clone();
+        let prev_hash: [u8; 32] = header.prev_hash.as_slice().try_into().unwrap_or([0; 32]);
+        let height = header.height;
         task::spawn_blocking(move || {
             let timer = Instant::now();
             let mut aggregate_input_key = PublicKey::default();
             let mut commitment_sum = Commitment::default();
             let mut not_found_inputs = Vec::new();
             let db = db.db_read_access()?;
+
             for (i, input) in inputs.iter().enumerate() {
                 // Check for duplicates and/or incorrect sorting
                 if i > 0 && input <= &inputs[i - 1] {
@@ -268,8 +271,10 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 // Once we've found unknown inputs, the aggregate data will be discarded and there is no reason to run
                 // the tari script
                 if not_found_inputs.is_empty() {
+                    let context = ScriptContext::new(height, &prev_hash, &input.commitment);
                     // lets count up the input script public keys
-                    aggregate_input_key = aggregate_input_key + input.run_and_verify_script(&commitment_factory)?;
+                    aggregate_input_key =
+                        aggregate_input_key + input.run_and_verify_script(&commitment_factory, Some(context))?;
                     commitment_sum = &commitment_sum + &input.commitment;
                 }
             }

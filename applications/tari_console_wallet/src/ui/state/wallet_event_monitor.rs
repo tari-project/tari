@@ -260,6 +260,12 @@ impl WalletEventMonitor {
         if let Err(e) = inner.refresh_base_node_state(state).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
+
+        if inner.has_time_locked_balance() {
+            if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
+                warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            }
+        }
     }
 
     async fn trigger_base_node_peer_refresh(&mut self, peer: Peer) {

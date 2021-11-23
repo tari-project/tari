@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::sync::broadcast;
+
+use tari_comms::peer_manager::NodeId;
+
 use crate::{
     base_node::comms_interface::BlockEvent,
     chain_storage::BlockAddResult,
@@ -30,13 +38,8 @@ use crate::{
         MempoolStateEvent,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_entities::transaction::Transaction,
 };
-use log::*;
-use std::sync::Arc;
-use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 

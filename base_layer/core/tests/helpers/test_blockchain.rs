@@ -33,7 +33,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
     test_helpers::blockchain::TempDatabase,
-    transactions::{transaction::UnblindedOutput, CryptoFactories},
+    transactions::{transaction_entities::UnblindedOutput, CryptoFactories},
 };
 
 use crate::helpers::{

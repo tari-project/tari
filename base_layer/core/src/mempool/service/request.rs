@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::transaction::Transaction;
+use crate::transactions::transaction_entities::transaction::Transaction;
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{types::Signature, waiting_requests::RequestKey};

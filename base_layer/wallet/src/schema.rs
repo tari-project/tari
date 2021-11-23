@@ -25,6 +25,8 @@ table! {
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
+        transaction_signature_nonce -> Binary,
+        transaction_signature_key -> Binary,
     }
 }
 
@@ -66,6 +68,7 @@ table! {
         private_key -> Binary,
         script -> Binary,
         input -> Binary,
+        script_lock_height -> BigInt,
     }
 }
 
@@ -110,6 +113,8 @@ table! {
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
+        script_lock_height -> BigInt,
+        spending_priority -> Integer,
     }
 }
 

@@ -28,7 +28,7 @@ use tari_core::{
         script::{ExecutionStack, TariScript},
         tari_utilities::ByteArray,
     },
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
+    transactions::{tari_amount::MicroTari, transaction_entities::UnblindedOutput},
 };
 
 impl From<UnblindedOutput> for grpc::UnblindedOutput {
@@ -49,6 +49,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
                 signature_u: Vec::from(output.metadata_signature.u().as_bytes()),
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
+            script_lock_height: output.script_lock_height,
         }
     }
 }
@@ -91,6 +92,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
+            script_lock_height: output.script_lock_height,
         })
     }
 }

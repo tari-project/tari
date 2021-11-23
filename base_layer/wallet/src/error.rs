@@ -32,13 +32,14 @@ use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_common::exit_codes::ExitCodes;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_core::transactions::transaction::TransactionError;
+use tari_core::transactions::transaction_entities::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
@@ -113,8 +114,8 @@ pub enum WalletStorageError {
     DbPathDoesNotExist,
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]
@@ -167,5 +168,11 @@ impl From<WalletStorageError> for ExitCodes {
             InvalidPassphrase => ExitCodes::IncorrectPassword,
             e => ExitCodes::WalletError(e.to_string()),
         }
+    }
+}
+
+impl PartialEq for WalletStorageError {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
     }
 }

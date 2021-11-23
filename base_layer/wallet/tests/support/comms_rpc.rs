@@ -60,7 +60,7 @@ use tari_core::{
         },
     },
     tari_utilities::Hashable,
-    transactions::transaction::{Transaction, TransactionOutput},
+    transactions::transaction_entities::{Transaction, TransactionOutput},
 };
 use tokio::time::sleep;
 
@@ -131,7 +131,7 @@ impl BaseNodeWalletRpcMockState {
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
-                    height_of_longest_chain: Some(std::u64::MAX),
+                    height_of_longest_chain: Some(std::i64::MAX as u64),
                     best_block: Some(Vec::new()),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
@@ -662,7 +662,7 @@ mod test {
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::transaction::Transaction,
+        transactions::transaction_entities::Transaction,
     };
     use tokio::time::Duration;
 
