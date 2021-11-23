@@ -27,8 +27,6 @@ use crate::{
 };
 use async_trait::async_trait;
 
-
-
 #[async_trait]
 pub trait BaseNodeClient {
     async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;

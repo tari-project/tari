@@ -22,14 +22,8 @@
 
 use crate::models::{HotStuffMessage, Payload};
 
-use crate::{services::infrastructure_services::NodeAddressable};
+use crate::services::infrastructure_services::NodeAddressable;
 use async_trait::async_trait;
-
-
-
-
-
-
 
 #[async_trait]
 pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {

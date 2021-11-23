@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{TemplateId},
-    types::{PublicKey},
-};
+use crate::{models::TemplateId, types::PublicKey};
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 
