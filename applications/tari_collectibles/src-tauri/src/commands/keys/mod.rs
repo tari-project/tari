@@ -20,38 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Account, KeyIndex, NewAccount, NewKeyIndex, NewWallet, Wallet, WalletInfo};
-pub mod sqlite;
-mod storage_error;
-pub use storage_error::StorageError;
-use uuid::Uuid;
+use crate::{
+  app_state::ConcurrentAppState,
+  models::NewKeyIndex,
+  storage::{CollectiblesStorage, KeyIndicesTableGateway},
+};
+use tari_common_types::types::PublicKey;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  type KeyIndices: KeyIndicesTableGateway;
-  type Wallets: WalletsTableGateway;
+#[tauri::command]
+pub(crate) async fn next_asset_public_key(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<PublicKey, String> {
+  let key = state.next_asset_secret_key().await?;
 
-  fn accounts(&self) -> Self::Accounts;
-  fn key_indices(&self) -> Self::KeyIndices;
-  fn wallets(&self) -> Self::Wallets;
-}
+  let key_index = NewKeyIndex {
+    branch_seed: "assets".into(),
+    index: key.key_index,
+  };
 
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
-}
+  state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not connect to DB: {}", e))?
+    .key_indices()
+    .insert(key_index)
+    .map_err(|e| format!("Could not save key index: {}", e))?;
 
-pub trait WalletsTableGateway {
-  type Passphrase;
-
-  fn list(&self) -> Result<Vec<WalletInfo>, StorageError>;
-  fn insert(&self, wallet: NewWallet, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
-  fn find(&self, id: Uuid, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
-}
-
-pub trait KeyIndicesTableGateway {
-  fn list(&self) -> Result<Vec<KeyIndex>, StorageError>;
-  fn insert(&self, key_index: NewKeyIndex) -> Result<KeyIndex, StorageError>;
-  fn find(&self, branch_seed: String) -> Result<Option<KeyIndex>, StorageError>;
+  Ok(PublicKey::from_secret_key(&key.k))
 }

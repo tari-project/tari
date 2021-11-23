@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-  models::{Account, NewAccount, NewWallet, Wallet, WalletInfo},
+  models::{Account, KeyIndex, NewAccount, NewKeyIndex, NewWallet, Wallet, WalletInfo},
   schema::{self, *},
   storage::{AccountsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway},
 };
@@ -31,6 +31,8 @@ use tari_common_types::types::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
 use tari_utilities::ByteArray;
 use uuid::Uuid;
+
+use super::KeyIndicesTableGateway;
 
 pub mod models;
 
@@ -69,10 +71,17 @@ pub struct SqliteCollectiblesStorage {
 
 impl CollectiblesStorage for SqliteCollectiblesStorage {
   type Accounts = SqliteAccountsTableGateway;
+  type KeyIndices = SqliteKeyIndicesTableGateway;
   type Wallets = SqliteWalletsTableGateway;
 
   fn accounts(&self) -> Self::Accounts {
     SqliteAccountsTableGateway {
+      database_url: self.database_url.clone(),
+    }
+  }
+
+  fn key_indices(&self) -> Self::KeyIndices {
+    SqliteKeyIndicesTableGateway {
       database_url: self.database_url.clone(),
     }
   }
@@ -244,5 +253,82 @@ impl WalletsTableGateway for SqliteWalletsTableGateway {
       .get_result(&conn)?;
 
     SqliteWalletsTableGateway::convert_wallet(&db_wallet, passphrase)
+  }
+}
+
+pub struct SqliteKeyIndicesTableGateway {
+  database_url: String,
+}
+
+impl KeyIndicesTableGateway for SqliteKeyIndicesTableGateway {
+  fn list(&self) -> Result<Vec<KeyIndex>, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let results: Vec<models::KeyIndex> = schema::key_indices::table.load(&conn)?;
+    Ok(
+      results
+        .iter()
+        .map(|k| KeyIndex {
+          id: Uuid::from_slice(&k.id).unwrap(),
+          branch_seed: k.branch_seed.clone(),
+          last_index: k.last_index as u64,
+        })
+        .collect(),
+    )
+  }
+
+  fn insert(&self, key_index: NewKeyIndex) -> Result<KeyIndex, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let find_result: Option<models::KeyIndex> = schema::key_indices::table
+      .filter(key_indices::branch_seed.eq(key_index.branch_seed.clone()))
+      .first(&conn)
+      .optional()?;
+
+    let result = match find_result {
+      Some(k) => {
+        // update existing
+        let id = k.id.clone();
+        diesel::update(key_indices::table.filter(key_indices::id.eq(id)))
+          .set(key_indices::last_index.eq(key_index.index as i64))
+          .execute(&conn)?;
+        KeyIndex {
+          id: Uuid::from_slice(&k.id).unwrap(),
+          branch_seed: k.branch_seed,
+          last_index: key_index.index,
+        }
+      }
+      None => {
+        // insert new
+        let id = Uuid::new_v4();
+        let sql_model = models::KeyIndex {
+          id: Vec::from(id.as_bytes().as_slice()),
+          branch_seed: key_index.branch_seed.clone(),
+          last_index: key_index.index as i64,
+        };
+        diesel::insert_into(key_indices::table)
+          .values(sql_model)
+          .execute(&conn)?;
+        KeyIndex {
+          id,
+          branch_seed: key_index.branch_seed,
+          last_index: key_index.index,
+        }
+      }
+    };
+
+    Ok(result)
+  }
+
+  fn find(&self, branch_seed: String) -> Result<Option<KeyIndex>, StorageError> {
+    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let result: Option<models::KeyIndex> = schema::key_indices::table
+      .filter(key_indices::branch_seed.eq(branch_seed))
+      .first(&conn)
+      .optional()?;
+
+    Ok(result.map(|k| KeyIndex {
+      id: Uuid::from_slice(&k.id).unwrap(),
+      branch_seed: k.branch_seed.clone(),
+      last_index: k.last_index as u64,
+    }))
   }
 }

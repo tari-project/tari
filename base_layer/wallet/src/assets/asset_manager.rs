@@ -84,6 +84,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
     pub async fn create_registration_transaction(
         &mut self,
         name: String,
+        public_key: PublicKey,
         description: Option<String>,
         image: Option<String>,
         template_ids_implemented: Vec<u32>,
@@ -99,7 +100,7 @@ impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyMana
         let mut metadata_bin = vec![1u8];
         metadata_bin.extend(serializer.serialize(&metadata).into_iter());
 
-        let public_key = self.assets_key_manager.create_and_store_new()?;
+        // let public_key = self.assets_key_manager.create_and_store_new()?;
         let output = self
             .output_manager
             .create_output_with_features(

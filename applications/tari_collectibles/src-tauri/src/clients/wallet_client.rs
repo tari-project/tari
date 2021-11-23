@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::RegisterAssetRequest};
-use tari_utilities::hex::Hex;
+use tari_common_types::types::PublicKey;
+use tari_utilities::{hex::Hex, ByteArray};
 
 pub struct WalletClient {
   endpoint: String,
@@ -54,6 +55,7 @@ impl WalletClient {
   pub async fn register_asset(
     &mut self,
     name: String,
+    public_key: PublicKey,
     description: String,
     image: String,
     template_ids_implemented: Vec<u32>,
@@ -62,6 +64,7 @@ impl WalletClient {
     let inner = self.inner.as_mut().unwrap();
     let request = RegisterAssetRequest {
       name,
+      public_key: public_key.as_bytes().into(),
       template_ids_implemented,
       description,
       image,

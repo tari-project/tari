@@ -22,9 +22,23 @@
 
 import { invoke } from "@tauri-apps/api/tauri";
 
-async function command_assets_create(name, description, image, templateIds, templateParameters) {
+async function command_assets_create(
+  name,
+  publicKey,
+  description,
+  image,
+  templateIds,
+  templateParameters
+) {
   console.log("command_assets_create:", templateParameters);
-  return await invoke("assets_create", { name, description, image, templateIds, templateParameters });
+  return await invoke("assets_create", {
+    name,
+    publicKey,
+    description,
+    image,
+    templateIds,
+    templateParameters,
+  });
 }
 
 async function command_assets_list_owned() {
@@ -36,13 +50,10 @@ async function command_assets_list_registered_assets(offset, count) {
 }
 
 async function command_assets_get_registration(assetPubKey) {
-  return await invoke("assets_get_registration", {assetPubKey});
+  return await invoke("assets_get_registration", { assetPubKey });
 }
 
-async function command_asset_create_initial_checkpoint(
-  assetPubKey,
-  committee
-) {
+async function command_asset_create_initial_checkpoint(assetPubKey, committee) {
   return await invoke("assets_create_initial_checkpoint", {
     assetPubKey,
     committee,
@@ -73,6 +84,10 @@ async function command_accounts_list() {
   return await invoke("accounts_list", {});
 }
 
+async function command_next_asset_public_key() {
+  return await invoke("next_asset_public_key", {});
+}
+
 async function command_create_db() {
   return await invoke("create_db", {});
 }
@@ -86,6 +101,7 @@ const commands = {
   command_asset_create_initial_checkpoint,
   command_accounts_create,
   command_accounts_list,
+  command_next_asset_public_key,
   command_wallets_create,
   command_wallets_list,
   command_wallets_find,

@@ -34,6 +34,7 @@ fn main() {
       commands::assets::assets_get_registration,
       commands::accounts::accounts_create,
       commands::accounts::accounts_list,
+      commands::keys::next_asset_public_key,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
       commands::wallets::wallets_find,

@@ -48,7 +48,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction::UnblindedOutput,
 };
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -678,8 +678,11 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
+                // todo: key manager
+                let mut rng = rand::thread_rng();
+                let (_, public_key) = PublicKey::random_keypair(&mut rng);
                 let (tx_id, transaction) = manager
-                    .create_registration_transaction(name, vec![], None, None, vec![])
+                    .create_registration_transaction(name, public_key, vec![], None, None, vec![])
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
