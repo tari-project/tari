@@ -46,7 +46,7 @@ use tari_core::transactions::{
     transaction_entities::OutputFeatures,
     CryptoFactories,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -69,6 +69,7 @@ use tari_wallet::{
         handle::TransactionEvent,
         storage::sqlite_db::TransactionServiceSqliteDatabase,
     },
+    utxo_scanner_service::utxo_scanning::UtxoScannerService,
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -773,4 +774,38 @@ fn test_db_file_locking() {
     drop(connection);
 
     assert!(run_migration_and_create_sqlite_connection(&wallet_path, 16).is_ok());
+}
+
+#[tokio::test]
+async fn test_recovery_birthday() {
+    let dir = tempdir().unwrap();
+    let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
+
+    let seed_words: Vec<String> = [
+        "cactus", "pool", "fuel", "skull", "chair", "casino", "season", "disorder", "flat", "crash", "wrist",
+        "whisper", "decorate", "narrow", "oxygen", "remember", "minor", "among", "happy", "cricket", "embark", "blue",
+        "ship", "sick",
+    ]
+    .to_vec()
+    .iter()
+    .map(|w| w.to_string())
+    .collect();
+
+    let recovery_seed = CipherSeed::from_mnemonic(seed_words.as_slice(), None).unwrap();
+    let birthday = recovery_seed.birthday();
+
+    let wallet = create_wallet(
+        dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        Some(recovery_seed),
+    )
+    .await
+    .unwrap();
+
+    let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
+    assert_eq!(birthday, db_birthday);
 }
