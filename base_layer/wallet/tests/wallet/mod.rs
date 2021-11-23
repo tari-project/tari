@@ -633,7 +633,7 @@ fn test_store_and_forward_send_tx() {
                 event = carol_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                        TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
+                        TransactionEvent::TransactionCancelled(..) => tx_cancelled = true,
                         _ => (),
                     }
                     if tx_recv && tx_cancelled {
