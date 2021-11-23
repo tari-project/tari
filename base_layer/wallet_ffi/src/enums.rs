@@ -27,4 +27,5 @@ pub enum SeedWordPushResult {
     SeedPhraseComplete,
     InvalidSeedPhrase,
     InvalidObject,
+    NoLanguageMatch,
 }
