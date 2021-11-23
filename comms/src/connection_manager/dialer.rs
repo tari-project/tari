@@ -27,6 +27,7 @@ use crate::{
         common,
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
+        metrics,
         peer_connection,
     },
     multiaddr::Multiaddr,
@@ -193,6 +194,7 @@ where
         dial_result: Result<PeerConnection, ConnectionManagerError>,
     ) {
         let node_id = dial_state.peer().node_id.clone();
+        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
         let removed = self.cancel_signals.remove(&node_id);
         drop(removed);
@@ -212,6 +214,8 @@ where
                     .await
             },
         }
+
+        metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
 
         if self.pending_dial_requests.contains_key(&node_id) {
             self.reply_to_pending_requests(&node_id, dial_result.clone());

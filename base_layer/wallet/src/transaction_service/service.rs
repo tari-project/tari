@@ -34,6 +34,7 @@ use crate::{
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
             transaction_validation_protocol::TransactionValidationProtocol,
+            TxRejection,
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
@@ -73,7 +74,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_entities::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto,
             recipient::RecipientSignedMessage,
@@ -1014,8 +1015,8 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
+        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: blinding_key.clone(),
@@ -1301,7 +1302,10 @@ where
 
         let _ = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(tx_id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                tx_id,
+                TxRejection::UserCancelled,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

@@ -423,9 +423,22 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
-/// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
-/// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
-/// be conducted. The outcome of the discovery process is relayed via this callback
+/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
+/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
+/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
+/// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
+/// why said transaction failed that is mapped to the `TxRejection` enum:
+/// pub enum TxRejection {
+///     Unknown,                // 0
+///     UserCancelled,          // 1
+///     Timeout,                // 2
+///     DoubleSpend,            // 3
+///     Orphan,                 // 4
+///     TimeLocked,             // 5
+///     InvalidTransaction,     // 6
+/// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
@@ -469,7 +482,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
-                                 void (*callback_transaction_cancellation)(struct TariCompletedTransaction *),
+                                 void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
@@ -716,7 +729,7 @@ void balance_destroy(struct TariBalance *balance);
 void file_partial_backup(const char *original_file_path, const char *backup_file_path, int *error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
-void log_debug_message(const char *msg);
+void log_debug_message(const char *msg, int *error_out);
 
 struct EmojiSet *get_emoji_set();
 

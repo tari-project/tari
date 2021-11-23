@@ -20,7 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{create_block, mine_to_difficulty};
+use std::{
+    collections::HashMap,
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use croaring::Bitmap;
+
+use tari_common::configuration::Network;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, Signature},
+};
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+
 use crate::{
     blocks::{
         genesis_block::get_weatherwax_genesis_block,
@@ -55,7 +72,11 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
+        transaction_entities::{
+            transaction_input::TransactionInput,
+            transaction_kernel::TransactionKernel,
+            unblinded_output::UnblindedOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -64,21 +85,8 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    collections::HashMap,
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
-};
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+
+use super::{create_block, mine_to_difficulty};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

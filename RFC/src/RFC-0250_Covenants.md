@@ -209,58 +209,46 @@ little-endian 64-bit unsigned integer.
 
 The output set is returned unaltered. This rule is implicit for an empty (0 byte) covenant.
 
-```yaml
-op_byte: 0x20
+op_byte: 0x20<br>
 args: []
-```
 
 ##### and(A, B)
 
 The intersection (\\(A \cap B\\)) of the resulting output set for covenant rules \\(A\\) and \\(B\\).
 
-```yaml
-op_byte: 0x21
+op_byte: 0x21<br>
 args: [Covenant, Covenant]
-```
 
 ##### or(A, B)
 
 The union (\\(A \cup B\\)) of the resulting output set for covenant rules \\(A\\) and \\(B\\).
 
-```yaml
-op_byte: 0x22
+op_byte: 0x22<br>
 args: [Covenant, Covenant]
-```
 
 ##### xor(A, B)
 
 The symmetric difference (\\(A \triangle B\\)) of the resulting output set for covenant rules \\(A\\) and \\(B\\).
 This is, outputs that match either \\(A\\) or \\(B\\) but not both.
 
-```yaml
-op_byte: 0x23
+op_byte: 0x23<br>
 args: [Covenant, Covenant]
-```
 
 ##### not(A)
 
 Returns the compliment of `A`. That is, all the elements of `A` are removed from the
 resultant output set.
 
-```yaml
-op_byte: 0x24
+op_byte: 0x24<br>
 args: [Covenant]
-```
 
 ##### empty()
 
 Returns an empty set. This will always fail and, if used alone, prevents the UTXO from ever being spent.
 A more useful reason to use `empty` is in conjunction a conditional e.g. `if_else(Condition(older_rel(10)), A, empty)`
 
-```yaml
-op_byte: 0x25
+op_byte: 0x25<br>
 args: []
-```
 
 #### Filters
 
@@ -268,46 +256,36 @@ args: []
 
 Filters for a single output that matches the hash. This filter only returns zero or one outputs.
 
-```yaml
-op_byte: 0x30
+op_byte: 0x30<br>
 args: [Hash]
-```
 
 ##### filter_fields_preserved(fields)
 
 Filter for outputs where all given fields in the input are preserved in the output.
 
-```yaml
-op_byte: 0x31
+op_byte: 0x31<br>
 args: [Fields]
-```
 
 ##### filter_field_int_eq(field, int)
 
 Filters for outputs whose field value matches the given integer value. If the given field cannot be cast
 to an unsigned 64-bit integer, the transaction/block is rejected.
 
-```yaml
-op_byte: 0x32
+op_byte: 0x32<br>
 args: [Field, VarInt]
-```
 
 ##### filter_fields_hashed_eq(fields, hash)
 
-```yaml
-op_byte: 0x33
+op_byte: 0x33<br>
 args: [Fields, VarInt]
-```
 
 ##### filter_relative_height(height)
 
 Checks the block height that the current [UTXO] (i.e. the current input) was mined plus `height` is greater than or
 equal to the current block height. If so, the `identity()` is returned, otherwise `empty()`.
 
-```yaml
-op_byte: 0x34
+op_byte: 0x34<br>
 args: [VarInt]
-```
 
 #### Encoding / Decoding
 
@@ -316,7 +294,7 @@ before being executed.
 
 For instance,
 
-```
+```ignore
 xor(
     filter_output_hash_eq(Hash(0e0411c70df0ea4243a363fcbf161ebe6e2c1f074faf1c6a316a386823c3753c)),
     filter_relative_height(10),
@@ -326,7 +304,7 @@ xor(
 is represented in hex bytes as `23 30 01 a8b3f48e39449e89f7ff699b3eb2b080a2479b09a600a19d8ba48d765fe5d47d 35 07 0a`.
 Let's unpack that as follows:
 
-```
+```ignore
 23 // xor - consume two covenant args
 30 // filter_output_hash_eq - consume a hash arg
 01 // 32-byte hash
@@ -391,7 +369,7 @@ one or more outputs.
 
 Spend within 10 blocks or burn
 
-```
+```ignore
 not(filter_relative_height(10))
 ```
 
@@ -403,13 +381,13 @@ the miner.
 Output features as detailed in [RFC-310-AssetImplementation] (early draft stages, still to be finalised) contain the
 NFT details. This covenant preserves both the covenant protecting the token, and the token itself.
 
-```
+```ignore
 filter_fields_preserved([field::features, field::covenant])
 ```
 
 ### Side-chain checkpointing
 
-```
+```ignore
 and(
    filter_field_int_eq(field::feature_flags, 16) // SIDECHAIN CHECKPOINT = 16
    filter_fields_preserved([field::features, field::covenant, field::script])
@@ -418,7 +396,7 @@ and(
 
 ### Restrict spending to a particular commitment if not spent within 100 blocks
 
-```
+```ignore
 or(
    not(filter_relative_height(100)),
    filter_fields_hashed_eq([field::commmitment], Hash(xxxx))
@@ -427,7 +405,7 @@ or(
 
 ### Output must preserve covenant, features and script or be burnt
 
-```
+```ignore
 xor(
     filter_fields_preserved([field::features, field::covenant, field::script]),
     and(
@@ -439,7 +417,7 @@ xor(
 
 ### Commission for NFT transfer
 
-```
+```ignore
 // Must be different outputs
 xor(
     and(

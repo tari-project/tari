@@ -39,10 +39,10 @@ use tari_common_types::transaction::{TransactionDirection, TransactionStatus, Tx
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::connectivity_service::WalletConnectivityInterface;
+use crate::{connectivity_service::WalletConnectivityInterface, transaction_service::protocols::TxRejection};
 use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
-    transaction::Transaction,
+    transaction_entities::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -504,7 +504,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

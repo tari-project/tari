@@ -33,7 +33,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionOutput, UnblindedOutput},
+    transaction_entities::{Transaction, TransactionOutput, UnblindedOutput},
     transaction_protocol::sender::TransactionSenderMessage,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,

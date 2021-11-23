@@ -510,10 +510,7 @@ impl ConnectivityManagerActor {
                     _ => {},
                 }
             },
-            #[cfg(feature = "metrics")]
-            NewInboundSubstream(node_id, protocol, _) => {
-                super::metrics::substream_request_count(node_id, protocol).inc();
-            },
+
             _ => {},
         }
 
@@ -735,6 +732,9 @@ impl ConnectivityManagerActor {
         );
 
         self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
+
+        #[cfg(feature = "metrics")]
+        super::metrics::banned_peers_counter(node_id).inc();
 
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 

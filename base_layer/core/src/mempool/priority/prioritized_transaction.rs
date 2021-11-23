@@ -20,13 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_crypto::tari_utilities::message_format::MessageFormat;
+
+use tari_common_types::types::HashOutput;
+
 use crate::{
     mempool::priority::PriorityError,
-    transactions::{transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction_entities::transaction::Transaction, weight::TransactionWeight},
 };
-use std::sync::Arc;
-use tari_common_types::types::HashOutput;
-use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the
 /// excess_sig. The excess_sig is included to ensure the the priority key unique so it can be used with a BTreeMap.

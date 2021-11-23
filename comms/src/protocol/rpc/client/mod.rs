@@ -73,7 +73,7 @@ use std::{
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, oneshot, watch, Mutex},
     time,
 };
 use tower::{Service, ServiceExt};
@@ -105,7 +105,8 @@ impl RpcClient {
         let (request_tx, request_rx) = mpsc::channel(1);
         let shutdown = Shutdown::new();
         let shutdown_signal = shutdown.to_signal();
-        let connector = ClientConnector::new(request_tx, shutdown);
+        let (last_request_latency_tx, last_request_latency_rx) = watch::channel(None);
+        let connector = ClientConnector::new(request_tx, last_request_latency_rx, shutdown);
         let (ready_tx, ready_rx) = oneshot::channel();
         let tracing_id = tracing::Span::current().id();
         task::spawn({
@@ -116,6 +117,7 @@ impl RpcClient {
                 config,
                 node_id,
                 request_rx,
+                last_request_latency_tx,
                 framed,
                 ready_tx,
                 protocol_name,
@@ -172,7 +174,7 @@ impl RpcClient {
     }
 
     /// Return the latency of the last request
-    pub fn get_last_request_latency(&mut self) -> impl Future<Output = Result<Option<Duration>, RpcError>> + '_ {
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
         self.connector.get_last_request_latency()
     }
 
@@ -185,7 +187,7 @@ impl RpcClient {
         &mut self,
         request: BaseRequest<Bytes>,
     ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError> {
-        let svc = self.connector.ready_and().await?;
+        let svc = self.connector.ready().await?;
         let resp = svc.call(request).await?;
         Ok(resp)
     }
@@ -315,13 +317,19 @@ impl Default for RpcClientConfig {
 #[derive(Clone)]
 pub struct ClientConnector {
     inner: mpsc::Sender<ClientRequest>,
+    last_request_latency_rx: watch::Receiver<Option<Duration>>,
     shutdown: Arc<Mutex<Shutdown>>,
 }
 
 impl ClientConnector {
-    pub(self) fn new(sender: mpsc::Sender<ClientRequest>, shutdown: Shutdown) -> Self {
+    pub(self) fn new(
+        sender: mpsc::Sender<ClientRequest>,
+        last_request_latency_rx: watch::Receiver<Option<Duration>>,
+        shutdown: Shutdown,
+    ) -> Self {
         Self {
             inner: sender,
+            last_request_latency_rx,
             shutdown: Arc::new(Mutex::new(shutdown)),
         }
     }
@@ -331,14 +339,8 @@ impl ClientConnector {
         lock.trigger();
     }
 
-    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
-        let (reply, reply_rx) = oneshot::channel();
-        self.inner
-            .send(ClientRequest::GetLastRequestLatency(reply))
-            .await
-            .map_err(|_| RpcError::ClientClosed)?;
-
-        reply_rx.await.map_err(|_| RpcError::RequestCancelled)
+    pub fn get_last_request_latency(&mut self) -> Option<Duration> {
+        *self.last_request_latency_rx.borrow()
     }
 
     pub async fn send_ping(&mut self) -> Result<Duration, RpcError> {
@@ -391,12 +393,12 @@ struct RpcClientWorker<TSubstream> {
     config: RpcClientConfig,
     node_id: NodeId,
     request_rx: mpsc::Receiver<ClientRequest>,
+    last_request_latency_tx: watch::Sender<Option<Duration>>,
     framed: CanonicalFraming<TSubstream>,
     // Request ids are limited to u16::MAX because varint encoding is used over the wire and the magnitude of the value
     // sent determines the byte size. A u16 will be more than enough for the purpose
     next_request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
-    last_request_latency: Option<Duration>,
     protocol_id: ProtocolId,
     shutdown_signal: ShutdownSignal,
 }
@@ -404,10 +406,12 @@ struct RpcClientWorker<TSubstream> {
 impl<TSubstream> RpcClientWorker<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 {
+    #[allow(clippy::too_many_arguments)]
     pub(self) fn new(
         config: RpcClientConfig,
         node_id: NodeId,
         request_rx: mpsc::Receiver<ClientRequest>,
+        last_request_latency_tx: watch::Sender<Option<Duration>>,
         framed: CanonicalFraming<TSubstream>,
         ready_tx: oneshot::Sender<Result<(), RpcError>>,
         protocol_id: ProtocolId,
@@ -420,7 +424,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             framed,
             next_request_id: 0,
             ready_tx: Some(ready_tx),
-            last_request_latency: None,
+            last_request_latency_tx,
             protocol_id,
             shutdown_signal,
         }
@@ -454,12 +458,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     self.protocol_name(),
                     latency
                 );
-                self.last_request_latency = Some(latency);
+                let _ = self.last_request_latency_tx.send(Some(latency));
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Ok(()));
                 }
+                metrics::handshake_counter(&self.node_id, &self.protocol_id).inc();
             },
             Err(err) => {
+                metrics::handshake_errors(&self.node_id, &self.protocol_id).inc();
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Err(err.into()));
                 }
@@ -468,8 +474,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             },
         }
 
-        let session_counter = metrics::sessions_counter(&self.node_id, &self.protocol_id);
-        session_counter.inc();
+        metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
         loop {
             tokio::select! {
                 biased;
@@ -480,6 +485,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     match req {
                         Some(req) => {
                             if let Err(err) = self.handle_request(req).await {
+                                metrics::client_errors(&self.node_id, &self.protocol_id).inc();
                                 error!(target: LOG_TARGET, "(stream={}) Unexpected error: {}. Worker is terminating.", self.stream_id(), err);
                                 break;
                             }
@@ -489,21 +495,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 }
             }
         }
-        session_counter.dec();
+        metrics::num_sessions(&self.node_id, &self.protocol_id).dec();
 
         if let Err(err) = self.framed.close().await {
             debug!(
                 target: LOG_TARGET,
-                "(stream={}) IO Error when closing substream: {}",
+                "(stream: {}, peer: {}) IO Error when closing substream: {}",
                 self.stream_id(),
+                self.node_id,
                 err
             );
         }
 
         debug!(
             target: LOG_TARGET,
-            "(stream={}) RpcClientWorker ({}) terminated.",
+            "(stream: {}, peer: {}) RpcClientWorker ({}) terminated.",
             self.stream_id(),
+            self.node_id,
             self.protocol_name()
         );
     }
@@ -513,9 +521,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         match req {
             SendRequest { request, reply } => {
                 self.do_request_response(request, reply).await?;
-            },
-            GetLastRequestLatency(reply) => {
-                let _ = reply.send(self.last_request_latency);
             },
             SendPing(reply) => {
                 self.do_ping_pong(reply).await?;
@@ -551,6 +556,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     self.stream_id(),
                     start.elapsed()
                 );
+                metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
                 let _ = reply.send(Err(RpcStatus::timed_out("Response timed out")));
                 return Ok(());
             },
@@ -582,7 +588,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
-    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_size = request.message.len()))]
+    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_body_size = request.message.len()))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -628,6 +634,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let mut metrics_timer = Some(latency.start_timer());
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
+            metrics::client_errors(&self.node_id, &self.protocol_id).inc();
             let _ = response_tx.send(Err(err.into()));
             return Ok(());
         }
@@ -636,7 +643,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             if self.shutdown_signal.is_triggered() {
                 debug!(
                     target: LOG_TARGET,
-                    "[{}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream early",
+                    "[peer: {}, protocol: {}, stream_id: {}, req_id: {}] Client connector closed. Quitting stream \
+                     early",
+                    self.node_id,
                     self.protocol_name(),
                     self.stream_id(),
                     request_id
@@ -647,7 +656,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             let resp = match self.read_response(request_id).await {
                 Ok(resp) => {
                     if let Some(t) = timer.take() {
-                        self.last_request_latency = Some(t.elapsed());
+                        let _ = self.last_request_latency_tx.send(Some(t.elapsed()));
                     }
                     event!(Level::TRACE, "Message received");
                     trace!(
@@ -670,7 +679,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         "Request {} (method={}) timed out", request_id, method,
                     );
                     event!(Level::ERROR, "Response timed out");
-                    if !response_tx.is_closed() {
+                    metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
+                    if response_tx.is_closed() {
+                        let req = proto::rpc::RpcRequest {
+                            request_id: request_id as u32,
+                            method,
+                            flags: RpcMessageFlags::FIN.bits().into(),
+                            ..Default::default()
+                        };
+
+                        self.send_request(req).await?;
+                    } else {
                         let _ = response_tx.send(Err(RpcStatus::timed_out("Response timed out"))).await;
                     }
                     break;
@@ -712,9 +731,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         let req = proto::rpc::RpcRequest {
                             request_id: request_id as u32,
                             method,
-                            deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
                             flags: RpcMessageFlags::FIN.bits().into(),
-                            payload: vec![],
+                            ..Default::default()
                         };
 
                         self.send_request(req).await?;
@@ -772,7 +790,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     break resp;
                 },
                 Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected })
-                    if actual.saturating_add(1) == request_id =>
+                    if actual.wrapping_add(1) == request_id =>
                 {
                     warn!(
                         target: LOG_TARGET,
@@ -782,7 +800,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
                     // Be lenient for a number of messages that may have been buffered to come through for the previous
                     // request.
-                    const MAX_ALLOWED_IGNORED: usize = 5;
+                    const MAX_ALLOWED_IGNORED: usize = 20;
                     if num_ignored > MAX_ALLOWED_IGNORED {
                         return Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected });
                     }
@@ -797,7 +815,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     fn next_request_id(&mut self) -> u16 {
         let next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
-        self.next_request_id = self.next_request_id.checked_add(1).unwrap_or(0);
+        self.next_request_id = self.next_request_id.wrapping_add(1);
         next_id
     }
 
@@ -821,7 +839,6 @@ pub enum ClientRequest {
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     },
-    GetLastRequestLatency(oneshot::Sender<Option<Duration>>),
     SendPing(oneshot::Sender<Result<Duration, RpcStatus>>),
 }
 

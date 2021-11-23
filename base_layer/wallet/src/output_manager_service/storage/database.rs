@@ -38,7 +38,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{BlindingFactor, Commitment, HashOutput},
 };
-use tari_core::transactions::{tari_amount::MicroTari, transaction::TransactionOutput};
+use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::TransactionOutput};
 use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";

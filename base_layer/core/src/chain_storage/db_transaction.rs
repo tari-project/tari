@@ -1,3 +1,18 @@
+use std::{
+    fmt,
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use croaring::Bitmap;
+use tari_crypto::tari_utilities::{
+    hex::{to_hex, Hex},
+    Hashable,
+};
+
+use tari_common_types::types::{BlockHash, Commitment, HashOutput};
+use tari_mmr::pruned_hashset::PrunedHashSet;
+
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -22,20 +37,11 @@
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{error::ChainStorageError, MmrTree},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
-use croaring::Bitmap;
-use std::{
-    fmt,
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
-use tari_crypto::tari_utilities::{
-    hex::{to_hex, Hex},
-    Hashable,
-};
-use tari_mmr::pruned_hashset::PrunedHashSet;
 
 #[derive(Debug)]
 pub struct DbTransaction {

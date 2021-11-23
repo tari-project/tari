@@ -32,6 +32,7 @@ use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
         liveness::LivenessSession,
+        metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -239,6 +240,7 @@ where
 
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
+            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -325,6 +327,8 @@ where
                     );
                 },
             }
+
+            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 

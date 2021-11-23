@@ -147,7 +147,7 @@ async fn it_returns_an_error_for_invalid_method_nums() {
         .await
         .unwrap_err();
 
-    unpack_enum!(RpcStatusCode::UnsupportedMethod = err.status_code());
+    unpack_enum!(RpcStatusCode::UnsupportedMethod = err.as_status_code());
 }
 
 #[tokio::test]

@@ -2083,7 +2083,7 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams},
-        transaction::{OutputFeatures, Transaction},
+        transaction_entities::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         ReceiverTransactionProtocol,

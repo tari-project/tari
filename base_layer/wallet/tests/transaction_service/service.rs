@@ -91,7 +91,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::*,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
+        transaction_entities::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         CryptoFactories,
         ReceiverTransactionProtocol,
@@ -2184,7 +2184,7 @@ fn test_transaction_cancellation() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
@@ -2380,7 +2380,7 @@ fn test_transaction_cancellation() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
@@ -3524,7 +3524,7 @@ fn test_coinbase_abandoned() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(tx_id, _) = &*event.unwrap() {
                         if tx_id == &tx_id1  {
                             count += 1;
                         }
@@ -3684,7 +3684,7 @@ fn test_coinbase_abandoned() {
                                 count += 1;
                             }
                         },
-                        TransactionEvent::TransactionCancelled(tx_id) => {
+                        TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id2  {
                                 count += 1;
                             }
@@ -3771,7 +3771,7 @@ fn test_coinbase_abandoned() {
                                 count += 1;
                             }
                         },
-                        TransactionEvent::TransactionCancelled(tx_id) => {
+                        TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id1  {
                                 count += 1;
                             }
@@ -4755,7 +4755,7 @@ fn test_transaction_timeout_cancellation() {
         loop {
             tokio::select! {
                 event = carol_event_stream.recv() => {
-                     if let TransactionEvent::TransactionCancelled(t) = &*event.unwrap() {
+                     if let TransactionEvent::TransactionCancelled(t, _) = &*event.unwrap() {
                         if t == &tx_id {
                             transaction_cancelled = true;
                             break;
@@ -5074,7 +5074,7 @@ fn transaction_service_tx_broadcast() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                     if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap(){
+                     if let TransactionEvent::TransactionCancelled(tx_id, _) = &*event.unwrap(){
                         if tx_id == &tx_id2 {
                             tx2_cancelled = true;
                             break;
