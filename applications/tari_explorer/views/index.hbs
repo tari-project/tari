@@ -136,7 +136,7 @@
     {{#each mempool}}
         {{#with this.transaction.body}}
             <tr>
-                <td>{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</td>
+                <td><a href="/mempool/{{json this}}">{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</a></td>
                 <td>{{this.total_fees}}</td>
                 <td>{{this.outputs.length}}</td>
                 <td>{{this.kernels.length}}</td>
