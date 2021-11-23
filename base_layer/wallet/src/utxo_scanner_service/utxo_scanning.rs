@@ -358,8 +358,9 @@ where TBackend: WalletBackend + 'static
             Err(RpcError::RequestFailed(err)) if err.as_status_code().is_not_found() => {
                 warn!(target: LOG_TARGET, "Reorg detected: {}", err);
                 // The node does not know of the last hash we scanned, thus we had a chain split.
-                // We now start at 0 again.
-                Ok(0)
+                // We now start at the wallet birthday again
+                let birthday_metdadata = self.get_birthday_metadata(client).await?;
+                Ok(birthday_metdadata.utxo_index)
             },
             Err(err) => Err(err.into()),
         }
@@ -645,7 +646,16 @@ where TBackend: WalletBackend + 'static
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
         let epoch_time = (birthday.saturating_sub(2) as u64) * 60 * 60 * 24;
-        let block_height = client.get_height_at_time(epoch_time).await?;
+        let block_height = match client.get_height_at_time(epoch_time).await {
+            Ok(b) => b,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Problem requesting `height_at_time` from Base Node: {}", e
+                );
+                0
+            },
+        };
         let header = client.get_header_by_height(block_height).await?;
         let header = BlockHeader::try_from(header).map_err(|_| UtxoScannerError::ConversionError)?;
 
