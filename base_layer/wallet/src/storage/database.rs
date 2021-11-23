@@ -55,6 +55,7 @@ pub enum DbKey {
     MasterSeed,
     PassphraseHash,
     EncryptionSalt,
+    WalletBirthday,
 }
 
 pub enum DbValue {
@@ -67,6 +68,7 @@ pub enum DbValue {
     MasterSeed(CipherSeed),
     PassphraseHash(String),
     EncryptionSalt(String),
+    WalletBirthday(String),
 }
 
 #[derive(Clone)]
@@ -306,6 +308,22 @@ where T: WalletBackend + 'static
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(c)
     }
+
+    pub async fn get_wallet_birthday(&self) -> Result<u16, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let result = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::WalletBirthday) {
+            Ok(None) => Err(WalletStorageError::ValueNotFound(DbKey::WalletBirthday)),
+            Ok(Some(DbValue::WalletBirthday(b))) => Ok(b
+                .parse::<u16>()
+                .map_err(|_| WalletStorageError::ConversionError("Could not parse wallet birthday".to_string()))?),
+            Ok(Some(other)) => unexpected_result(DbKey::WalletBirthday, other),
+            Err(e) => log_error(DbKey::WalletBirthday, e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(result)
+    }
 }
 
 impl Display for DbKey {
@@ -319,6 +337,7 @@ impl Display for DbKey {
             DbKey::BaseNodeChainMetadata => f.write_str(&"Last seen Chain metadata from base node".to_string()),
             DbKey::PassphraseHash => f.write_str(&"PassphraseHash".to_string()),
             DbKey::EncryptionSalt => f.write_str(&"EncryptionSalt".to_string()),
+            DbKey::WalletBirthday => f.write_str(&"WalletBirthday".to_string()),
         }
     }
 }
@@ -335,6 +354,7 @@ impl Display for DbValue {
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
             DbValue::PassphraseHash(h) => f.write_str(&format!("PassphraseHash: {}", h)),
             DbValue::EncryptionSalt(s) => f.write_str(&format!("EncryptionSalt: {}", s)),
+            DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
         }
     }
 }

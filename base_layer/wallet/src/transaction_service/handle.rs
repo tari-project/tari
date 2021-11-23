@@ -36,6 +36,7 @@ use tari_service_framework::reply_channel::SenderService;
 
 use crate::transaction_service::{
     error::TransactionServiceError,
+    protocols::TxRejection,
     storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
 };
 
@@ -150,7 +151,7 @@ pub enum TransactionEvent {
     TransactionDirectSendResult(TxId, bool),
     TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
-    TransactionCancelled(TxId),
+    TransactionCancelled(TxId, TxRejection),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
     TransactionMined {

@@ -64,6 +64,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
+use crate::transaction_service::protocols::TxRejection;
 use tari_common_types::types::Signature;
 
 #[allow(unused_variables)]
@@ -416,7 +417,7 @@ where
             );
         };
 
-        self.publish_event(TransactionEvent::TransactionCancelled(tx_id));
+        self.publish_event(TransactionEvent::TransactionCancelled(tx_id, TxRejection::Orphan));
 
         Ok(())
     }

@@ -100,7 +100,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
                                     },
-                                    TransactionEvent::TransactionCancelled(tx_id) => {
+                                    TransactionEvent::TransactionCancelled(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);

@@ -72,35 +72,6 @@
 //! 6.  This wallet will then monitor the Base Layer to see when the transaction is mined which means the
 //!     `CompletedTransaction` status will become `Mined` and the funds will then move from the `PendingIncomingBalance`
 //!     to the `AvailableBalance`.
-//!
-//! ## Using the test functions
-//! The above two flows both require a second wallet for this wallet to interact with. Because we do not yet have a live
-//! Test Net and the communications layer is not quite ready the library supplies four functions to help simulate the
-//! second wallets role in these flows. The following will describe how to use these functions to produce the flows.
-//!
-//! ### Send Transaction with test functions
-//! 1.  Send Transaction as above to produce a `PendingOutboundTransaction`.
-//! 2.  Call the `complete_sent_transaction(...)` function with the tx_id of the sent transaction to simulate a reply.
-//!     This will move the `PendingOutboundTransaction` to become a `CompletedTransaction` with the `Completed` status.
-//! 3.  Call the 'broadcast_transaction(...)` function with the tx_id of the sent transaction and its status will move
-//!     from 'Completed' to 'Broadcast' which means it has been broadcast to the Base Layer Mempool but not mined yet.
-//!     from 'Completed' to 'Broadcast' which means it has been broadcast to the Base Layer Mempool but not mined yet.
-//! 4.  Call the `mined_transaction(...)` function with the tx_id of the sent transaction which will change
-//!     the status of the `CompletedTransaction` from `Broadcast` to `Mined`. The pending funds will also become
-//!     finalized as spent and available funds respectively.
-//!
-//! ### Receive Transaction with test functions
-//! Under normal operation another wallet would initiate a Receive Transaction flow by sending you a transaction. We
-//! will use the `receive_test_transaction(...)` function to initiate the flow:
-//!
-//! 1.  Calling `receive_test_transaction(...)` will produce an `InboundTransaction`, the amount of the transaction will
-//!     appear under the `PendingIncomingBalance`.
-//! 2.  To simulate detecting the `InboundTransaction` being broadcast to the Base Layer Mempool call
-//!     `broadcast_transaction(...)` function. This will change the `InboundTransaction` to a
-//!     `CompletedTransaction` with the `Broadcast` status. The funds will still reflect in the pending balance.
-//! 3.  Call the `mined_transaction(...)` function with the tx_id of the received transaction which will
-//!     change the status of the `CompletedTransaction` from    `Broadcast` to `Mined`. The pending funds will also
-//!     become finalized as spent and available funds respectively
 
 #![recursion_limit = "1024"]
 
@@ -1049,11 +1020,13 @@ pub unsafe extern "C" fn seed_words_get_at(
 ///
 /// ## Returns
 /// 'c_uchar' - Returns a u8 version of the `SeedWordPushResult` enum indicating whether the word was not a valid seed
-/// word, if the push was successful and whether the push was successful and completed the full Seed Phrase
+/// word, if the push was successful and whether the push was successful and completed the full Seed Phrase.
+///  `seed_words` is only modified in the event of a `SuccessfulPush`.
 ///     '0' -> InvalidSeedWord
 ///     '1' -> SuccessfulPush
 ///     '2' -> SeedPhraseComplete
 ///     '3' -> InvalidSeedPhrase
+///     '4' -> NoLanguageMatch,
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
@@ -1111,28 +1084,64 @@ pub unsafe extern "C" fn seed_words_push_word(
         },
     }
 
-    if MnemonicLanguage::from(word_string.as_str()).is_err() {
-        log::error!(target: LOG_TARGET, "{} is not a valid mnemonic seed word", word_string);
-        return SeedWordPushResult::InvalidSeedWord as u8;
+    // Seed words is currently empty, this is the first word
+    if (*seed_words).0.is_empty() {
+        (*seed_words).0.push(word_string);
+        return SeedWordPushResult::SuccessfulPush as u8;
     }
 
-    (*seed_words).0.push(word_string);
-    if (*seed_words).0.len() >= 24 {
-        return if let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, None) {
+    // Try push to a temporary copy first to prevent existing object becoming invalid
+    let mut temp = (*seed_words).0.clone();
+
+    if let Ok(language) = MnemonicLanguage::detect_language(&temp) {
+        temp.push(word_string.clone());
+        // Check words in temp are still consistent for a language, note that detected language can change
+        // depending on word added
+        if MnemonicLanguage::detect_language(&temp).is_ok() {
+            if temp.len() >= 24 {
+                if let Err(e) = CipherSeed::from_mnemonic(&temp, None) {
+                    log::error!(
+                        target: LOG_TARGET,
+                        "Problem building valid private seed from seed phrase: {:?}",
+                        e
+                    );
+                    error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    return SeedWordPushResult::InvalidSeedPhrase as u8;
+                };
+            }
+
+            (*seed_words).0.push(word_string);
+
+            // Note: test for a validity was already done so we can just check length here
+            if (*seed_words).0.len() < 24 {
+                SeedWordPushResult::SuccessfulPush as u8
+            } else {
+                SeedWordPushResult::SeedPhraseComplete as u8
+            }
+        } else {
             log::error!(
                 target: LOG_TARGET,
-                "Problem building valid private seed from seed phrase: {:?}",
-                e
+                "Words in seed phrase do not match any language after trying to add word: `{:?}`, previously words \
+                 were detected to be in: `{:?}`",
+                word_string,
+                language
             );
-            error = LibWalletError::from(WalletError::KeyManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            SeedWordPushResult::InvalidSeedPhrase as u8
-        } else {
-            SeedWordPushResult::SeedPhraseComplete as u8
-        };
+            SeedWordPushResult::NoLanguageMatch as u8
+        }
+    } else {
+        // Seed words are invalid, shouldn't normally be reachable
+        log::error!(
+            target: LOG_TARGET,
+            "Words in seed phrase do not match any language prior to adding word: `{:?}`",
+            word_string
+        );
+        let error_msg = "Invalid seed words object, no language can be detected.";
+        log::error!(target: LOG_TARGET, "{}", error_msg);
+        error = LibWalletError::from(InterfaceError::InvalidArgument(error_msg.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        SeedWordPushResult::InvalidObject as u8
     }
-
-    SeedWordPushResult::SuccessfulPush as u8
 }
 
 /// Frees memory for a TariSeedWords
@@ -3044,9 +3053,24 @@ unsafe fn init_logging(
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
-/// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
-/// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
-/// be conducted. The outcome of the discovery process is relayed via this callback
+/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
+/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was
+/// successful or not.
+/// `callback_store_and_forward_send_result` - The callback function pointer matching the function
+/// signature. This is called when a direct send is completed. The first parameter is the transaction id and the second
+/// is whether if was successful or not.
+/// `callback_transaction_cancellation` - The callback function pointer matching
+/// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
+/// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the `TxRejection`
+/// enum: pub enum TxRejection {
+///     Unknown,                // 0
+///     UserCancelled,          // 1
+///     Timeout,                // 2
+///     DoubleSpend,            // 3
+///     Orphan,                 // 4
+///     TimeLocked,             // 5
+///     InvalidTransaction,     // 6
+/// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
@@ -3085,7 +3109,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-    callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
@@ -5850,7 +5874,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction, _reason: u64) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
