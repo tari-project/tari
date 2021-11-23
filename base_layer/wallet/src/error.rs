@@ -173,6 +173,75 @@ impl From<WalletStorageError> for ExitCodes {
 
 impl PartialEq for WalletStorageError {
     fn eq(&self, other: &Self) -> bool {
-        self == other
+        match other {
+            WalletStorageError::DuplicateContact => matches!(self, WalletStorageError::DuplicateContact),
+            WalletStorageError::OperationNotSupported => matches!(self, WalletStorageError::OperationNotSupported),
+            WalletStorageError::ConversionError(_) => matches!(self, WalletStorageError::ConversionError(_)),
+            WalletStorageError::ValuesNotFound => matches!(self, WalletStorageError::ValuesNotFound),
+            WalletStorageError::DbPathDoesNotExist => matches!(self, WalletStorageError::DbPathDoesNotExist),
+            WalletStorageError::SerdeJsonError(_) => matches!(self, WalletStorageError::SerdeJsonError(_)),
+            WalletStorageError::DieselR2d2Error(_) => matches!(self, WalletStorageError::DieselR2d2Error(_)),
+            WalletStorageError::DieselError(_) => matches!(self, WalletStorageError::DieselError(_)),
+            WalletStorageError::DieselConnectionError(_) => {
+                matches!(self, WalletStorageError::DieselConnectionError(_))
+            },
+            WalletStorageError::DatabaseMigrationError(_) => {
+                matches!(self, WalletStorageError::DatabaseMigrationError(_))
+            },
+            WalletStorageError::ValueNotFound(_) => matches!(self, WalletStorageError::ValueNotFound(_)),
+            WalletStorageError::UnexpectedResult(_) => matches!(self, WalletStorageError::UnexpectedResult(_)),
+            WalletStorageError::BlockingTaskSpawnError(_) => {
+                matches!(self, WalletStorageError::BlockingTaskSpawnError(_))
+            },
+            WalletStorageError::FileError(_) => matches!(self, WalletStorageError::FileError(_)),
+            WalletStorageError::InvalidUnicodePath => matches!(self, WalletStorageError::InvalidUnicodePath),
+            WalletStorageError::HexError(_) => matches!(self, WalletStorageError::HexError(_)),
+            WalletStorageError::InvalidEncryptionCipher => matches!(self, WalletStorageError::InvalidEncryptionCipher),
+            WalletStorageError::InvalidPassphrase => matches!(self, WalletStorageError::InvalidPassphrase),
+            WalletStorageError::MissingNonce => matches!(self, WalletStorageError::MissingNonce),
+            WalletStorageError::AeadError(_) => matches!(self, WalletStorageError::AeadError(_)),
+            WalletStorageError::AlreadyEncrypted => matches!(self, WalletStorageError::AlreadyEncrypted),
+            WalletStorageError::ByteArrayError(_) => matches!(self, WalletStorageError::ByteArrayError(_)),
+            WalletStorageError::CannotAcquireFileLock => matches!(self, WalletStorageError::CannotAcquireFileLock),
+            WalletStorageError::DatabasePathIsRootPath => matches!(self, WalletStorageError::DatabasePathIsRootPath),
+            WalletStorageError::IoError(_) => matches!(self, WalletStorageError::IoError(_)),
+            WalletStorageError::NoPasswordError => matches!(self, WalletStorageError::NoPasswordError),
+            WalletStorageError::DeprecatedOperation => matches!(self, WalletStorageError::DeprecatedOperation),
+            WalletStorageError::KeyManagerError(_) => matches!(self, WalletStorageError::KeyManagerError(_)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn not_stack_overflow() {
+        #[allow(clippy::eq_op)]
+        let compare_true = WalletStorageError::InvalidUnicodePath == WalletStorageError::InvalidUnicodePath;
+        assert!(compare_true);
+
+        #[allow(clippy::eq_op)]
+        let compare_true = WalletStorageError::ValuesNotFound == WalletStorageError::ValuesNotFound;
+        assert!(compare_true);
+
+        let compare_false =
+            WalletStorageError::DieselR2d2Error(SqliteStorageError::DieselR2d2Error(String::from("test1"))) ==
+                WalletStorageError::InvalidUnicodePath;
+        assert!(!compare_false);
+
+        let compare_true =
+            WalletStorageError::DieselR2d2Error(SqliteStorageError::DieselR2d2Error(String::from("test1"))) ==
+                WalletStorageError::DieselR2d2Error(SqliteStorageError::DieselR2d2Error(String::from("test2")));
+        assert!(compare_true);
+
+        let compare_true =
+            WalletStorageError::DieselR2d2Error(SqliteStorageError::DieselR2d2Error(String::from("test1"))) ==
+                WalletStorageError::DieselR2d2Error(SqliteStorageError::DieselR2d2Error(String::from("test1")));
+        assert!(compare_true);
+
+        let compare_false = WalletStorageError::MissingNonce == WalletStorageError::CannotAcquireFileLock;
+        assert!(!compare_false);
     }
 }

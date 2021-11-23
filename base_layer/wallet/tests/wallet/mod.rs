@@ -69,7 +69,6 @@ use tari_wallet::{
         handle::TransactionEvent,
         storage::sqlite_db::TransactionServiceSqliteDatabase,
     },
-    utxo_scanner_service::utxo_scanning::UtxoScannerService,
     Wallet,
     WalletConfig,
     WalletSqlite,
