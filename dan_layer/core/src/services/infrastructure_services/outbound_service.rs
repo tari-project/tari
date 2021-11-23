@@ -27,13 +27,6 @@ use crate::{
 };
 use async_trait::async_trait;
 
-
-
-
-
-
-
-
 #[async_trait]
 pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
     async fn send(

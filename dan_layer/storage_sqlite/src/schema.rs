@@ -49,10 +49,4 @@ table! {
 
 joinable!(instructions -> nodes (node_id));
 
-allow_tables_to_appear_in_same_query!(
-    instructions,
-    locked_qc,
-    nodes,
-    prepare_qc,
-    state_keys,
-);
+allow_tables_to_appear_in_same_query!(instructions, locked_qc, nodes, prepare_qc, state_keys,);
