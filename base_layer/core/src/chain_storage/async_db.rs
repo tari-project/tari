@@ -30,7 +30,6 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature},
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
 
 use crate::{
     blocks::{
@@ -167,12 +166,16 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
+    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
+
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
     make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
+
+    make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
 
     //---------------------------------- MMR --------------------------------------------//
     make_async_fn!(prepare_new_block(template: NewBlockTemplate) -> Block, "prepare_new_block");

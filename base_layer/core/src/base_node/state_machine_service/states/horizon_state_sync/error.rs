@@ -27,6 +27,7 @@ use tokio::task;
 
 use tari_comms::{
     connectivity::ConnectivityError,
+    peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_mmr::error::MerkleMountainRangeError;
@@ -73,6 +74,15 @@ pub enum HorizonSyncError {
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error(
+        "Sync peer {peer} has a tip height of {remote_peer_height} which is less than the target height of \
+         {target_pruning_horizon}"
+    )]
+    InappropriateSyncPeer {
+        peer: NodeId,
+        target_pruning_horizon: u64,
+        remote_peer_height: u64,
+    },
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

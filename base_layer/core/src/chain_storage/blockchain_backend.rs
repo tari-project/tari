@@ -103,6 +103,13 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch kernels by MMR position
     fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError>;
 
+    /// Fetch all UTXOs and spends in the block
+    fn fetch_utxos_in_block(
+        &self,
+        header_hash: &HashOutput,
+        deleted: &Bitmap,
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
+
     fn fetch_utxos_by_mmr_position(
         &self,
         start: u64,

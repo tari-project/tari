@@ -15,7 +15,7 @@ use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
 };
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 
@@ -384,6 +384,11 @@ where B: BlockchainBackend
         db.fetch_kernel_by_excess_sig(&excess_sig)
     }
 
+    pub fn fetch_kernels_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_kernels_in_block(&hash)
+    }
+
     pub fn fetch_kernels_by_mmr_position(
         &self,
         start: u64,
@@ -391,6 +396,15 @@ where B: BlockchainBackend
     ) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_kernels_by_mmr_position(start, end)
+    }
+
+    pub fn fetch_utxos_in_block(
+        &self,
+        hash: HashOutput,
+        deleted: Arc<Bitmap>,
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_utxos_in_block(&hash, &deleted)
     }
 
     pub fn fetch_utxos_by_mmr_position(
@@ -2092,7 +2106,7 @@ fn prune_database_if_needed<T: BlockchainBackend>(
     );
     if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
         debug!(target: LOG_TARGET, "GONNA PRUNNEEEEE",);
-        // prune_to_height(db, abs_pruning_horizon - 1)?;
+        // prune_to_height(db, abs_pruning_horizon)?;
     }
 
     Ok(())
@@ -2107,7 +2121,28 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
             arg: "target_horizon_height",
             message: format!(
                 "Target pruning horizon {} is less than current pruning horizon {}",
-                target_horizon_height, last_pruned
+                target_horizon_height,
+                last_pruned + 1
+            ),
+        });
+    }
+
+    if target_horizon_height == last_pruned {
+        info!(
+            target: LOG_TARGET,
+            "Blockchain already pruned to height {}", target_horizon_height
+        );
+        return Ok(());
+    }
+
+    if metadata.height_of_longest_chain() > 0 && target_horizon_height > metadata.height_of_longest_chain() {
+        return Err(ChainStorageError::InvalidArguments {
+            func: "prune_to_block",
+            arg: "target_horizon_height",
+            message: format!(
+                "Target pruning horizon {} is less than current block height {}",
+                target_horizon_height,
+                metadata.height_of_longest_chain()
             ),
         });
     }
@@ -2121,8 +2156,9 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         "height",
         last_pruned.to_string(),
     )?;
+    let mut block_before_last = None;
     let mut txn = DbTransaction::new();
-    for block_to_prune in (last_pruned + 1)..=target_horizon_height {
+    for block_to_prune in (last_pruned + 1)..target_horizon_height {
         let header = db.fetch_chain_header_by_height(block_to_prune)?;
         let curr_block = db.fetch_block_accumulated_data_by_height(block_to_prune).or_not_found(
             "BlockAccumulatedData",
@@ -2132,18 +2168,30 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         // Note, this could actually be done in one step instead of each block, since deleted is
         // accumulated
         let output_mmr_positions = curr_block.deleted() - last_block.deleted();
+        block_before_last = Some(last_block);
         last_block = curr_block;
 
         txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
         txn.delete_all_inputs_in_block(header.hash().clone());
     }
 
-    txn.set_pruned_height(
-        target_horizon_height,
-        last_block.cumulative_kernel_sum().clone(),
-        last_block.cumulative_utxo_sum().clone(),
-    );
-    // TODO: prune block accumulated data
+    if let Some(block) = block_before_last {
+        txn.set_pruned_height(
+            target_horizon_height,
+            block.cumulative_kernel_sum().clone(),
+            block.cumulative_utxo_sum().clone(),
+        );
+    }
+    // If we prune to the tip, we cannot provide any full blocks
+    if metadata.height_of_longest_chain() == target_horizon_height {
+        let genesis = db.fetch_chain_header_by_height(0)?;
+        txn.set_best_block(
+            0,
+            genesis.hash().clone(),
+            genesis.accumulated_data().total_accumulated_difficulty,
+            vec![0; BLOCK_HASH_LENGTH],
+        );
+    }
 
     db.write(txn)?;
     Ok(())

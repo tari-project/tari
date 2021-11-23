@@ -1,18 +1,3 @@
-use std::{
-    fmt,
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-
-use croaring::Bitmap;
-use tari_crypto::tari_utilities::{
-    hex::{to_hex, Hex},
-    Hashable,
-};
-
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
-use tari_mmr::pruned_hashset::PrunedHashSet;
-
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -34,6 +19,7 @@ use tari_mmr::pruned_hashset::PrunedHashSet;
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::error::ChainStorageError,
@@ -42,6 +28,13 @@ use crate::{
         transaction_output::TransactionOutput,
     },
 };
+use std::{
+    fmt,
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},

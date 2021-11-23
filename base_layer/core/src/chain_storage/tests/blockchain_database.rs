@@ -20,15 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use tari_common::configuration::Network;
-use tari_test_utils::unpack_enum;
-
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
+    crypto::tari_utilities::hex::Hex,
     proof_of_work::Difficulty,
     tari_utilities::Hashable,
     test_helpers::{
@@ -38,9 +34,18 @@ use crate::{
     },
     transactions::{
         tari_amount::T,
-        transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
+        test_helpers::{schema_to_transaction, TransactionSchema},
+        transaction_entities::{
+            output_features::OutputFeatures,
+            transaction::Transaction,
+            unblinded_output::UnblindedOutput,
+        },
     },
+    txn_schema,
 };
+use std::sync::Arc;
+use tari_common::configuration::Network;
+use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -353,16 +358,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use crate::{
-        chain_storage::ChainStorageError,
-        crypto::tari_utilities::hex::Hex,
-        transactions::{
-            tari_amount::T,
-            test_helpers::{schema_to_transaction, TransactionSchema},
-            transaction_entities::output_features::OutputFeatures,
-        },
-        txn_schema,
-    };
 
     use super::*;
 
@@ -482,5 +477,90 @@ mod prepare_new_block {
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
+    }
+}
+
+mod fetch_header_containing_utxo_mmr {
+    use super::*;
+
+    #[test]
+    fn it_returns_genesis() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        assert_eq!(genesis.block().body.outputs().len(), 4001);
+        let mut mmr_position = 0;
+        genesis.block().body.outputs().iter().for_each(|_| {
+            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_utxo_mmr(4002).unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+
+    #[test]
+    fn it_returns_corresponding_header() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let _ = add_many_chained_blocks(5, &db);
+        let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
+
+        for i in 1..=5 {
+            let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs + i).unwrap();
+            assert_eq!(header.height(), i);
+        }
+        let err = db
+            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5 + 1)
+            .unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+}
+
+mod fetch_header_containing_kernel_mmr {
+    use super::*;
+
+    #[test]
+    fn it_returns_genesis() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        assert_eq!(genesis.block().body.kernels().len(), 2);
+        let mut mmr_position = 0;
+        genesis.block().body.kernels().iter().for_each(|_| {
+            let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_kernel_mmr(3).unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+
+    #[test]
+    fn it_returns_corresponding_header() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+        let num_genesis_kernels = genesis.block().body.kernels().len() as u64;
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![50 * T])]);
+
+        let (block, _) = create_next_block(&blocks[0], txns);
+        db.add_block(block).unwrap();
+        let _ = add_many_chained_blocks(3, &db);
+
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        assert_eq!(header.height(), 1);
+
+        for i in 2..=3 {
+            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
+            assert_eq!(header.height(), 2);
+        }
+        for i in 4..=5 {
+            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
+            assert_eq!(header.height(), i);
+        }
+
+        let err = db
+            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 5 + 1)
+            .unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 }

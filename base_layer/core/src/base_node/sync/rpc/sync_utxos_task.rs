@@ -21,137 +21,171 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},
 };
+use croaring::Bitmap;
 use log::*;
 use std::{cmp, sync::Arc, time::Instant};
 use tari_comms::{protocol::rpc::RpcStatus, utils};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
-    request: SyncUtxosRequest,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>, request: SyncUtxosRequest) -> Self {
-        Self { db, request }
+    pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
+        Self { db }
     }
 
-    pub(crate) async fn run(self, mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>) {
-        if let Err(err) = self.start_streaming(&mut tx).await {
-            let _ = tx.send(Err(err)).await;
+    pub(crate) async fn run(
+        self,
+        request: SyncUtxosRequest,
+        mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+    ) -> Result<(), RpcStatus> {
+        let start_header = self
+            .db
+            .fetch_header_containing_utxo_mmr(request.start + 1)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let end_header = self
+            .db
+            .fetch_header_by_block_hash(request.end_header_hash.clone())
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
+
+        if start_header.height() > end_header.height {
+            return Err(RpcStatus::bad_request(format!(
+                "start header height {} cannot be greater than the end header height ({})",
+                start_header.height(),
+                end_header.height
+            )));
         }
+
+        let (skip_outputs, prev_utxo_mmr_size) = if start_header.height() == 0 {
+            (request.start, 0)
+        } else {
+            let prev_header = self
+                .db
+                .fetch_header_by_block_hash(start_header.header().prev_hash.clone())
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .ok_or_else(|| RpcStatus::not_found("Previous start header hash is was not found"))?;
+
+            let skip = request.start.checked_sub(prev_header.output_mmr_size)
+                // This is a data inconsistency because fetch_header_containing_utxo_mmr returned the header we are basing this on
+                .ok_or_else(|| RpcStatus::general(format!("Data inconsistency: output mmr size of header at {} was more than the start index {}", prev_header.height, request.start)))?;
+            (skip, prev_header.output_mmr_size)
+        };
+
+        // we need to fetch the spent bitmap for the height the client requested
+        let bitmap = self
+            .db
+            .fetch_complete_deleted_bitmap_at(end_header.hash())
+            .await
+            .map_err(|_| {
+                RpcStatus::general(format!(
+                    "Could not get tip deleted bitmap at hash {}",
+                    end_header.hash().to_hex()
+                ))
+            })?
+            .into_bitmap();
+        let bitmap = Arc::new(bitmap);
+
+        let include_pruned_utxos = request.include_pruned_utxos;
+        let include_deleted_bitmaps = request.include_deleted_bitmaps;
+        task::spawn(async move {
+            if let Err(err) = self
+                .start_streaming(
+                    &mut tx,
+                    start_header.into_header(),
+                    skip_outputs,
+                    prev_utxo_mmr_size,
+                    end_header,
+                    bitmap,
+                    include_pruned_utxos,
+                    include_deleted_bitmaps,
+                )
+                .await
+            {
+                let _ = tx.send(Err(err)).await;
+            }
+        });
+
+        Ok(())
     }
 
     async fn start_streaming(
         &self,
         tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+        mut current_header: BlockHeader,
+        mut skip_outputs: u64,
+        mut prev_utxo_mmr_size: u64,
+        end_header: BlockHeader,
+        bitmap: Arc<Bitmap>,
+        include_pruned_utxos: bool,
+        include_deleted_bitmaps: bool,
     ) -> Result<(), RpcStatus> {
-        let end_header = self
-            .db
-            .fetch_header_by_block_hash(self.request.end_header_hash.clone())
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-            .ok_or_else(|| {
-                RpcStatus::not_found(format!(
-                    "End header hash {} is was not found",
-                    self.request.end_header_hash.to_hex()
-                ))
-            })?;
-
-        if self.request.start > end_header.output_mmr_size - 1 {
-            return Err(RpcStatus::bad_request(format!(
-                "start index {} cannot be greater than the end header's output MMR size ({})",
-                self.request.start, end_header.output_mmr_size
-            )));
-        }
-
-        let prev_header = self
-            .db
-            .fetch_header_containing_utxo_mmr(self.request.start)
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-        let (mut prev_header, _) = prev_header.into_parts();
-
-        if prev_header.height > end_header.height {
-            return Err(RpcStatus::bad_request("start index is greater than end index"));
-        }
-        // we need to construct a temp bitmap for the height the client requested
-        let bitmap = self
-            .db
-            .fetch_complete_deleted_bitmap_at(end_header.hash())
-            .await
-            .map_err(|_| RpcStatus::not_found("Could not get tip deleted bitmap"))?
-            .into_bitmap();
-
-        let bitmap = Arc::new(bitmap);
-        loop {
+        debug!(
+            target: LOG_TARGET,
+            "Starting stream task with current_header: {}, skip_outputs: {}, prev_utxo_mmr_size: {}, end_header: {}, \
+             include_pruned_utxos: {:?}, include_deleted_bitmaps: {:?}",
+            current_header.hash().to_hex(),
+            skip_outputs,
+            prev_utxo_mmr_size,
+            end_header.hash().to_hex(),
+            include_pruned_utxos,
+            include_deleted_bitmaps
+        );
+        while current_header.height <= end_header.height {
             let timer = Instant::now();
-            if prev_header.height == end_header.height {
-                break;
-            }
-
-            let current_header = self
-                .db
-                .fetch_header(prev_header.height + 1)
-                .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                .ok_or_else(|| {
-                    RpcStatus::general(format!(
-                        "Potential data consistency issue: header {} not found",
-                        prev_header.height + 1
-                    ))
-                })?;
+            let current_header_hash = current_header.hash();
 
             debug!(
                 target: LOG_TARGET,
-                "previous header = {} ({}) current header = {} ({})",
-                prev_header.height,
-                prev_header.hash().to_hex(),
+                "current header = {} ({})",
                 current_header.height,
-                current_header.hash().to_hex()
+                current_header_hash.to_hex()
             );
 
-            let start = cmp::max(self.request.start, prev_header.output_mmr_size);
-            let end = current_header.output_mmr_size - 1;
+            let start = prev_utxo_mmr_size + skip_outputs;
+            let end = current_header.output_mmr_size;
 
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Exiting sync_utxos early because client has gone",);
                 break;
             }
 
-            debug!(
-                target: LOG_TARGET,
-                "Streaming UTXOs {}-{} ({}) for block #{}",
-                start,
-                end,
-                end.saturating_sub(start).saturating_add(1),
-                current_header.height
-            );
             let (utxos, deleted_diff) = self
                 .db
-                .fetch_utxos_by_mmr_position(start, end, bitmap.clone())
+                .fetch_utxos_in_block(current_header.hash(), bitmap.clone())
                 .await
                 .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-            trace!(
+            debug!(
                 target: LOG_TARGET,
-                "Loaded {} UTXO(s) and |deleted_diff| = {}",
+                "Streaming UTXO(s) {}-{} ({}) for block #{}. Deleted diff len = {}",
+                start,
+                end,
                 utxos.len(),
+                current_header.height,
                 deleted_diff.cardinality(),
             );
             let utxos = utxos
                     .into_iter()
                     .enumerate()
+                    .skip(skip_outputs as usize)
                     // Only include pruned UTXOs if include_pruned_utxos is true
-                    .filter(|(_, utxo)| self.request.include_pruned_utxos || !utxo.is_pruned())
+                    .filter(|(_, utxo)| include_pruned_utxos || !utxo.is_pruned())
                     .map(|(i, utxo)| {
                         SyncUtxosResponse {
                             utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(
@@ -167,7 +201,10 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            if self.request.include_deleted_bitmaps {
+            // We only want to skip the first block UTXOs
+            skip_outputs = 0;
+
+            if include_deleted_bitmaps {
                 let bitmaps = SyncUtxosResponse {
                     utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::DeletedDiff(
                         deleted_diff.serialize(),
@@ -187,14 +224,25 @@ where B: BlockchainBackend + 'static
                 timer.elapsed()
             );
 
-            prev_header = current_header;
+            prev_utxo_mmr_size = current_header.output_mmr_size;
+            current_header = self
+                .db
+                .fetch_header(current_header.height + 1)
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .ok_or_else(|| {
+                    RpcStatus::general(format!(
+                        "Potential data consistency issue: header {} not found",
+                        current_header.height + 1
+                    ))
+                })?;
         }
 
         debug!(
             target: LOG_TARGET,
             "UTXO sync completed to UTXO {} (Header hash = {})",
-            prev_header.output_mmr_size,
-            prev_header.hash().to_hex()
+            current_header.output_mmr_size,
+            current_header.hash().to_hex()
         );
 
         Ok(())

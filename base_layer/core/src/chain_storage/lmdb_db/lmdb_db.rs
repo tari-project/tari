@@ -37,7 +37,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
 };
-use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
+use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 use crate::{
@@ -1596,12 +1596,11 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        Ok(
-            lmdb_fetch_keys_starting_with(header_hash.to_hex().as_str(), &txn, &self.kernels_db)?
-                .into_iter()
-                .map(|f: TransactionKernelRowData| f.kernel)
-                .collect(),
-        )
+        let kernels = lmdb_fetch_keys_starting_with(header_hash.to_hex().as_str(), &txn, &self.kernels_db)?
+            .into_iter()
+            .map(|f: TransactionKernelRowData| f.kernel)
+            .collect();
+        Ok(kernels)
     }
 
     fn fetch_kernel_by_excess(
@@ -1641,62 +1640,116 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        if let Some(start_height) = lmdb_first_after(&txn, &self.kernel_mmr_size_index, &(start + 1).to_be_bytes())? {
-            let end_height: u64 =
-                lmdb_first_after(&txn, &self.kernel_mmr_size_index, &(end + 1).to_be_bytes())?.unwrap_or(start_height);
 
-            let previous_mmr_count = if start_height == 0 {
-                0
-            } else {
-                let header: BlockHeader =
-                    lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.expect("Header should exist");
-                debug!(target: LOG_TARGET, "Previous header:{}", header);
-                header.kernel_mmr_size
-            };
+        let start_height = match lmdb_first_after(&txn, &self.kernel_mmr_size_index, &(start + 1).to_be_bytes())? {
+            Some(h) => h,
+            None => return Ok(vec![]),
+        };
+        let end_height: u64 =
+            lmdb_first_after(&txn, &self.kernel_mmr_size_index, &(end + 1).to_be_bytes())?.unwrap_or(start_height);
 
-            let total_size = (end - start) as usize + 1;
-            let mut result = Vec::with_capacity(total_size);
+        let previous_mmr_count = if start_height == 0 {
+            0
+        } else {
+            let header: BlockHeader =
+                lmdb_get(&txn, &self.headers_db, &(start_height - 1))?.expect("Header should exist");
+            debug!(target: LOG_TARGET, "Previous header:{}", header);
+            header.kernel_mmr_size
+        };
 
-            let mut skip_amount = (start - previous_mmr_count) as usize;
-            debug!(
-                target: LOG_TARGET,
-                "Fetching kernels by MMR position. Start {}, end {}, in headers at height {}-{},  prev mmr count: {}, \
-                 skipping the first:{}",
-                start,
-                end,
-                start_height,
-                end_height,
-                previous_mmr_count,
-                skip_amount
+        let total_size = (end - start) as usize + 1;
+        let mut result = Vec::with_capacity(total_size);
+
+        let mut skip_amount = (start - previous_mmr_count) as usize;
+        debug!(
+            target: LOG_TARGET,
+            "Fetching kernels by MMR position. Start {}, end {}, in headers at height {}-{},  prev mmr count: {}, \
+             skipping the first:{}",
+            start,
+            end,
+            start_height,
+            end_height,
+            previous_mmr_count,
+            skip_amount
+        );
+
+        for height in start_height..=end_height {
+            let acc_data = lmdb_get::<_, BlockHeaderAccumulatedData>(&txn, &self.header_accumulated_data_db, &height)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "BlockHeader",
+                    field: "height",
+                    value: height.to_string(),
+                })?;
+
+            result.extend(
+                lmdb_fetch_keys_starting_with::<TransactionKernelRowData>(
+                    acc_data.hash.to_hex().as_str(),
+                    &txn,
+                    &self.kernels_db,
+                )?
+                .into_iter()
+                .skip(skip_amount)
+                .take(total_size - result.len())
+                .map(|f| f.kernel),
             );
 
-            for height in start_height..=end_height {
-                let hash = lmdb_get::<_, BlockHeaderAccumulatedData>(&txn, &self.header_accumulated_data_db, &height)?
-                    .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "BlockHeader",
-                        field: "height",
-                        value: height.to_string(),
-                    })?
-                    .hash;
-
-                result.extend(
-                    lmdb_fetch_keys_starting_with::<TransactionKernelRowData>(
-                        hash.to_hex().as_str(),
-                        &txn,
-                        &self.kernels_db,
-                    )?
-                    .into_iter()
-                    .skip(skip_amount)
-                    .take(total_size - result.len())
-                    .map(|f| f.kernel),
-                );
-
-                skip_amount = 0;
-            }
-            Ok(result)
-        } else {
-            Ok(vec![])
+            skip_amount = 0;
         }
+        Ok(result)
+    }
+
+    fn fetch_utxos_in_block(
+        &self,
+        header_hash: &HashOutput,
+        deleted: &Bitmap,
+    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
+        let txn = self.read_transaction()?;
+
+        let height =
+            self.fetch_height_from_hash(&txn, header_hash)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "BlockHeader",
+                    field: "hash",
+                    value: header_hash.to_hex(),
+                })?;
+
+        let utxos = lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(
+            header_hash.to_hex().as_str(),
+            &txn,
+            &self.utxos_db,
+        )?
+        .into_iter()
+        .map(|row| {
+            if deleted.contains(row.mmr_position) {
+                return PrunedOutput::Pruned {
+                    output_hash: row.hash,
+                    witness_hash: row.witness_hash,
+                };
+            }
+            if let Some(output) = row.output {
+                PrunedOutput::NotPruned { output }
+            } else {
+                PrunedOutput::Pruned {
+                    output_hash: row.hash,
+                    witness_hash: row.witness_hash,
+                }
+            }
+        })
+        .collect();
+
+        // Builds a BitMap of the deleted UTXO MMR indexes that occurred at the current height
+        let acc_data =
+            self.fetch_block_accumulated_data(&txn, height)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "BlockAccumulatedData",
+                    field: "height",
+                    value: height.to_string(),
+                })?;
+
+        let mut difference_bitmap = Bitmap::create();
+        difference_bitmap.or_inplace(acc_data.deleted());
+
+        Ok((utxos, difference_bitmap))
     }
 
     fn fetch_utxos_by_mmr_position(

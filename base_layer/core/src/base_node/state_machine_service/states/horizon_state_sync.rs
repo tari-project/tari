@@ -68,21 +68,23 @@ impl HorizonStateSync {
     ) -> StateEvent {
         let local_metadata = match shared.db.get_chain_metadata().await {
             Ok(metadata) => metadata,
-            Err(err) => return StateEvent::FatalError(err.to_string()),
+            Err(err) => return err.into(),
         };
 
-        if local_metadata.height_of_longest_chain() > 0 &&
-            local_metadata.height_of_longest_chain() >= local_metadata.pruned_height()
-        {
+        let last_header = match shared.db.fetch_last_header().await {
+            Ok(h) => h,
+            Err(err) => return err.into(),
+        };
+
+        let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+        if local_metadata.pruned_height() >= horizon_sync_height {
+            info!(target: LOG_TARGET, "Horizon state was already synchronized.");
             return StateEvent::HorizonStateSynchronized;
         }
 
-        let horizon_sync_height = match shared.db.fetch_last_header().await {
-            Ok(header) => header.height.saturating_sub(local_metadata.pruning_horizon()),
-            Err(err) => return StateEvent::FatalError(err.to_string()),
-        };
-
-        if local_metadata.height_of_longest_chain() > horizon_sync_height {
+        // We're already synced because we have full blocks higher than our target pruned height
+        if local_metadata.height_of_longest_chain() >= horizon_sync_height {
+            info!(target: LOG_TARGET, "Horizon state was already synchronized.");
             return StateEvent::HorizonStateSynchronized;
         }
 
