@@ -4,8 +4,9 @@ on:
       - development
       - main
       - ci-*
+      - validator-node
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened]
 
 name: CI
 
@@ -14,8 +15,8 @@ env:
   toolchain: nightly-2021-09-18
 
 jobs:
-  clippy:
-    name: clippy
+  fmt:
+    name: fmt
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
@@ -39,11 +40,83 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
-      - name: Clippy check
-        uses: actions-rs/clippy-check@v1
+  check:
+    name: check
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+          override: true
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo check
+        uses: actions-rs/cargo@v1
+  clippy:
+    name: clippy
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+          override: true
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+      # - name: Clippy check
+      #   uses: actions-rs/clippy-check@v1
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     args: --all-features
+  build:
+    name: build
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+          override: true
+      - name: Caching
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
   test:
     name: test
     runs-on: ubuntu-18.04
