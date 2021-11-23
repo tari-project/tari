@@ -49,11 +49,12 @@ technological merits of the potential system outlined herein.
 ## Goals
 
 This Request for Comment (RFC) presents a proposal for introducing _covenants_ into the Tari base layer protocol. Tari
-Covenents aims to provide restrictions on the _future_ spending of subsequent transactions to enable a number of powerful 
+Covenants aims to provide restrictions on the _future_ spending of subsequent transactions to enable a number of powerful
 use-cases, such as
+
 - [vaults]
 - side-chain checkpointing transactions,
-- commission on NFT transfers, and 
+- commission on NFT transfers, and
 - many others not thought of here.
 
 ## Related Requests for Comment
@@ -65,42 +66,44 @@ use-cases, such as
 
 The Tari protocol already provides programmable consensus, through [TariScript], that restricts whether a [UTXO]
 may be included as an input to a transaction (a.k.a spent). The scope of information [TariScript] is inherently limited,
-by the [TariScript Opcodes] and the input data provided by a spender. Once the requirements of the script are met, 
-a spender may generate [UTXO]s of their choosing, within the constraints of [MimbleWimble]. 
+by the [TariScript Opcodes] and the input data provided by a spender. Once the requirements of the script are met,
+a spender may generate [UTXO]s of their choosing, within the constraints of [MimbleWimble].
 
-This RFC aims to expand the capabilities of Tari protocol by adding _additional requirements_, called covenants 
-that allow the owner(s) of a [UTXO] to control the composition of a _subsequent_ transaction. 
+This RFC aims to expand the capabilities of Tari protocol by adding _additional requirements_, called covenants
+that allow the owner(s) of a [UTXO] to control the composition of a _subsequent_ transaction.
 
 Covenants are not a new idea and have been proposed and implemented in various forms by others.
 
 For example,
-- [Bitcoin-NG covenents] put forward the `CheckOutputVerify` script opcode.
-- [Handshake] has implemented covenants to add  the [UTXO] state of their auctioning process.
+
+- [Bitcoin-NG covenants] put forward the `CheckOutputVerify` script opcode.
+- [Handshake] has implemented covenants to add the [UTXO] state of their auctioning process.
 - [Elements Covenants]
 
-## Covenants in MimbleWimble 
+## Covenants in MimbleWimble
 
-In block chains like Bitcoin, a block contains discrete transactions containing inputs and outputs. A covenant 
+In blockchains like Bitcoin, a block contains discrete transactions containing inputs and outputs. A covenant
 in Bitcoin would be able to interrogate those outputs _belonging to the input_ to ensure that they adhere to rules.
 
 In [MimbleWimble], the body of a block and transaction can be expressed in an identical data structure. This
 is indeed the case in the [Tari codebase], which defines a structure called `AggregateBody` containing inputs
-and outputs (and kernels) for transactions and blocks. This is innate to [MimbleWimble], so even if we were 
-to put a "box" around these inputs/outputs there is nothing to stop someone from including inputs and 
+and outputs (and kernels) for transactions and blocks. This is innate to [MimbleWimble], so even if we were
+to put a "box" around these inputs/outputs there is nothing to stop someone from including inputs and
 outputs from other boxes as long as balance is maintained.
 
 This results in an interesting dilemma: how do we allow rules that dictate how future outputs look only armed with
 the knowledge that the rule must apply to one or more outputs?
 
-In this RFC, we propose a covenant scheme that allows the [UTXO] originator to express a _filter_ that must be 
+In this RFC, we propose a covenant scheme that allows the [UTXO] originator to express a _filter_ that must be
 satisfied for a subsequent spending transaction to be considered valid.
 
 ## Assumptions
 
 The following assumptions are made:
+
 1. Duplicate commitments within a block are disallowed by consensus _prior_ to covenant execution,
 2. all outputs in the output set are valid, and
-3. all inputs are valid spends, save for covenent checks.
+3. all inputs are valid spends, save for covenant checks.
 
 ## Protocol modifications
 
@@ -114,7 +117,7 @@ Modifications to the existing protocol and consensus are as follows:
 ### Transaction input and output changes
 
 A `covenant` field would need to be added to the `TransactionOutput` and `TransactionInput` structs
-and committed to in their hashes. 
+and committed to in their hashes.
 
 ### Covenant definition
 
@@ -122,22 +125,23 @@ We define a clear notation for covenants that mirrors the [miniscript] project.
 
 #### Execution Context and Scope
 
-Covenants execute within a limited read-only context and scope. This is both to reduce complexity (and therefore 
-the possibility of bugs) and maintain reasonable performance. 
+Covenants execute within a limited read-only context and scope. This is both to reduce complexity (and therefore
+the possibility of bugs) and maintain reasonable performance.
 
 A covenant's context is limited to:
-- a immutable reference to the current input,
-- a vector of immutable _references_ to outputs in the current block/transaction (called, the output set), 
+
+- an immutable reference to the current input,
+- a vector of immutable _references_ to outputs in the current block/transaction (called the output set),
 - the current input's mined height, and
 - the current block height.
 
-Each output's covenant is executed with this context, filtering on the output set and returning the result. 
+Each output's covenant is executed with this context, filtering on the output set and returning the result.
 The output set given to each covenant at execution MUST be the same set for all covenants and MUST never be
-influenced by other covenants. The stateless and immutable nature of this scheme has the benefit of being 
+influenced by other covenants. The stateless and immutable nature of this scheme has the benefit of being
 able to execute covenants in parallel.
 
-A covenant passes if at least one output in the set is matched. Allowing more than one output to match allows for 
-covenants that restrict the characteristics of multiple outputs. A covenant that matches zero outputs _fails_ 
+A covenant passes if at least one output in the set is matched. Allowing more than one output to match allows for
+covenants that restrict the characteristics of multiple outputs. A covenant that matches zero outputs _fails_
 which invalidates the transaction/block.
 
 If a covenant is empty (zero bytes) the `identity` operation is implied and therefore, no actual execution need occur.
@@ -149,7 +153,7 @@ enum CovenantArg {
     // byte code: 0x01
     // data size: 32 bytes
     Hash([u8; 32]),
-    // byte code: 0x02 
+    // byte code: 0x02
     // data size: 32 bytes
     PublicKey(RistrettoPublicKey),
     // byte code: 0x03
@@ -162,16 +166,16 @@ enum CovenantArg {
     // data size: variable
     Script(TariScript),
     // byte code: 0x06
-    // data size: variable 
+    // data size: variable
     Covenant(Covenant),
     // byte code: 0x07
-    // data size: variable 
+    // data size: variable
     VarInt(VarInt),
     // byte code: 0x08
-    // data size: 1 byte 
+    // data size: 1 byte
     Field(FieldKey),
     // byte code: 0x09
-    // data size: variable 
+    // data size: variable
     Fields(Vec<FieldKey>),
 }
 ```
@@ -181,24 +185,23 @@ enum CovenantArg {
 Fields from each output in the output set may be brought into a covenant filter.
 The available fields are defined as follows:
 
-
-| Tag Name                             	| Byte Code 	| Returns                           	|
-|---------------------------------------|---------------|---------------------------------------|
-| `field::commitment`                 	| 0x00      	| output.commitment                 	|
-| `field::script`                     	| 0x01      	| output.script                     	|
-| `field::sender_offset_public_key`   	| 0x02      	| output.sender_offset_public_key   	|
-| `field::covenant`                   	| 0x03      	| output.covenant                   	|
-| `field::features`                   	| 0x04      	| output.features                   	|
-| `field::features_flags`             	| 0x05      	| output.features.flags             	|
-| `field::features_maturity`          	| 0x06      	| output.features.maturity          	|
-| `field::features_unique_id`         	| 0x07      	| output.features.unique_id         	|
-| `field::features_parent_public_key` 	| 0x08      	| output.features.parent_public_key 	|
-| `field::features_metadata`         	| 0x09      	| output.features.metadata          	|
+| Tag Name                            | Byte Code | Returns                           |
+| ----------------------------------- | --------- | --------------------------------- |
+| `field::commitment`                 | 0x00      | output.commitment                 |
+| `field::script`                     | 0x01      | output.script                     |
+| `field::sender_offset_public_key`   | 0x02      | output.sender_offset_public_key   |
+| `field::covenant`                   | 0x03      | output.covenant                   |
+| `field::features`                   | 0x04      | output.features                   |
+| `field::features_flags`             | 0x05      | output.features.flags             |
+| `field::features_maturity`          | 0x06      | output.features.maturity          |
+| `field::features_unique_id`         | 0x07      | output.features.unique_id         |
+| `field::features_parent_public_key` | 0x08      | output.features.parent_public_key |
+| `field::features_metadata`          | 0x09      | output.features.metadata          |
 
 Each field tag returns a consensus encoded byte representation of the value contained in the field.
-How those bytes are interpreted depends on the covenant. For instance, `filter_fields_hashed_eq` will 
+How those bytes are interpreted depends on the covenant. For instance, `filter_fields_hashed_eq` will
 concatenate the bytes and hash the result whereas `filter_field_int_eq` will interpret the bytes as a
-little-endian 64-byte unsigned integer.
+little-endian 64-bit unsigned integer.
 
 #### Set operations
 
@@ -231,7 +234,7 @@ args: [Covenant, Covenant]
 
 ##### xor(A, B)
 
-The symmetric difference (\\(A \triangle B\\)) of the resulting output set for covenant rules \\(A\\) and \\(B\\). 
+The symmetric difference (\\(A \triangle B\\)) of the resulting output set for covenant rules \\(A\\) and \\(B\\).
 This is, outputs that match either \\(A\\) or \\(B\\) but not both.
 
 ```yaml
@@ -298,7 +301,7 @@ args: [Fields, VarInt]
 
 ##### filter_relative_height(height)
 
-Checks the block height that current [UTXO] (i.e. the current input) was mined plus `height` is greater than or 
+Checks the block height that the current [UTXO] (i.e. the current input) was mined plus `height` is greater than or
 equal to the current block height. If so, the `identity()` is returned, otherwise `empty()`.
 
 ```yaml
@@ -308,10 +311,10 @@ args: [VarInt]
 
 #### Encoding / Decoding
 
-Convenants can be encoded to/decoded from bytes as a token stream. Each token is consumed and interpreted serially
+Covenants can be encoded to/decoded from bytes as a token stream. Each token is consumed and interpreted serially
 before being executed.
 
-For instance, 
+For instance,
 
 ```
 xor(
@@ -322,6 +325,7 @@ xor(
 
 is represented in hex bytes as `23 30 01 a8b3f48e39449e89f7ff699b3eb2b080a2479b09a600a19d8ba48d765fe5d47d 35 07 0a`.
 Let's unpack that as follows:
+
 ```
 23 // xor - consume two covenant args
 30 // filter_output_hash_eq - consume a hash arg
@@ -330,7 +334,7 @@ a8b3f48e39449e89f7ff699b3eb2b080a2479b09a600a19d8ba48d765fe5d47d // data
 // end filter_output_hash_eq
 35 // 2nd covenant - filter_relative_height
 07 // varint
-0A // 10 
+0A // 10
 // end varint, filter_relative_height, xor
 ```
 
@@ -342,31 +346,31 @@ of field identifiers to consume. To mitigate misuse, the maximum allowed argumen
 
 A covenant and therefore the block/transaction MUST be regarded as invalid if:
 
-1. an unrecognised byte code is encountered
+1. an unrecognised bytecode is encountered
 2. the end of the byte stream is reached unexpectedly
 3. there are bytes remaining on the stream after interpreting
 4. an invalid argument type is encountered
 5. the `Fields` type encounters more than 9 arguments (i.e. the number of fields tags available)
-6. the depth of the calls exceeds 16. 
+6. the depth of the calls exceeds 16.
 
 ### Consensus changes
 
 The covenant is executed once all other validations, including [TariScript], are complete. This ensures that
-invalid transactions in a block cannot influence the results. 
+invalid transactions in a block cannot influence the results.
 
-## Considerations 
+## Considerations
 
 ### Complexity
 
-This introduces additional validation complexity. We avoid stacks, loop, and conditionals (covenants are basically 
-one conditional), there are overheads both in terms of complexity and performance as a trade-off for the 
-power given by covenants. 
+This introduces additional validation complexity. We avoid stacks, loops, and conditionals (covenants are basically
+one conditional), there are overheads both in terms of complexity and performance as a trade-off for the
+power given by covenants.
 
 The worst case complexity for covenant validation is `O(num_inputs*num_outputs)`, although as mentioned above
-validation for each input can be executed in parallel. To compensate for the additional workload the network 
+validation for each input can be executed in parallel. To compensate for the additional workload the network
 encounters, use of covenants should incur heavily-weighted fees to discourage needlessly using them.
 
-### Cut-through 
+### Cut-through
 
 The same arguments made in the [TariScript RFC](./RFC-0201_TariScript.md#cut-through) for the need to prevent
 [cut-through] apply to covenants.
@@ -377,8 +381,8 @@ The same arguments made in the [TariScript RFC](./RFC-0201_TariScript.md#fodder-
 
 ### Security
 
-As all outputs in a block are in the scope of an input to be checked, any unrelated/malicious output in a block 
-_could_ pass an unrelated covenant rule if given the chance. A secure covenant is one that _uniquely_ identifies 
+As all outputs in a block are in the scope of an input to be checked, any unrelated/malicious output in a block
+_could_ pass an unrelated covenant rule if given the chance. A secure covenant is one that _uniquely_ identifies
 one or more outputs.
 
 ## Examples
@@ -396,8 +400,8 @@ the miner.
 
 ### NFT transfer
 
-Output features as detailed in [RFC-310-AssetImplementation] (early draft stages, still to be finalised) contain the 
-NFT details. This covenant preserves both the covenant protecting the token, and the token itself. 
+Output features as detailed in [RFC-310-AssetImplementation] (early draft stages, still to be finalised) contain the
+NFT details. This covenant preserves both the covenant protecting the token, and the token itself.
 
 ```
 filter_fields_preserved([field::features, field::covenant])
@@ -429,7 +433,7 @@ xor(
     and(
         filter_field_int_eq(field::features_flags, 128), // FLAG_BURN = 128
         filter_fields_hashed_eq([field::commitment, field::script], Hash(...)),
-    ), 
+    ),
 )
 ```
 
@@ -456,13 +460,15 @@ xor(
 - `filter_script_match(<pattern>)`
 - `filter_covenant_match(<pattern>)`
 
-[commitment]: (./Glossary.md#commitment)
-[Tari codebase]: (https://github.com/tari-project/tari)
-[Handshake]: https://handshake.org/files/handshake.txt
+[commitment]: ./Glossary.md#commitment
+[tari codebase]: https://github.com/tari-project/tari
+[handshake]: https://handshake.org/files/handshake.txt
 [cut-through]: https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#cut-through
-[RFC-0310_AssetImplementation]: https://github.com/tari-project/tari/pull/3340
-[Bitcoin-NG covenants](https://maltemoeser.de/paper/covenants.pdf)
-[UTXO](./Glossary.md#unspent-transaction-outputs)
-[miniscript](https://medium.com/blockstream/miniscript-bitcoin-scripting-3aeff3853620)
-[Elements Covenants](https://blockstream.com/2016/11/02/en-covenants-in-elements-alpha/)
-[vaults](https://hackingdistributed.com/2016/02/26/how-to-implement-secure-bitcoin-vaults/)
+[rfc-0310_assetimplementation]: https://github.com/tari-project/tari/pull/3340
+[bitcoin-ng covenants]: https://maltemoeser.de/paper/covenants.pdf
+[utxo]: ./Glossary.md#unspent-transaction-outputs
+[miniscript]: https://medium.com/blockstream/miniscript-bitcoin-scripting-3aeff3853620
+[elements covenants]: https://blockstream.com/2016/11/02/en-covenants-in-elements-alpha/
+[vaults]: https://hackingdistributed.com/2016/02/26/how-to-implement-secure-bitcoin-vaults/
+[tariscript]: ./Glossary.md#tariscript
+[mimblewimble]: ./Glossary.md#mimblewimble
