@@ -20,16 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod address;
-mod asset;
-mod asset_wallet;
-mod key_indices;
-mod tip002_address;
-mod wallet;
+use crate::{
+  app_state::ConcurrentAppState,
+  models::NewKeyIndex,
+  storage::{CollectiblesStorage, KeyIndicesTableGateway},
+};
+use tari_common_types::types::PublicKey;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
-pub use address::Address;
-pub use asset::Asset;
-pub use asset_wallet::AssetWallet;
-pub use key_indices::KeyIndex;
-pub use tip002_address::Tip002Address;
-pub use wallet::Wallet;
+#[tauri::command]
+pub(crate) async fn next_asset_public_key(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<PublicKey, String> {
+  let key = state.next_asset_secret_key().await?;
+
+  let key_index = NewKeyIndex {
+    branch_seed: "assets".into(),
+    index: key.key_index,
+  };
+
+  state
+    .create_db()
+    .await
+    .map_err(|e| format!("Could not connect to DB: {}", e))?
+    .key_indices()
+    .insert(key_index)
+    .map_err(|e| format!("Could not save key index: {}", e))?;
+
+  Ok(PublicKey::from_secret_key(&key.k))
+}

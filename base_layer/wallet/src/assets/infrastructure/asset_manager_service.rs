@@ -90,6 +90,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
             }),
             AssetManagerRequest::CreateRegistrationTransaction {
                 name,
+                public_key,
                 template_ids_implemented,
                 description,
                 image,
@@ -99,6 +100,7 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     .manager
                     .create_registration_transaction(
                         name,
+                        *public_key,
                         description,
                         image,
                         template_ids_implemented,

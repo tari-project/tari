@@ -30,14 +30,23 @@ use crate::{
   },
 };
 use std::sync::Arc;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_crypto::common::Blake256;
+use tari_key_manager::{
+  cipher_seed::CipherSeed,
+  key_manager::{DerivedKey as DerivedKeyGeneric, KeyManager as GenericKeyManager},
+};
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
+
+type KeyDigest = Blake256;
+pub type DerivedKey = DerivedKeyGeneric<PrivateKey>;
+pub type KeyManager = GenericKeyManager<PrivateKey, KeyDigest>;
 
 pub struct AppState {
   config: Settings,
   db_factory: SqliteDbFactory,
-  passphrase: Option<String>,
+  asset_key_manager: KeyManager,
   current_wallet_id: Option<Uuid>,
 }
 
@@ -53,18 +62,32 @@ impl ConcurrentAppState {
       inner: Arc::new(RwLock::new(AppState {
         db_factory: SqliteDbFactory::new(settings.data_dir.as_path()),
         config: settings,
-        passphrase: None,
+        asset_key_manager: KeyManager::new(),
         current_wallet_id: None,
       })),
     }
   }
 
-  pub async fn passphrase(&self) -> Option<String> {
-    self.inner.read().await.passphrase.clone()
+  pub async fn set_asset_key_manager(
+    &self,
+    seed: CipherSeed,
+    branch_seed: String,
+    primary_key_index: u64,
+  ) -> Result<bool, String> {
+    self.inner.write().await.asset_key_manager =
+      KeyManager::from(seed, branch_seed, primary_key_index);
+
+    Ok(true)
   }
 
-  pub async fn set_passphrase(&mut self, pass: Option<String>) {
-    self.inner.write().await.passphrase = pass;
+  pub async fn next_asset_secret_key(&self) -> Result<DerivedKey, String> {
+    self
+      .inner
+      .write()
+      .await
+      .asset_key_manager
+      .next_key()
+      .map_err(|e| e.to_string())
   }
 
   pub async fn create_wallet_client(&self) -> WalletClient {

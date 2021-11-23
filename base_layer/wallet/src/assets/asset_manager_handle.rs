@@ -96,6 +96,7 @@ impl AssetManagerHandle {
     pub async fn create_registration_transaction(
         &mut self,
         name: String,
+        public_key: PublicKey,
         template_ids_implemented: Vec<u32>,
         description: Option<String>,
         image: Option<String>,
@@ -105,6 +106,7 @@ impl AssetManagerHandle {
             .handle
             .call(AssetManagerRequest::CreateRegistrationTransaction {
                 name,
+                public_key: Box::new(public_key),
                 template_ids_implemented,
                 description,
                 image,

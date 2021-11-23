@@ -42,12 +42,16 @@ use uuid::Uuid;
 #[tauri::command]
 pub(crate) async fn assets_create(
   name: String,
+  public_key: String,
   description: String,
   image: String,
   template_ids: Vec<u32>,
   template_parameters: Vec<TemplateParameter>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<String, String> {
+  let public_key =
+    PublicKey::from_hex(&public_key).map_err(|e| format!("Failed to parse public key: {}", e))?;
+
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
   let tp = template_parameters
@@ -69,6 +73,7 @@ pub(crate) async fn assets_create(
   let res = client
     .register_asset(
       name.clone(),
+      public_key.clone(),
       description.clone(),
       image.clone(),
       template_ids,

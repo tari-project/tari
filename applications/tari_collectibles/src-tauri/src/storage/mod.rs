@@ -41,6 +41,7 @@ pub trait CollectiblesStorage {
   type AssetWallets: AssetWalletsTableGateway<Self::Transaction>;
   type IssuedAssets: IssuedAssetsTableGateway;
   type Tip002Addresses: Tip002AddressesTableGateway;
+  type KeyIndices: KeyIndicesTableGateway;
   type Wallets: WalletsTableGateway<Self::Transaction>;
   type Transaction: StorageTransaction;
 
@@ -50,6 +51,7 @@ pub trait CollectiblesStorage {
   fn asset_wallets(&self) -> Self::AssetWallets;
   fn issued_assets(&self) -> Self::IssuedAssets;
   fn tip002_addresses(&self) -> Self::Tip002Addresses;
+  fn key_indices(&self) -> Self::KeyIndices;
   fn wallets(&self) -> Self::Wallets;
 }
 
@@ -71,6 +73,12 @@ pub trait WalletsTableGateway<T: StorageTransaction> {
     pass: Self::Passphrase,
     tx: Option<&T>,
   ) -> Result<CipherSeed, StorageError>;
+}
+
+pub trait KeyIndicesTableGateway {
+  fn list(&self) -> Result<Vec<KeyIndex>, StorageError>;
+  fn insert(&self, key_index: NewKeyIndex) -> Result<KeyIndex, StorageError>;
+  fn find(&self, branch_seed: String) -> Result<Option<KeyIndex>, StorageError>;
 }
 
 pub trait AssetWalletsTableGateway<T: StorageTransaction> {

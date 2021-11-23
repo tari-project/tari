@@ -48,6 +48,7 @@ class Create extends React.Component {
 
     this.state = {
       name: "Asset1",
+      publicKey: "",
       description: "",
       image: "",
       cid: "",
@@ -59,10 +60,10 @@ class Create extends React.Component {
       tip002Data: {
         totalSupply: 0,
         symbol: "NAH",
-        decimals: 2
+        decimals: 2,
       },
-      tip003Data:{
-        committee: []
+      tip003Data: {
+        committee: [],
       },
       newCommitteePubKey: "",
     };
@@ -72,6 +73,16 @@ class Create extends React.Component {
 
   componentDidMount() {
     this.cleanup = appWindow.listen("tauri://file-drop", this.dropFile);
+    console.log("didmount");
+    if (!this.state.publicKey) {
+      binding
+        .command_next_asset_public_key()
+        .then((publicKey) => {
+          console.log("public key", publicKey);
+          this.setState({ publicKey });
+        })
+        .catch((e) => console.error(e));
+    }
   }
 
   dropFile = async ({ payload }) => {
@@ -89,9 +100,7 @@ class Create extends React.Component {
 
   save = async () => {
     this.setState({ isSaving: true });
-    let name = this.state.name;
-    let description = this.state.description;
-    let image = this.state.image;
+    let { name, publicKey, description, image } = this.state;
     try {
       let templateIds = [1];
       let templateParameters = [];
@@ -102,13 +111,11 @@ class Create extends React.Component {
         let payload = {
           symbol: this.state.tip002Data.symbol,
           decimals: parseInt(this.state.tip002Data.decimals),
-          total_supply: parseInt(this.state.tip002Data.totalSupply)
+          total_supply: parseInt(this.state.tip002Data.totalSupply),
         };
 
         await protobuf.load("proto/tip002.proto").then(function (root) {
-
           let InitRequest = root.lookupType("tip002.InitRequest");
-
 
           var errMsg = InitRequest.verify(payload);
           if (errMsg) {
@@ -123,20 +130,23 @@ class Create extends React.Component {
           templateParameters.push({
             template_id: 2,
             template_data_version: 1,
-            template_data:Array.from(arr)
+            template_data: Array.from(arr),
           });
         });
       }
 
-      let publicKey = await binding.command_assets_create(
+      let pk = await binding.command_assets_create(
         name,
+        publicKey,
         description,
         image,
-          templateIds, templateParameters
+        templateIds,
+        templateParameters
       );
+      console.log("pk", pk);
 
       // TODO: How to create the initial checkpoint?
-      if (this.state.tip003 ) {
+      if (this.state.tip003) {
         let res = await binding.command_asset_create_initial_checkpoint(
           publicKey,
           this.state.tip003Data.committee
@@ -172,12 +182,12 @@ class Create extends React.Component {
     this.setState({ tip003: e.target.checked });
   };
 
-  onTip002DataChanged = (field, e) =>  {
-    let tip002Data ={};
+  onTip002DataChanged = (field, e) => {
+    let tip002Data = {};
     tip002Data[field] = e.target.value;
-    tip002Data = { ...this.state.tip002Data, ...tip002Data};
-    this.setState({ tip002Data: tip002Data})
-  }
+    tip002Data = { ...this.state.tip002Data, ...tip002Data };
+    this.setState({ tip002Data: tip002Data });
+  };
 
   // onNumberInitialTokensChanged = (e) => {
   //   this.setState({ numberInitialTokens: e.target.value });
@@ -198,7 +208,7 @@ class Create extends React.Component {
   onAddCommitteeMember = () => {
     let committee = [...this.state.tip003Data.committee];
     committee.push(this.state.newCommitteePubKey);
-    let tip003Data = {...this.state.tip003Data, ...{committee: committee}};
+    let tip003Data = { ...this.state.tip003Data, ...{ committee: committee } };
     console.log(committee);
     this.setState({
       tip003Data,
@@ -207,10 +217,14 @@ class Create extends React.Component {
   };
 
   onDeleteCommitteeMember = (index) => {
-    let committee = this.state.tip003Data.committee.filter(function (_, i, arr) {
+    let committee = this.state.tip003Data.committee.filter(function (
+      _,
+      i,
+      arr
+    ) {
       return i !== parseInt(index);
     });
-    let tip003Data = {...this.state.tip003Data, ...{committee}};
+    let tip003Data = { ...this.state.tip003Data, ...{ committee } };
 
     this.setState({ tip003Data });
   };
@@ -308,6 +322,15 @@ class Create extends React.Component {
 
           <FormGroup>
             <TextField
+              id="publicKey"
+              label="Public Key"
+              variant="filled"
+              color="secondary"
+              value={this.state.publicKey}
+              disabled
+              style={{ "-webkit-text-fill-color": "#ddd" }}
+            ></TextField>
+            <TextField
               id="name"
               label="Name"
               variant="filled"
@@ -337,46 +360,45 @@ class Create extends React.Component {
           </FormGroup>
           <FormGroup>
             <FormControlLabel
-                control={
-                  <Switch
-                      onClick={this.onTip002Changed}
-                      checked={this.state.tip002}
-                  />
-                }
-                label="002 (ERC 20-like)"
+              control={
+                <Switch
+                  onClick={this.onTip002Changed}
+                  checked={this.state.tip002}
+                />
+              }
+              label="002 (ERC 20-like)"
             />
 
             <TextField
-                id="tip002_symbol"
-                label="Symbol"
-                variant="filled"
-                color="primary"
-                value={this.state.tip002.symbol}
-                onChange={(e) =>  this.onTip002DataChanged("symbol", e)}
-                disabled={this.state.isSaving || !this.state.tip002}
+              id="tip002_symbol"
+              label="Symbol"
+              variant="filled"
+              color="primary"
+              value={this.state.tip002.symbol}
+              onChange={(e) => this.onTip002DataChanged("symbol", e)}
+              disabled={this.state.isSaving || !this.state.tip002}
             ></TextField>
 
             <TextField
-                id="tip002_total_supply"
-                label="Total Supply"
-                variant="filled"
-                color="primary"
-                value={this.state.tip002.totalSupply}
-                type="number"
-                onChange={(e) =>  this.onTip002DataChanged("totalSupply", e)}
-                disabled={this.state.isSaving || !this.state.tip002}
+              id="tip002_total_supply"
+              label="Total Supply"
+              variant="filled"
+              color="primary"
+              value={this.state.tip002.totalSupply}
+              type="number"
+              onChange={(e) => this.onTip002DataChanged("totalSupply", e)}
+              disabled={this.state.isSaving || !this.state.tip002}
             ></TextField>
 
             <TextField
-                id="tip002_decimals"
-                label="Decimals"
-                variant="filled"
-                color="primary"
-                value={this.state.tip002.decimals}
-                onChange={(e) =>  this.onTip002DataChanged("decimals", e)}
-                disabled={this.state.isSaving || !this.state.tip002}
+              id="tip002_decimals"
+              label="Decimals"
+              variant="filled"
+              color="primary"
+              value={this.state.tip002.decimals}
+              onChange={(e) => this.onTip002DataChanged("decimals", e)}
+              disabled={this.state.isSaving || !this.state.tip002}
             ></TextField>
-
           </FormGroup>
           <FormGroup>
             <FormControlLabel
@@ -388,14 +410,12 @@ class Create extends React.Component {
               }
               label="721 (ERC 721-like) TODO"
             />
-
           </FormGroup>
           <FormGroup>
             <FormControlLabel
               control={
                 <Switch
                   onClick={this.onTip003Changed}
-
                   checked={this.state.tip003}
                   disabled={true}
                 />

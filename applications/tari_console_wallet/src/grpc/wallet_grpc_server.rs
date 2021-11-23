@@ -394,9 +394,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut manager = self.wallet.asset_manager.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
+        let public_key = PublicKey::from_bytes(message.public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key: {}", e)))?;
         let (tx_id, transaction) = manager
             .create_registration_transaction(
                 message.name,
+                public_key,
                 message.template_ids_implemented,
                 Some(message.description),
                 Some(message.image),
@@ -415,12 +418,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .next()
             .unwrap();
         let _result = transaction_service
-            .submit_transaction(
-                tx_id,
-                transaction,
-                0.into(),
-                "test register asset transaction".to_string(),
-            )
+            .submit_transaction(tx_id, transaction, 0.into(), "register asset transaction".to_string())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RegisterAssetResponse {

@@ -91,6 +91,18 @@ pub(crate) async fn wallets_find(
 
   let result = db.wallets().find(uuid, None).map_err(|e| e.to_string())?;
 
+  let k = db
+    .key_indices()
+    .find("assets".into())
+    .map_err(|e| e.to_string())?;
+  let index = if let Some(k) = k { k.last_index } else { 0 };
+
+  // update the assets key manager for this wallet
+  state
+    .set_asset_key_manager(result.cipher_seed.clone(), "assets".into(), index)
+    .await
+    .map_err(|e| e.to_string())?;
+
   Ok(result)
 }
 

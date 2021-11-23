@@ -36,6 +36,7 @@ fn main() {
       commands::asset_wallets::asset_wallets_create,
       commands::asset_wallets::asset_wallets_list,
       commands::asset_wallets::asset_wallets_get_balance,
+      commands::keys::next_asset_public_key,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
       commands::wallets::wallets_find,

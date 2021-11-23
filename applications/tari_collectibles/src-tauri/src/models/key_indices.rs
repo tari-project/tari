@@ -20,16 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod address;
-mod asset;
-mod asset_wallet;
-mod key_indices;
-mod tip002_address;
-mod wallet;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-pub use address::Address;
-pub use asset::Asset;
-pub use asset_wallet::AssetWallet;
-pub use key_indices::KeyIndex;
-pub use tip002_address::Tip002Address;
-pub use wallet::Wallet;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KeyIndex {
+  pub id: Uuid,
+  pub branch_seed: String,
+  pub last_index: u64,
+}
+
+pub struct NewKeyIndex {
+  pub branch_seed: String,
+  pub index: u64,
+}

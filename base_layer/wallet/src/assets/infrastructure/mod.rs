@@ -39,6 +39,7 @@ pub enum AssetManagerRequest {
     },
     CreateRegistrationTransaction {
         name: String,
+        public_key: Box<PublicKey>,
         template_ids_implemented: Vec<u32>,
         description: Option<String>,
         image: Option<String>,

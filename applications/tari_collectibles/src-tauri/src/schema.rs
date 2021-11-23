@@ -54,6 +54,14 @@ table! {
     }
 }
 
+table! {
+    key_indices (id) {
+        id -> Binary,
+        branch_seed -> Text,
+        last_index -> BigInt,
+    }
+}
+
 joinable!(addresses -> asset_wallets (asset_wallet_id));
 joinable!(asset_wallets -> assets (asset_id));
 joinable!(asset_wallets -> wallets (wallet_id));
@@ -61,10 +69,10 @@ joinable!(issued_assets -> wallets (wallet_id));
 joinable!(tip002_address -> addresses (address_id));
 
 allow_tables_to_appear_in_same_query!(
-    addresses,
-    asset_wallets,
-    assets,
-    issued_assets,
-    tip002_address,
-    wallets,
+  addresses,
+  asset_wallets,
+  assets,
+  issued_assets,
+  tip002_address,
+  wallets,
 );
