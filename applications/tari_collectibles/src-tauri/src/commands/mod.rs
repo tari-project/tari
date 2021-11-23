@@ -24,6 +24,7 @@ use crate::app_state::ConcurrentAppState;
 
 pub mod accounts;
 pub mod assets;
+pub mod keys;
 pub mod tips;
 pub mod wallets;
 

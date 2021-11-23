@@ -17,3 +17,11 @@ table! {
         cipher_seed -> Binary,
     }
 }
+
+table! {
+    key_indices (id) {
+        id -> Binary,
+        branch_seed -> Text,
+        last_index -> BigInt,
+    }
+}

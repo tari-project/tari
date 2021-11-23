@@ -210,6 +210,7 @@ message RegisterAssetRequest {
     string description  =3;
     string image = 4;
     repeated TemplateParameter template_parameters = 5;
+    bytes public_key = 6;
 }
 
 message RegisterAssetResponse {

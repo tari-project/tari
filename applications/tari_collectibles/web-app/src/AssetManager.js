@@ -35,24 +35,24 @@ class AssetManagerContent extends React.Component {
       error: "",
       loading: true,
       saving: false,
-      assetDefinition: {}
+      assetDefinition: {},
     };
   }
 
   async componentDidMount() {
     const { assetPubKey } = this.props;
-    let registration = await binding.command_assets_get_registration(assetPubKey);
-    console.log("reigstration:", registration);
+    let registration = await binding.command_assets_get_registration(
+      assetPubKey
+    );
+    console.log("registration:", registration);
     let assetDefinition = {
       public_key: assetPubKey,
       initialCommittee: registration.initialCommitee,
       checkpointUniqueId: registration.checkpointUniqueId,
-      template_parameters: registration.features.template_parameters
-    }
+      template_parameters: registration.features.template_parameters,
+    };
     this.setState({ loading: false, assetDefinition });
   }
-
-
 
   render() {
     return (
@@ -60,7 +60,10 @@ class AssetManagerContent extends React.Component {
         <Typography>Asset: {this.props.assetPubKey}</Typography>
 
         <Box>
-          <AssetDefinition assetPubKey={this.props.assetPubKey} assetDefinition={this.state.assetDefinition} />
+          <AssetDefinition
+            assetPubKey={this.props.assetPubKey}
+            assetDefinition={this.state.assetDefinition}
+          />
         </Box>
       </Container>
     );
@@ -71,7 +74,7 @@ const AssetDefinition = (props) => {
   const { assetPubKey, assetDefinition } = props;
   const [msg, setMsg] = useState("");
 
-  const contents = JSON.stringify(assetDefinition,null, 2);
+  const contents = JSON.stringify(assetDefinition, null, 2);
   async function save() {
     const filename = `${assetPubKey}.json`;
     try {

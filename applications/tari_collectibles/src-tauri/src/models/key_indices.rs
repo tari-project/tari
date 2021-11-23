@@ -20,38 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Account, KeyIndex, NewAccount, NewKeyIndex, NewWallet, Wallet, WalletInfo};
-pub mod sqlite;
-mod storage_error;
-pub use storage_error::StorageError;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  type KeyIndices: KeyIndicesTableGateway;
-  type Wallets: WalletsTableGateway;
-
-  fn accounts(&self) -> Self::Accounts;
-  fn key_indices(&self) -> Self::KeyIndices;
-  fn wallets(&self) -> Self::Wallets;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KeyIndex {
+  pub id: Uuid,
+  pub branch_seed: String,
+  pub last_index: u64,
 }
 
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
-}
-
-pub trait WalletsTableGateway {
-  type Passphrase;
-
-  fn list(&self) -> Result<Vec<WalletInfo>, StorageError>;
-  fn insert(&self, wallet: NewWallet, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
-  fn find(&self, id: Uuid, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
-}
-
-pub trait KeyIndicesTableGateway {
-  fn list(&self) -> Result<Vec<KeyIndex>, StorageError>;
-  fn insert(&self, key_index: NewKeyIndex) -> Result<KeyIndex, StorageError>;
-  fn find(&self, branch_seed: String) -> Result<Option<KeyIndex>, StorageError>;
+pub struct NewKeyIndex {
+  pub branch_seed: String,
+  pub index: u64,
 }
