@@ -105,7 +105,8 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
-        .with_retry_limit(3)
+        // Do not make this a small number as wallet recovery needs to be resilient
+        .with_retry_limit(100)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();
@@ -122,8 +123,8 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 println!("OK (latency = {:.2?})", latency);
             },
             Ok(UtxoScannerEvent::Progress {
-                current_block: current,
-                current_chain_height: total,
+                current_index: current,
+                total_index: total,
             }) => {
                 let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
                 debug!(

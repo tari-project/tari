@@ -26,6 +26,7 @@ use log::*;
 
 use std::{
     convert::TryFrom,
+    thread::sleep,
     time::{Duration, Instant},
 };
 use tari_common_types::transaction::TxId;
@@ -89,8 +90,8 @@ where TBackend: WalletBackend + 'static
     ) -> Result<(), UtxoScannerError> {
         let metadata = self.get_metadata().await?.unwrap_or_default();
         self.publish_event(UtxoScannerEvent::Progress {
-            current_block: final_utxo_pos,
-            current_chain_height: final_utxo_pos,
+            current_index: final_utxo_pos,
+            total_index: final_utxo_pos,
         });
         self.publish_event(UtxoScannerEvent::Completed {
             number_scanned: total_scanned,
@@ -116,11 +117,20 @@ where TBackend: WalletBackend + 'static
             Ok(conn) => Ok(conn),
             Err(e) => {
                 self.publish_event(UtxoScannerEvent::ConnectionFailedToBaseNode {
-                    peer,
+                    peer: peer.clone(),
                     num_retries: self.num_retries,
                     retry_limit: self.retry_limit,
                     error: e.to_string(),
                 });
+                // No use re-dialing a peer that is not responsive for recovery mode
+                if self.mode == UtxoScannerMode::Recovery {
+                    if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
+                        if connection.clone().disconnect().await.is_ok() {
+                            debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
+                        }
+                    };
+                    sleep(Duration::from_secs(30));
+                }
 
                 Err(e.into())
             },
@@ -243,14 +253,14 @@ where TBackend: WalletBackend + 'static
         );
 
         let end_header_hash = end_header.hash();
-        let end_header_size = end_header.output_mmr_size;
+        let output_mmr_size = end_header.output_mmr_size;
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
         let mut total_scanned = 0;
 
         self.publish_event(UtxoScannerEvent::Progress {
-            current_block: start_mmr_leaf_index,
-            current_chain_height: (end_header_size - 1),
+            current_index: start_mmr_leaf_index,
+            total_index: (output_mmr_size - 1),
         });
         let request = SyncUtxosRequest {
             start: start_mmr_leaf_index,
@@ -259,13 +269,28 @@ where TBackend: WalletBackend + 'static
             include_deleted_bitmaps: false,
         };
 
+        let start = Instant::now();
         let utxo_stream = client.sync_utxos(request).await?;
-        // We download in chunks just because rewind_outputs works with multiple outputs (and could parallelized
-        // rewinding)
-        let mut utxo_stream = utxo_stream.chunks(10);
+        trace!(
+            target: LOG_TARGET,
+            "bulletproof rewind profile - UTXO stream request time {} ms",
+            start.elapsed().as_millis(),
+        );
+
+        // We download in chunks for improved streaming efficiency
+        const CHUNK_SIZE: usize = 125;
+        let mut utxo_stream = utxo_stream.chunks(CHUNK_SIZE);
+        const COMMIT_EVERY_N: u64 = (1000_i64 / CHUNK_SIZE as i64) as u64;
         let mut last_utxo_index = 0u64;
         let mut iteration_count = 0u64;
-        while let Some(response) = utxo_stream.next().await {
+        let mut utxo_next_await_profiling = Vec::new();
+        let mut scan_for_outputs_profiling = Vec::new();
+        while let Some(response) = {
+            let start = Instant::now();
+            let utxo_stream_next = utxo_stream.next().await;
+            utxo_next_await_profiling.push(start.elapsed());
+            utxo_stream_next
+        } {
             if self.shutdown_signal.is_triggered() {
                 // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok(total_scanned as u64);
@@ -274,14 +299,16 @@ where TBackend: WalletBackend + 'static
             last_utxo_index = utxo_index;
             total_scanned += outputs.len();
             iteration_count += 1;
+
+            let start = Instant::now();
             let found_outputs = self.scan_for_outputs(outputs).await?;
+            scan_for_outputs_profiling.push(start.elapsed());
 
             // Reduce the number of db hits by only persisting progress every N iterations
-            const COMMIT_EVERY_N: u64 = 100;
-            if iteration_count % COMMIT_EVERY_N == 0 || last_utxo_index >= end_header_size - 1 {
+            if iteration_count % COMMIT_EVERY_N == 0 || last_utxo_index >= output_mmr_size - 1 {
                 self.publish_event(UtxoScannerEvent::Progress {
-                    current_block: last_utxo_index,
-                    current_chain_height: (end_header_size - 1),
+                    current_index: last_utxo_index,
+                    total_index: (output_mmr_size - 1),
                 });
                 self.update_scanning_progress_in_db(
                     last_utxo_index,
@@ -295,11 +322,23 @@ where TBackend: WalletBackend + 'static
             num_recovered = num_recovered.saturating_add(count);
             total_amount += amount;
         }
+        trace!(
+            target: LOG_TARGET,
+            "bulletproof rewind profile - streamed {} outputs in {} ms",
+            total_scanned,
+            utxo_next_await_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
+        );
+        trace!(
+            target: LOG_TARGET,
+            "bulletproof rewind profile - scanned {} outputs in {} ms",
+            total_scanned,
+            scan_for_outputs_profiling.iter().fold(0, |acc, &x| acc + x.as_millis()),
+        );
         self.update_scanning_progress_in_db(last_utxo_index, total_amount, num_recovered, end_header_hash)
             .await?;
         self.publish_event(UtxoScannerEvent::Progress {
-            current_block: (end_header_size - 1),
-            current_chain_height: (end_header_size - 1),
+            current_index: (output_mmr_size - 1),
+            total_index: (output_mmr_size - 1),
         });
         Ok(total_scanned as u64)
     }
