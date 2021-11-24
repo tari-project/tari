@@ -16,6 +16,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch 
 tari_utilities = { version = "^0.3" }
 tari_shutdown = { version = "^0.21", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.21", path = "../../infrastructure/storage" }
+tari_common_sqlite = { path = "../../common_sqlite" }
 
 anyhow = "1.0.32"
 bitflags = "1.2.0"

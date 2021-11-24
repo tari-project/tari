@@ -120,7 +120,7 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum OutputManagerStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
