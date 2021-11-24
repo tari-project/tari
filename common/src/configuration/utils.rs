@@ -226,11 +226,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("config/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default(
-        "base_node.weatherwax.public_address",
-        format!("{}/tcp/18141", local_ip_addr),
-    )
-    .unwrap();
 
     cfg.set_default("base_node.weatherwax.allow_test_addresses", false)
         .unwrap();
@@ -435,7 +430,7 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
     Ok(())
 }
 
-fn get_local_ip() -> Option<Multiaddr> {
+pub fn get_local_ip() -> Option<Multiaddr> {
     use std::net::IpAddr;
 
     get_if_addrs::get_if_addrs().ok().and_then(|if_addrs| {

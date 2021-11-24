@@ -75,7 +75,7 @@ pub struct GlobalConfig {
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
-    pub public_address: Multiaddr,
+    pub public_address: Option<Multiaddr>,
     pub grpc_enabled: bool,
     pub grpc_base_node_address: Multiaddr,
     pub grpc_console_wallet_address: Multiaddr,
@@ -328,13 +328,12 @@ fn convert_node_config(
 
     // Public address
     let key = config_string("base_node", net_str, "public_address");
-    let public_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
+    let public_address = optional(cfg.get_str(&key))?
+        .map(|addr| {
             addr.parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        })
+        .transpose()?;
 
     // GPRC enabled
     let key = config_string("base_node", net_str, "grpc_enabled");

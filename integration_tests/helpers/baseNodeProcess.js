@@ -6,6 +6,7 @@ const BaseNodeClient = require("./baseNodeClient");
 const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
+const JSON5 = require("json5");
 
 let outputProcess;
 class BaseNodeProcess {
@@ -78,7 +79,7 @@ class BaseNodeProcess {
       }
     }
 
-    this.nodeInfo = JSON.parse(
+    this.nodeInfo = JSON5.parse(
       fs.readFileSync(this.baseDir + "/" + this.nodeFile, "utf8")
     );
   }
