@@ -76,7 +76,12 @@ ${logLines.join("\n")}
 }
 
 async function runBaseNodeSyncTest(syncType) {
-  notify(`🚀 ${syncType} basenode sync check has begun 🚀`);
+  const node_pub_key =
+    "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849";
+  const node_address = "/ip4/3.8.193.254/tcp/18189";
+  notify(
+    `🚀 ${syncType} basenode sync (from ${node_pub_key}) check has begun 🚀`
+  );
 
   const baseDir = __dirname + "/temp/base-node-sync";
 
@@ -97,9 +102,7 @@ async function runBaseNodeSyncTest(syncType) {
       log: LOG_FILE,
       syncType,
       baseDir,
-      forceSyncPeers: [
-        "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849::/ip4/3.8.193.254/tcp/18189",
-      ],
+      forceSyncPeers: [`${node_pub_key}::${node_address}`],
     });
 
     notify(

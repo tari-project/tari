@@ -299,7 +299,10 @@ pub async fn init_wallet(
     );
 
     let node_address = match wallet_db.get_node_address().await? {
-        None => config.public_address.clone(),
+        None => config
+            .public_address
+            .clone()
+            .ok_or_else(|| ExitCodes::ConfigError("node public address error".to_string()))?,
         Some(a) => a,
     };
 
