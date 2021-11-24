@@ -22,6 +22,7 @@
 
 use crate::{
   clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
+  error::CollectiblesError,
   providers::{mocks::MockKeyManagerProvider, KeyManagerProvider},
   settings::Settings,
   storage::{
@@ -94,14 +95,16 @@ impl ConcurrentAppState {
     WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
   }
 
-  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, String> {
+  pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, CollectiblesError> {
     let lock = self.inner.read().await;
     let client =
       BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
     Ok(client)
   }
 
-  pub async fn connect_validator_node_client(&self) -> Result<GrpcValidatorNodeClient, String> {
+  pub async fn connect_validator_node_client(
+    &self,
+  ) -> Result<GrpcValidatorNodeClient, CollectiblesError> {
     // todo: convert this GRPC to tari comms
     let lock = self.inner.read().await;
     let client = GrpcValidatorNodeClient::connect(format!(
@@ -122,5 +125,9 @@ impl ConcurrentAppState {
 
   pub async fn current_wallet_id(&self) -> Option<Uuid> {
     self.inner.read().await.current_wallet_id
+  }
+
+  pub async fn set_current_wallet_id(&self, wallet_id: Uuid) {
+    self.inner.write().await.current_wallet_id = Some(wallet_id)
   }
 }

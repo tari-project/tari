@@ -23,6 +23,7 @@
 use crate::{
   app_state::ConcurrentAppState,
   models::{NewWallet, Wallet, WalletInfo},
+  status::Status,
   storage::{
     models::wallet_row::WalletRow, CollectiblesStorage, StorageTransaction, WalletsTableGateway,
   },
@@ -38,95 +39,57 @@ pub(crate) async fn wallets_create(
   name: Option<String>,
   passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<(), String> {
+) -> Result<WalletRow, Status> {
   let new_wallet = WalletRow {
     id: Uuid::new_v4(),
     name,
     // cipher_seed: CipherSeed::new(),
   };
 
-  let db = state
-    .create_db()
-    .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?;
-  let tx = db
-    .create_transaction()
-    .map_err(|e| format!("Could not start transaction:{}", e))?;
-  let result = db
-    .wallets()
-    .insert(new_wallet, passphrase, &tx)
-    .map_err(|e| format!("Could not save wallet: {}", e))?;
-  tx.commit()
-    .map_err(|e| format!("Could not commit transaction:{}", e))?;
-  Ok(())
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let result = db.wallets().insert(&new_wallet, passphrase, &tx)?;
+  tx.commit()?;
+  state.set_current_wallet_id(new_wallet.id).await;
+  Ok(new_wallet)
 }
 
 #[tauri::command]
 pub(crate) async fn wallets_list(
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Vec<WalletRow>, String> {
-  let db = state
-    .create_db()
-    .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?;
+) -> Result<Vec<WalletRow>, Status> {
+  let db = state.create_db().await?;
 
-  let result = db
-    .wallets()
-    .list(None)
-    .map_err(|e| format!("Could list wallets from DB: {}", e))?;
+  let result = db.wallets().list(None)?;
   Ok(result)
 }
 
 #[tauri::command]
-pub(crate) async fn wallets_find(
-  id: String,
+pub(crate) async fn wallets_unlock(
+  id: Uuid,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<WalletRow, String> {
-  let db = state
-    .create_db()
-    .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?;
+) -> Result<WalletRow, Status> {
+  let db = state.create_db().await?;
 
-  let uuid = Uuid::parse_str(&id).map_err(|e| format!("Failed to parse UUID: {}", e))?;
-
-  let result = db.wallets().find(uuid, None).map_err(|e| e.to_string())?;
-
-  let k = db
-    .key_indices()
-    .find("assets".into())
-    .map_err(|e| e.to_string())?;
-  let index = if let Some(k) = k { k.last_index } else { 0 };
-
-  // update the assets key manager for this wallet
-  state
-    .set_asset_key_manager(result.cipher_seed.clone(), "assets".into(), index)
-    .await
-    .map_err(|e| e.to_string())?;
-
+  let result = db.wallets().find(id, None)?;
+  // TODO: decrypt using wallet password
+  state.set_current_wallet_id(id).await;
   Ok(result)
 }
 
 #[tauri::command]
 pub(crate) async fn wallets_seed_words(
-  id: String,
+  id: Uuid,
   passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Vec<String>, String> {
-  let db = state
-    .create_db()
-    .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?;
+) -> Result<Vec<String>, Status> {
+  let db = state.create_db().await?;
 
-  let uuid = Uuid::parse_str(&id).map_err(|e| format!("Failed to parse UUID: {}", e))?;
-
-  let cipher_seed = db
-    .wallets()
-    .get_cipher_seed(uuid, passphrase.clone(), None)
-    .map_err(|e| e.to_string())?;
+  let cipher_seed = db.wallets().get_cipher_seed(id, passphrase.clone(), None)?;
 
   let seed_words = cipher_seed
     .to_mnemonic(&MnemonicLanguage::English, passphrase)
-    .map_err(|e| format!("Failed to convert cipher seed to seed words: {}", e))?;
+    .map_err(|e| Status::internal(format!("Could not get seed words:{}", e)))?;
 
   Ok(seed_words)
 }

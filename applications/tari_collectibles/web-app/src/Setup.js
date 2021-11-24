@@ -26,7 +26,7 @@ import {
   TextField,
   Stack,
   Typography,
-  FormGroup,
+  FormGroup, Alert,
 } from "@mui/material";
 import React, { useState, useEffect } from "react";
 import { Spinner } from "./components";
@@ -47,11 +47,16 @@ const chunk = (arr, len) => {
 
 const SeedWords = ({ wallet, password, history }) => {
   const [seedWords, setSeedWords] = useState([]);
+  const [error, setError] = useState("");
   useEffect(() => {
     binding
       .command_wallets_seed_words(wallet.id, password)
       .then((words) => setSeedWords(words))
-      .catch((e) => console.error("error: ", e));
+      .catch((e) => {
+
+        console.error("error: ", e);
+        setError(e);
+      });
   }, [wallet.id, password]);
 
   const display = (seedWords) => {
@@ -73,6 +78,11 @@ const SeedWords = ({ wallet, password, history }) => {
       <Typography variant="h3" sx={{ mb: "30px" }}>
         Seed words
       </Typography>
+      {error ? (
+          <Alert severity="error">{error}</Alert>
+      ) : (
+          <span />
+      )}
       <p>
         Save these seed words securely. This is the recovery phrase for this
         wallet.
@@ -80,7 +90,7 @@ const SeedWords = ({ wallet, password, history }) => {
       {display(seedWords)}
       <Button
         disabled={seedWords.length === 0}
-        onClick={() => history.push(`/wallets/${wallet.id}`)}
+        onClick={() => history.push(`/dashboard`)}
       >
         I have saved my seed words
       </Button>
@@ -93,6 +103,7 @@ const CreateWallet = ({ history }) => {
   const [password2, setPassword2] = useState("");
   const [creating, setCreating] = useState(false);
   const [wallet, setWallet] = useState(undefined);
+  const [error, setError] = useState("");
 
   if (wallet)
     return <SeedWords wallet={wallet} password={password} history={history} />;
@@ -106,10 +117,14 @@ const CreateWallet = ({ history }) => {
 
   const create = async () => {
     setCreating(true);
-    // todo: error handle
-    const wallet = await binding.command_wallets_create(password, "main");
-    console.log("wallet", wallet);
-    setWallet(wallet);
+    try {
+      const wallet = await binding.command_wallets_create(password, "main");
+      console.log("wallet", wallet);
+      setWallet(wallet);
+    }
+    catch(err) {
+      setError(err);
+    }
   };
 
   return (
@@ -118,6 +133,11 @@ const CreateWallet = ({ history }) => {
         Create new wallet
       </Typography>
       <Stack>
+        {error ? (
+            <Alert severity="error">{error}</Alert>
+        ) : (
+            <span />
+        )}
         <FormGroup>
           <TextField
             id="password"
@@ -158,7 +178,7 @@ const OpenWallet = ({ history, setAuthenticated }) => {
   const unlock = async () => {
     setUnlocking(true);
     try {
-      await binding.command_wallets_find(id, password);
+      await binding.command_wallets_unlock(id, password);
       setAuthenticated(id, password);
       history.push("/dashboard");
     } catch (e) {

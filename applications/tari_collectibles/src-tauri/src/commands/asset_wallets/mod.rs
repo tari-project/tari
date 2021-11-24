@@ -19,11 +19,14 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use crate::{
   app_state::ConcurrentAppState,
   models::{NewWallet, Wallet},
+  status::Status,
   storage::{
-    models::asset_row::AssetRow, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
+    models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
+    AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
     WalletsTableGateway,
   },
 };
@@ -37,9 +40,12 @@ use uuid::Uuid;
 pub(crate) async fn asset_wallets_create(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<(), String> {
-  let asset_public_key = PublicKey::from_hex(asset_public_key.as_str())
-    .map_err(|e| format!("Invalid public key:{}", e))?;
+) -> Result<(), Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(asset_public_key.as_str())?;
   let mut new_account = AssetRow {
     id: Uuid::new_v4(),
     asset_public_key: asset_public_key.clone(),
@@ -69,18 +75,16 @@ pub(crate) async fn asset_wallets_create(
     }
   };
   new_account.committee = sidechain_committee;
-  let db = state
-    .create_db()
-    .await
-    .map_err(|e| format!("Could not connect to DB:{}", e))?;
-  let tx = db
-    .create_transaction()
-    .map_err(|e| format!("Could not start transaction:{}", e))?;
-  db.assets()
-    .insert(new_account, &tx)
-    .map_err(|e| format!("Could not save account: {}", e))?;
-  tx.commit()
-    .map_err(|e| format!("Could not commit transaction:{}", e))?;
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  db.assets().insert(&new_account, &tx)?;
+  let new_asset_wallet = AssetWalletRow {
+    id: Uuid::new_v4(),
+    asset_id: new_account.id,
+    wallet_id,
+  };
+  db.asset_wallets().insert(&new_asset_wallet, &tx)?;
+  tx.commit()?;
   Ok(())
 }
 
@@ -88,10 +92,9 @@ pub(crate) async fn asset_wallets_create(
 pub(crate) async fn asset_wallets_get_balance(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<u64, String> {
+) -> Result<u64, Status> {
   dbg!(&asset_public_key);
-  let asset_public_key =
-    PublicKey::from_hex(&asset_public_key).map_err(|s| format!("Not a valid public key:{}", s))?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
 
   let owner = PublicKey::default();
 
@@ -101,7 +104,7 @@ pub(crate) async fn asset_wallets_get_balance(
   };
   dbg!(&args);
   let mut args_bytes = vec![];
-  args.encode(&mut args_bytes).unwrap();
+  args.encode(&mut args_bytes)?;
   // let req = grpc::InvokeReadMethodRequest{
   //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
   //   template_id: 2,
@@ -116,8 +119,7 @@ pub(crate) async fn asset_wallets_get_balance(
   dbg!(&resp);
   match resp {
     Some(mut resp) => {
-      let proto_resp: tip002::BalanceOfResponse =
-        Message::decode(&*resp).map_err(|e| format!("Invalid proto:{}", e))?;
+      let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
       Ok(proto_resp.balance)
     }
     None => Ok(0),
@@ -127,14 +129,15 @@ pub(crate) async fn asset_wallets_get_balance(
 #[tauri::command]
 pub(crate) async fn asset_wallets_list(
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Vec<AssetRow>, String> {
-  let db = state
-    .create_db()
+) -> Result<Vec<AssetRow>, Status> {
+  let wallet_id = state
+    .current_wallet_id()
     .await
-    .map_err(|e| format!("Could not connect to DB:{}", e))?;
-  let result = db
-    .assets()
-    .list(None)
-    .map_err(|e| format!("Could list accounts from DB: {}", e))?;
+    .ok_or_else(Status::unauthorized)?;
+  let db = state.create_db().await?;
+  let mut result = vec![];
+  for asset_wallet in db.asset_wallets().find_by_wallet_id(wallet_id, None)? {
+    result.push(db.assets().find(asset_wallet.asset_id, None)?);
+  }
   Ok(result)
 }

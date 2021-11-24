@@ -69,8 +69,8 @@ async function command_wallets_create(passphrase, name) {
   return await invoke("wallets_create", { passphrase, name });
 }
 
-async function command_wallets_find(id, passphrase) {
-  return await invoke("wallets_find", { id, passphrase });
+async function command_wallets_unlock(id, passphrase) {
+  return await invoke("wallets_unlock", { id, passphrase });
 }
 
 async function command_wallets_seed_words(id, passphrase) {
@@ -110,7 +110,7 @@ const commands = {
   command_asset_wallets_list,
   command_wallets_create,
   command_wallets_list,
-  command_wallets_find,
+  command_wallets_unlock,
   command_wallets_seed_words,
 };
 

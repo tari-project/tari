@@ -27,4 +27,5 @@ pub struct Tip002Address {
   pub id: Vec<u8>,
   pub address_id: Vec<u8>,
   pub balance: i64,
+  pub at_height: Option<i64>,
 }

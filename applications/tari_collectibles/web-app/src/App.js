@@ -163,7 +163,7 @@ const AccountsMenu = (props) => {
 
 // only allow access to a Protected Route if the wallet is unlocked
 const ProtectedRoute = ({ authenticated, path, children }) => {
-  if (!authenticated) return <Redirect to="/" />;
+  if (!authenticated) return <Redirect to="/unlock" />;
 
   return <Route path={path}>{children}</Route>;
 };
@@ -262,9 +262,7 @@ function App() {
                 >
                   <AssetManager />
                 </ProtectedRoute>
-                <Route path="/dashboard" authenticated={authenticated}>
-                  <Dashboard />
-                </Route>
+
                 <Route path="/wallets/:id">
                   <UnlockWallet
                     setAuthenticated={(id, password) => {
@@ -274,8 +272,11 @@ function App() {
                     }}
                   />
                 </Route>
-                <Route path="/">
+                <Route path="/unlock">
                   <Setup />
+                </Route>
+                <Route path="/" >
+                  <Dashboard />
                 </Route>
               </Switch>
             </Box>

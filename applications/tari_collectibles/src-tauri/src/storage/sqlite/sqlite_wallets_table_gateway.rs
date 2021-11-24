@@ -68,24 +68,22 @@ impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
 
   fn insert(
     &self,
-    wallet: WalletRow,
+    wallet: &WalletRow,
     passphrase: Self::Passphrase,
     tx: &SqliteTransaction,
   ) -> Result<(), StorageError> {
-    let id = Uuid::new_v4();
     let cipher_seed = CipherSeed::new();
     // todo: error
     let sql_model = models::Wallet {
-      id: Vec::from(id.as_bytes().as_slice()),
+      id: Vec::from(wallet.id.as_bytes().as_slice()),
       name: wallet.name.clone(),
       cipher_seed: cipher_seed.encipher(passphrase).unwrap(),
     };
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
 
     // use crate::schema::wallets;
     diesel::insert_into(wallets::table)
       .values(sql_model)
-      .execute(&conn)?;
+      .execute(tx.connection())?;
 
     Ok(())
   }

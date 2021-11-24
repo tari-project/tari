@@ -20,16 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::StorageTransaction;
-use std::fmt::Display;
-use tari_common_types::types::PublicKey;
 use uuid::Uuid;
 
-pub trait KeyManagerProvider {
-  type Error: Display;
-  fn generate_asset_public_key<T: StorageTransaction>(
-    &self,
-    wallet_id: Uuid,
-    transaction: &T,
-  ) -> Result<(String, PublicKey), Self::Error>;
+pub struct Tip002AddressRow {
+  pub id: Uuid,
+  pub address_id: Uuid,
+  pub balance: u64,
+  pub at_height: Option<u64>,
 }

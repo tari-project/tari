@@ -51,7 +51,7 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
       .collect::<Result<_, _>>()
   }
 
-  fn insert(&self, asset: AssetRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+  fn insert(&self, asset: &AssetRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
     let id = Uuid::new_v4();
     let mut committee_pub_keys = vec![];
     if let Some(pub_keys) = asset.committee.as_ref() {

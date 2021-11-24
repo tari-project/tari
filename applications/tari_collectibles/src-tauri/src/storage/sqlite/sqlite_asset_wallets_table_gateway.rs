@@ -24,11 +24,20 @@ use crate::storage::{
   models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
   AssetWalletsTableGateway, StorageError,
 };
+use uuid::Uuid;
 
 pub struct SqliteAssetWalletsTableGateway {}
 
 impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGateway {
-  fn insert(&self, row: AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+  fn insert(&self, row: &AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+    todo!()
+  }
+
+  fn find_by_wallet_id(
+    &self,
+    wallet_id: Uuid,
+    tx: Option<&SqliteTransaction>,
+  ) -> Result<Vec<AssetWalletRow>, StorageError> {
     todo!()
   }
 }

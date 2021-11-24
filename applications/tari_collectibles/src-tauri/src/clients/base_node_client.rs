@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::error::CollectiblesError;
 use futures::StreamExt;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::PublicKey;
@@ -30,14 +31,13 @@ pub struct BaseNodeClient {
 }
 
 impl BaseNodeClient {
-  pub async fn connect(endpoint: String) -> Result<Self, String> {
+  pub async fn connect(endpoint: String) -> Result<Self, CollectiblesError> {
     let client = grpc::base_node_client::BaseNodeClient::connect(endpoint.clone())
       .await
-      .map_err(|err| {
-        format!(
-          "No connection to wallet. Is it running with grpc on '{}' ? Error: {}",
-          endpoint, err
-        )
+      .map_err(|err| CollectiblesError::ClientConnectionError {
+        client: "wallet",
+        address: endpoint,
+        error: err.to_string(),
       })?;
 
     Ok(Self { client })
@@ -47,18 +47,24 @@ impl BaseNodeClient {
     &mut self,
     offset: u64,
     count: u64,
-  ) -> Result<Vec<grpc::ListAssetRegistrationsResponse>, String> {
+  ) -> Result<Vec<grpc::ListAssetRegistrationsResponse>, CollectiblesError> {
     let client = self.client_mut();
     let request = grpc::ListAssetRegistrationsRequest { offset, count };
     let mut stream = client
       .list_asset_registrations(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|s| format!("Could not get register assets: {}", s))?;
+      .map_err(|source| CollectiblesError::ClientRequestError {
+        request: "list_asset_registrations".to_string(),
+        source,
+      })?;
 
     let mut assets = vec![];
     while let Some(result) = stream.next().await {
-      let asset = result.map_err(|err| err.to_string())?;
+      let asset = result.map_err(|source| CollectiblesError::ClientRequestError {
+        request: "list_asset_registrations".to_string(),
+        source,
+      })?;
       assets.push(asset);
     }
 
@@ -68,7 +74,7 @@ impl BaseNodeClient {
   pub async fn get_asset_metadata(
     &mut self,
     asset_public_key: &PublicKey,
-  ) -> Result<grpc::GetAssetMetadataResponse, String> {
+  ) -> Result<grpc::GetAssetMetadataResponse, CollectiblesError> {
     let client = self.client_mut();
     let request = grpc::GetAssetMetadataRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
@@ -78,7 +84,10 @@ impl BaseNodeClient {
       .get_asset_metadata(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|s| format!("Could not get asset metadata: {}", s))?;
+      .map_err(|s| CollectiblesError::ClientRequestError {
+        request: "get_asset_metadata".to_string(),
+        source: s,
+      })?;
     dbg!(&response);
     Ok(response)
   }

@@ -28,6 +28,7 @@ use crate::{
       sqlite_addresses_table_gateway::SqliteAddressesTableGateway,
       sqlite_asset_wallets_table_gateway::SqliteAssetWalletsTableGateway,
       sqlite_issued_assets_table_gateway::SqliteIssuedAssetsTableGateway,
+      sqlite_key_indices_table_gateway::SqliteKeyIndicesTableGateway,
       sqlite_tip002_addresses_table_gateway::SqliteTip002AddressesTableGateway,
       sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway, SqliteWalletsTableGateway,
     },
@@ -51,6 +52,7 @@ impl CollectiblesStorage for SqliteCollectiblesStorage {
   type AssetWallets = SqliteAssetWalletsTableGateway;
   type IssuedAssets = SqliteIssuedAssetsTableGateway;
   type Tip002Addresses = SqliteTip002AddressesTableGateway;
+  type KeyIndices = SqliteKeyIndicesTableGateway;
   type Wallets = SqliteWalletsTableGateway;
   type Transaction = SqliteTransaction;
 
@@ -82,6 +84,12 @@ impl CollectiblesStorage for SqliteCollectiblesStorage {
 
   fn tip002_addresses(&self) -> Self::Tip002Addresses {
     SqliteTip002AddressesTableGateway {}
+  }
+
+  fn key_indices(&self) -> Self::KeyIndices {
+    SqliteKeyIndicesTableGateway {
+      database_url: self.database_url.clone(),
+    }
   }
 
   fn wallets(&self) -> Self::Wallets {

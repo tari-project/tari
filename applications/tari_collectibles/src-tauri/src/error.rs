@@ -20,17 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use tonic::Status;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct KeyIndex {
-  pub id: Uuid,
-  pub branch_seed: String,
-  pub last_index: u64,
-}
-
-pub struct NewKeyIndex {
-  pub branch_seed: String,
-  pub index: u64,
+#[derive(Debug, thiserror::Error)]
+pub enum CollectiblesError {
+  #[error("No connection to {client}. Is it running with grpc on '{address}' ? Error: {error}")]
+  ClientConnectionError {
+    client: &'static str,
+    address: String,
+    error: String,
+  },
+  #[error("Error invoking operation: {request}: {source}")]
+  ClientRequestError { request: String, source: Status },
 }

@@ -20,8 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::AddressesTableGateway;
+use crate::storage::{
+  models::address_row::AddressRow, sqlite::sqlite_transaction::SqliteTransaction,
+  AddressesTableGateway, StorageError,
+};
 
 pub struct SqliteAddressesTableGateway {}
 
-impl AddressesTableGateway for SqliteAddressesTableGateway {}
+impl AddressesTableGateway<SqliteTransaction> for SqliteAddressesTableGateway {
+  fn insert(&self, row: &AddressRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+    todo!()
+  }
+}

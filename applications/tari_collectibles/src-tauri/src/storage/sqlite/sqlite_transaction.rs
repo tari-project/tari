@@ -31,6 +31,9 @@ impl SqliteTransaction {
   pub fn new(connection: SqliteConnection) -> Self {
     Self { connection }
   }
+  pub fn connection(&self) -> &SqliteConnection {
+    &self.connection
+  }
 }
 
 impl StorageTransaction for SqliteTransaction {

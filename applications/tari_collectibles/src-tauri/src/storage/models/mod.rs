@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod address_row;
 pub mod asset_row;
 pub mod asset_wallet_row;
+pub mod key_index_row;
+pub mod tip002_address_row;
 pub mod wallet_row;

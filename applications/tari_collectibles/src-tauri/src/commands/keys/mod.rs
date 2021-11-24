@@ -22,30 +22,32 @@
 
 use crate::{
   app_state::ConcurrentAppState,
-  models::NewKeyIndex,
-  storage::{CollectiblesStorage, KeyIndicesTableGateway},
+  providers::KeyManagerProvider,
+  status::Status,
+  storage::{
+    models::key_index_row::KeyIndexRow, CollectiblesStorage, KeyIndicesTableGateway,
+    StorageTransaction,
+  },
 };
 use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn next_asset_public_key(
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<PublicKey, String> {
-  let key = state.next_asset_secret_key().await?;
-
-  let key_index = NewKeyIndex {
-    branch_seed: "assets".into(),
-    index: key.key_index,
-  };
-
-  state
-    .create_db()
+) -> Result<PublicKey, Status> {
+  let wallet_id = state
+    .current_wallet_id()
     .await
-    .map_err(|e| format!("Could not connect to DB: {}", e))?
-    .key_indices()
-    .insert(key_index)
-    .map_err(|e| format!("Could not save key index: {}", e))?;
-
-  Ok(PublicKey::from_secret_key(&key.k))
+    .ok_or_else(Status::unauthorized)?;
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let (_path, key) = state
+    .key_manager()
+    .await
+    .generate_asset_public_key(wallet_id, &tx)
+    .map_err(|e| Status::internal(format!("Could not generate asset key: {}", e)))?;
+  tx.commit()?;
+  Ok(key)
 }

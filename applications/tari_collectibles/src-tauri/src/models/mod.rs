@@ -32,5 +32,3 @@ mod template_parameter;
 pub use template_parameter::TemplateParameter;
 mod output_features;
 pub use output_features::OutputFeatures;
-mod key_indices;
-pub use key_indices::{KeyIndex, NewKeyIndex};

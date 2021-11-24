@@ -27,6 +27,7 @@ mod sqlite_assets_table_gateway;
 mod sqlite_collectibles_storage;
 mod sqlite_db_factory;
 mod sqlite_issued_assets_table_gateway;
+mod sqlite_key_indices_table_gateway;
 mod sqlite_tip002_addresses_table_gateway;
 mod sqlite_transaction;
 mod sqlite_wallets_table_gateway;

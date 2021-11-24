@@ -31,7 +31,8 @@ create table addresses (
 create table tip002_address (
     id blob not null primary key,
     address_id blob not null references addresses(id),
-    balance bigint not null
+    balance bigint not null,
+    at_height bigint
 );
 
 create table issued_assets (

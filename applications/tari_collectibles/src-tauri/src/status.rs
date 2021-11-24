@@ -20,16 +20,73 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::StorageTransaction;
-use std::fmt::Display;
-use tari_common_types::types::PublicKey;
-use uuid::Uuid;
+use crate::{error::CollectiblesError, storage::StorageError};
+use prost::{DecodeError, EncodeError};
+use serde::{Deserialize, Serialize};
+use tari_utilities::hex::HexError;
 
-pub trait KeyManagerProvider {
-  type Error: Display;
-  fn generate_asset_public_key<T: StorageTransaction>(
-    &self,
-    wallet_id: Uuid,
-    transaction: &T,
-  ) -> Result<(String, PublicKey), Self::Error>;
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum Status {
+  BadRequest { code: u16, message: String },
+  Unauthorized { code: u16, message: String },
+  Internal { code: u16, message: String },
+}
+
+impl Status {
+  pub fn unauthorized() -> Self {
+    Self::Unauthorized {
+      code: 401,
+      message: "Unauthorized".to_string(),
+    }
+  }
+
+  pub fn internal(message: String) -> Self {
+    Self::Internal { code: 500, message }
+  }
+}
+
+impl From<StorageError> for Status {
+  fn from(source: StorageError) -> Self {
+    Self::Internal {
+      code: 501,
+      message: format!("Internal storage error:{}", source),
+    }
+  }
+}
+
+impl From<HexError> for Status {
+  fn from(he: HexError) -> Self {
+    Self::BadRequest {
+      code: 400,
+      message: format!("Bad request: {}", he),
+    }
+  }
+}
+
+impl From<DecodeError> for Status {
+  fn from(de: DecodeError) -> Self {
+    Self::Internal {
+      code: 502,
+      message: format!("Could not decode data: {}", de),
+    }
+  }
+}
+
+impl From<EncodeError> for Status {
+  fn from(e: EncodeError) -> Self {
+    Self::Internal {
+      code: 503,
+      message: format!("Could not encode data: {}", e),
+    }
+  }
+}
+
+impl From<CollectiblesError> for Status {
+  fn from(ce: CollectiblesError) -> Self {
+    Self::Internal {
+      code: 504,
+      message: format!("Error:{}", ce),
+    }
+  }
 }
