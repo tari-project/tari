@@ -4746,6 +4746,7 @@ dependencies = [
  "serde_derive",
  "serde_repr",
  "tari_common",
+ "tari_common_sqlite",
  "tari_comms",
  "tari_comms_rpc_macros",
  "tari_crypto",

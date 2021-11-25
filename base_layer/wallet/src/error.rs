@@ -170,9 +170,3 @@ impl From<WalletStorageError> for ExitCodes {
         }
     }
 }
-
-impl PartialEq for WalletStorageError {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}

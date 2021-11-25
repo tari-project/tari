@@ -27,9 +27,3 @@ pub enum SqliteStorageError {
     #[error("Diesel R2d2 error")]
     DieselR2d2Error(String),
 }
-
-impl PartialEq for SqliteStorageError {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
