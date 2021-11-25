@@ -67,7 +67,13 @@ fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
 ) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
-    let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
+    let last_header = db.fetch_last_header().unwrap();
+    let mut prev_block = db
+        .fetch_block(last_header.height)
+        .unwrap()
+        .try_into_block()
+        .map(Arc::new)
+        .unwrap();
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size as u64 {
@@ -547,19 +553,21 @@ mod fetch_header_containing_kernel_mmr {
         let _ = add_many_chained_blocks(3, &db);
 
         let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        assert_eq!(header.height(), 0);
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + 1).unwrap();
         assert_eq!(header.height(), 1);
 
         for i in 2..=3 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
             assert_eq!(header.height(), 2);
         }
-        for i in 4..=5 {
+        for i in 4..=6 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
-            assert_eq!(header.height(), i);
+            assert_eq!(header.height(), i - 1);
         }
 
         let err = db
-            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 5 + 1)
+            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6 + 1)
             .unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }

@@ -156,7 +156,7 @@ mod test {
         });
         let script = unblinded_output1.script.clone();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
-        assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
+        tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
         let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
             value: (2u64.pow(32) + 1u64).into(),
@@ -196,7 +196,7 @@ mod test {
             )
             .unwrap(),
         );
-        assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
+        assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
     }
 
     #[test]

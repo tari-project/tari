@@ -752,7 +752,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_entities::{KernelFeatures, OutputFeatures, TransactionOutput},
+            transaction_entities::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -1045,7 +1045,9 @@ mod test {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
+                TransactionProtocolError::TransactionBuildError(TransactionError::ValidationError(
+                    "Recipient output range proof failed to verify".into()
+                ))
             ),
         }
     }
