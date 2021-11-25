@@ -14,6 +14,10 @@
 wallet_db_file = "wallet/wallet.dat"
 console_wallet_db_file = "wallet/console-wallet.dat"
 
+# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+grpc_address = "127.0.0.1:18143"
+
 # Console wallet password
 # Should you wish to start your console wallet without typing in your password, the following options are available:
 # 1. Start the console wallet with the --password=secret argument, or
@@ -200,4 +204,3 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false;
-
