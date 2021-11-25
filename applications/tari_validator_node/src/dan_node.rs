@@ -54,7 +54,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
-    models::{AssetDefinition, Committee, TariDanPayload},
+    models::{AssetDefinition, Committee},
     services::{
         ConcreteAssetProcessor,
         ConcreteCommitteeManager,
@@ -66,7 +66,7 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{AssetDataStore, DbFactory, LmdbAssetStore},
+    storage::{DbFactory, LmdbAssetStore},
     workers::ConsensusWorker,
 };
 use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
@@ -204,16 +204,16 @@ impl DanNode {
 
         let payload_provider = TariDanPayloadProvider::new(mempool_service.clone());
 
-        let events_publisher = LoggingEventsPublisher::new();
+        let events_publisher = LoggingEventsPublisher::default();
         let signing_service = NodeIdentitySigningService::new(node_identity.clone());
 
-        let backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
+        let _backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
             .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
-        let data_store = AssetDataStore::new(backend);
+        // let data_store = AssetDataStore::new(backend);
         let instruction_log = MemoryInstructionLog::default();
-        let asset_processor = ConcreteAssetProcessor::new(instruction_log, asset_definition.clone());
+        let asset_processor = ConcreteAssetProcessor::new(instruction_log);
 
-        let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service);
+        let payload_processor = TariDanPayloadProcessor::new(asset_processor);
         let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
 

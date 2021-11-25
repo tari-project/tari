@@ -116,10 +116,13 @@ ListItemLink.propTypes = {
 
 const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    console.log("refreshing accounts");
+    setError("");
     binding
-      .command_accounts_list()
+      .command_asset_wallets_list()
       .then((accounts) => {
         console.log("accounts", accounts);
         setAccounts(accounts);
@@ -127,8 +130,9 @@ const AccountsMenu = (props) => {
       .catch((e) => {
         // todo error handling
         console.error("accounts_list error:", e);
+        setError(e.message);
       });
-  }, []);
+  }, [props.walletId]);
 
   // todo: hide accounts when not authenticated
   return (
@@ -147,6 +151,7 @@ const AccountsMenu = (props) => {
           My Assets
         </ListItem>
       </ListSubheader>
+      { error ? <ListItem>{error}</ListItem> : ""}
       <List>
         {accounts.map((item) => {
           return (
@@ -163,7 +168,7 @@ const AccountsMenu = (props) => {
 
 // only allow access to a Protected Route if the wallet is unlocked
 const ProtectedRoute = ({ authenticated, path, children }) => {
-  if (!authenticated) return <Redirect to="/" />;
+  if (!authenticated) return <Redirect to="/unlock" />;
 
   return <Route path={path}>{children}</Route>;
 };
@@ -198,11 +203,7 @@ function App() {
         <ThemeProvider theme={mdTheme}>
           <Box sx={{ display: "flex" }}>
             <CssBaseline />
-            <AppBar position="absolute">
-              <Toolbar>
-                <Typography component="h1">Hello world</Typography>
-              </Toolbar>
-            </AppBar>
+
             <Drawer variant="permanent">
               <RouterLink to="/">
                 <Toolbar sx={{ display: "flex", color: "white" }}>
@@ -212,11 +213,11 @@ function App() {
               <List>
                 <ListItemLink
                   primary="Dashboard"
-                  to="/"
+                  to="/dashboard"
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
-                <AccountsMenu />
+                <AccountsMenu walletId={walletId} />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -266,9 +267,7 @@ function App() {
                 >
                   <AssetManager />
                 </ProtectedRoute>
-                <ProtectedRoute path="/dashboard" authenticated={authenticated}>
-                  <Dashboard />
-                </ProtectedRoute>
+
                 <Route path="/wallets/:id">
                   <UnlockWallet
                     setAuthenticated={(id, password) => {
@@ -278,8 +277,11 @@ function App() {
                     }}
                   />
                 </Route>
-                <Route path="/">
+                <Route path="/unlock">
                   <Setup />
+                </Route>
+                <Route path="/" >
+                  <Dashboard />
                 </Route>
               </Switch>
             </Box>

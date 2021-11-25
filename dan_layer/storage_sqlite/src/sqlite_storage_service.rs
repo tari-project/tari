@@ -21,12 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use std::sync::Arc;
 use tari_dan_core::{
-    models::{HotStuffTreeNode, QuorumCertificate, SidechainMetadata, TariDanPayload},
+    models::{HotStuffTreeNode, SidechainMetadata, TariDanPayload},
     storage::{chain::ChainDbUnitOfWork, ChainStorageService, StorageError},
 };
-use tokio::sync::RwLock;
 
 pub struct SqliteStorageService {}
 

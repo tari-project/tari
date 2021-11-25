@@ -23,13 +23,10 @@
 use crate::{digital_assets_error::DigitalAssetError, workers::states::ConsensusWorkerStateEvent};
 use tokio::time::{sleep, Duration};
 
+#[derive(Default)]
 pub struct IdleState {}
 
 impl IdleState {
-    pub fn new() -> Self {
-        Self {}
-    }
-
     pub async fn next_event(&self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         sleep(Duration::from_secs(10)).await;
         Ok(ConsensusWorkerStateEvent::TimedOut)

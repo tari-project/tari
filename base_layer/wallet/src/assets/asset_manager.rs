@@ -30,7 +30,6 @@ use crate::{
             models::DbUnblindedOutput,
         },
     },
-    types::PersistentKeyManager,
 };
 use log::*;
 use tari_common_types::{
@@ -41,19 +40,15 @@ use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, Template
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
 
-pub(crate) struct AssetManager<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyManager> {
+pub(crate) struct AssetManager<T: OutputManagerBackend + 'static> {
     output_database: OutputManagerDatabase<T>,
     output_manager: OutputManagerHandle,
-    assets_key_manager: TPersistentKeyManager, // transaction_service: TransactionServiceHandle
 }
-impl<T: OutputManagerBackend + 'static, TPersistentKeyManager: PersistentKeyManager>
-    AssetManager<T, TPersistentKeyManager>
-{
-    pub fn new(backend: T, output_manager: OutputManagerHandle, assets_key_manager: TPersistentKeyManager) -> Self {
+impl<T: OutputManagerBackend + 'static> AssetManager<T> {
+    pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
             output_database: OutputManagerDatabase::new(backend),
             output_manager,
-            assets_key_manager,
         }
     }
 

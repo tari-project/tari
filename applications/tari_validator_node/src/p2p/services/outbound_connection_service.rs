@@ -27,7 +27,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_dan_core::{
     models::{HotStuffMessage, Payload, TariDanPayload},
-    services::infrastructure_services::{NodeAddressable, OutboundService},
+    services::infrastructure_services::OutboundService,
     DigitalAssetError,
 };
 use tari_p2p::tari_message::TariMessageType;

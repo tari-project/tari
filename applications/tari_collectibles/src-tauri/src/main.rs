@@ -15,9 +15,12 @@ extern crate diesel_migrations;
 mod app_state;
 mod clients;
 mod commands;
+mod error;
 mod models;
+mod providers;
 mod schema;
 mod settings;
+mod status;
 mod storage;
 
 fn main() {
@@ -32,12 +35,13 @@ fn main() {
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_create_initial_checkpoint,
       commands::assets::assets_get_registration,
-      commands::accounts::accounts_create,
-      commands::accounts::accounts_list,
+      commands::asset_wallets::asset_wallets_create,
+      commands::asset_wallets::asset_wallets_list,
+      commands::asset_wallets::asset_wallets_get_balance,
       commands::keys::next_asset_public_key,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
-      commands::wallets::wallets_find,
+      commands::wallets::wallets_unlock,
       commands::wallets::wallets_seed_words,
     ])
     .run(tauri::generate_context!())

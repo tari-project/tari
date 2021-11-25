@@ -19,18 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct KeyIndex {
-  pub id: Uuid,
-  pub branch_seed: String,
-  pub last_index: u64,
-}
-
-pub struct NewKeyIndex {
-  pub branch_seed: String,
-  pub index: u64,
+use crate::schema::*;
+#[derive(Queryable, Insertable, Identifiable)]
+#[table_name = "tip002_address"]
+pub struct Tip002Address {
+  pub id: Vec<u8>,
+  pub address_id: Vec<u8>,
+  pub balance: i64,
+  pub at_height: Option<i64>,
 }

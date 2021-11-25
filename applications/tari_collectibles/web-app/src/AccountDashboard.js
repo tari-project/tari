@@ -22,25 +22,46 @@
 
 import React from "react";
 import {withRouter} from "react-router-dom";
-import {Container, Stack, Typography} from "@mui/material";
+import {Alert, Container, Stack, Typography} from "@mui/material";
+import binding from "./binding";
 
 class AccountDashboard extends React.Component {
     constructor(props) {
         super(props);
 
+        console.log(props);
         this.state = {
             error: null,
             isSaving: false,
-            assetPublicKey: "",
             tip101: false,
             tip102: false,
+            assetPubKey: props.match.params.assetPubKey
         };
+    }
+
+    async componentDidMount() {
+        try {
+            this.setState({error: null});
+            let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
+            console.log("balance", balance);
+        }
+        catch(err) {
+            this.setState({error: err.message});
+        }
     }
 
     render() {
         return (<Container maxWidth="lg" sx={{mt: 4, mb: 4, py: 8}}>
+                {this.state.error ? (
+                    <Alert severity="error">{this.state.error}</Alert>
+                ) : (
+                    <span />
+                )}
                 <Typography variant="h3" sx={{mb: "30px"}}>
                     Asset Details
+                </Typography>
+                <Typography>
+                    { this.state.assetPubKey }
                 </Typography>
                 <Stack>
 

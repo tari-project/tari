@@ -20,38 +20,91 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Account, KeyIndex, NewAccount, NewKeyIndex, NewWallet, Wallet, WalletInfo};
+pub mod models;
 pub mod sqlite;
 mod storage_error;
+
+use crate::storage::models::{
+  address_row::AddressRow, asset_row::AssetRow, asset_wallet_row::AssetWalletRow,
+  key_index_row::KeyIndexRow, tip002_address_row::Tip002AddressRow, wallet_row::WalletRow,
+};
 pub use storage_error::StorageError;
+use tari_key_manager::cipher_seed::CipherSeed;
 use uuid::Uuid;
 
-pub trait CollectiblesStorage {
-  type Accounts: AccountsTableGateway;
-  type KeyIndices: KeyIndicesTableGateway;
-  type Wallets: WalletsTableGateway;
+pub trait StorageTransaction {
+  fn commit(self) -> Result<(), StorageError>;
+}
 
-  fn accounts(&self) -> Self::Accounts;
+pub trait CollectiblesStorage {
+  type Addresses: AddressesTableGateway<Self::Transaction>;
+  type Assets: AssetsTableGateway<Self::Transaction>;
+  type AssetWallets: AssetWalletsTableGateway<Self::Transaction>;
+  type IssuedAssets: IssuedAssetsTableGateway;
+  type Tip002Addresses: Tip002AddressesTableGateway<Self::Transaction>;
+  type KeyIndices: KeyIndicesTableGateway<Self::Transaction>;
+  type Wallets: WalletsTableGateway<Self::Transaction>;
+  type Transaction: StorageTransaction;
+
+  fn create_transaction(&self) -> Result<Self::Transaction, StorageError>;
+  fn addresses(&self) -> Self::Addresses;
+  fn assets(&self) -> Self::Assets;
+  fn asset_wallets(&self) -> Self::AssetWallets;
+  fn issued_assets(&self) -> Self::IssuedAssets;
+  fn tip002_addresses(&self) -> Self::Tip002Addresses;
   fn key_indices(&self) -> Self::KeyIndices;
   fn wallets(&self) -> Self::Wallets;
 }
 
-pub trait AccountsTableGateway {
-  fn list(&self) -> Result<Vec<Account>, StorageError>;
-  fn insert(&self, account: NewAccount) -> Result<Account, StorageError>;
-  fn find(&self, account_id: Uuid) -> Result<Account, StorageError>;
+pub trait AssetsTableGateway<T: StorageTransaction> {
+  fn list(&self, tx: &T) -> Result<Vec<AssetRow>, StorageError>;
+  fn insert(&self, asset: &AssetRow, tx: &T) -> Result<(), StorageError>;
+  fn find(&self, asset_id: Uuid, tx: &T) -> Result<AssetRow, StorageError>;
 }
 
-pub trait WalletsTableGateway {
+pub trait WalletsTableGateway<T: StorageTransaction> {
   type Passphrase;
 
-  fn list(&self) -> Result<Vec<WalletInfo>, StorageError>;
-  fn insert(&self, wallet: NewWallet, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
-  fn find(&self, id: Uuid, pass: Self::Passphrase) -> Result<Wallet, StorageError>;
+  fn list(&self, tx: Option<&T>) -> Result<Vec<WalletRow>, StorageError>;
+  fn insert(
+    &self,
+    wallet: &WalletRow,
+    pass: Option<Self::Passphrase>,
+    tx: &T,
+  ) -> Result<(), StorageError>;
+  fn find(&self, id: Uuid, tx: Option<&T>) -> Result<WalletRow, StorageError>;
+  fn get_cipher_seed(
+    &self,
+    id: Uuid,
+    pass: Option<Self::Passphrase>,
+    tx: Option<&T>,
+  ) -> Result<CipherSeed, StorageError>;
 }
 
-pub trait KeyIndicesTableGateway {
-  fn list(&self) -> Result<Vec<KeyIndex>, StorageError>;
-  fn insert(&self, key_index: NewKeyIndex) -> Result<KeyIndex, StorageError>;
-  fn find(&self, branch_seed: String) -> Result<Option<KeyIndex>, StorageError>;
+pub trait KeyIndicesTableGateway<T: StorageTransaction> {
+  fn list(&self, tx: &T) -> Result<Vec<KeyIndexRow>, StorageError>;
+  fn insert(&self, key_index: &KeyIndexRow, tx: &T) -> Result<(), StorageError>;
+  fn update_last_index(
+    &self,
+    old_row: &KeyIndexRow,
+    new_last_index: u64,
+    tx: &T,
+  ) -> Result<(), StorageError>;
+  fn find(&self, branch_seed: String, tx: &T) -> Result<Option<KeyIndexRow>, StorageError>;
+}
+
+pub trait AssetWalletsTableGateway<T: StorageTransaction> {
+  fn insert(&self, row: &AssetWalletRow, tx: &T) -> Result<(), StorageError>;
+  fn find_by_wallet_id(&self, wallet_id: Uuid, tx: &T)
+    -> Result<Vec<AssetWalletRow>, StorageError>;
+}
+
+pub trait AddressesTableGateway<T: StorageTransaction> {
+  fn insert(&self, row: &AddressRow, tx: &T) -> Result<(), StorageError>;
+}
+
+pub trait IssuedAssetsTableGateway {}
+
+pub trait Tip002AddressesTableGateway<T: StorageTransaction> {
+  fn insert(&self, row: &Tip002AddressRow, tx: &T) -> Result<(), StorageError>;
 }

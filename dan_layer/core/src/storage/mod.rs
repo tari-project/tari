@@ -20,31 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{
-    HotStuffMessageType,
-    Instruction,
-    Payload,
-    QuorumCertificate,
-    Signature,
-    StateRoot,
-    TreeNodeHash,
-    ViewId,
-};
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-    ops::Deref,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-        RwLock,
-        RwLockReadGuard,
-        RwLockWriteGuard,
-    },
-};
+
 pub use store::{AssetDataStore, AssetStore};
 pub mod chain;
 mod chain_storage_service;
@@ -55,6 +34,5 @@ pub mod state;
 mod store;
 mod unit_of_work_tracker;
 
-use crate::storage::chain::{DbInstruction, DbNode, DbQc};
 pub use db_factory::DbFactory;
 pub use unit_of_work_tracker::UnitOfWorkTracker;

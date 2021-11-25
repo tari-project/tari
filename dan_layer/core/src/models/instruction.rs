@@ -29,7 +29,7 @@ pub struct Instruction {
     asset_id: PublicKey,
     template_id: TemplateId,
     method: String,
-    args: Vec<Vec<u8>>,
+    args: Vec<u8>,
     // from: TokenId,
     // signature: ComSig,
     hash: Vec<u8>,
@@ -46,7 +46,7 @@ impl Instruction {
         asset_id: PublicKey,
         template_id: TemplateId,
         method: String,
-        args: Vec<Vec<u8>>,
+        args: Vec<u8>,
         /* from: TokenId,
          * _signature: ComSig, */
     ) -> Self {
@@ -76,7 +76,7 @@ impl Instruction {
         &self.method
     }
 
-    pub fn args(&self) -> &[Vec<u8>] {
+    pub fn args(&self) -> &[u8] {
         &self.args
     }
 
@@ -94,12 +94,10 @@ impl Instruction {
     }
 
     pub fn calculate_hash(&self) -> Vec<u8> {
-        let mut b = Blake256::new()
+        let b = Blake256::new()
             .chain(self.asset_id.as_bytes())
-            .chain(self.method.as_bytes());
-        for a in &self.args {
-            b = b.chain(a);
-        }
+            .chain(self.method.as_bytes())
+            .chain(&self.args);
         // b.chain(self.from.as_bytes())
         //     .chain(com_sig_to_bytes(&self.signature))
         b.finalize().to_vec()

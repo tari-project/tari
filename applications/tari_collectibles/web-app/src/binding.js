@@ -24,7 +24,6 @@ import { invoke } from "@tauri-apps/api/tauri";
 
 async function command_assets_create(
   name,
-  publicKey,
   description,
   image,
   templateIds,
@@ -33,7 +32,6 @@ async function command_assets_create(
   console.log("command_assets_create:", templateParameters);
   return await invoke("assets_create", {
     name,
-    publicKey,
     description,
     image,
     templateIds,
@@ -60,12 +58,17 @@ async function command_asset_create_initial_checkpoint(assetPubKey, committee) {
   });
 }
 
+async function command_next_asset_public_key() {
+  return await invoke("next_asset_public_key", {});
+}
+
+
 async function command_wallets_create(passphrase, name) {
   return await invoke("wallets_create", { passphrase, name });
 }
 
-async function command_wallets_find(id, passphrase) {
-  return await invoke("wallets_find", { id, passphrase });
+async function command_wallets_unlock(id, passphrase) {
+  return await invoke("wallets_unlock", { id, passphrase });
 }
 
 async function command_wallets_seed_words(id, passphrase) {
@@ -76,20 +79,20 @@ async function command_wallets_list() {
   return await invoke("wallets_list");
 }
 
-async function command_accounts_create(assetPubKey) {
-  return await invoke("accounts_create", { assetPubKey });
+async function command_asset_wallets_create(assetPublicKey) {
+  return await invoke("asset_wallets_create", { assetPublicKey });
 }
 
-async function command_accounts_list() {
-  return await invoke("accounts_list", {});
-}
-
-async function command_next_asset_public_key() {
-  return await invoke("next_asset_public_key", {});
+async function command_asset_wallets_list() {
+  return await invoke("asset_wallets_list", {});
 }
 
 async function command_create_db() {
   return await invoke("create_db", {});
+}
+
+async function command_asset_wallets_get_balance(assetPublicKey) {
+  return await invoke("asset_wallets_get_balance", {assetPublicKey});
 }
 
 const commands = {
@@ -99,12 +102,13 @@ const commands = {
   command_assets_list_owned,
   command_assets_list_registered_assets,
   command_asset_create_initial_checkpoint,
-  command_accounts_create,
-  command_accounts_list,
   command_next_asset_public_key,
+  command_asset_wallets_create,
+  command_asset_wallets_get_balance,
+  command_asset_wallets_list,
   command_wallets_create,
   command_wallets_list,
-  command_wallets_find,
+  command_wallets_unlock,
   command_wallets_seed_words,
 };
 

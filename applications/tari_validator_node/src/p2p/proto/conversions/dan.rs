@@ -34,11 +34,10 @@ use tari_dan_core::{
         QuorumCertificate,
         Signature,
         TariDanPayload,
-        TokenId,
         TreeNodeHash,
         ViewId,
     },
-    types::{create_com_sig_from_bytes, PublicKey},
+    types::PublicKey,
 };
 
 impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
@@ -124,7 +123,7 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
             HotStuffMessageType::try_from(value.message_type as u8)?,
             value.justify.map(|j| j.try_into()).transpose()?,
             value.node.map(|n| n.try_into()).transpose()?,
-            value.node_hash.map(|v| TreeNodeHash(v.clone())),
+            value.node_hash.map(TreeNodeHash),
             value.partial_sig.map(|p| p.try_into()).transpose()?,
         ))
     }
@@ -215,6 +214,6 @@ impl TryFrom<dan_proto::CheckpointData> for CheckpointData {
     type Error = String;
 
     fn try_from(_value: dan_proto::CheckpointData) -> Result<Self, Self::Error> {
-        Ok(Self::new())
+        Ok(Self::default())
     }
 }

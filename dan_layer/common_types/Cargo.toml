@@ -1,0 +1,13 @@
+[package]
+name = "tari_dan_common_types"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+prost = "0.8"
+prost-types = "0.8"
+
+[build-dependencies]
+tari_common = { path = "../../common", features = ["build"] }

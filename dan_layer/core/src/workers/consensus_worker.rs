@@ -33,7 +33,7 @@ use crate::{
         SigningService,
     },
     storage::{
-        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
+        chain::ChainDbUnitOfWork,
         state::{StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkImpl},
         ChainStorageService,
         DbFactory,
@@ -231,7 +231,7 @@ where
         use ConsensusWorkerState::*;
         match &mut self.state {
             Starting => {
-                states::Starting::new()
+                states::Starting::default()
                     .next_event(
                         &mut self.base_node_client,
                         &self.asset_definition,
@@ -248,7 +248,7 @@ where
                 let db = self.db_factory.create_chain_db()?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
-                let mut p = states::Prepare::new(self.node_id.clone(), self.db_factory.clone());
+                let mut p = states::Prepare::new(self.node_id.clone());
                 let res = p
                     .next_event(
                         &self.get_current_view()?,
@@ -348,7 +348,7 @@ where
                     self.payload_provider.get_payload_queue().await,
                 );
                 self.state_db_unit_of_work = None;
-                let mut state = states::NextViewState::new();
+                let mut state = states::NextViewState::default();
                 state
                     .next_event(
                         &self.get_current_view()?,
@@ -362,7 +362,7 @@ where
             },
             Idle => {
                 info!(target: LOG_TARGET, "No work to do, idling");
-                let state = states::IdleState::new();
+                let state = states::IdleState::default();
                 state.next_event().await
             },
         }

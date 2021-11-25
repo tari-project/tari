@@ -19,25 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::marker::PhantomData;
 use tari_app_grpc::tari_rpc as rpc;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{Instruction, TemplateId, TokenId},
-    services::MempoolService,
-    storage::{ChainStorageService, DbFactory},
-    types::{ComSig, PublicKey},
-};
+use tari_dan_core::{models::Instruction, services::MempoolService, storage::DbFactory, types::PublicKey};
 use tonic::{Request, Response, Status};
 
 pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
     mempool: TMempoolService,
-    db_factory: TDbFactory,
+    _db_factory: TDbFactory,
 }
 
 impl<TMempoolService: MempoolService, TDbFactory: DbFactory> ValidatorNodeGrpcServer<TMempoolService, TDbFactory> {
     pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
-        Self { mempool, db_factory }
+        Self {
+            mempool,
+            _db_factory: db_factory,
+        }
     }
 }
 
@@ -80,11 +77,13 @@ where
             Ok(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Accepted".to_string(),
+                    result: None,
                 }))
             },
             Err(_) => {
                 return Ok(Response::new(rpc::ExecuteInstructionResponse {
                     status: "Errored".to_string(),
+                    result: None,
                 }))
             },
         }
@@ -103,5 +102,13 @@ where
         // Ok(Response::new(rpc::GetMetadataResponse {
         //     sidechains: vec![metadata.into()],
         // }))
+    }
+
+    async fn invoke_read_method(
+        &self,
+        request: Request<rpc::InvokeReadMethodRequest>,
+    ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
+        dbg!(&request);
+        todo!()
     }
 }

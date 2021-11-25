@@ -241,7 +241,7 @@ where
                 return Ok(None);
             }
 
-            unit_of_work.set_prepare_qc(justify);
+            unit_of_work.set_prepare_qc(justify)?;
             self.send_vote_to_leader(
                 justify.node_hash().clone(),
                 outbound,

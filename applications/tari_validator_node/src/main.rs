@@ -37,7 +37,7 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_dan_core::{
     services::{MempoolService, MempoolServiceHandle},
-    storage::{ChainStorageService, DbFactory},
+    storage::DbFactory,
 };
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -76,7 +76,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
-    let mempool_service = MempoolServiceHandle::new();
+    let mempool_service = MempoolServiceHandle::default();
     let db_factory = SqliteDbFactory::new(&config);
 
     let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory);

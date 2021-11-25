@@ -49,4 +49,10 @@ pub enum StorageError {
   },
   #[error("The password is incorrect")]
   WrongPassword,
+  #[error("Could not update value in database because another thread has already updated it. Table:{table}, old_value: {old_value}, new_value:{new_value}")]
+  ConcurrencyError {
+    table: &'static str,
+    old_value: String,
+    new_value: String,
+  },
 }

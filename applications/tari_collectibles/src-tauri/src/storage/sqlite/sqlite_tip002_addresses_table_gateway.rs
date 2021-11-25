@@ -20,24 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
-use uuid::Uuid;
+use crate::{
+  schema::tip002_address::dsl::tip002_address,
+  storage::{
+    models::tip002_address_row::Tip002AddressRow,
+    sqlite::{models::Tip002Address, sqlite_transaction::SqliteTransaction},
+    StorageError, Tip002AddressesTableGateway,
+  },
+};
+use diesel::RunQueryDsl;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Account {
-  pub id: Uuid,
-  pub asset_public_key: PublicKey,
-  pub name: Option<String>,
-  pub description: Option<String>,
-  pub image: Option<String>,
-  pub committee: Option<Vec<PublicKey>>,
-}
+pub struct SqliteTip002AddressesTableGateway {}
 
-pub struct NewAccount {
-  pub asset_public_key: PublicKey,
-  pub name: Option<String>,
-  pub description: Option<String>,
-  pub image: Option<String>,
-  pub committee: Option<Vec<PublicKey>>,
+impl Tip002AddressesTableGateway<SqliteTransaction> for SqliteTip002AddressesTableGateway {
+  fn insert(&self, row: &Tip002AddressRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+    let db_row = Tip002Address {
+      id: Vec::from(row.id.as_bytes().as_slice()),
+      address_id: Vec::from(row.address_id.as_bytes().as_slice()),
+      balance: 0,
+      at_height: None,
+    };
+    diesel::insert_into(tip002_address)
+      .values(db_row)
+      .execute(tx.connection())?;
+    Ok(())
+  }
 }

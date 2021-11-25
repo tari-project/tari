@@ -19,7 +19,10 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::error::CollectiblesError;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_common_types::types::PublicKey;
+use tari_utilities::ByteArray;
 
 pub trait ValidatorNodeClient {}
 
@@ -28,17 +31,43 @@ pub struct GrpcValidatorNodeClient {
 }
 
 impl GrpcValidatorNodeClient {
-  pub async fn connect(endpoint: String) -> Result<Self, String> {
+  pub async fn connect(endpoint: String) -> Result<Self, CollectiblesError> {
     let s = Self {
       client: grpc::validator_node_client::ValidatorNodeClient::connect(endpoint.clone())
         .await
-        .map_err(|e| {
-          format!(
-            "No connection to validator node. Is it running with gRPC on '{}'? Error: {}",
-            endpoint, e
-          )
+        .map_err(|e| CollectiblesError::ClientConnectionError {
+          client: "validator_node",
+          address: endpoint,
+          error: e.to_string(),
         })?,
     };
     Ok(s)
+  }
+
+  pub async fn invoke_read_method(
+    &mut self,
+    asset_public_key: PublicKey,
+    template_id: u32,
+    method: String,
+    args: Vec<u8>,
+  ) -> Result<Option<Vec<u8>>, CollectiblesError> {
+    let req = grpc::InvokeReadMethodRequest {
+      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+      template_id,
+      method,
+      args,
+    };
+    dbg!(&req);
+    let response = self
+      .client
+      .invoke_read_method(req)
+      .await
+      .map(|resp| resp.into_inner())
+      .map_err(|e| CollectiblesError::ClientRequestError {
+        source: e,
+        request: "invoke_read_method".to_string(),
+      })?;
+    dbg!(&response);
+    Ok(response.result)
   }
 }

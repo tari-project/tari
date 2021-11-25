@@ -20,30 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{app_state::ConcurrentAppState, models::Tip002Info};
-use uuid::Uuid;
+use tonic::Status;
 
-#[tauri::command]
-pub async fn tip002_get_info(
-  _account_id: Uuid,
-  _asset_public_key: String,
-  _state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<Option<Tip002Info>, String> {
-  // let db = state
-  //   .create_db()
-  //   .await
-  //   .map_err(|e| format!("Could not open DB:{}", e))?;
-  // let account = db
-  //   .accounts()
-  //   .find(account_id)
-  //   .map_err(|e| format!("Could not find account: {}", e))?;
-  // let committee = account.committee;
-  // let validator_client = state.connect_validator_node_client(committee[0]).await?;
-  // let asset_public_key = PublicKey::from_hex(asset_public_key
-  // let template_data = tari_tips::tip002::InfoRequest{
-  //
-  // };
-  // let template_data = template_data.encode_to_vec();
-  // validator_client.call(comittee[0], "tip002", )
-  todo!()
+#[derive(Debug, thiserror::Error)]
+pub enum CollectiblesError {
+  #[error("No connection to {client}. Is it running with grpc on '{address}' ? Error: {error}")]
+  ClientConnectionError {
+    client: &'static str,
+    address: String,
+    error: String,
+  },
+  #[error("Error invoking operation: {request}: {source}")]
+  ClientRequestError { request: String, source: Status },
 }

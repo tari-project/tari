@@ -31,16 +31,11 @@ use crate::{
     SqliteTransaction,
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
-use diesel_migrations::embed_migrations;
 use log::*;
 use std::convert::TryFrom;
 use tari_dan_core::{
-    models::{HotStuffMessageType, Payload, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
-    storage::{
-        chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
-        StorageError,
-        UnitOfWorkTracker,
-    },
+    models::{HotStuffMessageType, QuorumCertificate, Signature, TariDanPayload, TreeNodeHash, ViewId},
+    storage::chain::{ChainDbBackendAdapter, DbInstruction, DbNode, DbQc},
 };
 
 const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_chain_backend_adapter";
@@ -77,8 +72,18 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        connection.execute("PRAGMA foreign_keys = ON;");
-        connection.execute("BEGIN EXCLUSIVE TRANSACTION;");
+        connection
+            .execute("PRAGMA foreign_keys = ON;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set pragma".to_string(),
+            })?;
+        connection
+            .execute("BEGIN EXCLUSIVE TRANSACTION;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "begin transaction".to_string(),
+            })?;
 
         Ok(SqliteTransaction::new(connection))
     }
@@ -124,11 +129,10 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     }
 
     fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        use crate::schema::locked_qc::dsl;
         let message_type = item.message_type.as_u8() as i32;
         let existing: Result<LockedQc, _> = dsl::locked_qc.find(1).first(transaction.connection());
         match existing {
-            Ok(x) => {
+            Ok(_) => {
                 diesel::update(dsl::locked_qc.find(1))
                     .set((
                         dsl::message_type.eq(message_type),
@@ -166,7 +170,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         let message_type = item.message_type.as_u8() as i32;
         let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(1).first(transaction.connection());
         match existing {
-            Ok(x) => {
+            Ok(_) => {
                 diesel::update(dsl::prepare_qc.find(1))
                     .set((
                         dsl::message_type.eq(message_type),
@@ -265,7 +269,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                     message_type: l.message_type,
                     view_number: l.view_number,
                     node_hash: l.node_hash.clone(),
-                    signature: l.signature.clone(),
+                    signature: l.signature,
                 }
             },
         };
@@ -315,8 +319,8 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn insert_instruction(
         &self,
-        item: &DbInstruction,
-        transaction: &Self::BackendTransaction,
+        _item: &DbInstruction,
+        _transaction: &Self::BackendTransaction,
     ) -> Result<(), Self::Error> {
         todo!()
     }

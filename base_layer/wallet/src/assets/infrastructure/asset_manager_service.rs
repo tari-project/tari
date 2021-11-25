@@ -27,7 +27,6 @@ use crate::{
     },
     error::WalletError,
     output_manager_service::{handle::OutputManagerHandle, storage::database::OutputManagerBackend},
-    types::MockPersistentKeyManager,
 };
 use futures::{pin_mut, StreamExt};
 use log::*;
@@ -37,13 +36,13 @@ use tari_shutdown::ShutdownSignal;
 const LOG_TARGET: &str = "wallet::assets::infrastructure::asset_manager_service";
 
 pub struct AssetManagerService<T: OutputManagerBackend + 'static> {
-    manager: AssetManager<T, MockPersistentKeyManager>,
+    manager: AssetManager<T>,
 }
 
 impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
     pub fn new(backend: T, output_manager: OutputManagerHandle) -> Self {
         Self {
-            manager: AssetManager::<T, _>::new(backend, output_manager, MockPersistentKeyManager::new()),
+            manager: AssetManager::<T>::new(backend, output_manager),
         }
     }
 
