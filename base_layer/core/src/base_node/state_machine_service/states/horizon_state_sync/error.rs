@@ -20,24 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::num::TryFromIntError;
-
-use thiserror::Error;
-use tokio::task;
-
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
-};
-use tari_mmr::error::MerkleMountainRangeError;
-
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
     chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction_entities::error::TransactionError,
     validation::ValidationError,
 };
+use std::num::TryFromIntError;
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
+use tari_mmr::error::MerkleMountainRangeError;
+use thiserror::Error;
+use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
@@ -74,15 +70,6 @@ pub enum HorizonSyncError {
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error(
-        "Sync peer {peer} has a tip height of {remote_peer_height} which is less than the target height of \
-         {target_pruning_horizon}"
-    )]
-    InappropriateSyncPeer {
-        peer: NodeId,
-        target_pruning_horizon: u64,
-        remote_peer_height: u64,
-    },
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

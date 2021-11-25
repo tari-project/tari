@@ -350,7 +350,7 @@ mod test {
             "abandon".to_string(),
             "tipico".to_string(),
         ];
-        assert_eq!(MnemonicLanguage::detect_language(&words2).is_err(), true);
+        assert!(MnemonicLanguage::detect_language(&words2).is_err());
 
         // bounds check (last word is invalid)
         let words3 = vec![
@@ -360,7 +360,7 @@ mod test {
             "abandon".to_string(),
             "topazio".to_string(),
         ];
-        assert_eq!(MnemonicLanguage::detect_language(&words3).is_err(), true);
+        assert!(MnemonicLanguage::detect_language(&words3).is_err());
 
         // building up a word list: English/French + French -> French
         let mut words = Vec::with_capacity(3);

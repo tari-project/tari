@@ -26,9 +26,8 @@ use crate::{
     proto,
     proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},
 };
-use croaring::Bitmap;
 use log::*;
-use std::{cmp, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tari_comms::{protocol::rpc::RpcStatus, utils};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
@@ -88,20 +87,6 @@ where B: BlockchainBackend + 'static
             (skip, prev_header.output_mmr_size)
         };
 
-        // we need to fetch the spent bitmap for the height the client requested
-        let bitmap = self
-            .db
-            .fetch_complete_deleted_bitmap_at(end_header.hash())
-            .await
-            .map_err(|_| {
-                RpcStatus::general(format!(
-                    "Could not get tip deleted bitmap at hash {}",
-                    end_header.hash().to_hex()
-                ))
-            })?
-            .into_bitmap();
-        let bitmap = Arc::new(bitmap);
-
         let include_pruned_utxos = request.include_pruned_utxos;
         let include_deleted_bitmaps = request.include_deleted_bitmaps;
         task::spawn(async move {
@@ -112,7 +97,6 @@ where B: BlockchainBackend + 'static
                     skip_outputs,
                     prev_utxo_mmr_size,
                     end_header,
-                    bitmap,
                     include_pruned_utxos,
                     include_deleted_bitmaps,
                 )
@@ -125,6 +109,7 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn start_streaming(
         &self,
         tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
@@ -132,10 +117,23 @@ where B: BlockchainBackend + 'static
         mut skip_outputs: u64,
         mut prev_utxo_mmr_size: u64,
         end_header: BlockHeader,
-        bitmap: Arc<Bitmap>,
         include_pruned_utxos: bool,
         include_deleted_bitmaps: bool,
     ) -> Result<(), RpcStatus> {
+        // we need to fetch the spent bitmap for the height the client requested
+        let bitmap = self
+            .db
+            .fetch_complete_deleted_bitmap_at(end_header.hash())
+            .await
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "Failed to get deleted bitmap: {}", err);
+                RpcStatus::general(format!(
+                    "Could not get deleted bitmap at hash {}",
+                    end_header.hash().to_hex()
+                ))
+            })?
+            .into_bitmap();
+        let bitmap = Arc::new(bitmap);
         debug!(
             target: LOG_TARGET,
             "Starting stream task with current_header: {}, skip_outputs: {}, prev_utxo_mmr_size: {}, end_header: {}, \

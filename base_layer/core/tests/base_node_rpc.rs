@@ -303,8 +303,7 @@ async fn test_get_height_at_time() {
     let (_, service, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir) = setup().await;
 
     let mut prev_block = block0.clone();
-    let mut times = Vec::new();
-    times.push(prev_block.header().timestamp);
+    let mut times = vec![prev_block.header().timestamp];
     for _ in 0..10 {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let new_block = base_node

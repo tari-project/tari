@@ -268,28 +268,12 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
-    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_kernels_by_mmr_position(start, end)
-    }
-
     fn fetch_utxos_in_block(
         &self,
         header_hash: &HashOutput,
         deleted: &Bitmap,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         self.db.as_ref().unwrap().fetch_utxos_in_block(header_hash, deleted)
-    }
-
-    fn fetch_utxos_by_mmr_position(
-        &self,
-        start: u64,
-        end: u64,
-        deleted: &Bitmap,
-    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {

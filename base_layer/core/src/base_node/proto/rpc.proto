@@ -45,7 +45,7 @@ message FindChainSplitResponse {
 }
 
 message SyncKernelsRequest {
-  bytes start_header_hash = 1;
+  uint64 start = 1;
   bytes end_header_hash = 2;
 }
 

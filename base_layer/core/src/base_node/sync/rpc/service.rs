@@ -392,10 +392,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
 
         let start_header = db
-            .fetch_header_by_block_hash(req.start_header_hash.clone())
+            .fetch_header_containing_kernel_mmr(req.start + 1)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-            .ok_or_else(|| RpcStatus::not_found("Unknown start header"))?;
+            .into_header();
 
         let end_header = db
             .fetch_header_by_block_hash(req.end_header_hash.clone())

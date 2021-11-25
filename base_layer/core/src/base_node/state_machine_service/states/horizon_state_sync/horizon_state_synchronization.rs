@@ -135,8 +135,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        debug!(target: LOG_TARGET, "Initializing");
-        self.initialize().await?;
+        // debug!(target: LOG_TARGET, "Initializing");
+        // self.initialize().await?;
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
@@ -144,65 +144,30 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    async fn initialize(&mut self) -> Result<(), HorizonSyncError> {
-        let db = self.db();
-        let local_metadata = db.get_chain_metadata().await?;
-
-        if local_metadata.height_of_longest_chain() == 0 {
-            let horizon_data = db.fetch_horizon_data().await?;
-            self.utxo_sum = horizon_data.utxo_sum().clone();
-            self.kernel_sum = horizon_data.kernel_sum().clone();
-
-            return Ok(());
-        }
-
-        // let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
-        // let acc = db.fetch_block_accumulated_data(header.hash().clone()).await?;
-        let new_prune_height = cmp::min(local_metadata.height_of_longest_chain(), self.horizon_sync_height);
-        if local_metadata.pruned_height() < new_prune_height {
-            debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
-            db.prune_to_height(new_prune_height).await?;
-        }
-
-        // let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
-
-        // prune_to_height updates the horizon data
-        let horizon_data = db.fetch_horizon_data().await?;
-        // if *horizon_data.kernel_sum() != acc.cumulative_kernel_sum {
-        //     error!(target: LOG_TARGET, "KERNEL SUM NOT EQUAL CALCULATED");
-        // }
-        // if *horizon_data.utxo_sum() != acc.cumulative_utxo_sum {
-        //     error!(target: LOG_TARGET, "UTXO SUM NOT EQUAL CALCULATED");
-        // }
-
-        // let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
-        // if calc_kernel_sum != acc.cumulative_kernel_sum {
-        //     error!(target: LOG_TARGET, "KERNEL SUM NOT EQUAL CALCULATED");
-        // }
-        // if calc_utxo_sum != acc.cumulative_utxo_sum {
-        //     error!(target: LOG_TARGET, "UTXO SUM NOT EQUAL CALCULATED");
-        // }
-
-        // if calc_kernel_sum != *horizon_data.kernel_sum() {
-        //     error!(target: LOG_TARGET, "HORIZON KERNEL SUM NOT EQUAL CALCULATED");
-        // }
-        // if calc_utxo_sum != *horizon_data.utxo_sum() {
-        //     error!(target: LOG_TARGET, "HORIZON UTXO SUM NOT EQUAL CALCULATED");
-        // }
-
-        debug!(
-            target: LOG_TARGET,
-            "Loaded from horizon data utxo_sum = {}, kernel_sum = {}",
-            horizon_data.utxo_sum().to_hex(),
-            horizon_data.kernel_sum().to_hex(),
-        );
-        // self.utxo_sum = calc_utxo_sum;
-        // self.kernel_sum = calc_kernel_sum;
-        self.utxo_sum = horizon_data.utxo_sum().clone();
-        self.kernel_sum = horizon_data.kernel_sum().clone();
-
-        Ok(())
-    }
+    // async fn initialize(&mut self) -> Result<(), HorizonSyncError> {
+    //     let db = self.db();
+    //     let local_metadata = db.get_chain_metadata().await?;
+    //
+    //     let new_prune_height = cmp::min(local_metadata.height_of_longest_chain(), self.horizon_sync_height);
+    //     if local_metadata.pruned_height() < new_prune_height {
+    //         debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
+    //         db.prune_to_height(new_prune_height).await?;
+    //     }
+    //
+    //     // prune_to_height updates horizon data
+    //     let horizon_data = db.fetch_horizon_data().await?;
+    //
+    //     debug!(
+    //         target: LOG_TARGET,
+    //         "Loaded from horizon data utxo_sum = {}, kernel_sum = {}",
+    //         horizon_data.utxo_sum().to_hex(),
+    //         horizon_data.kernel_sum().to_hex(),
+    //     );
+    //     self.utxo_sum = horizon_data.utxo_sum().clone();
+    //     self.kernel_sum = horizon_data.kernel_sum().clone();
+    //
+    //     Ok(())
+    // }
 
     async fn synchronize_kernels(
         &mut self,
@@ -247,7 +212,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .fetch_header_containing_kernel_mmr(local_num_kernels + 1)
             .await?;
         let req = SyncKernelsRequest {
-            start_header_hash: current_header.hash().clone(),
+            start: local_num_kernels,
             end_header_hash: to_header.hash(),
         };
         let mut kernel_stream = client.sync_kernels(req).await?;
@@ -407,15 +372,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Found header for utxos at mmr pos: {} - {} height: {}",
-            start + 1,
+            start,
             current_header.header().output_mmr_size,
             current_header.height()
         );
 
         let db = self.db().clone();
 
-        let mut output_hashes = vec![];
-        let mut witness_hashes = vec![];
         let mut txn = db.write_transaction();
         let mut unpruned_outputs = vec![];
         let mut mmr_position = start;
@@ -435,7 +398,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         while let Some(response) = output_stream.next().await {
             let res: SyncUtxosResponse = response?;
 
-            if res.mmr_index > 0 && res.mmr_index != mmr_position {
+            if res.mmr_index != 0 && res.mmr_index != mmr_position {
                 return Err(HorizonSyncError::IncorrectResponse(format!(
                     "Expected MMR position of {} but got {}",
                     mmr_position, res.mmr_index,
@@ -458,9 +421,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    output_hashes.push(output.hash());
-                    witness_hashes.push(output.witness_hash());
                     unpruned_outputs.push(output.clone());
+
+                    output_mmr.push(output.hash())?;
+                    witness_mmr.push(output.witness_hash())?;
                     self.utxo_sum = &self.utxo_sum + &output.commitment;
 
                     txn.insert_output_via_horizon_sync(
@@ -481,8 +445,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.height()
                     );
                     height_txo_counter += 1;
-                    output_hashes.push(utxo.hash.clone());
-                    witness_hashes.push(utxo.witness_hash.clone());
+                    output_mmr.push(utxo.hash.clone())?;
+                    witness_mmr.push(utxo.witness_hash.clone())?;
+
                     txn.insert_pruned_output_via_horizon_sync(
                         utxo.hash,
                         utxo.witness_hash,
@@ -499,15 +464,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             current_header.header().output_mmr_size,
                             mmr_position
                         )));
-                    }
-
-                    // Validate root
-                    for hash in output_hashes.drain(..) {
-                        output_mmr.push(hash)?;
-                    }
-
-                    for hash in witness_hashes.drain(..) {
-                        witness_mmr.push(hash)?;
                     }
 
                     // Check that the difference bitmap isn't excessively large. Bitmap::deserialize panics if greater
@@ -559,7 +515,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         });
                     }
 
-                    // self.validate_rangeproofs(mem::take(&mut unpruned_outputs)).await?;
+                    self.validate_rangeproofs(mem::take(&mut unpruned_outputs)).await?;
 
                     txn.update_deleted_bitmap(diff_bitmap.clone());
 
@@ -577,12 +533,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     txn.set_pruned_height(metadata.pruned_height(), self.kernel_sum.clone(), self.utxo_sum.clone());
                     txn.commit().await?;
 
-                    let data = self.db().fetch_horizon_data().await?;
-                    error!(
-                        target: LOG_TARGET,
-                        "***************** utxo = {} ********************* ",
-                        data.utxo_sum().to_hex(),
-                    );
                     debug!(
                         target: LOG_TARGET,
                         "UTXO: {}/{}, Header #{}, added {} utxos, added {} txos in {:.2?}",
@@ -593,17 +543,28 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         height_txo_counter,
                         timer.elapsed()
                     );
-
                     height_txo_counter = 0;
                     height_utxo_counter = 0;
                     timer = Instant::now();
 
-                    current_header = db.fetch_chain_header(current_header.height() + 1).await?;
-                    debug!(
-                        target: LOG_TARGET,
-                        "Expecting to receive the next UTXO set for header #{}",
-                        current_header.height()
-                    );
+                    if mmr_position == end {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Sync complete at mmr position {}, height #{}",
+                            mmr_position,
+                            current_header.height()
+                        );
+                        break;
+                    } else {
+                        current_header = db.fetch_chain_header(current_header.height() + 1).await?;
+                        debug!(
+                            target: LOG_TARGET,
+                            "Expecting to receive the next UTXO set {}-{} for header #{}",
+                            mmr_position,
+                            current_header.header().output_mmr_size,
+                            current_header.height()
+                        );
+                    }
                 },
                 v => {
                     error!(target: LOG_TARGET, "Remote node returned an invalid response {:?}", v);
@@ -671,25 +632,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         )));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
-        // TODO: Use accumulated sums
-        // let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
-        // let utxo_sum = &self.utxo_sum;
-        // let kernel_sum = &self.kernel_sum;
-        // if *utxo_sum != calc_utxo_sum {
-        //     error!(target: LOG_TARGET, "UTXO sum isnt equal!");
-        // }
-        // if *kernel_sum != calc_kernel_sum {
-        //     error!(target: LOG_TARGET, "KERNEL sum isnt equal!");
-        // }
+        // TODO: Use cumulative kernel and utxo sums
+        let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
 
         self.shared
             .sync_validators
             .final_horizon_state
             .validate(
                 &*self.db().inner().db_read_access()?,
-                header.height() - 1,
-                &self.utxo_sum,
-                &self.kernel_sum,
+                header.height(),
+                &calc_utxo_sum,
+                &calc_kernel_sum,
             )
             .map_err(HorizonSyncError::FinalStateValidationFailed)?;
 
@@ -742,7 +695,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             );
             let (utxos, _) = self
                 .db()
-                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header().output_mmr_size - 1, bitmap.clone())
+                .fetch_utxos_in_block(curr_header.hash().clone(), bitmap.clone())
                 .await?;
             trace!(
                 target: LOG_TARGET,
@@ -752,19 +705,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 prev_kernel_mmr,
                 curr_header.header().kernel_mmr_size - 1
             );
-            let kernels = self
-                .db()
-                .fetch_kernels_by_mmr_position(prev_kernel_mmr, curr_header.header().kernel_mmr_size - 1)
-                .await?;
 
-            let mut utxo_sum = HomomorphicCommitment::default();
-            trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
             trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
             let mut prune_counter = 0;
             for u in utxos {
                 match u {
                     PrunedOutput::NotPruned { output } => {
-                        utxo_sum = &output.commitment + &utxo_sum;
+                        pruned_utxo_sum = &output.commitment + &pruned_utxo_sum;
                     },
                     _ => {
                         prune_counter += 1;
@@ -776,8 +723,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
             prev_mmr = curr_header.header().output_mmr_size;
 
-            pruned_utxo_sum = &utxo_sum + &pruned_utxo_sum;
-
+            let kernels = self.db().fetch_kernels_in_block(curr_header.hash().clone()).await?;
+            trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
             for k in kernels {
                 pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
             }
@@ -791,7 +738,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 pruned_utxo_sum
             );
         }
-
         Ok((pruned_utxo_sum, pruned_kernel_sum))
     }
 
