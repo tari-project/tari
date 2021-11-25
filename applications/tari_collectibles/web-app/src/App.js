@@ -116,8 +116,11 @@ ListItemLink.propTypes = {
 
 const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    console.log("refreshing accounts");
+    setError("");
     binding
       .command_asset_wallets_list()
       .then((accounts) => {
@@ -127,8 +130,9 @@ const AccountsMenu = (props) => {
       .catch((e) => {
         // todo error handling
         console.error("accounts_list error:", e);
+        setError(e.message);
       });
-  }, []);
+  }, [props.walletId]);
 
   // todo: hide accounts when not authenticated
   return (
@@ -147,6 +151,7 @@ const AccountsMenu = (props) => {
           My Assets
         </ListItem>
       </ListSubheader>
+      { error ? <ListItem>{error}</ListItem> : ""}
       <List>
         {accounts.map((item) => {
           return (
@@ -212,7 +217,7 @@ function App() {
                   icon={<DashboardIcon />}
                 />
                 <Divider></Divider>
-                <AccountsMenu />
+                <AccountsMenu walletId={walletId} />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"

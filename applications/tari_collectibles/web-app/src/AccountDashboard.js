@@ -46,7 +46,7 @@ class AccountDashboard extends React.Component {
             console.log("balance", balance);
         }
         catch(err) {
-            this.setState({error: err});
+            this.setState({error: err.message});
         }
     }
 

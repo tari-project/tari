@@ -23,7 +23,8 @@
 use crate::{
   schema::asset_wallets,
   storage::{
-    models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
+    models::asset_wallet_row::AssetWalletRow,
+    sqlite::{models, sqlite_transaction::SqliteTransaction},
     AssetWalletsTableGateway, StorageError,
   },
 };
@@ -49,6 +50,17 @@ impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGate
     wallet_id: Uuid,
     tx: &SqliteTransaction,
   ) -> Result<Vec<AssetWalletRow>, StorageError> {
-    todo!()
+    let asset_wallets: Vec<models::AssetWallet> = asset_wallets::table
+      .filter(asset_wallets::wallet_id.eq(Vec::from(wallet_id.as_bytes().as_slice())))
+      .get_results(tx.connection())?;
+    let mut result = vec![];
+    for aw in asset_wallets {
+      result.push(AssetWalletRow {
+        id: Uuid::from_slice(aw.id.as_slice())?,
+        asset_id: Uuid::from_slice(aw.asset_id.as_slice())?,
+        wallet_id: Uuid::from_slice(aw.wallet_id.as_slice())?,
+      });
+    }
+    Ok(result)
   }
 }
