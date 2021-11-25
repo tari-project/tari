@@ -48,7 +48,7 @@ technological merits of the potential system outlined herein.
 
 ## Goals
 
-The aim of this Request for Comment (RFC) is to describe how an Atomic swap will be created.
+This Request for Comment (RFC) aims to describe how an Atomic swap will be created.
 
 ## Related Requests for Comment
 
@@ -62,45 +62,61 @@ $$
 
 ## Description
 
-Atomic swaps are atomic transactions that allow users to trustlessly exchange different crypto assets and or coins without the use of a central exchange. This makes it much more private and secure to do and swap because no third party is required for this to be secure. Atomic swaps work on the principle of using [Hashed Time Lock Contracts](https://en.bitcoin.it/wiki/Hash_Time_Locked_Contracts)(HTLC). In short, it requires some hash pre-image to unlock the contract or the time-lock can be used to reclaim the funds. 
+Atomic swaps are atomic transactions that allow users to exchange different crypto assets and or coins without using a
+central exchange and or trusting each other. Trading coins or assets this way makes it much more private and secure to
+do and swap because no third party is required to be secure. Atomic swaps work on the principle of using 
+[Hashed Time Lock Contracts](https://en.bitcoin.it/wiki/Hash_Time_Locked_Contracts)(HTLC). 
+In short, it requires some hash pre-image to unlock the contract, or the time-lock can be used to reclaim the funds. 
 
-In an Atomic swap, both users lock up the funds to be exchanged on their respective chains in an HTLC-type contract. However, the pre-image, or spending secret, of the two contracts is the same, but only one party knows the correct pre-image. When the first HTLC contract is spent, then this publicly reveals the pre-image for the other party to use in spending the second HTLC. If the first HTLC is never spent, the second transaction's time-lock will allow the user to respend the funds back to themselves after the time lock has passed.
+In an Atomic swap, both users lock up the funds to be exchanged on their respective chains in an HTLC-type contract. 
+However, the two contracts’ pre-image, or spending secret, is the same, but only one party knows the correct pre-image. 
+When the first HTLC contract is spent, this publicly reveals the pre-image for the other party to spend the second HTLC.
+If the first HTLC is never spent, the second transaction's time-lock will allow the user to respend the funds back to
+themselves after the time lock has passed.
 
 ### BTC - XTR AtomicSwap
 
 #### Overview
 
-BTC uses a scripting language for smart contracts on transactions which enables [atomic swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html) on the BTC chain. Traditionally [Mimblewimble] coins do not implement scripts, which makes Atomic swaps harder to implement but not impossible. Grin has implemented atomic swaps using a version of a 2-of-2 multi-signature transaction [mimblewimble atomic swaps](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#atomic-swaps). Fortunately, Tari does have scripting with [TariScript] which works a lot like BTC scripts, which make the implementation simpler. Because of the scripting similarities, the scripts to both HTLCs will look very similar and we only need to ensure that we use the same hash function in both. 
+BTC uses a scripting language for smart contracts on transactions which enables [atomic swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html)
+on the BTC chain. Traditionally [Mimblewimble] coins do not implement scripts, which makes Atomic swaps harder to
+implement but not impossible. Grin has implemented atomic swaps using a version of a 2-of-2 multi-signature transaction
+[mimblewimble atomic swaps](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#atomic-swaps).
+Fortunately, Tari does have scripting with [TariScript], which works a lot like BTC scripts, making the implementation simpler.
+Because of the scripting similarities, the scripts to both HTLCs will look very similar, and we only need to ensure that
+we use the same hash function in both. 
 
-To do an Atomic swap from BTC to XTR we need 4 wallets, 2 BTC wallets, and 2 XTR wallets, 1 wallet per person, per coin.
+To do an Atomic swap from BTC to XTR, we need four wallets, two BTC wallets, and two XTR wallets, one wallet per person,
+per coin.
 
-As an example, Alice wants to trade some of her XTR for Bob's BTC. Alice and Bob need to agree on an amount of XTR and BTC to swap. Once an agreement is reached, the swap is executed in the following steps:
+As an example, Alice wants to trade some of her XTR for Bob's BTC. Alice and Bob need to agree on an amount of XTR and
+BTC to swap. Once an agreement is reached, the swap is executed in the following steps:
 
-* Alice chooses a set of random bytes, \\( \preimage \\), as the pre-image and hashes it with SHA256. She then sends the hash 
-of the pre-image, \\( \hash{\preimage} \\), to Bob along with her BTC address.
+* Alice chooses a set of random bytes, \\( \preimage \\), as the pre-image and hashes it with SHA256. She then sends
+* the hash of the pre-image, \\( \hash{\preimage} \\), to Bob along with her BTC address.
 
-* Bob sends her a public version of his [script key], \\( K_{Sb} \\), for use in the XTR transaction, which we can refer 
+* Bob sends her a public version of his [script key], \\( K_{Sb} \\), for use in the XTR transaction, which we can refer
 to as Bob's script address.
 
-* Alice creates a one-sided XTR transaction with an HTLC contract requiring \\( \preimage \\) as the input, which will 
-either pay out to Bob's script address or to her script address, \\( K_{Sa} \\), after a certain "time" has elapsed 
+* Alice creates a one-sided XTR transaction with an HTLC contract requiring \\( \preimage \\) as the input, which will
+either payout to Bob's script address or her script address, \\( K_{Sa} \\), after a particular "time" has elapsed
 (block height has been reached). 
 
-* Bob waits for this transaction to be mined. When it is mined, he verifies that the UTXO spending script expects a 
-comparison of \\( \hash{\preimage} \\) as the first instruction, and that his public [script key], \\( K_{Sb} \\), will 
-be the final value remaining after executing the script. He has the private [script key], \\( k_{Sb} \\), to enable him 
-to produce a signature to claim the funds if he can get hold of the expected pre-image input value, \\( \preimage \\). 
+* Bob waits for this transaction to be mined. When it is mined, he verifies that the UTXO spending script expects a
+comparison of \\( \hash{\preimage} \\) as the first instruction, and that his public [script key], \\( K_{Sb} \\), will
+be the final value remaining after executing the script. He has the private [script key], \\( k_{Sb} \\), to enable him
+to produce a signature to claim the funds if he can get hold of the expected pre-image input value, \\( \preimage \\).
 He also verifies that the UTXO has a sufficiently long time-lock to give him time to claim the transaction.
 
-* Upon verification, Bob creates a Segwit HTLC BTC transaction with the same \\( \hash{\preimage} \\), which will spend 
-to Alice's BTC address she gave him. It is important that the time lock for this HTLC has to expire prior to the time 
-lock of the XTR HTLC that Alice created.
+* Upon verification, Bob creates a Segwit HTLC BTC transaction with the same \\( \hash{\preimage} \\), which will spend
+* to Alice's BTC address she gave him. It is essential to note that the time lock for this HTLC has to expire before
+* the time lock of the XTR HTLC that Alice created.
 
-* Alice checks the Bitcoin blockchain and upon seeing that the transaction is mined, she claims the transaction, but, 
-in order for her to do so, she has to make public what \\( \preimage \\) is as she has to use it as the witness of the 
+* Alice checks the Bitcoin blockchain, and upon seeing that the transaction is mined, she claims the transaction, but,
+* for her to do so, she has to make public what \\( \preimage \\) is as she has to use it as the witness of the 
 claiming transaction.
 
-* Bob sees that his BTC is spent, and looks at the witness to get \\( \preimage \\). Bob can then use \\( \preimage \\) 
+* Bob sees that his BTC is spent, and looks at the witness to get \\( \preimage \\). Bob can then use \\( \preimage \\)
 to claim the XTR transaction.
 
 #### BTC - HTLC script 
@@ -118,7 +134,7 @@ Here is the required BTC script that Bob publishes:
       <Bob BTC address> OP_CHECKSIG
    OP_ENDIF
 ```
-_relative locktime_ is a time sequence that Alice chooses to lock up the funds in order to give Bob time to claim this. 
+_relative locktime_ is a time sequence in which Alice chooses to lock up the funds to give Bob time to claim this. 
 
 #### XTR - HTLC script 
 
@@ -133,13 +149,20 @@ Here is the required XTR script that Alice publishes:
       PushPubkey(K_{Sa})
    ENDIF
 ```
-(\\( K_{Sb} \\)) is the public key of the [script key] pair that Bob chooses to be able to claim this transaction if Alice backs out. 
-_height_ is a absolute block height that Bob chooses to lock up the funds in order to give Alice time to claim the funds. 
+(\\( K_{Sb} \\)) is the public key of the [script key] pair that Bob chooses to claim this transaction if Alice backs out. 
+_height_ is an absolute block height that Bob chooses to lock up the funds to give Alice time to claim the funds. 
+
+## XTR - XMR swap 
+
+The Tari - Monero atomic swap involved a bit more detail than just a simple script and is thus  explained in in this
+document: [RFC-0241: XTR - XMR swap](RFC-0241_AtomicSwapXMR.md)
+
 
 ## Notation
 
-Where possible, the "usual" notation is used to denote terms commonly found in cryptocurrency literature. Lower case 
-characters are used as private keys, while uppercase characters are used as public keys. New terms introduced here are assigned greek lowercase letters in most cases. Some terms used here are noted down in [TariScript]. 
+Where possible, the "usual" notation is used to denote terms commonly found in cryptocurrency literature. Lower case
+characters are used as private keys, while uppercase characters are used as public keys. New terms introduced here are
+assigned greek lowercase letters in most cases. Some terms used here are noted down in [TariScript].
 
 | Name        | Symbol              | Definition |
 |:------------|---------------------| -----------|
@@ -151,4 +174,4 @@ characters are used as private keys, while uppercase characters are used as publ
 [Mempool]: Glossary.md#mempool
 [Mimblewimble]: Glossary.md#mimblewimble
 [TariScript]: Glossary.md#tariscript
-[script key]: #script-keypair
+[script key]: Glossary.md#script-keypair

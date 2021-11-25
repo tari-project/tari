@@ -27,6 +27,7 @@
     - [RFC-0202: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
     - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
     - [RFC-0240: Atomic swap](RFC-0240_AtomicSwap.md)
+    - [RFC-0241: XMR Atomic swap](RFC-0241_AtomicSwapXMR.md)
     - [RFC-0250: Covenants](RFC-0250_Covenants.md)
     - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
     - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)
