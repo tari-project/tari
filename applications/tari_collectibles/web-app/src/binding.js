@@ -24,7 +24,6 @@ import { invoke } from "@tauri-apps/api/tauri";
 
 async function command_assets_create(
   name,
-  publicKey,
   description,
   image,
   templateIds,
@@ -33,7 +32,6 @@ async function command_assets_create(
   console.log("command_assets_create:", templateParameters);
   return await invoke("assets_create", {
     name,
-    publicKey,
     description,
     image,
     templateIds,

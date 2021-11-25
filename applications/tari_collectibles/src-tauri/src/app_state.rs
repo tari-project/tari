@@ -23,7 +23,7 @@
 use crate::{
   clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
   error::CollectiblesError,
-  providers::{mocks::MockKeyManagerProvider, KeyManagerProvider},
+  providers::{ConcreteKeyManagerProvider, KeyManagerProvider},
   settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
@@ -40,14 +40,9 @@ use tari_key_manager::{
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
 
-type KeyDigest = Blake256;
-pub type DerivedKey = DerivedKeyGeneric<PrivateKey>;
-pub type KeyManager = GenericKeyManager<PrivateKey, KeyDigest>;
-
 pub struct AppState {
   config: Settings,
   db_factory: SqliteDbFactory,
-  asset_key_manager: KeyManager,
   current_wallet_id: Option<Uuid>,
 }
 
@@ -59,36 +54,15 @@ pub struct ConcurrentAppState {
 impl ConcurrentAppState {
   pub fn new() -> Self {
     let settings = Settings::new();
+    let db_factory = SqliteDbFactory::new(settings.data_dir.as_path());
+
     Self {
       inner: Arc::new(RwLock::new(AppState {
-        db_factory: SqliteDbFactory::new(settings.data_dir.as_path()),
+        db_factory,
         config: settings,
-        asset_key_manager: KeyManager::new(),
         current_wallet_id: None,
       })),
     }
-  }
-
-  pub async fn set_asset_key_manager(
-    &self,
-    seed: CipherSeed,
-    branch_seed: String,
-    primary_key_index: u64,
-  ) -> Result<bool, String> {
-    self.inner.write().await.asset_key_manager =
-      KeyManager::from(seed, branch_seed, primary_key_index);
-
-    Ok(true)
-  }
-
-  pub async fn next_asset_secret_key(&self) -> Result<DerivedKey, String> {
-    self
-      .inner
-      .write()
-      .await
-      .asset_key_manager
-      .next_key()
-      .map_err(|e| e.to_string())
   }
 
   pub async fn create_wallet_client(&self) -> WalletClient {
@@ -116,11 +90,14 @@ impl ConcurrentAppState {
   }
 
   pub async fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
-    self.inner.read().await.db_factory.create_db()
+    let inner = self.inner.read().await;
+    inner.db_factory.migrate()?;
+    inner.db_factory.create_db()
   }
 
-  pub async fn key_manager(&self) -> impl KeyManagerProvider {
-    MockKeyManagerProvider {}
+  pub async fn key_manager(&self) -> ConcreteKeyManagerProvider {
+    let db_factory = self.inner.read().await.db_factory.clone();
+    ConcreteKeyManagerProvider::new(db_factory)
   }
 
   pub async fn current_wallet_id(&self) -> Option<Uuid> {

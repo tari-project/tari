@@ -47,7 +47,6 @@ use uuid::Uuid;
 #[tauri::command]
 pub(crate) async fn assets_create(
   name: String,
-  public_key: String,
   description: String,
   image: String,
   template_ids: Vec<u32>,
@@ -58,7 +57,6 @@ pub(crate) async fn assets_create(
     .current_wallet_id()
     .await
     .ok_or_else(|| Status::unauthorized())?;
-  let public_key = PublicKey::from_hex(&public_key)?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -73,17 +71,17 @@ pub(crate) async fn assets_create(
 
   let db = state.create_db().await?;
   let transaction = db.create_transaction()?;
-  let (key_manager_path, asset_public_key) = state
+  let (key_manager_path, _, asset_public_key) = state
     .key_manager()
     .await
-    .generate_asset_public_key(wallet_id, &transaction)
+    .generate_asset_public_key(wallet_id, None, &transaction)
     .map_err(|e| Status::internal(format!("could not generate asset public key: {}", e)))?;
 
   // NOTE: we are blocking the database during this time....
   let res = client
     .register_asset(
       name.clone(),
-      public_key.clone(),
+      asset_public_key.clone(),
       description.clone(),
       image.clone(),
       template_ids.clone(),
@@ -94,26 +92,29 @@ pub(crate) async fn assets_create(
   let asset_id = Uuid::new_v4();
   let asset_row = AssetRow {
     id: asset_id,
-    asset_public_key: public_key.clone(),
+    asset_public_key: asset_public_key.clone(),
     name: Some(name),
     description: Some(description),
     image: Some(image),
     committee: None,
   };
+  dbg!(&asset_row);
   db.assets().insert(&asset_row, &transaction)?;
   let asset_wallet_row = AssetWalletRow {
     id: Uuid::new_v4(),
     asset_id,
     wallet_id,
   };
+  dbg!(&asset_wallet_row);
   db.asset_wallets().insert(&asset_wallet_row, &transaction)?;
   let address = AddressRow {
     id: Uuid::new_v4(),
     asset_wallet_id: asset_wallet_row.id,
     name: "Issuer wallet".to_string(),
-    public_key,
-    key_manager_path: "".to_string(),
+    public_key: asset_public_key,
+    key_manager_path: key_manager_path.clone(),
   };
+  dbg!(&address);
   db.addresses().insert(&address, &transaction)?;
   if template_ids.contains(&2) {
     let row = Tip002AddressRow {

@@ -35,4 +35,5 @@ mod sqlite_wallets_table_gateway;
 pub use sqlite_assets_table_gateway::SqliteAssetsTableGateway;
 pub use sqlite_collectibles_storage::SqliteCollectiblesStorage;
 pub use sqlite_db_factory::SqliteDbFactory;
+pub use sqlite_transaction::SqliteTransaction;
 pub use sqlite_wallets_table_gateway::SqliteWalletsTableGateway;

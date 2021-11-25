@@ -40,11 +40,10 @@ pub struct SqliteAssetsTableGateway {
 }
 
 impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
-  fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<AssetRow>, StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+  fn list(&self, tx: &SqliteTransaction) -> Result<Vec<AssetRow>, StorageError> {
     let results: Vec<models::Asset> = schema::assets::table
       .order_by(schema::assets::name.asc())
-      .load(&conn)?;
+      .load(tx.connection())?;
     results
       .iter()
       .map(SqliteAssetsTableGateway::convert_asset)
@@ -52,7 +51,6 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
   }
 
   fn insert(&self, asset: &AssetRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    let id = Uuid::new_v4();
     let mut committee_pub_keys = vec![];
     if let Some(pub_keys) = asset.committee.as_ref() {
       for key in pub_keys {
@@ -62,7 +60,7 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
     // let committee_pub_keys = if committee_pub_keys.is_empty() { None} else {Some(committee_pub_keys)};
 
     let sql_model = models::Asset {
-      id: Vec::from(id.as_bytes().as_slice()),
+      id: Vec::from(asset.id.as_bytes().as_slice()),
       asset_public_key: Vec::from(asset.asset_public_key.as_bytes()),
       name: asset.name.clone(),
       description: asset.description.clone(),
@@ -74,20 +72,18 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
         .unwrap_or(0i32),
       committee_pub_keys,
     };
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
 
     diesel::insert_into(assets::table)
       .values(sql_model)
-      .execute(&conn)?;
+      .execute(tx.connection())?;
 
     Ok(())
   }
 
-  fn find(&self, asset_id: Uuid, tx: Option<&SqliteTransaction>) -> Result<AssetRow, StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+  fn find(&self, asset_id: Uuid, tx: &SqliteTransaction) -> Result<AssetRow, StorageError> {
     let db_account = schema::assets::table
       .find(Vec::from(asset_id.as_bytes().as_slice()))
-      .get_result(&conn)?;
+      .get_result(tx.connection())?;
 
     SqliteAssetsTableGateway::convert_asset(&db_account)
   }

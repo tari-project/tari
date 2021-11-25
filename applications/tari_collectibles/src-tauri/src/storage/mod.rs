@@ -57,38 +57,46 @@ pub trait CollectiblesStorage {
 }
 
 pub trait AssetsTableGateway<T: StorageTransaction> {
-  fn list(&self, tx: Option<&T>) -> Result<Vec<AssetRow>, StorageError>;
+  fn list(&self, tx: &T) -> Result<Vec<AssetRow>, StorageError>;
   fn insert(&self, asset: &AssetRow, tx: &T) -> Result<(), StorageError>;
-  fn find(&self, asset_id: Uuid, tx: Option<&T>) -> Result<AssetRow, StorageError>;
+  fn find(&self, asset_id: Uuid, tx: &T) -> Result<AssetRow, StorageError>;
 }
 
 pub trait WalletsTableGateway<T: StorageTransaction> {
   type Passphrase;
 
   fn list(&self, tx: Option<&T>) -> Result<Vec<WalletRow>, StorageError>;
-  fn insert(&self, wallet: &WalletRow, pass: Self::Passphrase, tx: &T) -> Result<(), StorageError>;
+  fn insert(
+    &self,
+    wallet: &WalletRow,
+    pass: Option<Self::Passphrase>,
+    tx: &T,
+  ) -> Result<(), StorageError>;
   fn find(&self, id: Uuid, tx: Option<&T>) -> Result<WalletRow, StorageError>;
   fn get_cipher_seed(
     &self,
     id: Uuid,
-    pass: Self::Passphrase,
+    pass: Option<Self::Passphrase>,
     tx: Option<&T>,
   ) -> Result<CipherSeed, StorageError>;
 }
 
 pub trait KeyIndicesTableGateway<T: StorageTransaction> {
-  fn list(&self, tx: Option<&T>) -> Result<Vec<KeyIndexRow>, StorageError>;
-  fn insert(&self, key_index: KeyIndexRow, tx: &T) -> Result<(), StorageError>;
-  fn find(&self, branch_seed: String, tx: Option<&T>) -> Result<Option<KeyIndexRow>, StorageError>;
+  fn list(&self, tx: &T) -> Result<Vec<KeyIndexRow>, StorageError>;
+  fn insert(&self, key_index: &KeyIndexRow, tx: &T) -> Result<(), StorageError>;
+  fn update_last_index(
+    &self,
+    old_row: &KeyIndexRow,
+    new_last_index: u64,
+    tx: &T,
+  ) -> Result<(), StorageError>;
+  fn find(&self, branch_seed: String, tx: &T) -> Result<Option<KeyIndexRow>, StorageError>;
 }
 
 pub trait AssetWalletsTableGateway<T: StorageTransaction> {
   fn insert(&self, row: &AssetWalletRow, tx: &T) -> Result<(), StorageError>;
-  fn find_by_wallet_id(
-    &self,
-    wallet_id: Uuid,
-    tx: Option<&T>,
-  ) -> Result<Vec<AssetWalletRow>, StorageError>;
+  fn find_by_wallet_id(&self, wallet_id: Uuid, tx: &T)
+    -> Result<Vec<AssetWalletRow>, StorageError>;
 }
 
 pub trait AddressesTableGateway<T: StorageTransaction> {

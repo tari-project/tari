@@ -20,23 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::{
-  models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
-  AssetWalletsTableGateway, StorageError,
+use crate::{
+  schema::asset_wallets,
+  storage::{
+    models::asset_wallet_row::AssetWalletRow, sqlite::sqlite_transaction::SqliteTransaction,
+    AssetWalletsTableGateway, StorageError,
+  },
 };
+use diesel::{prelude::*, RunQueryDsl};
 use uuid::Uuid;
 
 pub struct SqliteAssetWalletsTableGateway {}
 
 impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGateway {
   fn insert(&self, row: &AssetWalletRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    todo!()
+    diesel::insert_into(asset_wallets::table)
+      .values((
+        asset_wallets::id.eq(Vec::from(row.id.as_bytes().as_slice())),
+        asset_wallets::wallet_id.eq(Vec::from(row.wallet_id.as_bytes().as_slice())),
+        asset_wallets::asset_id.eq(Vec::from(row.asset_id.as_bytes().as_slice())),
+      ))
+      .execute(tx.connection())?;
+    Ok(())
   }
 
   fn find_by_wallet_id(
     &self,
     wallet_id: Uuid,
-    tx: Option<&SqliteTransaction>,
+    tx: &SqliteTransaction,
   ) -> Result<Vec<AssetWalletRow>, StorageError> {
     todo!()
   }

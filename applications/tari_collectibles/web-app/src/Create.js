@@ -48,7 +48,6 @@ class Create extends React.Component {
 
     this.state = {
       name: "Asset1",
-      publicKey: "",
       description: "",
       image: "",
       cid: "",
@@ -74,15 +73,7 @@ class Create extends React.Component {
   componentDidMount() {
     this.cleanup = appWindow.listen("tauri://file-drop", this.dropFile);
     console.log("didmount");
-    if (!this.state.publicKey) {
-      binding
-        .command_next_asset_public_key()
-        .then((publicKey) => {
-          console.log("public key", publicKey);
-          this.setState({ publicKey });
-        })
-        .catch((e) => console.error(e));
-    }
+
   }
 
   dropFile = async ({ payload }) => {
@@ -100,7 +91,7 @@ class Create extends React.Component {
 
   save = async () => {
     this.setState({ isSaving: true });
-    let { name, publicKey, description, image } = this.state;
+    let { name, description, image } = this.state;
     try {
       let templateIds = [1];
       let templateParameters = [];
@@ -135,15 +126,13 @@ class Create extends React.Component {
         });
       }
 
-      let pk = await binding.command_assets_create(
+      let publicKey = await binding.command_assets_create(
         name,
-        publicKey,
         description,
         image,
         templateIds,
         templateParameters
       );
-      console.log("pk", pk);
 
       // TODO: How to create the initial checkpoint?
       if (this.state.tip003) {
@@ -159,7 +148,7 @@ class Create extends React.Component {
       history.push(`/assets/manage/${publicKey}`);
     } catch (err) {
       this.setState({
-        error: "Could not create asset: " + err,
+        error: "Could not create asset: " + err.message,
       });
       console.log(err);
     }

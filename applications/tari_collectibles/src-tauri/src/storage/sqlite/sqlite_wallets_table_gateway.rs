@@ -31,7 +31,10 @@ use crate::{
 use diesel::{prelude::*, Connection, SqliteConnection};
 use std::{fs, path::Path};
 use tari_common_types::types::PublicKey;
-use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
+use tari_key_manager::{
+  cipher_seed::{CipherSeed, DEFAULT_CIPHER_SEED_PASSPHRASE},
+  error::KeyManagerError,
+};
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
@@ -49,7 +52,7 @@ impl SqliteWalletsTableGateway {
 }
 
 impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
-  type Passphrase = Option<String>;
+  type Passphrase = String;
 
   fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<WalletRow>, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
@@ -69,7 +72,7 @@ impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
   fn insert(
     &self,
     wallet: &WalletRow,
-    passphrase: Self::Passphrase,
+    passphrase: Option<Self::Passphrase>,
     tx: &SqliteTransaction,
   ) -> Result<(), StorageError> {
     let cipher_seed = CipherSeed::new();
@@ -100,13 +103,19 @@ impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
   fn get_cipher_seed(
     &self,
     id: Uuid,
-    pass: Self::Passphrase,
+    pass: Option<Self::Passphrase>,
     tx: Option<&SqliteTransaction>,
   ) -> Result<CipherSeed, StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
+    let mut other_conn = None;
+    if tx.is_none() {
+      other_conn = Some(SqliteConnection::establish(self.database_url.as_str())?);
+    }
     let w: models::Wallet = schema::wallets::table
       .find(Vec::from(id.as_bytes().as_slice()))
-      .get_result(&conn)?;
+      .get_result(
+        tx.map(|t| t.connection())
+          .unwrap_or_else(|| other_conn.as_ref().unwrap()),
+      )?;
     let cipher_seed = match CipherSeed::from_enciphered_bytes(&w.cipher_seed, pass) {
       Ok(seed) => seed,
       Err(e) if matches!(e, KeyManagerError::DecryptionFailed) => {

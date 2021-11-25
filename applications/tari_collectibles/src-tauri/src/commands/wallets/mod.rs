@@ -48,7 +48,7 @@ pub(crate) async fn wallets_create(
 
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let result = db.wallets().insert(&new_wallet, passphrase, &tx)?;
+  let result = db.wallets().insert(&new_wallet, None, &tx)?;
   tx.commit()?;
   state.set_current_wallet_id(new_wallet.id).await;
   Ok(new_wallet)

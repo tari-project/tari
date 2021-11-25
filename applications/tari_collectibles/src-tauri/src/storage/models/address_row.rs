@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::PublicKey;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AddressRow {
   pub id: Uuid,
   pub asset_wallet_id: Uuid,

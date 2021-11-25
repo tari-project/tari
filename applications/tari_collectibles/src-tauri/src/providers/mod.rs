@@ -20,24 +20,4 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod key_manager_provider;
-pub use key_manager_provider::KeyManagerProvider;
-
-pub mod mocks {
-  use crate::{providers::KeyManagerProvider, storage::StorageTransaction};
-  use tari_common_types::types::PublicKey;
-  use uuid::Uuid;
-
-  pub struct MockKeyManagerProvider {}
-
-  impl KeyManagerProvider for MockKeyManagerProvider {
-    type Error = String;
-
-    fn generate_asset_public_key<T: StorageTransaction>(
-      &self,
-      wallet_id: Uuid,
-      transaction: &T,
-    ) -> Result<(String, PublicKey), Self::Error> {
-      todo!()
-    }
-  }
-}
+pub use key_manager_provider::{ConcreteKeyManagerProvider, KeyManagerProvider};

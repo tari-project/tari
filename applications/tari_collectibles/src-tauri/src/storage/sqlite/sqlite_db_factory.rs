@@ -35,6 +35,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct SqliteDbFactory {
   database_url: String,
 }
@@ -52,12 +53,16 @@ impl SqliteDbFactory {
     Self { database_url }
   }
 
-  pub fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
+  pub fn migrate(&self) -> Result<(), StorageError> {
     let connection = SqliteConnection::establish(self.database_url.as_str())?;
     connection.execute("PRAGMA foreign_keys = ON;")?;
     // Create the db
     embed_migrations!("./migrations");
     embedded_migrations::run(&connection)?;
+
+    Ok(())
+  }
+  pub fn create_db(&self) -> Result<SqliteCollectiblesStorage, StorageError> {
     Ok(SqliteCollectiblesStorage {
       database_url: self.database_url.clone(),
     })

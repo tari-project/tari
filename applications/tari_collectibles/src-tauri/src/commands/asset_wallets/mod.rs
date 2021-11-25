@@ -135,9 +135,10 @@ pub(crate) async fn asset_wallets_list(
     .await
     .ok_or_else(Status::unauthorized)?;
   let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
   let mut result = vec![];
-  for asset_wallet in db.asset_wallets().find_by_wallet_id(wallet_id, None)? {
-    result.push(db.assets().find(asset_wallet.asset_id, None)?);
+  for asset_wallet in db.asset_wallets().find_by_wallet_id(wallet_id, &tx)? {
+    result.push(db.assets().find(asset_wallet.asset_id, &tx)?);
   }
   Ok(result)
 }

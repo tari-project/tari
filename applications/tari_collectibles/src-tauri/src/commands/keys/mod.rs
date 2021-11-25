@@ -43,10 +43,10 @@ pub(crate) async fn next_asset_public_key(
     .ok_or_else(Status::unauthorized)?;
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let (_path, key) = state
+  let (_path, _, key) = state
     .key_manager()
     .await
-    .generate_asset_public_key(wallet_id, &tx)
+    .generate_asset_public_key(wallet_id, None, &tx)
     .map_err(|e| Status::internal(format!("Could not generate asset key: {}", e)))?;
   tx.commit()?;
   Ok(key)

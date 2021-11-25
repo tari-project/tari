@@ -37,9 +37,8 @@ pub struct SqliteKeyIndicesTableGateway {
 }
 
 impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway {
-  fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<KeyIndexRow>, StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
-    let results: Vec<models::KeyIndex> = schema::key_indices::table.load(&conn)?;
+  fn list(&self, tx: &SqliteTransaction) -> Result<Vec<KeyIndexRow>, StorageError> {
+    let results: Vec<models::KeyIndex> = schema::key_indices::table.load(tx.connection())?;
     Ok(
       results
         .iter()
@@ -52,32 +51,39 @@ impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway 
     )
   }
 
-  fn insert(&self, key_index: KeyIndexRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
-    let find_result: Option<models::KeyIndex> = schema::key_indices::table
-      .filter(key_indices::branch_seed.eq(key_index.branch_seed.clone()))
-      .first(&conn)
-      .optional()?;
-
-    let result = match find_result {
-      Some(k) => {
-        // update existing
-        let id = k.id.clone();
-        diesel::update(key_indices::table.filter(key_indices::id.eq(id)))
-          .set(key_indices::last_index.eq(key_index.last_index as i64))
-          .execute(&conn)?;
-      }
-      None => {
-        let sql_model = models::KeyIndex {
-          id: Vec::from(key_index.id.as_bytes().as_slice()),
-          branch_seed: key_index.branch_seed.clone(),
-          last_index: key_index.last_index as i64,
-        };
-        diesel::insert_into(key_indices::table)
-          .values(sql_model)
-          .execute(&conn)?;
-      }
+  fn insert(&self, key_index: &KeyIndexRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
+    let sql_model = models::KeyIndex {
+      id: Vec::from(key_index.id.as_bytes().as_slice()),
+      branch_seed: key_index.branch_seed.clone(),
+      last_index: key_index.last_index as i64,
     };
+    diesel::insert_into(key_indices::table)
+      .values(sql_model)
+      .execute(tx.connection())?;
+
+    Ok(())
+  }
+
+  fn update_last_index(
+    &self,
+    old_row: &KeyIndexRow,
+    new_last_index: u64,
+    tx: &SqliteTransaction,
+  ) -> Result<(), StorageError> {
+    let rows_affected = diesel::update(
+      key_indices::table
+        .filter(key_indices::id.eq(Vec::from(old_row.id.as_bytes().as_slice())))
+        .filter(key_indices::last_index.eq(old_row.last_index as i64)),
+    )
+    .set(key_indices::last_index.eq(new_last_index as i64))
+    .execute(tx.connection())?;
+    if rows_affected != 1 {
+      return Err(StorageError::ConcurrencyError {
+        table: "key_indices",
+        old_value: old_row.last_index.to_string(),
+        new_value: new_last_index.to_string(),
+      });
+    }
 
     Ok(())
   }
@@ -85,12 +91,11 @@ impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway 
   fn find(
     &self,
     branch_seed: String,
-    tx: Option<&SqliteTransaction>,
+    tx: &SqliteTransaction,
   ) -> Result<Option<KeyIndexRow>, StorageError> {
-    let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let result: Option<models::KeyIndex> = schema::key_indices::table
       .filter(key_indices::branch_seed.eq(branch_seed))
-      .first(&conn)
+      .first(tx.connection())
       .optional()?;
 
     Ok(result.map(|k| KeyIndexRow {

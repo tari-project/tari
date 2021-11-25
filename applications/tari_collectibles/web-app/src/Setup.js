@@ -55,7 +55,7 @@ const SeedWords = ({ wallet, password, history }) => {
       .catch((e) => {
 
         console.error("error: ", e);
-        setError(e);
+        setError(e.message);
       });
   }, [wallet.id, password]);
 
@@ -123,7 +123,7 @@ const CreateWallet = ({ history }) => {
       setWallet(wallet);
     }
     catch(err) {
-      setError(err);
+      setError(err.message);
     }
   };
 
@@ -184,7 +184,7 @@ const OpenWallet = ({ history, setAuthenticated }) => {
     } catch (e) {
       console.error("error: ", e);
       setUnlocking(false);
-      setError(e);
+      setError(e.message);
     }
   };
 

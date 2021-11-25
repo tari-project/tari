@@ -20,16 +20,90 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::StorageTransaction;
+use crate::{
+  error::CollectiblesError,
+  storage::{
+    models::key_index_row::KeyIndexRow,
+    sqlite::{SqliteDbFactory, SqliteTransaction},
+    CollectiblesStorage, KeyIndicesTableGateway, StorageError, StorageTransaction,
+    WalletsTableGateway,
+  },
+};
 use std::fmt::Display;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
+use tari_key_manager::key_manager::KeyManager;
+use tari_utilities::ByteArrayError;
 use uuid::Uuid;
 
-pub trait KeyManagerProvider {
+pub trait KeyManagerProvider<T: StorageTransaction> {
   type Error: Display;
-  fn generate_asset_public_key<T: StorageTransaction>(
+  fn generate_asset_public_key(
     &self,
     wallet_id: Uuid,
+    passphrase: Option<String>,
     transaction: &T,
-  ) -> Result<(String, PublicKey), Self::Error>;
+  ) -> Result<(String, PrivateKey, PublicKey), Self::Error>;
+}
+
+pub struct ConcreteKeyManagerProvider {
+  db_factory: SqliteDbFactory,
+}
+
+impl ConcreteKeyManagerProvider {
+  pub fn new(db_factory: SqliteDbFactory) -> Self {
+    Self { db_factory }
+  }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum KeyManagerProviderError {
+  #[error("Could not derive key:{0}")]
+  CouldNotDeriveKey(#[from] ByteArrayError),
+  #[error("Storage error:{0}")]
+  StorageError(#[from] StorageError),
+}
+
+impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
+  type Error = KeyManagerProviderError;
+
+  fn generate_asset_public_key(
+    &self,
+    wallet_id: Uuid,
+    passphrase: Option<String>,
+    transaction: &SqliteTransaction,
+  ) -> Result<(String, PrivateKey, PublicKey), Self::Error> {
+    let db = self.db_factory.create_db()?;
+    let cipher_seed = db
+      .wallets()
+      .get_cipher_seed(wallet_id, passphrase, Some(&transaction))?;
+    let row = match db.key_indices().find("assets".to_string(), &transaction)? {
+      Some(row) => row,
+      None => {
+        let row = KeyIndexRow {
+          id: Uuid::new_v4(),
+          branch_seed: "assets".to_string(),
+          last_index: 0,
+        };
+
+        db.key_indices().insert(&row, &transaction)?;
+        row
+      }
+    };
+
+    let mut key_manager = KeyManager::<PrivateKey, Blake256>::from(
+      cipher_seed,
+      row.branch_seed.clone(),
+      row.last_index,
+    );
+    let new_key = key_manager
+      .next_key()
+      .map_err(KeyManagerProviderError::CouldNotDeriveKey)?;
+
+    db.key_indices()
+      .update_last_index(&row, new_key.key_index, transaction)?;
+
+    let pub_key = PublicKey::from_secret_key(&new_key.k);
+    Ok((format!("assets:{}", new_key.key_index), new_key.k, pub_key))
+  }
 }
