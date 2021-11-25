@@ -19,21 +19,9 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-  models::{NewWallet, Wallet, WalletInfo},
-  schema::{self, *},
-  storage::{
-    models::{asset_row::AssetRow, wallet_row::WalletRow},
-    sqlite::SqliteCollectiblesStorage,
-    AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
-  },
-};
-use diesel::{prelude::*, Connection, SqliteConnection};
+use crate::storage::{sqlite::SqliteCollectiblesStorage, StorageError};
+use diesel::{Connection, SqliteConnection};
 use std::{fs, path::Path};
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
-use tari_utilities::ByteArray;
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SqliteDbFactory {

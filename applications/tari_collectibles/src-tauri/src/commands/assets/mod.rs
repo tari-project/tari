@@ -34,14 +34,12 @@ use crate::{
     StorageTransaction, Tip002AddressesTableGateway,
   },
 };
-use rand::rngs::OsRng;
+
 use tari_app_grpc::tari_rpc::{self};
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::{
-  hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey,
-};
+use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
-use tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -56,7 +54,7 @@ pub(crate) async fn assets_create(
   let wallet_id = state
     .current_wallet_id()
     .await
-    .ok_or_else(|| Status::unauthorized())?;
+    .ok_or_else(Status::unauthorized)?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -180,7 +178,7 @@ pub(crate) async fn assets_create_initial_checkpoint(
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
-  let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+  let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
 
   let root = mmr.get_merkle_root().unwrap();
 

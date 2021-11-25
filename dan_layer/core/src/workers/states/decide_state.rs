@@ -223,7 +223,7 @@ where
                 return Ok(None);
             }
 
-            unit_of_work.commit_node(justify.node_hash());
+            unit_of_work.commit_node(justify.node_hash())?;
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
             dbg!("received non justify message");

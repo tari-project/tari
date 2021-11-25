@@ -74,7 +74,10 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?;
         for item in &inner.updates {
             let i = item.get();
-            inner.backend_adapter.update_key_value(&i.schema, &i.key, &i.value, &tx);
+            inner
+                .backend_adapter
+                .update_key_value(&i.schema, &i.key, &i.value, &tx)
+                .map_err(TBackendAdapter::Error::into)?;
         }
 
         inner

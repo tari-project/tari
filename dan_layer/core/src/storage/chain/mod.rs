@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, Instruction, Signature, TreeNodeHash, ViewId};
-
 mod chain_db;
 mod chain_db_backend_adapter;
 mod chain_db_unit_of_work;

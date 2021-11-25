@@ -39,7 +39,6 @@ mod view_id;
 pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
-use blake2::Digest;
 pub use committee::Committee;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;

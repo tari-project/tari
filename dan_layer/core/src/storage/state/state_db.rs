@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::storage::state::{state_db_unit_of_work::StateDbUnitOfWorkImpl, StateDbBackendAdapter};
-use std::marker::PhantomData;
 
 pub struct StateDb<TStateDbBackendAdapter: StateDbBackendAdapter> {
     backend_adapter: TStateDbBackendAdapter,

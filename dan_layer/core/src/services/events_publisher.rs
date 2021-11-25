@@ -38,11 +38,12 @@ pub struct LoggingEventsPublisher<TEvent: Event> {
     phantom: PhantomData<TEvent>,
 }
 
-impl<TEvent: Event> LoggingEventsPublisher<TEvent> {
-    pub fn new() -> Self {
+impl<TEvent: Event> Default for LoggingEventsPublisher<TEvent> {
+    fn default() -> Self {
         Self { phantom: PhantomData }
     }
 }
+
 impl<TEvent: Event + Debug + Display> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
     fn publish(&mut self, event: TEvent) {
         info!(target: LOG_TARGET, "[Event] Event received:{}", event);

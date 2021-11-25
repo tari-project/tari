@@ -20,18 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-  models::{NewWallet, Wallet, WalletInfo},
   schema::{self, *},
   storage::{
-    models::{asset_row::AssetRow, wallet_row::WalletRow},
+    models::asset_row::AssetRow,
     sqlite::{models, sqlite_transaction::SqliteTransaction},
-    AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
+    AssetsTableGateway, StorageError,
   },
 };
-use diesel::{prelude::*, Connection, SqliteConnection};
-use std::{fs, path::Path};
+use diesel::prelude::*;
+
 use tari_common_types::types::PublicKey;
-use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
+
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 

@@ -26,10 +26,7 @@ use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::types::CommsPublicKey;
-use tari_dan_core::{
-    services::infrastructure_services::{InboundConnectionService, NodeAddressable},
-    DigitalAssetError,
-};
+use tari_dan_core::{services::infrastructure_services::InboundConnectionService, DigitalAssetError};
 use tari_p2p::comms_connector::PeerMessage;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc::{channel, Receiver, Sender};

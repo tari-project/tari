@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_key_manager::cipher_seed::CipherSeed;
+
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize)]

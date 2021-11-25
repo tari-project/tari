@@ -23,9 +23,9 @@ use tari_app_grpc::tari_rpc;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::models::SidechainMetadata;
 
-pub struct _st(tari_rpc::SidechainMetadata);
+pub struct St(tari_rpc::SidechainMetadata);
 
-impl From<SidechainMetadata> for _st {
+impl From<SidechainMetadata> for St {
     fn from(source: SidechainMetadata) -> Self {
         Self(tari_rpc::SidechainMetadata {
             asset_public_key: source.asset_public_key().as_bytes().to_vec(),

@@ -97,7 +97,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
         for (id, item) in &inner.instructions {
             if item.is_dirty() {
                 match id {
-                    Some(i) => {
+                    Some(_i) => {
                         unimplemented!("Cannot update instructions");
                     },
                     None => inner
@@ -113,7 +113,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 inner
                     .backend_adapter
                     .update_locked_qc(&*locked_qc.get(), &tx)
-                    .map_err(TBackendAdapter::Error::into);
+                    .map_err(TBackendAdapter::Error::into)?;
             }
         }
 
@@ -122,7 +122,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 inner
                     .backend_adapter
                     .update_prepare_qc(&*prepare_qc.get(), &tx)
-                    .map_err(TBackendAdapter::Error::into);
+                    .map_err(TBackendAdapter::Error::into)?;
             }
         }
 
@@ -214,7 +214,6 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
         let mut node = found_node.1.get_mut();
         let mut n = node.deref_mut();
         n.is_committed = true;
-        dbg!(inner);
         Ok(())
     }
 
@@ -251,7 +250,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
         // put it in the tracker
         let _ = self.get_prepare_qc()?;
-        let mut inner = self.inner.write().unwrap();
+        let inner = self.inner.write().unwrap();
         let mut db_locked = inner.prepare_qc.as_ref().unwrap().get_mut();
         db_locked.message_type = qc.message_type();
         db_locked.view_number = qc.view_number();

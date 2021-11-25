@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::schema::*;
-use diesel::prelude::*;
 
 #[derive(Queryable, Insertable, Identifiable)]
 pub struct AssetWallet {

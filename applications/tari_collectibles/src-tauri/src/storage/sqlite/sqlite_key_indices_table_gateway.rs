@@ -29,7 +29,7 @@ use crate::{
     KeyIndicesTableGateway, StorageError,
   },
 };
-use diesel::{prelude::*, Connection, SqliteConnection};
+use diesel::prelude::*;
 use uuid::Uuid;
 
 pub struct SqliteKeyIndicesTableGateway {

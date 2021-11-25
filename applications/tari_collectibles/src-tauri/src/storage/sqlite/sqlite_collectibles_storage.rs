@@ -19,28 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-  models::{NewWallet, Wallet, WalletInfo},
-  schema::{self, *},
-  storage::{
-    models::{asset_row::AssetRow, wallet_row::WalletRow},
-    sqlite::{
-      sqlite_addresses_table_gateway::SqliteAddressesTableGateway,
-      sqlite_asset_wallets_table_gateway::SqliteAssetWalletsTableGateway,
-      sqlite_issued_assets_table_gateway::SqliteIssuedAssetsTableGateway,
-      sqlite_key_indices_table_gateway::SqliteKeyIndicesTableGateway,
-      sqlite_tip002_addresses_table_gateway::SqliteTip002AddressesTableGateway,
-      sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway, SqliteWalletsTableGateway,
-    },
-    AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
+use crate::storage::{
+  sqlite::{
+    sqlite_addresses_table_gateway::SqliteAddressesTableGateway,
+    sqlite_asset_wallets_table_gateway::SqliteAssetWalletsTableGateway,
+    sqlite_issued_assets_table_gateway::SqliteIssuedAssetsTableGateway,
+    sqlite_key_indices_table_gateway::SqliteKeyIndicesTableGateway,
+    sqlite_tip002_addresses_table_gateway::SqliteTip002AddressesTableGateway,
+    sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway, SqliteWalletsTableGateway,
   },
+  CollectiblesStorage, StorageError,
 };
-use diesel::{prelude::*, Connection, SqliteConnection};
-use std::{fs, path::Path};
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
-use tari_utilities::ByteArray;
-use uuid::Uuid;
+use diesel::{Connection, SqliteConnection};
 
 pub struct SqliteCollectiblesStorage {
   pub database_url: String,

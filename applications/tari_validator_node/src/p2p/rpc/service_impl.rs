@@ -22,11 +22,7 @@
 use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{Instruction, TokenId},
-    services::MempoolService,
-    types::{ComSig, PublicKey},
-};
+use tari_dan_core::{models::Instruction, services::MempoolService, types::PublicKey};
 
 pub struct ValidatorNodeRpcServiceImpl<TMempoolService> {
     mempool_service: TMempoolService,

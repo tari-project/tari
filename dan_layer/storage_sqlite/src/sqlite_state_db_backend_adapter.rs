@@ -44,8 +44,18 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
 
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        connection.execute("PRAGMA foreign_keys = ON;");
-        connection.execute("BEGIN EXCLUSIVE TRANSACTION;");
+        connection
+            .execute("PRAGMA foreign_keys = ON;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set pragma".to_string(),
+            })?;
+        connection
+            .execute("BEGIN EXCLUSIVE TRANSACTION;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "begin transaction".to_string(),
+            })?;
 
         Ok(SqliteTransaction::new(connection))
     }
@@ -81,7 +91,7 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
                     operation: "update::state_key".to_string(),
                 })?,
             None => diesel::insert_into(state_keys::table)
-                .values(upsert_data.clone())
+                .values(upsert_data)
                 .execute(tx.connection())
                 .map_err(|source| SqliteStorageError::DieselError {
                     source,

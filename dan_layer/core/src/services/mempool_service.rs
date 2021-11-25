@@ -33,14 +33,9 @@ pub trait MempoolService: Sync + Send + 'static {
     async fn size(&self) -> usize;
 }
 
+#[derive(Default)]
 pub struct ConcreteMempoolService {
     instructions: Vec<Instruction>,
-}
-
-impl ConcreteMempoolService {
-    pub fn new() -> Self {
-        Self { instructions: vec![] }
-    }
 }
 
 #[async_trait]
@@ -75,10 +70,10 @@ pub struct MempoolServiceHandle {
     mempool: Arc<Mutex<ConcreteMempoolService>>,
 }
 
-impl MempoolServiceHandle {
-    pub fn new() -> Self {
+impl Default for MempoolServiceHandle {
+    fn default() -> Self {
         Self {
-            mempool: Arc::new(Mutex::new(ConcreteMempoolService::new())),
+            mempool: Arc::new(Mutex::new(ConcreteMempoolService::default())),
         }
     }
 }

@@ -23,7 +23,7 @@
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Payload, StateRoot, TariDanPayload},
-    services::{AssetProcessor, MempoolService},
+    services::AssetProcessor,
     storage::state::StateDbUnitOfWork,
 };
 use async_trait::async_trait;
@@ -46,29 +46,21 @@ pub trait PayloadProcessor<TPayload: Payload> {
     ) -> Result<StateRoot, DigitalAssetError>;
 }
 
-pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
-where
-    TAssetProcessor: AssetProcessor,
-    TMempoolService: MempoolService,
+pub struct TariDanPayloadProcessor<TAssetProcessor>
+where TAssetProcessor: AssetProcessor
 {
     asset_processor: TAssetProcessor,
-    mempool_service: TMempoolService,
 }
 
-impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
-    TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
-{
-    pub fn new(asset_processor: TAssetProcessor, mempool_service: TMempoolService) -> Self {
-        Self {
-            asset_processor,
-            mempool_service,
-        }
+impl<TAssetProcessor: AssetProcessor> TariDanPayloadProcessor<TAssetProcessor> {
+    pub fn new(asset_processor: TAssetProcessor) -> Self {
+        Self { asset_processor }
     }
 }
 
 #[async_trait]
-impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempoolService: MempoolService + Send>
-    PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
+impl<TAssetProcessor: AssetProcessor + Send + Sync> PayloadProcessor<TariDanPayload>
+    for TariDanPayloadProcessor<TAssetProcessor>
 {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,

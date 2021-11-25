@@ -94,7 +94,7 @@ impl Instruction {
     }
 
     pub fn calculate_hash(&self) -> Vec<u8> {
-        let mut b = Blake256::new()
+        let b = Blake256::new()
             .chain(self.asset_id.as_bytes())
             .chain(self.method.as_bytes())
             .chain(&self.args);

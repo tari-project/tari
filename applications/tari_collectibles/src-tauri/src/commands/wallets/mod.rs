@@ -22,22 +22,18 @@
 
 use crate::{
   app_state::ConcurrentAppState,
-  models::{NewWallet, Wallet, WalletInfo},
   status::Status,
   storage::{
     models::wallet_row::WalletRow, CollectiblesStorage, StorageTransaction, WalletsTableGateway,
   },
 };
-use tari_key_manager::{
-  cipher_seed::CipherSeed,
-  mnemonic::{Mnemonic, MnemonicLanguage},
-};
+use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
 use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn wallets_create(
   name: Option<String>,
-  passphrase: Option<String>,
+  _passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<WalletRow, Status> {
   let new_wallet = WalletRow {
@@ -48,7 +44,7 @@ pub(crate) async fn wallets_create(
 
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let result = db.wallets().insert(&new_wallet, None, &tx)?;
+  let _result = db.wallets().insert(&new_wallet, None, &tx)?;
   tx.commit()?;
   state.set_current_wallet_id(new_wallet.id).await;
   Ok(new_wallet)

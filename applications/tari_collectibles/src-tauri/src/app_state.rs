@@ -23,7 +23,7 @@
 use crate::{
   clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
   error::CollectiblesError,
-  providers::{ConcreteKeyManagerProvider, KeyManagerProvider},
+  providers::ConcreteKeyManagerProvider,
   settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
@@ -31,12 +31,7 @@ use crate::{
   },
 };
 use std::sync::Arc;
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::common::Blake256;
-use tari_key_manager::{
-  cipher_seed::CipherSeed,
-  key_manager::{DerivedKey as DerivedKeyGeneric, KeyManager as GenericKeyManager},
-};
+
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
 

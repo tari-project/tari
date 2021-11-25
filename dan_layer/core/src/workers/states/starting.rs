@@ -25,18 +25,12 @@ use crate::{
     models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate},
     services::{
         infrastructure_services::NodeAddressable,
-        AssetProcessor,
         BaseNodeClient,
         CommitteeManager,
         PayloadProcessor,
         PayloadProvider,
     },
-    storage::{
-        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
-        state::StateDbUnitOfWork,
-        ChainStorageService,
-        DbFactory,
-    },
+    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, DbFactory},
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -48,15 +42,17 @@ pub struct Starting<TBaseNodeClient: BaseNodeClient> {
     base_node_client: PhantomData<TBaseNodeClient>,
 }
 
+impl<TBaseNodeClient: BaseNodeClient> Default for Starting<TBaseNodeClient> {
+    fn default() -> Self {
+        Self {
+            base_node_client: PhantomData,
+        }
+    }
+}
+
 impl<TBaseNodeClient> Starting<TBaseNodeClient>
 where TBaseNodeClient: BaseNodeClient
 {
-    pub fn new() -> Self {
-        Self {
-            base_node_client: Default::default(),
-        }
-    }
-
     pub async fn next_event<
         TAddr: NodeAddressable,
         TCommitteeManager: CommitteeManager<TAddr>,
@@ -121,7 +117,7 @@ where TBaseNodeClient: BaseNodeClient
                         target: LOG_TARGET,
                         "Setting {:?} = {:?}", key_value.key, key_value.value
                     );
-                    state_tx.set_value(schema.name.clone(), key_value.key.clone(), key_value.value.clone());
+                    state_tx.set_value(schema.name.clone(), key_value.key.clone(), key_value.value.clone())?;
                 }
             }
             dbg!(&asset_definition);
@@ -130,7 +126,7 @@ where TBaseNodeClient: BaseNodeClient
                     target: LOG_TARGET,
                     "Setting template parameters for: {}", template.template_id
                 );
-                payload_processor.init_template(template, &asset_definition, &mut state_tx);
+                payload_processor.init_template(template, asset_definition, &mut state_tx)?;
             }
             info!(target: LOG_TARGET, "Saving genesis node");
             let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());

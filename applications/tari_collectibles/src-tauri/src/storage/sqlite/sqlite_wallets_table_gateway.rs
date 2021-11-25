@@ -20,22 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-  models::{NewWallet, Wallet, WalletInfo},
   schema::{self, *},
   storage::{
-    models::{asset_row::AssetRow, wallet_row::WalletRow},
+    models::wallet_row::WalletRow,
     sqlite::{models, sqlite_transaction::SqliteTransaction},
-    AssetsTableGateway, CollectiblesStorage, StorageError, WalletsTableGateway,
+    StorageError, WalletsTableGateway,
   },
 };
 use diesel::{prelude::*, Connection, SqliteConnection};
-use std::{fs, path::Path};
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{
-  cipher_seed::{CipherSeed, DEFAULT_CIPHER_SEED_PASSPHRASE},
-  error::KeyManagerError,
-};
-use tari_utilities::ByteArray;
+
+use tari_key_manager::{cipher_seed::CipherSeed, error::KeyManagerError};
 use uuid::Uuid;
 
 pub struct SqliteWalletsTableGateway {
@@ -54,7 +48,7 @@ impl SqliteWalletsTableGateway {
 impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
   type Passphrase = String;
 
-  fn list(&self, tx: Option<&SqliteTransaction>) -> Result<Vec<WalletRow>, StorageError> {
+  fn list(&self, _tx: Option<&SqliteTransaction>) -> Result<Vec<WalletRow>, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let results: Vec<models::Wallet> = schema::wallets::table.load(&conn)?;
     Ok(
@@ -91,7 +85,7 @@ impl WalletsTableGateway<SqliteTransaction> for SqliteWalletsTableGateway {
     Ok(())
   }
 
-  fn find(&self, id: Uuid, tx: Option<&SqliteTransaction>) -> Result<WalletRow, StorageError> {
+  fn find(&self, id: Uuid, _tx: Option<&SqliteTransaction>) -> Result<WalletRow, StorageError> {
     let conn = SqliteConnection::establish(self.database_url.as_str())?;
     let db_wallet = schema::wallets::table
       .find(Vec::from(id.as_bytes().as_slice()))

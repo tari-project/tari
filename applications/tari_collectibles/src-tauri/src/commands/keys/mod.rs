@@ -24,14 +24,9 @@ use crate::{
   app_state::ConcurrentAppState,
   providers::KeyManagerProvider,
   status::Status,
-  storage::{
-    models::key_index_row::KeyIndexRow, CollectiblesStorage, KeyIndicesTableGateway,
-    StorageTransaction,
-  },
+  storage::{CollectiblesStorage, StorageTransaction},
 };
 use tari_common_types::types::PublicKey;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn next_asset_public_key(

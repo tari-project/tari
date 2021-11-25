@@ -25,7 +25,7 @@ pub use asset_info::AssetInfo;
 mod registered_asset_info;
 pub use registered_asset_info::RegisteredAssetInfo;
 mod wallet;
-pub use wallet::{NewWallet, Wallet, WalletInfo};
+pub use wallet::{Wallet, WalletInfo};
 mod tip002_info;
 pub use tip002_info::Tip002Info;
 mod template_parameter;

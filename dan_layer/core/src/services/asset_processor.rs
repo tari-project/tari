@@ -28,7 +28,6 @@ use crate::{
     templates::tip002_template,
 };
 
-use std::collections::VecDeque;
 use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
@@ -49,9 +48,8 @@ pub trait AssetProcessor {
 }
 
 pub struct ConcreteAssetProcessor<TInstructionLog> {
-    asset_definition: AssetDefinition,
     template_factory: TemplateFactory,
-    instruction_log: TInstructionLog,
+    _instruction_log: TInstructionLog,
 }
 
 impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
@@ -84,11 +82,10 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
 }
 
 impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
-    pub fn new(instruction_log: TInstructionLog, asset_definition: AssetDefinition) -> Self {
+    pub fn new(instruction_log: TInstructionLog) -> Self {
         Self {
             template_factory: TemplateFactory {},
-            instruction_log,
-            asset_definition,
+            _instruction_log: instruction_log,
         }
     }
 
@@ -127,15 +124,15 @@ impl TemplateFactory {
         Ok(())
     }
 
-    pub fn create_command(
-        &self,
-        _template: TemplateId,
-        _method: String,
-        _args: VecDeque<Vec<u8>>,
-        // caller: InstructionCaller,
-    ) -> Result<(), DigitalAssetError> {
-        todo!()
-    }
+    // pub fn create_command(
+    //     &self,
+    //     _template: TemplateId,
+    //     _method: String,
+    //     _args: VecDeque<Vec<u8>>,
+    //     // caller: InstructionCaller,
+    // ) -> Result<(), DigitalAssetError> {
+    //     todo!()
+    // }
 }
 
 pub trait InstructionLog {

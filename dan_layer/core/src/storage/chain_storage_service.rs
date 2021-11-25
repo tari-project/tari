@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffTreeNode, Payload, QuorumCertificate, SidechainMetadata},
+    models::{HotStuffTreeNode, Payload, SidechainMetadata},
     storage::{chain::ChainDbUnitOfWork, StorageError},
 };
 use async_trait::async_trait;

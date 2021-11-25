@@ -22,11 +22,8 @@
 
 use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload, StateRoot};
 use digest::Digest;
-use std::{
-    fmt::Debug,
-    hash::{Hash, Hasher},
-};
-use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
+use std::fmt::Debug;
+use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]
 pub struct TariDanPayload {
@@ -76,15 +73,9 @@ impl Payload for TariDanPayload {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CheckpointData {
     hash: Vec<u8>,
-}
-
-impl CheckpointData {
-    pub fn new() -> Self {
-        Self { hash: vec![] }
-    }
 }
 
 impl ConsensusHash for CheckpointData {

@@ -22,12 +22,10 @@
 
 use crate::{
   app_state::ConcurrentAppState,
-  models::{NewWallet, Wallet},
   status::Status,
   storage::{
     models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
     AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
-    WalletsTableGateway,
   },
 };
 use prost::Message;
@@ -118,7 +116,7 @@ pub(crate) async fn asset_wallets_get_balance(
 
   dbg!(&resp);
   match resp {
-    Some(mut resp) => {
+    Some(resp) => {
       let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
       Ok(proto_resp.balance)
     }

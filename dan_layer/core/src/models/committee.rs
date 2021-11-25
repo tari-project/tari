@@ -44,6 +44,10 @@ impl<TAddr: NodeAddressable> Committee<TAddr> {
         len - max_failures
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.members.is_empty()
+    }
+
     pub fn len(&self) -> usize {
         self.members.len()
     }

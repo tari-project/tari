@@ -20,14 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-  error::CollectiblesError,
-  storage::{
-    models::key_index_row::KeyIndexRow,
-    sqlite::{SqliteDbFactory, SqliteTransaction},
-    CollectiblesStorage, KeyIndicesTableGateway, StorageError, StorageTransaction,
-    WalletsTableGateway,
-  },
+use crate::storage::{
+  models::key_index_row::KeyIndexRow,
+  sqlite::{SqliteDbFactory, SqliteTransaction},
+  CollectiblesStorage, KeyIndicesTableGateway, StorageError, StorageTransaction,
+  WalletsTableGateway,
 };
 use std::fmt::Display;
 use tari_common_types::types::{PrivateKey, PublicKey};
@@ -76,8 +73,8 @@ impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
     let db = self.db_factory.create_db()?;
     let cipher_seed = db
       .wallets()
-      .get_cipher_seed(wallet_id, passphrase, Some(&transaction))?;
-    let row = match db.key_indices().find("assets".to_string(), &transaction)? {
+      .get_cipher_seed(wallet_id, passphrase, Some(transaction))?;
+    let row = match db.key_indices().find("assets".to_string(), transaction)? {
       Some(row) => row,
       None => {
         let row = KeyIndexRow {
@@ -86,7 +83,7 @@ impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
           last_index: 0,
         };
 
-        db.key_indices().insert(&row, &transaction)?;
+        db.key_indices().insert(&row, transaction)?;
         row
       }
     };

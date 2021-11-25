@@ -31,11 +31,6 @@ pub struct Wallet {
   pub cipher_seed: CipherSeed,
 }
 
-pub struct NewWallet {
-  pub name: Option<String>,
-  pub cipher_seed: CipherSeed,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WalletInfo {
   pub id: Uuid,

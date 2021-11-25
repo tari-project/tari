@@ -24,7 +24,7 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Committee, HotStuffMessage, Payload, View},
     services::infrastructure_services::{NodeAddressable, OutboundService},
-    storage::{chain::ChainDbBackendAdapter, DbFactory},
+    storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
 };
 use log::*;
@@ -32,13 +32,10 @@ use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
 
+#[derive(Default)]
 pub struct NextViewState {}
 
 impl NextViewState {
-    pub fn new() -> Self {
-        Self {}
-    }
-
     pub async fn next_event<
         TPayload: Payload,
         TOutboundService: OutboundService<TAddr, TPayload>,

@@ -21,17 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{HotStuffMessageType, HotStuffTreeNode, Instruction, QuorumCertificate, Signature, TreeNodeHash, ViewId},
+    models::QuorumCertificate,
     storage::{
-        chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter, ChainDbUnitOfWork},
+        chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter},
         StorageError,
-        UnitOfWorkTracker,
     },
-};
-use std::{
-    fmt::{Debug, Formatter},
-    ops::{Deref, DerefMut},
-    sync::{Arc, RwLock},
 };
 
 pub struct ChainDb<TBackendAdapter: ChainDbBackendAdapter> {

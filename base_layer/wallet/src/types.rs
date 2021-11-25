@@ -21,9 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::WalletError;
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{common::Blake256, keys::PublicKey as OtherPublicKey};
-use tari_key_manager::key_manager::KeyManager;
+use tari_common_types::types::PublicKey;
+use tari_crypto::common::Blake256;
 
 /// Specify the Hash function used by the key manager
 pub type KeyDigest = Blake256;
@@ -33,22 +32,4 @@ pub type HashDigest = Blake256;
 
 pub(crate) trait PersistentKeyManager {
     fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
-}
-
-pub(crate) struct MockPersistentKeyManager {
-    key_manager: KeyManager<PrivateKey, KeyDigest>,
-}
-
-impl MockPersistentKeyManager {
-    pub fn new() -> Self {
-        Self {
-            key_manager: KeyManager::new(),
-        }
-    }
-}
-
-impl PersistentKeyManager for MockPersistentKeyManager {
-    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError> {
-        Ok(PublicKey::from_secret_key(&self.key_manager.next_key().unwrap().k))
-    }
 }

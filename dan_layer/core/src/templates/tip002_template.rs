@@ -41,6 +41,6 @@ pub fn init<TUnitOfWork: StateDbUnitOfWork>(
         "owners".to_string(),
         asset_definition.public_key.to_vec(),
         Vec::from(params.total_supply.to_le_bytes()),
-    );
+    )?;
     Ok(())
 }

@@ -45,13 +45,7 @@ use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use crate::{
     models::TreeNodeHash,
     services::PayloadProcessor,
-    storage::{
-        chain::{ChainDbBackendAdapter, ChainDbUnitOfWork},
-        state::StateDbUnitOfWork,
-        ChainStorageService,
-        DbFactory,
-        StorageError,
-    },
+    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, StorageError},
 };
 use tokio::time::{sleep, Duration};
 
@@ -65,7 +59,6 @@ pub struct Prepare<
     TPayloadProvider,
     TPayload,
     TPayloadProcessor,
-    TDbFactory,
 > where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
     TOutboundService: OutboundService<TAddr, TPayload>,
@@ -74,7 +67,6 @@ pub struct Prepare<
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TDbFactory: DbFactory,
 {
     node_id: TAddr,
     // bft_service: Box<dyn BftReplicaService>,
@@ -85,7 +77,6 @@ pub struct Prepare<
     phantom_signing: PhantomData<TSigningService>,
     phantom_processor: PhantomData<TPayloadProcessor>,
     received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
-    db_factory: TDbFactory,
 }
 
 impl<
@@ -96,7 +87,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TDbFactory,
     >
     Prepare<
         TInboundConnectionService,
@@ -106,7 +96,6 @@ impl<
         TPayloadProvider,
         TPayload,
         TPayloadProcessor,
-        TDbFactory,
     >
 where
     TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
@@ -116,9 +105,8 @@ where
     TPayload: Payload,
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
-    TDbFactory: DbFactory + Clone,
 {
-    pub fn new(node_id: TAddr, db_factory: TDbFactory) -> Self {
+    pub fn new(node_id: TAddr) -> Self {
         Self {
             node_id,
             phantom: PhantomData,
@@ -127,7 +115,6 @@ where
             phantom_signing: PhantomData,
             received_new_view_messages: HashMap::new(),
             phantom_processor: PhantomData,
-            db_factory,
         }
     }
 
@@ -376,7 +363,7 @@ where
     }
 
     fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &TreeNodeHash) -> bool {
-        &from == &node.parent()
+        from == node.parent()
     }
 
     fn is_safe_node<TUnitOfWork: ChainDbUnitOfWork>(

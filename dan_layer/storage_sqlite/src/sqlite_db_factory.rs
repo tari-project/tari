@@ -25,16 +25,10 @@ use crate::{
     sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter,
     SqliteChainBackendAdapter,
 };
-use diesel::{prelude::*, Connection, SqliteConnection};
+use diesel::{Connection, SqliteConnection};
 use diesel_migrations::embed_migrations;
-use std::fs::create_dir_all;
 use tari_common::GlobalConfig;
-use tari_dan_core::storage::{
-    chain::ChainDb,
-    state::{StateDb, StateDbUnitOfWorkImpl},
-    DbFactory,
-    StorageError,
-};
+use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
 
 #[derive(Clone)]
 pub struct SqliteDbFactory {
@@ -62,7 +56,12 @@ impl DbFactory for SqliteDbFactory {
     fn create_chain_db(&self) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
         // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
-        connection.execute("PRAGMA foreign_keys = ON;");
+        connection
+            .execute("PRAGMA foreign_keys = ON;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set pragma".to_string(),
+            })?;
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
         Ok(ChainDb::new(SqliteChainBackendAdapter::new(self.database_url.clone())))
@@ -71,7 +70,12 @@ impl DbFactory for SqliteDbFactory {
     fn create_state_db(&self) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
         // create_dir_all(&self.database_url).map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(self.database_url.as_str()).map_err(SqliteStorageError::from)?;
-        connection.execute("PRAGMA foreign_keys = ON;");
+        connection
+            .execute("PRAGMA foreign_keys = ON;")
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set pragma".to_string(),
+            })?;
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
         Ok(StateDb::new(SqliteStateDbBackendAdapter::new(
