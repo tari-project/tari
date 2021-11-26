@@ -87,8 +87,8 @@ pub async fn recovery_event_monitoring(
                 );
             },
             Ok(UtxoScannerEvent::Progress {
-                current_block: current,
-                current_chain_height: total,
+                current_index: current,
+                total_index: total,
             }) => {
                 unsafe {
                     (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
