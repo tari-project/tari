@@ -838,7 +838,6 @@ impl LMDBDatabase {
         bitmap.remove(block_accum_data.deleted())?;
         bitmap.finish()?;
 
-        info!(target: LOG_TARGET, "delete accum {}", height);
         lmdb_delete(
             write_txn,
             &self.block_accumulated_data_db,
@@ -1124,7 +1123,6 @@ impl LMDBDatabase {
         header_height: u64,
         data: &BlockAccumulatedData,
     ) -> Result<(), ChainStorageError> {
-        info!(target: LOG_TARGET, "insert accum {}", data);
         lmdb_insert(
             txn,
             &self.block_accumulated_data_db,
