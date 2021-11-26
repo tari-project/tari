@@ -4,7 +4,7 @@
 
 ![status: draft](theme/images/status-draft.svg)
 
-**Maintainer(s)**: [S W van Heerden](https://github.com/SWvheerden)
+**Maintainer(s)**: [S W van Heerden](https://github.com/SWvheerden) and [Philip Robinson](https://github.com/philipr-za)
 
 # Licence
 
@@ -56,24 +56,12 @@ The aim of this Request for Comment (RFC) is to describe a few extensions to [Mi
 
 ## Description
 
-#### Time-locked Contracts
-In [Mimblewimble], time-locked contracts can be accomplished by modifying the kernel of each transaction to include a
-block height. This limits how early in the blockchain lifetime the specific transaction can be included in a block.
-
-This means that users constructing a transaction:
-* MUST include a lock height in the kernel of their transaction; and
-* MUST include the lock height in the transaction signature to prevent lock height malleability.
-
-Tari [base node]s MUST NOT add any transaction to the mined [block] that has not already exceeded its lock height.
-
-This also adds the following requirement to a [base node]:
-* It MUST reject any [block] that contains a kernel with a lock height greater than the [current head].
-
 #### Time-locked UTXOs
-Time-locked Unspent Transaction Outputs (UTXOs) can be accomplished by adding a feature flag to a UTXO and a lock height. 
-This allows a limit on when in the blockchain lifetime the specific UTXO can be spent.
+Time-locked Unspent Transaction Outputs (UTXOs) can be accomplished by adding a feature flag to a UTXO and a lock height, 
+also referred to as the output's maturity. This allows a consensus limit on after which height the output can be 
+spent.
 
-This requires that users constructing a transaction:
+This requires that users construct a transaction:
 
 - MUST include a feature flag of their UTXO; and
 - MUST include a lock height in their UTXO.
@@ -84,32 +72,50 @@ This adds the following requirement for a [base node]:
 This also adds the following requirement for a [base node]:
 - A base node MUST reject any [block] that contains a [UTXO] with a lock height not already past the [current head].
 
+#### Time-locked Contracts
+In standard [Mimblewimble], time-locked contracts can be accomplished by modifying the kernel of each transaction to 
+include a lock height. This limits how early in the blockchain lifetime the specific transaction can be included in a 
+block. This approach is used in a traditional [Mimblewimble] construction that does not implement any kind of scripting.
+This has two disadvantages. Firstly, the spending condition is very primitive and cannot be linked to other conditions.
+Secondly, it bloats the kernel, which is a component of the transaction that cannot be pruned.
+
+However, with [TariScript] it becomes possible to express spending conditions like a time-lock as part of a UTXO's script.
+The `CheckHeightVerify(height)` TariScript Op code allows a time-lock check to be incorporated into a script. The following is a simple
+example of a plain time-lock script that prevents an output from being spent before the chain reaches height 4000:
+
+```text
+CheckHeightVerify(4000)
+```
+
 #### Hashed Time-locked Contract
-Hashed time-locked contracts are a way of reserving funds for a certain payment, but they only pay out to the receiver if
-certain conditions are met. If these conditions are not met within a time limit, the funds are paid back to the sender.
+Hashed time-locked contracts ([HTLC]) are a way of reserving funds that can only be spent if a hash pre-image can be provided or
+if a specified amount of time has passed. The hash pre-image is a secret that can be revealed under the right conditions
+to enable spending of the UTXO before the time-lock is reached. The secret can be revealed directly by a party or by
+a party spending another output via a signature. 
 
-Unlike Bitcoin, where this can be accomplished with a single transaction, in [Mimblewimble], HTLCs involve a multi-step
-process to construct a time-locked contract.
+[HTLC]s enable a number of interesting transaction constructions. For example, [Atomic Swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html)
+and Payment Channels like those in the [Lightning Network](https://tlu.tarilabs.com/protocols/lightning-network-for-dummies).
 
-The steps are as follows:
-* The sender MUST pay all the funds into an n-of-n [multisig] [UTXO].
-* All parties involved MUST construct a refund [transaction] to pay back all funds to the sender who has spent this n-of-n
-  [multisig] [UTXO]. However, this [transaction] has a transaction lock height set in
-  the future and cannot be mined immediately. It therefore lives in the [mempool]. This means that if anything goes
-  wrong from here on, the sender will get their money back after the time lock expires.
-* The sender MUST publish both above [transaction]s at the same time to ensure the receiver cannot hold the sender hostage.
-* The parties MUST construct a third [transaction] that pays the receiver the funds. This [transaction] typically makes
-  use of a preimage to allow spending of the [transaction] if the user reveals some knowledge, allowing the user to
-  unlock the [UTXO].
+The following is an example of an [HTLC] script. In this script, Alice sends some Tari to Bob that he can spend using the 
+private key of `P_b` if he can provide the pre-image to the SHA256 hash output (`HASH256{pre_image}`) specified in the script
+by Alice. If Bob has not spent this UTXO before the chain reaches height 5000 then Alice will be able to spend the output
+using the private key of `P_a`.
 
-HTLCs in [Mimblewimble] make use of double-spending of the n-of-n [multisig] [UTXO]. The
-first valid published [transaction] can then be mined and claim the n-of-n [multisig]
-[UTXO].
+```text
+HashSha256
+PushHash(HASH256{pre_image})
+Equal
+IFTHEN
+   PushPubkey(P_b)
+ELSE
+   CheckHeightVerify(5000)
+   PushPubkey(P_a)
+ENDIF
+```
 
-An example of an [HTLC] in practice can be viewed at Tari University:
+A more detailed analysis of the execution of this kind of script can be found at [Time-locked Contact](RFC-0202_TariScriptOpcodes.md#time-locked-contract)
 
-- [Bitcoin atomic swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html)
-- [Mimblewimble atomic swaps](https://tlu.tarilabs.com/protocols/grin-protocol-overview/MainReport.html#atomic-swaps)
+
 
 [HTLC]: Glossary.md#hashed-time-locked-contract
 [Mempool]: Glossary.md#mempool
@@ -120,5 +126,6 @@ An example of an [HTLC] in practice can be viewed at Tari University:
 [UTXO]: Glossary.md#unspent-transaction-outputs
 [Multisig]: Glossary.md#multisig
 [Transaction]: Glossary.md#transaction
+[TariScript]: RFC-0201_TariScript.md
 
 
