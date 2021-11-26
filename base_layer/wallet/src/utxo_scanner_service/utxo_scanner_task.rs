@@ -20,33 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
-};
-
 use chrono::Utc;
 use futures::StreamExt;
 use log::*;
-use serde::{Deserialize, Serialize};
-use tokio::{
-    sync::{broadcast, watch},
-    task,
-    time,
-    time::MissedTickBehavior,
-};
 
-use tari_common_types::{transaction::TxId, types::HashOutput};
+use std::{
+    convert::TryFrom,
+    time::{Duration, Instant},
+};
+use tari_common_types::transaction::TxId;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer},
+    peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
-    NodeIdentity,
     PeerConnection,
 };
 use tari_core::{
@@ -59,22 +45,20 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_entities::{TransactionOutput, UnblindedOutput},
-        CryptoFactories,
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::broadcast;
 
 use crate::{
-    connectivity_service::WalletConnectivityInterface,
     error::WalletError,
-    output_manager_service::handle::OutputManagerHandle,
-    storage::{
-        database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
+    storage::database::WalletBackend,
+    utxo_scanner_service::{
+        error::UtxoScannerError,
+        handle::UtxoScannerEvent,
+        service::{ScanningMetadata, UtxoScannerResources},
+        uxto_scanner_service_builder::UtxoScannerMode,
     },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
-    WalletSqlite,
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
@@ -82,139 +66,17 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 pub const RECOVERY_KEY: &str = "recovery_data";
 const SCANNING_KEY: &str = "scanning_data";
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum UtxoScannerMode {
-    Recovery,
-    Scanning,
-}
-
-impl Default for UtxoScannerMode {
-    fn default() -> UtxoScannerMode {
-        UtxoScannerMode::Recovery
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct UtxoScannerServiceBuilder {
-    retry_limit: usize,
-    peers: Vec<CommsPublicKey>,
-    mode: Option<UtxoScannerMode>,
-    scanning_interval: Option<Duration>,
-}
-
-#[derive(Clone)]
-struct UtxoScannerResources<TBackend> {
-    pub db: WalletDatabase<TBackend>,
-    pub comms_connectivity: ConnectivityRequester,
-    pub current_base_node_watcher: watch::Receiver<Option<Peer>>,
-    pub output_manager_service: OutputManagerHandle,
-    pub transaction_service: TransactionServiceHandle,
-    pub node_identity: Arc<NodeIdentity>,
-    pub factories: CryptoFactories,
-}
-
-impl UtxoScannerServiceBuilder {
-    /// Set the maximum number of times we retry recovery. A failed recovery is counted as _all_ peers have failed.
-    /// i.e. worst-case number of recovery attempts = number of sync peers * retry limit
-    pub fn with_retry_limit(&mut self, limit: usize) -> &mut Self {
-        self.retry_limit = limit;
-        self
-    }
-
-    pub fn with_scanning_interval(&mut self, interval: Duration) -> &mut Self {
-        self.scanning_interval = Some(interval);
-        self
-    }
-
-    pub fn with_peers(&mut self, peer_public_keys: Vec<CommsPublicKey>) -> &mut Self {
-        self.peers = peer_public_keys;
-        self
-    }
-
-    pub fn with_mode(&mut self, mode: UtxoScannerMode) -> &mut Self {
-        self.mode = Some(mode);
-        self
-    }
-
-    pub fn build_with_wallet(
-        &mut self,
-        wallet: &WalletSqlite,
-        shutdown_signal: ShutdownSignal,
-    ) -> UtxoScannerService<WalletSqliteDatabase> {
-        let resources = UtxoScannerResources {
-            db: wallet.db.clone(),
-            comms_connectivity: wallet.comms.connectivity(),
-            current_base_node_watcher: wallet.wallet_connectivity.get_current_base_node_watcher(),
-            output_manager_service: wallet.output_manager_service.clone(),
-            transaction_service: wallet.transaction_service.clone(),
-            node_identity: wallet.comms.node_identity(),
-            factories: wallet.factories.clone(),
-        };
-
-        let (event_sender, _) = broadcast::channel(200);
-
-        let interval = self
-            .scanning_interval
-            .unwrap_or_else(|| Duration::from_secs(60 * 60 * 12));
-        UtxoScannerService::new(
-            self.peers.drain(..).collect(),
-            self.retry_limit,
-            self.mode.clone().unwrap_or_default(),
-            resources,
-            interval,
-            shutdown_signal,
-            event_sender,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn build_with_resources<TBackend: WalletBackend + 'static>(
-        &mut self,
-        db: WalletDatabase<TBackend>,
-        comms_connectivity: ConnectivityRequester,
-        base_node_watcher: watch::Receiver<Option<Peer>>,
-        output_manager_service: OutputManagerHandle,
-        transaction_service: TransactionServiceHandle,
-        node_identity: Arc<NodeIdentity>,
-        factories: CryptoFactories,
-        shutdown_signal: ShutdownSignal,
-        event_sender: broadcast::Sender<UtxoScannerEvent>,
-    ) -> UtxoScannerService<TBackend> {
-        let resources = UtxoScannerResources {
-            db,
-            comms_connectivity,
-            current_base_node_watcher: base_node_watcher,
-            output_manager_service,
-            transaction_service,
-            node_identity,
-            factories,
-        };
-        let interval = self
-            .scanning_interval
-            .unwrap_or_else(|| Duration::from_secs(60 * 60 * 12));
-        UtxoScannerService::new(
-            self.peers.drain(..).collect(),
-            self.retry_limit,
-            self.mode.clone().unwrap_or_default(),
-            resources,
-            interval,
-            shutdown_signal,
-            event_sender,
-        )
-    }
-}
-
-struct UtxoScannerTask<TBackend>
+pub struct UtxoScannerTask<TBackend>
 where TBackend: WalletBackend + 'static
 {
-    resources: UtxoScannerResources<TBackend>,
-    event_sender: broadcast::Sender<UtxoScannerEvent>,
-    retry_limit: usize,
-    num_retries: usize,
-    peer_seeds: Vec<CommsPublicKey>,
-    peer_index: usize,
-    mode: UtxoScannerMode,
-    run_flag: Arc<AtomicBool>,
+    pub(crate) resources: UtxoScannerResources<TBackend>,
+    pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
+    pub(crate) retry_limit: usize,
+    pub(crate) num_retries: usize,
+    pub(crate) peer_seeds: Vec<CommsPublicKey>,
+    pub(crate) peer_index: usize,
+    pub(crate) mode: UtxoScannerMode,
+    pub(crate) shutdown_signal: ShutdownSignal,
 }
 impl<TBackend> UtxoScannerTask<TBackend>
 where TBackend: WalletBackend + 'static
@@ -284,7 +146,7 @@ where TBackend: WalletBackend + 'static
             let start_index = self.get_start_utxo_mmr_pos(&mut client).await?;
             let tip_header = self.get_chain_tip_header(&mut client).await?;
             let output_mmr_size = tip_header.output_mmr_size;
-            if !self.run_flag.load(Ordering::Relaxed) {
+            if self.shutdown_signal.is_triggered() {
                 // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok((total_scanned, start_index, timer.elapsed()));
             }
@@ -404,7 +266,7 @@ where TBackend: WalletBackend + 'static
         let mut last_utxo_index = 0u64;
         let mut iteration_count = 0u64;
         while let Some(response) = utxo_stream.next().await {
-            if !self.run_flag.load(Ordering::Relaxed) {
+            if self.shutdown_signal.is_triggered() {
                 // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok(total_scanned as u64);
             }
@@ -581,10 +443,9 @@ where TBackend: WalletBackend + 'static
         Ok(tx_id)
     }
 
-    async fn run(mut self) -> Result<(), UtxoScannerError> {
-        self.run_flag.store(true, Ordering::Relaxed);
+    pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         loop {
-            if !self.run_flag.load(Ordering::Relaxed) {
+            if self.shutdown_signal.is_triggered() {
                 // if running is set to false, we know its been canceled upstream so lets exit the loop
                 return Ok(());
             }
@@ -672,118 +533,6 @@ where TBackend: WalletBackend + 'static
     }
 }
 
-pub struct UtxoScannerService<TBackend>
-where TBackend: WalletBackend + 'static
-{
-    resources: UtxoScannerResources<TBackend>,
-    retry_limit: usize,
-    peer_seeds: Vec<CommsPublicKey>,
-    mode: UtxoScannerMode,
-    is_running: Arc<AtomicBool>,
-    scan_for_utxo_interval: Duration,
-    shutdown_signal: ShutdownSignal,
-    event_sender: broadcast::Sender<UtxoScannerEvent>,
-}
-
-impl<TBackend> UtxoScannerService<TBackend>
-where TBackend: WalletBackend + 'static
-{
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        peer_seeds: Vec<CommsPublicKey>,
-        retry_limit: usize,
-        mode: UtxoScannerMode,
-        resources: UtxoScannerResources<TBackend>,
-        scan_for_utxo_interval: Duration,
-        shutdown_signal: ShutdownSignal,
-        event_sender: broadcast::Sender<UtxoScannerEvent>,
-    ) -> Self {
-        Self {
-            resources,
-            peer_seeds,
-            retry_limit,
-            mode,
-            is_running: Arc::new(AtomicBool::new(false)),
-            scan_for_utxo_interval,
-            shutdown_signal,
-            event_sender,
-        }
-    }
-
-    fn create_task(&self) -> UtxoScannerTask<TBackend> {
-        UtxoScannerTask {
-            resources: self.resources.clone(),
-            peer_seeds: self.peer_seeds.clone(),
-            event_sender: self.event_sender.clone(),
-            retry_limit: self.retry_limit,
-            peer_index: 0,
-            num_retries: 1,
-            mode: self.mode.clone(),
-            run_flag: self.is_running.clone(),
-        }
-    }
-
-    pub fn builder() -> UtxoScannerServiceBuilder {
-        UtxoScannerServiceBuilder::default()
-    }
-
-    pub fn get_event_receiver(&mut self) -> broadcast::Receiver<UtxoScannerEvent> {
-        self.event_sender.subscribe()
-    }
-
-    pub async fn run(mut self) -> Result<(), WalletError> {
-        info!(
-            target: LOG_TARGET,
-            "UTXO scanning service starting (interval = {:.2?})", self.scan_for_utxo_interval
-        );
-
-        let mut shutdown = self.shutdown_signal.clone();
-        let start_at = Instant::now() + Duration::from_secs(1);
-        let mut work_interval = time::interval_at(start_at.into(), self.scan_for_utxo_interval);
-        work_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        loop {
-            tokio::select! {
-                _ = work_interval.tick() => {
-                    let running_flag = self.is_running.clone();
-                    if !running_flag.load(Ordering::SeqCst) {
-                        let task = self.create_task();
-                        debug!(target: LOG_TARGET, "UTXO scanning service starting scan for utxos");
-                        task::spawn(async move {
-                            if let Err(err) = task.run().await {
-                                error!(target: LOG_TARGET, "Error scanning UTXOs: {}", err);
-                            }
-                            //we make sure the flag is set to false here
-                            running_flag.store(false, Ordering::Relaxed);
-                        });
-                        if self.mode == UtxoScannerMode::Recovery {
-                            return Ok(());
-                        }
-                    }
-                },
-                _ = self.resources.current_base_node_watcher.changed() => {
-                    debug!(target: LOG_TARGET, "Base node change detected.");
-                    let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-
-                    // If we are recovering we will stick to the initially provided seeds
-                    if self.mode != UtxoScannerMode::Recovery {
-                        if let Some(peer) = peer {
-                            self.peer_seeds = vec![peer.public_key];
-                        }
-                    }
-
-                    self.is_running.store(false, Ordering::Relaxed);
-                },
-                _ = shutdown.wait() => {
-                    // this will stop the task if its running, and let that thread exit gracefully
-                    self.is_running.store(false, Ordering::Relaxed);
-                    info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
-                    return Ok(());
-                }
-            }
-        }
-    }
-}
-
 fn convert_response_to_transaction_outputs(
     response: Vec<Result<proto::base_node::SyncUtxosResponse, RpcStatus>>,
     last_utxo_index: u64,
@@ -794,12 +543,12 @@ fn convert_response_to_transaction_outputs(
         .collect::<Result<Vec<_>, _>>()?;
 
     let current_utxo_index = response
-    // Assumes correct ordering which is otherwise not required for this protocol
-    .last()
-    .ok_or_else(|| {
-        UtxoScannerError::BaseNodeResponseError("Invalid response from base node: response was empty".to_string())
-    })?
-    .mmr_index;
+        // Assumes correct ordering which is otherwise not required for this protocol
+        .last()
+        .ok_or_else(|| {
+            UtxoScannerError::BaseNodeResponseError("Invalid response from base node: response was empty".to_string())
+        })?
+        .mmr_index;
     if current_utxo_index < last_utxo_index {
         return Err(UtxoScannerError::BaseNodeResponseError(
             "Invalid response from base node: mmr index must be non-decreasing".to_string(),
@@ -816,12 +565,4 @@ fn convert_response_to_transaction_outputs(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok((outputs, current_utxo_index))
-}
-
-#[derive(Clone, Default, Serialize, Deserialize)]
-struct ScanningMetadata {
-    pub total_amount: MicroTari,
-    pub number_of_utxos: u64,
-    pub utxo_index: u64,
-    pub height_hash: HashOutput,
 }
