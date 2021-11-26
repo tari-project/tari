@@ -112,6 +112,7 @@ where
             .for_protocol(self.operation_id)
             .unwrap();
 
+        let mut state_changed = false;
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
@@ -133,6 +134,7 @@ where
                     *num_confirmations,
                 )
                 .await?;
+                state_changed = true;
             }
             if let Some((tip_height, tip_block)) = tip_info {
                 for unmined_tx in &unmined {
@@ -147,6 +149,7 @@ where
                                 tip_height.saturating_sub(unmined_tx.coinbase_block_height.unwrap_or_default()),
                             )
                             .await?;
+                            state_changed = true;
                         } else {
                             info!(
                                 target: LOG_TARGET,
@@ -163,11 +166,14 @@ where
                         );
                         self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
                             .await?;
+                        state_changed = true;
                     }
                 }
             }
         }
-        self.publish_event(TransactionEvent::TransactionValidationSuccess(self.operation_id));
+        if state_changed {
+            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
+        }
         Ok(self.operation_id)
     }
 
@@ -234,6 +240,9 @@ where
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
                     .await?;
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged(
+                    last_mined_transaction.tx_id,
+                ));
             } else {
                 info!(
                     target: LOG_TARGET,

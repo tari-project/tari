@@ -258,7 +258,7 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionValidationSuccess(tx_id)  => {
+                                TransactionEvent::TransactionValidationStateChanged(tx_id)  => {
                                     self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
                                     self.trigger_balance_refresh().await;
                                 },

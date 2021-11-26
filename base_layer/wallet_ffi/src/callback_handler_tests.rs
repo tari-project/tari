@@ -476,7 +476,7 @@ mod test {
         assert_eq!(callback_balance_updated, 5);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(1u64)))
             .unwrap();
 
         oms_event_sender
