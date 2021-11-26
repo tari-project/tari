@@ -345,11 +345,11 @@ fn convert_node_config(
         .get_str(&key)
         .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
-    let key = config_string("base_node", net_str, "grpc_console_wallet_address");
+    let key = "wallet.grpc_address";
     let grpc_console_wallet_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(key, &e.to_string())))??;
 
     // Peer and DNS seeds
     let key = "common.peer_seeds";

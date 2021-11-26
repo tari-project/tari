@@ -2032,7 +2032,7 @@ When(
 
 When(
   /I send(.*) uT without waiting for broadcast from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 120 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
