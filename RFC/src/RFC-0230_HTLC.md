@@ -61,7 +61,7 @@ Time-locked Unspent Transaction Outputs (UTXOs) can be accomplished by adding a 
 also referred to as the output's maturity. This allows a consensus limit on after which height the output can be 
 spent.
 
-This requires that users construct a transaction:
+This requires that users constructing a transaction:
 
 - MUST include a feature flag of their UTXO; and
 - MUST include a lock height in their UTXO.
