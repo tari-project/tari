@@ -30,7 +30,7 @@ use tari_key_manager::mnemonic::Mnemonic;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     storage::sqlite_db::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
+    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
 };
 

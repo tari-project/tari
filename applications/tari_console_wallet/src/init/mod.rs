@@ -29,6 +29,7 @@ use rustyline::Editor;
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
+    multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
@@ -299,7 +300,7 @@ pub async fn init_wallet(
     );
 
     let node_address = match wallet_db.get_node_address().await? {
-        None => config.public_address.clone(),
+        None => config.public_address.clone().unwrap_or_else(Multiaddr::empty),
         Some(a) => a,
     };
 
@@ -400,7 +401,6 @@ pub async fn init_wallet(
             config.buffer_size_console_wallet,
         )),
         Some(config.buffer_rate_limit_console_wallet),
-        Some(config.scan_for_utxo_interval),
         Some(updater_config),
         config.autoupdate_check_interval,
     );

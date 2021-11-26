@@ -75,7 +75,7 @@ pub struct GlobalConfig {
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
-    pub public_address: Multiaddr,
+    pub public_address: Option<Multiaddr>,
     pub grpc_enabled: bool,
     pub grpc_base_node_address: Multiaddr,
     pub grpc_console_wallet_address: Multiaddr,
@@ -101,7 +101,6 @@ pub struct GlobalConfig {
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
-    pub scan_for_utxo_interval: Duration,
     pub saf_expiry_duration: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
@@ -328,13 +327,12 @@ fn convert_node_config(
 
     // Public address
     let key = config_string("base_node", net_str, "public_address");
-    let public_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|addr| {
+    let public_address = optional(cfg.get_str(&key))?
+        .map(|addr| {
             addr.parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+        })
+        .transpose()?;
 
     // GPRC enabled
     let key = config_string("base_node", net_str, "grpc_enabled");
@@ -443,11 +441,6 @@ fn convert_node_config(
 
     let key = "wallet.base_node_query_timeout";
     let base_node_query_timeout = Duration::from_secs(
-        cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
-    );
-    let key = "wallet.scan_for_utxo_interval";
-    let scan_for_utxo_interval = Duration::from_secs(
         cfg.get_int(key)
             .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
     );
@@ -756,7 +749,6 @@ fn convert_node_config(
         fetch_utxos_timeout,
         service_request_timeout,
         base_node_query_timeout,
-        scan_for_utxo_interval,
         saf_expiry_duration,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,

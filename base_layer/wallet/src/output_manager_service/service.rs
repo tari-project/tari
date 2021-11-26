@@ -383,6 +383,7 @@ where
                 }
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
+            BaseNodeEvent::NewBlockDetected(_) => {},
         }
     }
 

@@ -473,6 +473,10 @@ impl AppState {
             Igor => MicroTari(5),
         }
     }
+
+    pub fn get_network(&self) -> Network {
+        self.node_config.network
+    }
 }
 pub struct AppStateInner {
     updated: bool,

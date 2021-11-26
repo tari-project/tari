@@ -118,7 +118,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.base_node_service_refresh_interval", 5).unwrap();
     cfg.set_default("wallet.base_node_service_request_max_age", 60).unwrap();
     cfg.set_default("wallet.balance_enquiry_cooldown_period", 1).unwrap();
-    cfg.set_default("wallet.scan_for_utxo_interval", 60 * 60 * 12).unwrap();
     cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
     cfg.set_default("wallet.transaction_chain_monitoring_timeout", 60)
@@ -224,11 +223,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default(
         "base_node.weatherwax.base_node_identity_file",
         default_subdir("config/base_node_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.weatherwax.public_address",
-        format!("{}/tcp/18141", local_ip_addr),
     )
     .unwrap();
 
@@ -435,7 +429,7 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
     Ok(())
 }
 
-fn get_local_ip() -> Option<Multiaddr> {
+pub fn get_local_ip() -> Option<Multiaddr> {
     use std::net::IpAddr;
 
     get_if_addrs::get_if_addrs().ok().and_then(|if_addrs| {

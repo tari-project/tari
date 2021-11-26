@@ -44,6 +44,7 @@ pub enum BaseNodeServiceResponse {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
+    NewBlockDetected(u64),
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running
