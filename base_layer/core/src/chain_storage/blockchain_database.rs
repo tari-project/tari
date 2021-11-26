@@ -222,7 +222,8 @@ where B: BlockchainBackend
                 kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
-            txn.set_pruned_height(0, kernel_sum, utxo_sum);
+            txn.set_pruned_height(0);
+            txn.set_horizon_data(kernel_sum, utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
@@ -2136,6 +2137,8 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
         txn.delete_all_inputs_in_block(header.hash().clone());
     }
+
+    txn.set_pruned_height(target_horizon_height);
 
     db.write(txn)?;
     Ok(())

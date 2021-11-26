@@ -302,8 +302,13 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
-        self.transaction.set_pruned_height(height, kernel_sum, utxo_sum);
+    pub fn set_pruned_height(&mut self, height: u64) -> &mut Self {
+        self.transaction.set_pruned_height(height);
+        self
+    }
+
+    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.transaction.set_horizon_data(kernel_sum, utxo_sum);
         self
     }
 

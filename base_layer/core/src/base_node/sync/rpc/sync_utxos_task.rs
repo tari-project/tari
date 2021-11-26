@@ -145,7 +145,7 @@ where B: BlockchainBackend + 'static
             include_pruned_utxos,
             include_deleted_bitmaps
         );
-        while current_header.height <= end_header.height {
+        loop {
             let timer = Instant::now();
             let current_header_hash = current_header.hash();
 
@@ -223,6 +223,10 @@ where B: BlockchainBackend + 'static
             );
 
             prev_utxo_mmr_size = current_header.output_mmr_size;
+            if current_header.height + 1 > end_header.height {
+                break;
+            }
+
             current_header = self
                 .db
                 .fetch_header(current_header.height + 1)

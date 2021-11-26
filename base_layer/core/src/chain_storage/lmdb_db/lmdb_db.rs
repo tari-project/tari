@@ -383,20 +383,18 @@ impl LMDBDatabase {
                         MetadataValue::PruningHorizon(*pruning_horizon),
                     )?;
                 },
-                SetPrunedHeight {
-                    height,
-                    kernel_sum,
-                    utxo_sum,
-                } => {
+                SetPrunedHeight { height } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::PrunedHeight,
                         MetadataValue::PrunedHeight(*height),
                     )?;
+                },
+                SetHorizonData { horizon_data } => {
                     self.set_metadata(
                         &write_txn,
                         MetadataKey::HorizonData,
-                        MetadataValue::HorizonData(HorizonData::new(kernel_sum.clone(), utxo_sum.clone())),
+                        MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
                 },
             }

@@ -34,6 +34,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::chain_storage::HorizonData;
 use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
@@ -241,11 +242,14 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
-        self.operations.push(WriteOperation::SetPrunedHeight {
-            height,
-            kernel_sum,
-            utxo_sum,
+    pub fn set_pruned_height(&mut self, height: u64) -> &mut Self {
+        self.operations.push(WriteOperation::SetPrunedHeight { height });
+        self
+    }
+
+    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.operations.push(WriteOperation::SetHorizonData {
+            horizon_data: HorizonData::new(kernel_sum, utxo_sum),
         });
         self
     }
@@ -320,8 +324,9 @@ pub enum WriteOperation {
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
         height: u64,
-        kernel_sum: Commitment,
-        utxo_sum: Commitment,
+    },
+    SetHorizonData {
+        horizon_data: HorizonData,
     },
 }
 
@@ -409,6 +414,7 @@ impl fmt::Display for WriteOperation {
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
             DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
             DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
+            SetHorizonData { .. } => write!(f, "Set horizon data"),
         }
     }
 }

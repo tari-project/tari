@@ -196,7 +196,7 @@ mod test {
             )
             .unwrap(),
         );
-        assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
+        tx_output3.verify_range_proof(&factories.range_proof).unwrap_err();
     }
 
     #[test]

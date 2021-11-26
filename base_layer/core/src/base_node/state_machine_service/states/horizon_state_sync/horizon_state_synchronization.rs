@@ -149,7 +149,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let new_prune_height = cmp::min(local_metadata.height_of_longest_chain(), self.horizon_sync_height);
         if local_metadata.pruned_height() < new_prune_height {
             debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
-            db.prune_to_height(new_prune_height + 1).await?;
+            db.prune_to_height(new_prune_height).await?;
         }
 
         self.full_bitmap = Some(db.fetch_deleted_bitmap_at_tip().await?.into_bitmap());
@@ -637,7 +637,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 header.accumulated_data().total_accumulated_difficulty,
                 metadata.best_block().clone(),
             )
-            .set_pruned_height(header.height(), calc_kernel_sum, calc_utxo_sum)
+            .set_pruned_height(header.height())
+            .set_horizon_data(calc_kernel_sum, calc_utxo_sum)
             .commit()
             .await?;
 
