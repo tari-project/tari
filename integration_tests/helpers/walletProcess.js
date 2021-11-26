@@ -89,7 +89,7 @@ class WalletProcess {
           this.peerSeeds
         );
       } else if (this.options["grpc_console_wallet_address"]) {
-        envs[`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`] =
+        envs[`TARI_WALLET__GRPC_ADDRESS`] =
           this.options["grpc_console_wallet_address"];
         this.grpcPort =
           this.options["grpc_console_wallet_address"].split(":")[1];

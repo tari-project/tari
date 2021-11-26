@@ -63,7 +63,6 @@ pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), st
 /// These will typically be overridden by userland settings in envars, the config file, or the command line.
 pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     let mut cfg = Config::new();
-    let local_ip_addr = get_local_ip().unwrap_or_else(|| "/ip4/1.2.3.4".parse().unwrap());
 
     // Common settings
     cfg.set_default("common.message_cache_size", 10).unwrap();
@@ -171,18 +170,12 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("config/console_wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default(
-        "base_node.mainnet.public_address",
-        format!("{}/tcp/18041", local_ip_addr),
-    )
-    .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.mainnet.allow_test_addresses", false)
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
-        .unwrap();
+    cfg.set_default("wallet.grpc_address", "127.0.0.1:18143").unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
@@ -231,8 +224,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.weatherwax.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.weatherwax.grpc_console_wallet_address", "127.0.0.1:18143")
-        .unwrap();
     cfg.set_default(
         "base_node.weatherwax.dns_seeds_name_server",
         "1.1.1.1:853/cloudflare-dns.com",
@@ -244,7 +235,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
-
     //---------------------------------- Igor Defaults --------------------------------------------//
 
     cfg.set_default("base_node.igor.db_type", "lmdb").unwrap();
@@ -255,12 +245,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
         .unwrap();
     cfg.set_default("base_node.igor.flood_ban_max_msg_count", 1000).unwrap();
-    cfg.set_default("base_node.igor.public_address", format!("{}/tcp/18141", local_ip_addr))
-        .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
-        .unwrap();
-    cfg.set_default("base_node.igor.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
         .unwrap();
