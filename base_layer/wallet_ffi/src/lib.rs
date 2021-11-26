@@ -2576,7 +2576,8 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// `control_server_address` - The pointer to a char array
 /// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
 /// `tor_port` - The tor port
-/// `socks_username` - The pointer to a char array containing the socks username, can be null
+/// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
+/// the tor proxy if tcp is available, if not it has no effect
 /// `socks_password` - The pointer to a char array containing the socks password, can be null
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -2592,6 +2593,7 @@ pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
     tor_cookie: *const ByteVector,
     tor_port: c_ushort,
+    tor_proxy_bypass_for_outbound: bool,
     socks_username: *const c_char,
     socks_password: *const c_char,
     error_out: *mut c_int,
@@ -2665,8 +2667,7 @@ pub unsafe extern "C" fn transport_tor_create(
                 socks_address_override: None,
                 socks_auth: authentication,
                 tor_proxy_bypass_addresses: vec![],
-                // Prefer performance
-                tor_proxy_bypass_for_outbound_tcp: true,
+                tor_proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
             };
             let transport = TariTransportType::Tor(tor_config);
 
@@ -5974,6 +5975,7 @@ mod test {
             let transport = transport_memory_create();
             let _address = transport_memory_get_address(transport, error_ptr);
             assert_eq!(error, 0);
+            transport_type_destroy(transport);
         }
     }
 
@@ -5984,8 +5986,9 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
             let address_listener = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
             let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
-            let _transport = transport_tcp_create(address_listener_str, error_ptr);
+            let transport = transport_tcp_create(address_listener_str, error_ptr);
             assert_eq!(error, 0);
+            transport_type_destroy(transport);
         }
     }
 
@@ -5995,16 +5998,32 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
+            let mut bypass = false;
             let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
-            let _transport = transport_tor_create(
+            let mut transport = transport_tor_create(
                 address_control_str,
-                ptr::null_mut(),
+                ptr::null(),
                 8080,
-                ptr::null_mut(),
-                ptr::null_mut(),
+                bypass,
+                ptr::null(),
+                ptr::null(),
                 error_ptr,
             );
             assert_eq!(error, 0);
+            transport_type_destroy(transport);
+
+            bypass = true;
+            transport = transport_tor_create(
+                address_control_str,
+                ptr::null(),
+                8080,
+                bypass,
+                ptr::null(),
+                ptr::null(),
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            transport_type_destroy(transport);
         }
     }
 
