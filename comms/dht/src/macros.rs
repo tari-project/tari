@@ -23,6 +23,7 @@
 /// This macro unlocks a Mutex or RwLock. If the lock is
 /// poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.
+#[allow(unused_macros)]
 macro_rules! acquire_lock {
     ($e:expr, $m:ident) => {
         match $e.$m() {

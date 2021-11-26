@@ -90,6 +90,7 @@ struct TariTransportType *transport_tor_create(
     const char *control_server_address,
     struct ByteVector *tor_cookie,
     unsigned short tor_port,
+    bool tor_proxy_bypass_for_outbound,
     const char *socks_username,
     const char *socks_password,
     int *error_out);

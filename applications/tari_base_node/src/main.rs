@@ -127,6 +127,7 @@ use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
+    sync::Mutex,
     task,
     time::{self},
 };
@@ -258,7 +259,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     }
 
     // Run, node, run!
-    let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
+    let command_handler = Arc::new(Mutex::new(CommandHandler::new(runtime::Handle::current(), &ctx)));
     if bootstrap.non_interactive_mode {
         task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
@@ -367,7 +368,7 @@ fn status_interval(start_time: Instant) -> time::Sleep {
     time::sleep(duration)
 }
 
-async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
+async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
     loop {
@@ -379,7 +380,7 @@ async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusOutput::Log);
+               command_handler.lock().await.status(StatusOutput::Log);
             },
         }
     }
@@ -407,7 +408,12 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
+    let mut software_update_notif = command_handler
+        .lock()
+        .await
+        .get_software_updater()
+        .new_update_notifier()
+        .clone();
     loop {
         let interval = status_interval(start_time);
         tokio::select! {
@@ -415,7 +421,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown);
+                            p.handle_command(line.as_str(), &mut shutdown).await;
                         }
                         if !shutdown.is_triggered() {
                             read_command_fut.set(read_command(rustyline).fuse());
@@ -440,7 +446,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 }
             }
             _ = interval => {
-               command_handler.status(StatusOutput::Full);
+                command_handler.lock().await.status(StatusOutput::Full);
             },
             _ = shutdown_signal.wait() => {
                 break;

@@ -86,6 +86,7 @@ class InterfaceFFI {
           this.string,
           this.ptr,
           this.ushort,
+          this.bool,
           this.string,
           this.string,
           this.intPtr,
@@ -608,6 +609,7 @@ class InterfaceFFI {
       control_server_address,
       tor_cookie,
       tor_port,
+      true,
       socks_username,
       socks_password,
       error
