@@ -49,7 +49,7 @@ use crate::{
     },
     types::HashDigest,
     util::watch::Watch,
-    utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
+    utxo_scanner_service::RECOVERY_KEY,
 };
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
@@ -708,6 +708,7 @@ where
                 }
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
+            BaseNodeEvent::NewBlockDetected(_) => {},
         }
     }
 

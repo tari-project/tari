@@ -43,7 +43,6 @@ pub struct WalletConfig {
     pub rate_limit: usize,
     pub network: NetworkConsensus,
     pub base_node_service_config: BaseNodeServiceConfig,
-    pub scan_for_utxo_interval: Duration,
     pub updater_config: Option<AutoUpdateConfig>,
     pub autoupdate_check_interval: Option<Duration>,
 }
@@ -59,7 +58,6 @@ impl WalletConfig {
         base_node_service_config: Option<BaseNodeServiceConfig>,
         buffer_size: Option<usize>,
         rate_limit: Option<usize>,
-        scan_for_utxo_interval: Option<Duration>,
         updater_config: Option<AutoUpdateConfig>,
         autoupdate_check_interval: Option<Duration>,
     ) -> Self {
@@ -72,7 +70,6 @@ impl WalletConfig {
             rate_limit: rate_limit.unwrap_or(50),
             network,
             base_node_service_config: base_node_service_config.unwrap_or_default(),
-            scan_for_utxo_interval: scan_for_utxo_interval.unwrap_or_else(|| Duration::from_secs(43200)),
             updater_config,
             autoupdate_check_interval,
         }

@@ -102,7 +102,6 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
-    TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
   if (forceSyncPeers.length > 0) {
     envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");

@@ -73,9 +73,6 @@ base_node_update_publisher_channel_size = 500
 # (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
 #transaction_routing_mechanism = "DirectAndStoreAndForward"
 
-# UTXO scanning service interval (default = 12 hours, i.e. 60 * 60 * 12 seconds)
-scan_for_utxo_interval = 180
-
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.
 # The stages are:

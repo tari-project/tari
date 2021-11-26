@@ -401,7 +401,6 @@ pub async fn init_wallet(
             config.buffer_size_console_wallet,
         )),
         Some(config.buffer_rate_limit_console_wallet),
-        Some(config.scan_for_utxo_interval),
         Some(updater_config),
         config.autoupdate_check_interval,
     );

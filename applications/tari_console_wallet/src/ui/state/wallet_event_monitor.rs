@@ -180,10 +180,8 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
-                                match (*msg).clone() {
-                                    BaseNodeEvent::BaseNodeStateChanged(state) => {
+                                if let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone() {
                                         self.trigger_base_node_state_refresh(state).await;
-                                    }
                                 }
                             },
                             Err(broadcast::error::RecvError::Lagged(n)) => {
