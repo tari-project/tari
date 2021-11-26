@@ -166,7 +166,7 @@ where B: BlockchainBackend + 'static
 
             let (utxos, deleted_diff) = self
                 .db
-                .fetch_utxos_in_block(current_header.hash(), bitmap.clone())
+                .fetch_utxos_in_block(current_header.hash(), Some(bitmap.clone()))
                 .await
                 .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
             debug!(

@@ -49,14 +49,13 @@ use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) outputs: PrunedHashSet,
     pub(crate) witness: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
-    pub(crate) cumulative_kernel_sum: Commitment,
-    pub(crate) cumulative_utxo_sum: Commitment,
+    pub(crate) kernel_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
@@ -65,16 +64,14 @@ impl BlockAccumulatedData {
         outputs: PrunedHashSet,
         witness: PrunedHashSet,
         deleted: Bitmap,
-        cumulative_kernel_sum: Commitment,
-        cumulative_utxo_sum: Commitment,
+        total_kernel_sum: Commitment,
     ) -> Self {
         Self {
             kernels,
             outputs,
             witness,
             deleted: DeletedBitmap { deleted },
-            cumulative_kernel_sum,
-            cumulative_utxo_sum,
+            kernel_sum: total_kernel_sum,
         }
     }
 
@@ -91,12 +88,8 @@ impl BlockAccumulatedData {
         (self.kernels, self.outputs, self.witness, self.deleted.deleted)
     }
 
-    pub fn cumulative_kernel_sum(&self) -> &Commitment {
-        &self.cumulative_kernel_sum
-    }
-
-    pub fn cumulative_utxo_sum(&self) -> &Commitment {
-        &self.cumulative_utxo_sum
+    pub fn kernel_sum(&self) -> &Commitment {
+        &self.kernel_sum
     }
 }
 
@@ -109,8 +102,7 @@ impl Default for BlockAccumulatedData {
                 deleted: Bitmap::create(),
             },
             witness: Default::default(),
-            cumulative_kernel_sum: Default::default(),
-            cumulative_utxo_sum: Default::default(),
+            kernel_sum: Default::default(),
         }
     }
 }
@@ -134,7 +126,6 @@ pub struct UpdateBlockAccumulatedData {
     pub utxo_hash_set: Option<PrunedHashSet>,
     pub witness_hash_set: Option<PrunedHashSet>,
     pub deleted_diff: Option<DeletedBitmap>,
-    pub utxo_sum: Option<Commitment>,
     pub kernel_sum: Option<Commitment>,
 }
 

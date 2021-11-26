@@ -271,7 +271,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_utxos_in_block(
         &self,
         header_hash: &HashOutput,
-        deleted: &Bitmap,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         self.db.as_ref().unwrap().fetch_utxos_in_block(header_hash, deleted)
     }

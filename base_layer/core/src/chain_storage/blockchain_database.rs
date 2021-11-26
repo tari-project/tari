@@ -215,22 +215,10 @@ where B: BlockchainBackend
             let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
             blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
-            let utxo_sum = genesis_block
-                .block()
-                .body
-                .outputs()
-                .iter()
-                .map(|k| &k.commitment)
-                .sum::<Commitment>();
-            let kernel_sum = genesis_block
-                .block()
-                .body
-                .kernels()
-                .iter()
-                .map(|k| &k.excess)
-                .sum::<Commitment>();
+            let body = &genesis_block.block().body;
+            let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+            let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
             txn.update_block_accumulated_data(genesis_block.hash().clone(), UpdateBlockAccumulatedData {
-                utxo_sum: Some(utxo_sum.clone()),
                 kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
@@ -392,10 +380,10 @@ where B: BlockchainBackend
     pub fn fetch_utxos_in_block(
         &self,
         hash: HashOutput,
-        deleted: Arc<Bitmap>,
+        deleted: Option<Arc<Bitmap>>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_utxos_in_block(&hash, &deleted)
+        db.fetch_utxos_in_block(&hash, deleted.as_deref())
     }
 
     /// Returns the block header at the given block height.
@@ -594,10 +582,7 @@ where B: BlockchainBackend
 
     /// Returns the sum of all kernels
     pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
-        Ok(self
-            .fetch_block_accumulated_data(at_hash.clone())?
-            .cumulative_kernel_sum()
-            .clone())
+        Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum().clone())
     }
 
     /// Returns `n` hashes from height _h - offset_ where _h_ is the tip header height back to `h - n - offset`.
@@ -2151,22 +2136,6 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
         txn.delete_all_inputs_in_block(header.hash().clone());
     }
-
-    txn.set_pruned_height(
-        target_horizon_height,
-        last_block.cumulative_kernel_sum().clone(),
-        last_block.cumulative_utxo_sum().clone(),
-    );
-    // If we prune to the tip, we cannot provide any full blocks
-    // if metadata.height_of_longest_chain() == target_horizon_height - 1 {
-    //     let genesis = db.fetch_chain_header_by_height(0)?;
-    //     txn.set_best_block(
-    //         0,
-    //         genesis.hash().clone(),
-    //         genesis.accumulated_data().total_accumulated_difficulty,
-    //         vec![0; BLOCK_HASH_LENGTH],
-    //     );
-    // }
 
     db.write(txn)?;
     Ok(())

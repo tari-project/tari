@@ -1041,19 +1041,18 @@ impl LMDBDatabase {
                 })?
         };
 
+        let mut total_kernel_sum = Commitment::default();
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             outputs: pruned_output_set,
             witness: pruned_proof_set,
-            cumulative_kernel_sum: mut kernel_sum,
-            cumulative_utxo_sum: mut utxo_sum,
             ..
         } = data;
 
         let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_kernel_set);
 
         for kernel in kernels {
-            kernel_sum = &kernel_sum + &kernel.excess;
+            total_kernel_sum = &total_kernel_sum + &kernel.excess;
             let pos = kernel_mmr.push(kernel.hash())?;
             trace!(
                 target: LOG_TARGET,
@@ -1066,7 +1065,6 @@ impl LMDBDatabase {
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
         for output in outputs {
-            utxo_sum = &utxo_sum + &output.commitment;
             output_mmr.push(output.hash())?;
             witness_mmr.push(output.witness_hash())?;
             debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
@@ -1080,7 +1078,6 @@ impl LMDBDatabase {
         }
 
         for input in inputs {
-            utxo_sum = &utxo_sum - &input.commitment;
             let index = self
                 .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
                 .ok_or(ChainStorageError::UnspendableInput)?;
@@ -1115,8 +1112,7 @@ impl LMDBDatabase {
                 output_mmr.mmr().get_pruned_hash_set()?,
                 witness_mmr.get_pruned_hash_set()?,
                 deleted_at_current_height,
-                kernel_sum,
-                utxo_sum,
+                total_kernel_sum,
             ),
         )?;
 
@@ -1159,11 +1155,8 @@ impl LMDBDatabase {
         if let Some(deleted_diff) = values.deleted_diff {
             block_accum_data.deleted = deleted_diff;
         }
-        if let Some(utxo_sum) = values.utxo_sum {
-            block_accum_data.cumulative_utxo_sum = utxo_sum;
-        }
         if let Some(kernel_sum) = values.kernel_sum {
-            block_accum_data.cumulative_kernel_sum = kernel_sum;
+            block_accum_data.kernel_sum = kernel_sum;
         }
         if let Some(kernel_hash_set) = values.kernel_hash_set {
             block_accum_data.kernels = kernel_hash_set;
@@ -1639,7 +1632,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_utxos_in_block(
         &self,
         header_hash: &HashOutput,
-        deleted: &Bitmap,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let txn = self.read_transaction()?;
 
@@ -1650,7 +1643,7 @@ impl BlockchainBackend for LMDBDatabase {
         )?
         .into_iter()
         .map(|row| {
-            if deleted.contains(row.mmr_position) {
+            if deleted.map(|b| b.contains(row.mmr_position)).unwrap_or(false) {
                 return PrunedOutput::Pruned {
                     output_hash: row.hash,
                     witness_hash: row.witness_hash,

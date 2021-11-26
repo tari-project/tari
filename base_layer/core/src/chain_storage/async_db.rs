@@ -166,7 +166,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
-    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
+    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
@@ -364,6 +364,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 
     pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
         self.transaction.insert_block_body(block);
+        self
+    }
+
+    pub fn prune_output_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
+        self.transaction.prune_outputs_at_positions(positions);
         self
     }
 

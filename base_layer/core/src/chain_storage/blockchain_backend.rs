@@ -104,7 +104,7 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_utxos_in_block(
         &self,
         header_hash: &HashOutput,
-        deleted: &Bitmap,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
