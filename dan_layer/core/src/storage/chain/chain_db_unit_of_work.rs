@@ -40,7 +40,7 @@ pub trait ChainDbUnitOfWork: Clone + Send + Sync {
     fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError>;
     fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
     fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
-    fn get_prepare_qc(&mut self) -> Result<QuorumCertificate, StorageError>;
+    fn get_prepare_qc(&mut self) -> Result<Option<QuorumCertificate>, StorageError>;
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
     fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
     // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
@@ -217,17 +217,17 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
         Ok(())
     }
 
-    fn get_prepare_qc(&mut self) -> Result<QuorumCertificate, StorageError> {
+    fn get_prepare_qc(&mut self) -> Result<Option<QuorumCertificate>, StorageError> {
         let mut inner = self.inner.write().unwrap();
 
         if let Some(prepare_qc) = &inner.prepare_qc {
             let prepare_qc = prepare_qc.get();
-            return Ok(QuorumCertificate::new(
+            return Ok(Some(QuorumCertificate::new(
                 prepare_qc.message_type,
                 prepare_qc.view_number,
                 prepare_qc.node_hash.clone(),
                 prepare_qc.signature.clone(),
-            ));
+            )));
         }
 
         // finally hit the db
@@ -235,27 +235,46 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
             .backend_adapter
             .get_prepare_qc()
             .map_err(TBackendAdapter::Error::into)?;
-        inner.prepare_qc = Some(UnitOfWorkTracker::new(
-            DbQc {
-                message_type: qc.message_type(),
-                view_number: qc.view_number(),
-                node_hash: qc.node_hash().clone(),
-                signature: qc.signature().cloned(),
-            },
-            false,
-        ));
+
+        inner.prepare_qc = qc.as_ref().map(|qc| {
+            UnitOfWorkTracker::new(
+                DbQc {
+                    message_type: qc.message_type(),
+                    view_number: qc.view_number(),
+                    node_hash: qc.node_hash().clone(),
+                    signature: qc.signature().cloned(),
+                },
+                false,
+            )
+        });
         Ok(qc)
     }
 
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
         // put it in the tracker
         let _ = self.get_prepare_qc()?;
-        let inner = self.inner.write().unwrap();
-        let mut db_locked = inner.prepare_qc.as_ref().unwrap().get_mut();
-        db_locked.message_type = qc.message_type();
-        db_locked.view_number = qc.view_number();
-        db_locked.node_hash = qc.node_hash().clone();
-        db_locked.signature = qc.signature().cloned();
+        let mut inner = self.inner.write().unwrap();
+        match inner.prepare_qc.as_mut() {
+            None => {
+                inner.prepare_qc = Some(UnitOfWorkTracker::new(
+                    DbQc {
+                        message_type: qc.message_type(),
+                        view_number: qc.view_number(),
+                        node_hash: qc.node_hash().clone(),
+                        signature: qc.signature().cloned(),
+                    },
+                    true,
+                ));
+            },
+            Some(db_qc) => {
+                let mut db_qc = db_qc.get_mut();
+                db_qc.message_type = qc.message_type();
+                db_qc.view_number = qc.view_number();
+                db_qc.node_hash = qc.node_hash().clone();
+                db_qc.signature = qc.signature().cloned();
+            },
+        }
+
         Ok(())
     }
 

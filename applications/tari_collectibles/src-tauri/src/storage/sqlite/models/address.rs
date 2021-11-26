@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::schema::*;
 
-#[derive(Queryable, Insertable, Identifiable)]
+#[derive(Queryable, Insertable, Identifiable, QueryableByName)]
 #[table_name = "addresses"]
 pub struct Address {
   pub id: Vec<u8>,

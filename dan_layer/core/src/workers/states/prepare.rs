@@ -231,7 +231,6 @@ where
             );
             let high_qc = self.find_highest_qc();
 
-            // TODO: get actual height
             let proposal = self
                 .create_proposal(high_qc.node_hash().clone(), payload_provider, 0)
                 .await?;

@@ -28,7 +28,7 @@ use uuid::Uuid;
 pub struct AddressRow {
   pub id: Uuid,
   pub asset_wallet_id: Uuid,
-  pub name: String,
+  pub name: Option<String>,
   pub public_key: PublicKey,
   pub key_manager_path: String,
 }

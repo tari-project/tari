@@ -85,7 +85,6 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
-        dbg!(next_event_result);
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
@@ -157,12 +156,6 @@ where
             }
             dbg!("committee did not agree on node");
             Ok(None)
-
-            // let high_qc = self.find_highest_qc();
-            // let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            // self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
-            //     .await?;
-            // Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
             println!(
                 "[PRECOMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
@@ -232,9 +225,6 @@ where
                 );
                 return Ok(None);
             }
-            // if message.node().is_none() {
-            //     unimplemented!("Empty message");
-            // }
 
             if from != view_leader {
                 dbg!("Message not from leader");

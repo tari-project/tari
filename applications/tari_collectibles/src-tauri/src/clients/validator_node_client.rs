@@ -63,9 +63,13 @@ impl GrpcValidatorNodeClient {
       .invoke_read_method(req)
       .await
       .map(|resp| resp.into_inner())
-      .map_err(|e| CollectiblesError::ClientRequestError {
-        source: e,
-        request: "invoke_read_method".to_string(),
+      .map_err(|e| {
+        dbg!(&e);
+
+        CollectiblesError::ClientRequestError {
+          source: e,
+          request: "invoke_read_method".to_string(),
+        }
       })?;
     dbg!(&response);
     Ok(response.result)

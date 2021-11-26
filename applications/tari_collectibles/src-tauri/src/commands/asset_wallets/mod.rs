@@ -25,7 +25,8 @@ use crate::{
   status::Status,
   storage::{
     models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
-    AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
+    AddressesTableGateway, AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage,
+    StorageTransaction,
   },
 };
 use prost::Message;
@@ -94,34 +95,53 @@ pub(crate) async fn asset_wallets_get_balance(
   dbg!(&asset_public_key);
   let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
 
-  let owner = PublicKey::default();
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
 
-  let mut client = state.connect_validator_node_client().await?;
-  let args = tip002::BalanceOfRequest {
-    owner: Vec::from(owner.as_bytes()),
-  };
-  dbg!(&args);
-  let mut args_bytes = vec![];
-  args.encode(&mut args_bytes)?;
-  // let req = grpc::InvokeReadMethodRequest{
-  //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
-  //   template_id: 2,
-  //   method: "BalanceOf",
-  //   args
-  // };
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let asset = db.assets().find_by_public_key(&asset_public_key, &tx)?;
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset.id, wallet_id, &tx)?;
 
-  let resp = client
-    .invoke_read_method(asset_public_key, 2, "BalanceOf".to_string(), args_bytes)
-    .await?;
+  let mut total = 0;
+  for owner in addresses {
+    let mut client = state.connect_validator_node_client().await?;
+    let args = tip002::BalanceOfRequest {
+      owner: Vec::from(owner.public_key.as_bytes()),
+    };
+    dbg!(&args);
+    let mut args_bytes = vec![];
+    args.encode(&mut args_bytes)?;
+    // let req = grpc::InvokeReadMethodRequest{
+    //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
+    //   template_id: 2,
+    //   method: "BalanceOf",
+    //   args
+    // };
 
-  dbg!(&resp);
-  match resp {
-    Some(resp) => {
-      let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
-      Ok(proto_resp.balance)
+    let resp = client
+      .invoke_read_method(
+        asset_public_key.clone(),
+        2,
+        "BalanceOf".to_string(),
+        args_bytes,
+      )
+      .await?;
+
+    dbg!(&resp);
+    match resp {
+      Some(resp) => {
+        let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
+        total += proto_resp.balance;
+      }
+      None => (),
     }
-    None => Ok(0),
   }
+  Ok(total)
 }
 
 #[tauri::command]

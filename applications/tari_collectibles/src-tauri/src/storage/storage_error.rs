@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_utilities::ByteArrayError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
   #[error("Could not connect to database: {source}")]
@@ -55,4 +57,6 @@ pub enum StorageError {
     old_value: String,
     new_value: String,
   },
+  #[error("Invalid struct stored as bytes")]
+  ByteArrayError(#[from] ByteArrayError),
 }

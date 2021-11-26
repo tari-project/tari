@@ -86,7 +86,6 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
-        dbg!(next_event_result);
 
         self.received_new_view_messages.clear();
         // TODO: rather change the loop below to inside the wait for message

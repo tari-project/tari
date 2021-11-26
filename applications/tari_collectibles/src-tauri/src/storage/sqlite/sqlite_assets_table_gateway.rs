@@ -86,6 +86,18 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
 
     SqliteAssetsTableGateway::convert_asset(&db_account)
   }
+
+  fn find_by_public_key(
+    &self,
+    public_key: &PublicKey,
+    tx: &SqliteTransaction,
+  ) -> Result<AssetRow, StorageError> {
+    let db_account = schema::assets::table
+      .filter(assets::asset_public_key.eq(Vec::from(public_key.as_bytes())))
+      .first(tx.connection())?;
+
+    SqliteAssetsTableGateway::convert_asset(&db_account)
+  }
 }
 
 impl SqliteAssetsTableGateway {

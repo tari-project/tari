@@ -108,7 +108,7 @@ pub(crate) async fn assets_create(
   let address = AddressRow {
     id: Uuid::new_v4(),
     asset_wallet_id: asset_wallet_row.id,
-    name: "Issuer wallet".to_string(),
+    name: Some("Issuer wallet".to_string()),
     public_key: asset_public_key,
     key_manager_path: key_manager_path.clone(),
   };

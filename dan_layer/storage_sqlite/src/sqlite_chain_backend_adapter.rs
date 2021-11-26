@@ -203,23 +203,25 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
-    fn get_prepare_qc(&self) -> Result<QuorumCertificate, Self::Error> {
+    fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
         use crate::schema::prepare_qc::dsl;
-        let qc: PrepareQc =
-            dsl::prepare_qc
-                .find(1)
-                .first(&connection)
-                .map_err(|source| SqliteStorageError::DieselError {
-                    source,
-                    operation: "get_prepare_qc".to_string(),
-                })?;
-        Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
-            ViewId::from(qc.view_number as u64),
-            TreeNodeHash(qc.node_hash.clone()),
-            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
-        ))
+        let qc: Option<PrepareQc> = dsl::prepare_qc
+            .find(1)
+            .first(&connection)
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_prepare_qc".to_string(),
+            })?;
+        Ok(qc.map(|qc| {
+            QuorumCertificate::new(
+                HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+                ViewId::from(qc.view_number as u64),
+                TreeNodeHash(qc.node_hash.clone()),
+                qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+            )
+        }))
     }
 
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
