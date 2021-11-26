@@ -26,7 +26,6 @@ use log::*;
 
 use std::{
     convert::TryFrom,
-    thread::sleep,
     time::{Duration, Instant},
 };
 use tari_common_types::transaction::TxId;
@@ -49,7 +48,7 @@ use tari_core::{
     },
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, time};
 
 use crate::{
     error::WalletError,
@@ -129,7 +128,7 @@ where TBackend: WalletBackend + 'static
                             debug!(target: LOG_TARGET, "Disconnected base node peer {}", peer);
                         }
                     };
-                    sleep(Duration::from_secs(30));
+                    let _ = time::sleep(Duration::from_secs(30));
                 }
 
                 Err(e.into())
