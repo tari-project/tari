@@ -165,25 +165,30 @@ pub enum StateInfo {
 }
 
 impl StateInfo {
-    pub fn short_desc(&self) -> String {
+    pub fn short_desc(&self, full_log: bool) -> String {
         use StateInfo::*;
         match self {
             StartUp => "Starting up".to_string(),
             HeaderSync(None) => "Starting header sync".to_string(),
             HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
-            HorizonSync(info) => match info.status {
+            HorizonSync(info) => match info.status.clone() {
                 HorizonSyncStatus::Starting => "Starting horizon sync".to_string(),
-                HorizonSyncStatus::Kernels(current, total) => format!(
-                    "Syncing kernels: {}/{} ({:.0}%)",
+                HorizonSyncStatus::Kernels(current, total, node) => format!(
+                    "Syncing kernels: {}/{} ({:.0}%){}",
                     current,
                     total,
-                    current as f64 / total as f64 * 100.0
+                    current as f64 / total as f64 * 100.0,
+                    match full_log {
+                        true => format!(" {}", node),
+                        false => "".to_string(),
+                    }
                 ),
-                HorizonSyncStatus::Outputs(current, total) => format!(
-                    "Syncing outputs: {}/{} ({:.0}%)",
+                HorizonSyncStatus::Outputs(current, total, node) => format!(
+                    "Syncing outputs: {}/{} ({:.0}%) from {}",
                     current,
                     total,
-                    current as f64 / total as f64 * 100.0
+                    current as f64 / total as f64 * 100.0,
+                    node
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
@@ -315,14 +320,16 @@ impl Display for HorizonSyncInfo {
             fmt.write_str(&format!("{}\n", peer))?;
         }
 
-        match self.status {
+        match self.status.clone() {
             HorizonSyncStatus::Starting => fmt.write_str("Starting horizon state synchronization"),
-            HorizonSyncStatus::Kernels(current, total) => {
-                fmt.write_str(&format!("Horizon syncing kernels: {}/{}\n", current, total))
-            },
-            HorizonSyncStatus::Outputs(current, total) => {
-                fmt.write_str(&format!("Horizon syncing outputs: {}/{}\n", current, total))
-            },
+            HorizonSyncStatus::Kernels(current, total, node) => fmt.write_str(&format!(
+                "Horizon syncing kernels: {}/{} from {}\n",
+                current, total, node
+            )),
+            HorizonSyncStatus::Outputs(current, total, node) => fmt.write_str(&format!(
+                "Horizon syncing outputs: {}/{} from {}\n",
+                current, total, node
+            )),
             HorizonSyncStatus::Finalizing => fmt.write_str("Finalizing horizon state synchronization"),
         }
     }
@@ -330,7 +337,7 @@ impl Display for HorizonSyncInfo {
 #[derive(Clone, Debug, PartialEq)]
 pub enum HorizonSyncStatus {
     Starting,
-    Kernels(u64, u64),
-    Outputs(u64, u64),
+    Kernels(u64, u64, NodeId),
+    Outputs(u64, u64, NodeId),
     Finalizing,
 }
