@@ -79,7 +79,11 @@ pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, E
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
-pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfig) -> Result<(), ExitCodes> {
+pub async fn wallet_recovery(
+    wallet: &WalletSqlite,
+    base_node_config: &PeerConfig,
+    retry_limit: usize,
+) -> Result<(), ExitCodes> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
@@ -106,7 +110,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
         // Do not make this a small number as wallet recovery needs to be resilient
-        .with_retry_limit(100)
+        .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();

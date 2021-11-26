@@ -285,7 +285,11 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(&wallet, &base_node_config)) {
+    match handle.block_on(wallet_recovery(
+        &wallet,
+        &base_node_config,
+        config.global_config.wallet_recovery_retry_limit,
+    )) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);
