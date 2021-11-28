@@ -9,8 +9,7 @@ export default function SeedPhrase() {
   useEffect(() => {
     // callback
     sendMessagePromise({ action: "tari-get-seedwords" }).then((value) => {
-      console.log(value);
-      setSeedWords(value.seedWords);
+      setSeedWords(value.payload.seedWords);
     });
   }, []);
   return (
