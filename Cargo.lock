@@ -4539,7 +4539,7 @@ dependencies = [
  "log",
  "qrcode",
  "rand 0.8.4",
- "serde_json",
+ "serde 1.0.130",
  "structopt",
  "strum 0.19.5",
  "strum_macros 0.19.4",
