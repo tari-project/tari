@@ -109,8 +109,9 @@ pub(crate) async fn asset_wallets_get_balance(
     .find_by_asset_and_wallet(asset.id, wallet_id, &tx)?;
 
   let mut total = 0;
+
+  let mut client = state.connect_validator_node_client().await?;
   for owner in addresses {
-    let mut client = state.connect_validator_node_client().await?;
     let args = tip002::BalanceOfRequest {
       owner: Vec::from(owner.public_key.as_bytes()),
     };
@@ -163,7 +164,7 @@ pub(crate) async fn asset_wallets_list(
 }
 
 #[tauri::command]
-pub(crate) async fn asset_wallet_create_address(
+pub(crate) async fn asset_wallets_create_address(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<AddressRow, Status> {
@@ -202,7 +203,7 @@ pub(crate) async fn asset_wallet_create_address(
 }
 
 #[tauri::command]
-pub(crate) async fn asset_wallet_get_latest_address(
+pub(crate) async fn asset_wallets_get_latest_address(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<AddressRow, Status> {
@@ -224,4 +225,51 @@ pub(crate) async fn asset_wallet_get_latest_address(
       .last()
       .ok_or_else(|| Status::not_found("Address".to_string()))?,
   )
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_send_to(
+  asset_public_key: String,
+  amount: u64,
+  to_address: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let to_public_key = PublicKey::from_hex(&to_address)?;
+  let args;
+  let db = state.create_db().await?;
+  {
+    let tx = db.create_transaction()?;
+    let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
+    // TODO: Get addresses with balance
+    let addresses = db
+      .addresses()
+      .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
+
+    let from_address = Vec::from(
+      addresses
+        .first()
+        .ok_or_else(|| Status::not_found("address".to_string()))?
+        .public_key
+        .as_bytes(),
+    );
+    args = tip002::TransferRequest {
+      to: Vec::from(to_public_key.as_bytes()),
+      amount,
+      from: from_address.clone(),
+      caller: from_address,
+    };
+  }
+  let mut args_bytes = vec![];
+  args.encode(&mut args_bytes)?;
+  let mut client = state.connect_validator_node_client().await?;
+
+  let resp = client.invoke_method(asset_public_key, 2, "transfer".to_string(), args_bytes)?;
+
+  dbg!(&resp);
+  Ok(())
 }

@@ -67,10 +67,10 @@ where
         Err(Status::internal("Oh noes"))
     }
 
-    async fn execute_instruction(
+    async fn invoke_method(
         &self,
-        request: Request<rpc::ExecuteInstructionRequest>,
-    ) -> Result<Response<rpc::ExecuteInstructionResponse>, Status> {
+        request: Request<rpc::InvokeMethodRequest>,
+    ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
         dbg!(&request);
         let request = request.into_inner();
         let instruction = Instruction::new(
@@ -89,13 +89,13 @@ where
         let mut mempool = self.mempool.clone();
         match mempool.submit_instruction(instruction).await {
             Ok(_) => {
-                return Ok(Response::new(rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::InvokeMethodResponse {
                     status: "Accepted".to_string(),
                     result: None,
                 }))
             },
             Err(_) => {
-                return Ok(Response::new(rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::InvokeMethodResponse {
                     status: "Errored".to_string(),
                     result: None,
                 }))
