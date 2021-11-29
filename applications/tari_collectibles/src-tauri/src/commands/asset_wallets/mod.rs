@@ -22,9 +22,10 @@
 
 use crate::{
   app_state::ConcurrentAppState,
+  providers::KeyManagerProvider,
   status::Status,
   storage::{
-    models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
+    models::{address_row::AddressRow, asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
     AddressesTableGateway, AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage,
     StorageTransaction,
   },
@@ -159,4 +160,68 @@ pub(crate) async fn asset_wallets_list(
     result.push(db.assets().find(asset_wallet.asset_id, &tx)?);
   }
   Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallet_create_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+
+  let db = state.create_db().await?;
+  let transaction = db.create_transaction()?;
+  let asset_id = db
+    .assets()
+    .find_by_public_key(&asset_public_key, &transaction)?
+    .id;
+  let asset_wallet_row =
+    db.asset_wallets()
+      .find_by_asset_and_wallet(asset_id, wallet_id, &transaction)?;
+
+  let (key_manager_path, _, address_public_key) = state
+    .key_manager()
+    .await
+    .generate_asset_address(wallet_id, &asset_public_key, None, &transaction)
+    .map_err(|e| Status::internal(format!("could not generate address key: {}", e)))?;
+  let address = AddressRow {
+    id: Uuid::new_v4(),
+    asset_wallet_id: asset_wallet_row.id,
+    name: None,
+    public_key: address_public_key,
+    key_manager_path: key_manager_path.clone(),
+  };
+  dbg!(&address);
+  db.addresses().insert(&address, &transaction)?;
+  transaction.commit()?;
+  Ok(address)
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallet_get_latest_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
+  Ok(
+    addresses
+      .into_iter()
+      .last()
+      .ok_or_else(|| Status::not_found("Address".to_string()))?,
+  )
 }

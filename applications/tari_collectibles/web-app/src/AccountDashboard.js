@@ -22,7 +22,7 @@
 
 import React from "react";
 import {withRouter} from "react-router-dom";
-import {Alert, Container, Stack, Typography} from "@mui/material";
+import {Alert, Button, Container, Stack, Typography} from "@mui/material";
 import binding from "./binding";
 
 class AccountDashboard extends React.Component {
@@ -36,7 +36,8 @@ class AccountDashboard extends React.Component {
             tip101: false,
             tip102: false,
             assetPubKey: props.match.params.assetPubKey,
-            balance: -1
+            balance: -1,
+            receiveAddress: ""
         };
     }
 
@@ -46,11 +47,27 @@ class AccountDashboard extends React.Component {
             let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
             console.log("balance", balance);
             this.setState({balance});
-
+            let receiveAddress = await binding.command_asset_wallets_get_latest_address(this.state.assetPubKey);
+            this.setState({receiveAddress: receiveAddress.public_key});
         }
         catch(err) {
+            console.error(err);
             this.setState({error: err.message});
         }
+    }
+
+    onGenerateReceiveAddress = async ()=> {
+        console.log("hello");
+       try{
+           this.setState({error: null});
+           let receiveAddress = await binding.command_asset_wallets_create_address(this.state.assetPubKey);
+           console.log("new address", receiveAddress);
+           this.setState({receiveAddress: receiveAddress.public_key});
+       }
+       catch(err) {
+           console.error(err);
+           this.setState({error: err.message});
+       }
     }
 
     render() {
@@ -67,8 +84,9 @@ class AccountDashboard extends React.Component {
                     { this.state.assetPubKey }
                 </Typography>
                 <Stack>
-
                     <Typography>Balance: {this.state.balance}</Typography>
+                    <Typography>Receive Address: {this.state.receiveAddress}</Typography>
+                    <Button onClick={this.onGenerateReceiveAddress}>Generate new receive address</Button>
                 </Stack>
             </Container>
         );

@@ -58,6 +58,14 @@ async function command_asset_create_initial_checkpoint(assetPubKey, committee) {
   });
 }
 
+async function command_asset_wallets_get_latest_address(assetPublicKey) {
+  return await invoke("asset_wallet_get_latest_address", { assetPublicKey});
+}
+
+async function command_asset_wallets_create_address(assetPublicKey) {
+  return await invoke("asset_wallet_create_address", { assetPublicKey});
+}
+
 async function command_next_asset_public_key() {
   return await invoke("next_asset_public_key", {});
 }
@@ -106,6 +114,8 @@ const commands = {
   command_asset_wallets_create,
   command_asset_wallets_get_balance,
   command_asset_wallets_list,
+  command_asset_wallets_get_latest_address,
+  command_asset_wallets_create_address,
   command_wallets_create,
   command_wallets_list,
   command_wallets_unlock,

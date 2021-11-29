@@ -63,4 +63,21 @@ impl AssetWalletsTableGateway<SqliteTransaction> for SqliteAssetWalletsTableGate
     }
     Ok(result)
   }
+
+  fn find_by_asset_and_wallet(
+    &self,
+    asset_id: Uuid,
+    wallet_id: Uuid,
+    tx: &SqliteTransaction,
+  ) -> Result<AssetWalletRow, StorageError> {
+    let aw: models::AssetWallet = asset_wallets::table
+      .filter(asset_wallets::wallet_id.eq(Vec::from(wallet_id.as_bytes().as_slice())))
+      .filter(asset_wallets::asset_id.eq(Vec::from(asset_id.as_bytes().as_slice())))
+      .first(tx.connection())?;
+    Ok(AssetWalletRow {
+      id: Uuid::from_slice(aw.id.as_slice())?,
+      asset_id: Uuid::from_slice(aw.asset_id.as_slice())?,
+      wallet_id: Uuid::from_slice(aw.wallet_id.as_slice())?,
+    })
+  }
 }

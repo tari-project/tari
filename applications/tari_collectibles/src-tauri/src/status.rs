@@ -28,9 +28,23 @@ use tari_utilities::hex::HexError;
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "status")]
 pub enum Status {
-  BadRequest { code: u16, message: String },
-  Unauthorized { code: u16, message: String },
-  Internal { code: u16, message: String },
+  BadRequest {
+    code: u16,
+    message: String,
+  },
+  Unauthorized {
+    code: u16,
+    message: String,
+  },
+  NotFound {
+    code: u16,
+    message: String,
+    entity: String,
+  },
+  Internal {
+    code: u16,
+    message: String,
+  },
 }
 
 impl Status {
@@ -43,6 +57,13 @@ impl Status {
 
   pub fn internal(message: String) -> Self {
     Self::Internal { code: 500, message }
+  }
+  pub fn not_found(entity: String) -> Self {
+    Self::NotFound {
+      code: 404,
+      message: format!("{} not found", &entity),
+      entity,
+    }
   }
 }
 

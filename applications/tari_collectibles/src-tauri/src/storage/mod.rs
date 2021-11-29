@@ -99,6 +99,12 @@ pub trait AssetWalletsTableGateway<T: StorageTransaction> {
   fn insert(&self, row: &AssetWalletRow, tx: &T) -> Result<(), StorageError>;
   fn find_by_wallet_id(&self, wallet_id: Uuid, tx: &T)
     -> Result<Vec<AssetWalletRow>, StorageError>;
+  fn find_by_asset_and_wallet(
+    &self,
+    asset_id: Uuid,
+    wallet_id: Uuid,
+    tx: &T,
+  ) -> Result<AssetWalletRow, StorageError>;
 }
 
 pub trait AddressesTableGateway<T: StorageTransaction> {
