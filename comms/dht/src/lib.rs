@@ -156,6 +156,7 @@ pub use dedup::DedupLayer;
 
 mod filter;
 mod logging_middleware;
+mod peer_validator;
 mod proto;
 mod rpc;
 mod schema;

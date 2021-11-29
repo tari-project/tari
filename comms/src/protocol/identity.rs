@@ -94,6 +94,7 @@ where
         major: network_info.major_version,
         minor: network_info.minor_version,
         user_agent: network_info.user_agent,
+        identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
     }
     .to_encoded_bytes();
 

@@ -85,7 +85,7 @@ pub struct Dht {
     /// Comms peer manager
     peer_manager: Arc<PeerManager>,
     /// Dht configuration
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     /// Used to create a OutboundMessageRequester.
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     /// Sender for DHT requests
@@ -125,7 +125,7 @@ impl Dht {
             node_identity,
             peer_manager,
             metrics_collector,
-            config,
+            config: Arc::new(config),
             outbound_tx,
             dht_sender,
             saf_sender,
@@ -329,8 +329,9 @@ impl Dht {
                 self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
-                Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
+                self.config.clone(),
+                self.node_identity.clone(),
+                self.peer_manager.clone(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
             ))

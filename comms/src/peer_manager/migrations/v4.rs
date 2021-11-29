@@ -24,8 +24,9 @@ use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
         connection_stats::PeerConnectionStats,
-        migrations::{v3::PeerV3, Migration},
+        migrations::MIGRATION_VERSION_KEY,
         node_id::deserialize_node_id_from_hex,
+        IdentitySignature,
         NodeId,
         PeerFeatures,
         PeerFlags,
@@ -37,17 +38,18 @@ use crate::{
 use chrono::NaiveDateTime;
 use log::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 use tari_storage::{
     lmdb_store::{LMDBDatabase, LMDBError},
     IterationResult,
 };
 
-const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";
+const LOG_TARGET: &str = "comms::peer_manager::migrations::v4";
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PeerV2 {
-    pub id: Option<PeerId>,
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PeerV3 {
+    pub(super) id: Option<PeerId>,
     pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
@@ -55,53 +57,79 @@ pub struct PeerV2 {
     pub addresses: MultiaddressesWithStats,
     pub flags: PeerFlags,
     pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
     pub features: PeerFeatures,
     pub connection_stats: PeerConnectionStats,
     pub supported_protocols: Vec<ProtocolId>,
     pub added_at: NaiveDateTime,
     pub user_agent: String,
+    pub metadata: HashMap<u8, Vec<u8>>,
 }
-/// This migration is to add banned_reason field
-pub struct MigrationV2;
 
-impl Migration<LMDBDatabase> for MigrationV2 {
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PeerV4 {
+    pub(super) id: Option<PeerId>,
+    pub public_key: CommsPublicKey,
+    #[serde(serialize_with = "serialize_to_hex")]
+    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
+    pub node_id: NodeId,
+    pub addresses: MultiaddressesWithStats,
+    pub flags: PeerFlags,
+    pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
+    pub offline_at: Option<NaiveDateTime>,
+    pub features: PeerFeatures,
+    pub connection_stats: PeerConnectionStats,
+    pub supported_protocols: Vec<ProtocolId>,
+    pub added_at: NaiveDateTime,
+    pub user_agent: String,
+    pub metadata: HashMap<u8, Vec<u8>>,
+    pub identity_signature: Option<IdentitySignature>,
+}
+
+pub struct Migration;
+
+impl super::Migration<LMDBDatabase> for Migration {
     type Error = LMDBError;
 
-    fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
-        db.for_each::<PeerId, PeerV2, _>(|old_peer| {
-            match old_peer {
-                Ok((key, peer)) => {
-                    debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
-                    let result = db.insert(&key, &PeerV3 {
-                        id: peer.id,
-                        public_key: peer.public_key,
-                        node_id: peer.node_id,
-                        addresses: peer.addresses,
-                        flags: peer.flags,
-                        banned_until: peer.banned_until,
-                        banned_reason: "".to_string(),
-                        offline_at: peer.offline_at,
-                        features: peer.features,
-                        connection_stats: peer.connection_stats,
-                        supported_protocols: peer.supported_protocols,
-                        added_at: peer.added_at,
-                        user_agent: peer.user_agent,
-                    });
+    fn get_version(&self) -> u32 {
+        4
+    }
 
-                    if let Err(err) = result {
-                        error!(
-                            target: LOG_TARGET,
-                            "Failed to insert peer: {}. ** Database may be corrupt **", err
-                        );
-                    }
-                },
-                Err(err) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to deserialize peer: {} ** Database may be corrupt **", err
-                    );
-                },
+    fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
+        db.for_each::<PeerId, PeerV3, _>(|old_peer| {
+            let result = old_peer.and_then(|(key, peer)| {
+                if key == MIGRATION_VERSION_KEY {
+                    return Ok(());
+                }
+
+                debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
+                db.insert(&key, &PeerV4 {
+                    id: peer.id,
+                    public_key: peer.public_key,
+                    node_id: peer.node_id,
+                    addresses: peer.addresses,
+                    flags: peer.flags,
+                    banned_until: peer.banned_until,
+                    banned_reason: peer.banned_reason,
+                    offline_at: peer.offline_at,
+                    features: peer.features,
+                    connection_stats: peer.connection_stats,
+                    supported_protocols: peer.supported_protocols,
+                    added_at: peer.added_at,
+                    user_agent: peer.user_agent,
+                    metadata: peer.metadata,
+                    identity_signature: None,
+                })
+                .map_err(Into::into)
+            });
+
+            if let Err(err) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to deserialize peer: {} ** Database may be corrupt **", err
+                );
             }
             IterationResult::Continue
         })?;

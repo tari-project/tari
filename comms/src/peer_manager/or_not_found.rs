@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,19 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_validator::PeerValidatorError;
-use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError, protocol::rpc::RpcError};
+use crate::peer_manager::PeerManagerError;
 
-#[derive(thiserror::Error, Debug)]
-pub enum NetworkDiscoveryError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("Peer manager error: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Connectivity error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Sync peer sent invalid peer")]
-    PeerValidationError(#[from] PeerValidatorError),
+pub trait OrNotFound {
+    type Value;
+    type Error;
+    fn or_not_found(self) -> Result<Self::Value, Self::Error>;
+}
+
+impl<T> OrNotFound for Result<Option<T>, PeerManagerError> {
+    type Error = PeerManagerError;
+    type Value = T;
+
+    fn or_not_found(self) -> Result<Self::Value, Self::Error> {
+        self.and_then(|val| val.ok_or(PeerManagerError::PeerNotFoundError))
+    }
 }

@@ -73,11 +73,11 @@ enum DecryptionError {
 pub struct DecryptionLayer {
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
 }
 
 impl DecryptionLayer {
-    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
+    pub fn new(config: Arc<DhtConfig>, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
         Self {
             node_identity,
             connectivity,
@@ -102,7 +102,7 @@ impl<S> Layer<S> for DecryptionLayer {
 /// Responsible for decrypting InboundMessages and passing a DecryptedInboundMessage to the given service
 #[derive(Clone)]
 pub struct DecryptionService<S> {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
     inner: S,
@@ -110,7 +110,7 @@ pub struct DecryptionService<S> {
 
 impl<S> DecryptionService<S> {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
         service: S,

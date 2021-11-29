@@ -84,18 +84,18 @@ impl PeerManager {
     }
 
     /// Find the peer with the provided NodeID
-    pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+    pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         self.peer_storage.read().await.find_by_node_id(node_id)
+    }
+
+    /// Find the peer with the provided PublicKey
+    pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.find_by_public_key(public_key)
     }
 
     /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
     pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage.read().await.find_all_starts_with(partial)
-    }
-
-    /// Find the peer with the provided PublicKey
-    pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        self.peer_storage.read().await.find_by_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified public_key
@@ -123,7 +123,7 @@ impl PeerManager {
         peer_features: PeerFeatures,
     ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(pubkey).await {
-            Ok(mut peer) => {
+            Ok(Some(mut peer)) => {
                 peer.connection_stats.set_connection_success();
                 peer.addresses = addresses.into();
                 peer.set_offline(false);
@@ -131,7 +131,7 @@ impl PeerManager {
                 self.add_peer(peer.clone()).await?;
                 Ok(peer)
             },
-            Err(PeerManagerError::PeerNotFoundError) => {
+            Ok(None) => {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
@@ -143,7 +143,9 @@ impl PeerManager {
                 ))
                 .await?;
 
-                self.find_by_public_key(pubkey).await
+                self.find_by_public_key(pubkey)
+                    .await?
+                    .ok_or(PeerManagerError::PeerNotFoundError)
             },
             Err(err) => Err(err),
         }
@@ -285,7 +287,10 @@ impl PeerManager {
     }
 
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
-        let peer = self.find_by_node_id(node_id).await?;
+        let peer = self
+            .find_by_node_id(node_id)
+            .await?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         Ok(peer.features)
     }
 
@@ -388,6 +393,7 @@ mod test {
             assert!(!peer_manager
                 .find_by_node_id(&peer_identity.node_id)
                 .await
+                .unwrap()
                 .unwrap()
                 .is_banned(),);
         }

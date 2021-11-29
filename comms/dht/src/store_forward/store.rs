@@ -377,7 +377,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
 
         // TODO: Remove this once we have a layer that filters out all messages to/from banned peers
         if let Some(origin_pk) = message.authenticated_origin() {
-            if let Ok(peer) = self.peer_manager.find_by_public_key(origin_pk).await {
+            if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(origin_pk).await {
                 if peer.is_banned() {
                     log_not_eligible("source peer is banned by this node");
                     return Ok(None);
@@ -408,7 +408,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
                 }
 
                 match peer_manager.find_by_node_id(&dest_node_id).await {
-                    Ok(peer) if peer.is_banned() => {
+                    Ok(Some(peer)) if peer.is_banned() => {
                         log_not_eligible("destination peer is banned.");
                         Ok(None)
                     },

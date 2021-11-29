@@ -50,39 +50,31 @@ impl MultiaddressesWithStats {
 
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
-    pub fn add_net_address(&mut self, net_address: &Multiaddr) {
+    pub fn add_address(&mut self, net_address: &Multiaddr) {
         if !self.addresses.iter().any(|x| x.address == *net_address) {
             self.addresses.push(net_address.clone().into());
             self.addresses.sort();
         }
     }
 
-    /// Compares the existing set of net_addresses to the provided net_address set and remove missing net_addresses and
-    /// add new net_addresses without discarding the usage stats of the existing and remaining net_addresses.
-    pub fn update_net_addresses(&mut self, net_addresses: Vec<Multiaddr>) {
-        // Remove missing elements
-        let mut remove_indices: Vec<usize> = Vec::new();
-        for index in 0..self.addresses.len() {
-            if net_addresses
-                .iter()
-                .all(|new_net_address| *new_net_address != self.addresses[index].address)
-            {
-                remove_indices.push(index);
-            }
+    /// Compares the existing set of addresses to the provided address set and remove missing addresses and
+    /// add new addresses without discarding the usage stats of the existing and remaining addresses.
+    pub fn update_addresses(&mut self, addresses: Vec<Multiaddr>) {
+        self.addresses = self
+            .addresses
+            .drain(..)
+            .filter(|addr| addresses.contains(&addr.address))
+            .collect();
+
+        let to_add = addresses
+            .iter()
+            .filter(|addr| !self.addresses.iter().any(|a| a.address == **addr))
+            .collect::<Vec<_>>();
+
+        for address in to_add {
+            self.addresses.push(address.clone().into());
         }
-        for index in remove_indices.iter().rev() {
-            self.addresses.remove(*index);
-        }
-        // Add new elements
-        for new_net_address in &net_addresses {
-            if self
-                .addresses
-                .iter()
-                .all(|curr_net_address| curr_net_address.address != *new_net_address)
-            {
-                self.add_net_address(new_net_address);
-            }
-        }
+
         self.addresses.sort();
     }
 
@@ -189,6 +181,10 @@ impl MultiaddressesWithStats {
     pub fn is_empty(&self) -> bool {
         self.addresses.is_empty()
     }
+
+    pub fn into_vec(self) -> Vec<Multiaddr> {
+        self.addresses.into_iter().map(|addr| addr.address).collect()
+    }
 }
 
 impl Index<usize> for MultiaddressesWithStats {
@@ -257,8 +253,8 @@ mod test {
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_net_address(&net_address2);
-        net_addresses.add_net_address(&net_address3);
+        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address3);
 
         assert!(net_addresses.mark_successful_connection_attempt(&net_address3));
         assert!(net_addresses.mark_successful_connection_attempt(&net_address1));
@@ -274,10 +270,10 @@ mod test {
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_net_address(&net_address2);
-        net_addresses.add_net_address(&net_address3);
+        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address3);
         // Add duplicate address, test add_net_address is idempotent
-        net_addresses.add_net_address(&net_address2);
+        net_addresses.add_address(&net_address2);
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].address, net_address1);
         assert_eq!(net_addresses.addresses[1].address, net_address2);
@@ -290,8 +286,8 @@ mod test {
         let net_address2 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/175.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address1.clone());
-        net_addresses.add_net_address(&net_address2);
-        net_addresses.add_net_address(&net_address3);
+        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address3);
 
         let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);

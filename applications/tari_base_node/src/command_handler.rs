@@ -470,7 +470,7 @@ impl CommandHandler {
                     let num_peers = peers.len();
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec!["NodeId", "Public Key", "Flags", "Role", "User Agent", "Info"]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
 
                     for peer in peers {
                         let info_str = {
@@ -521,7 +521,6 @@ impl CommandHandler {
                         table.add_row(row![
                             peer.node_id,
                             peer.public_key,
-                            format!("{:?}", peer.flags),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
                                     "Wallet"
@@ -714,7 +713,8 @@ impl CommandHandler {
                         let peer = peer_manager
                             .find_by_node_id(conn.peer_node_id())
                             .await
-                            .expect("Unexpected peer database error or peer not found");
+                            .expect("Unexpected peer database error")
+                            .expect("Peer not found");
 
                         let chain_height = peer
                             .get_metadata(1)

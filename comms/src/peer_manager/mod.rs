@@ -75,6 +75,9 @@ mod connection_stats;
 mod error;
 pub use error::PeerManagerError;
 
+mod identity_signature;
+pub use identity_signature::IdentitySignature;
+
 pub mod node_id;
 pub use node_id::NodeId;
 
@@ -100,5 +103,8 @@ mod peer_storage;
 pub use peer_storage::PeerStorage;
 
 mod migrations;
+
+mod or_not_found;
+pub use or_not_found::OrNotFound;
 
 mod wrapper;

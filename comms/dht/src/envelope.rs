@@ -48,9 +48,9 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
-    let naive = NaiveDateTime::from_timestamp(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32);
-    DateTime::from_utc(naive, Utc)
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc>> {
+    let naive = NaiveDateTime::from_timestamp_opt(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32)?;
+    Some(DateTime::from_utc(naive, Utc))
 }
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
@@ -185,7 +185,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             )
         };
 
-        let expires: Option<DateTime<Utc>> = header.expires.map(timestamp_to_datetime);
+        let expires = header.expires.and_then(timestamp_to_datetime);
         let version = DhtProtocolVersion::try_from((header.major, header.minor))?;
 
         Ok(Self {

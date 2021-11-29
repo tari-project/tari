@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 package tari.comms.identity;
 
 message PeerIdentityMsg {
@@ -11,4 +13,14 @@ message PeerIdentityMsg {
     uint32 major = 5;
     // Minor node version. This indicates minor non-breaking changes.
     uint32 minor = 6;
+    // Signature that signs the peer identity
+    IdentitySignature identity_signature = 7;
+}
+
+message IdentitySignature {
+    uint32 version = 1;
+    bytes signature = 2;
+    bytes public_nonce = 3;
+    // The EPOCH timestamp used in the identity signature challenge
+    int64 updated_at = 4;
 }

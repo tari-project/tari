@@ -28,12 +28,16 @@ use thiserror::Error;
 pub enum PeerManagerError {
     #[error("The requested peer does not exist")]
     PeerNotFoundError,
+    #[error("DB Data inconsistency: {0}")]
+    DataInconsistency(String),
     #[error("The peer has been banned")]
     BannedPeer,
     #[error("A problem has been encountered with the database: {0}")]
     DatabaseError(#[from] KeyValStoreError),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),
+    #[error("Identity signature is invalid")]
+    InvalidIdentitySignature,
 }
 
 impl PeerManagerError {

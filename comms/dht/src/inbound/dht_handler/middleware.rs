@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::task::ProcessDhtMessage;
-use crate::{discovery::DhtDiscoveryRequester, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
+use crate::{
+    discovery::DhtDiscoveryRequester,
+    inbound::DecryptedDhtMessage,
+    outbound::OutboundMessageRequester,
+    DhtConfig,
+};
 use futures::{future::BoxFuture, task::Context};
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
@@ -37,6 +42,7 @@ pub struct DhtHandlerMiddleware<S> {
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
+    config: Arc<DhtConfig>,
 }
 
 impl<S> DhtHandlerMiddleware<S> {
@@ -45,16 +51,16 @@ impl<S> DhtHandlerMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
-
         discovery_requester: DhtDiscoveryRequester,
+        config: Arc<DhtConfig>,
     ) -> Self {
         Self {
             next_service,
             peer_manager,
             node_identity,
-
             outbound_service,
             discovery_requester,
+            config,
         }
     }
 }
@@ -81,6 +87,7 @@ where
                 Arc::clone(&self.node_identity),
                 self.discovery_requester.clone(),
                 message,
+                self.config.clone(),
             )
             .run(),
         )

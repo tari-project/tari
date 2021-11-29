@@ -28,7 +28,7 @@ pub use connection_manager::{validate_peer_addresses, PeerConnection, PeerConnec
 pub mod connectivity;
 
 pub mod peer_manager;
-pub use peer_manager::{NodeIdentity, PeerManager};
+pub use peer_manager::{NodeIdentity, OrNotFound, PeerManager};
 
 pub mod framing;
 

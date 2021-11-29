@@ -28,6 +28,7 @@ use super::{
 };
 use crate::{
     net_address::MultiaddressesWithStats,
+    peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
     utils::datetime::safe_future_datetime_from_duration,
@@ -91,6 +92,9 @@ pub struct Peer {
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
     /// We use a hashmap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
+    /// Signs the peer information with a timestamp to prevent malleability. This is optional for backward
+    /// compatibility, but without this, the identity (addresses etc) cannot be updated.
+    pub identity_signature: Option<IdentitySignature>,
 }
 
 impl Peer {
@@ -112,13 +116,14 @@ impl Peer {
             flags,
             features,
             banned_until: None,
-            banned_reason: "".to_string(),
+            banned_reason: String::new(),
             offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
             user_agent,
             metadata: HashMap::new(),
+            identity_signature: None,
         }
     }
 
@@ -181,7 +186,7 @@ impl Peer {
         supported_protocols: Option<Vec<ProtocolId>>,
     ) {
         if let Some(new_net_addresses) = net_addresses {
-            self.addresses.update_net_addresses(new_net_addresses)
+            self.addresses.update_addresses(new_net_addresses)
         }
         if let Some(new_flags) = flags {
             self.flags = new_flags
@@ -203,6 +208,13 @@ impl Peer {
         if let Some(supported_protocols) = supported_protocols {
             self.supported_protocols = supported_protocols;
         }
+    }
+
+    /// Returns `Some(true)` if the identity signature is valid, otherwise `Some(false)`. If no signature is present,
+    /// None is returned.
+    pub fn is_valid_identity_signature(&self) -> Option<bool> {
+        let identity_signature = self.identity_signature.as_ref()?;
+        Some(identity_signature.is_valid_for_peer(self))
     }
 
     /// Provides that date time of the last successful interaction with the peer

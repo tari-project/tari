@@ -21,19 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::peer_manager::{Peer, PeerId};
-use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey};
+use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey, signatures::SchnorrSignature};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
 use tari_storage::HashmapDatabase;
 #[cfg(not(test))]
 use tari_storage::LMDBWrapper;
 
-/// Specify the digest type for the signature challenges
-pub type Challenge = Blake256;
-
 /// Public key type
 pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
+
+/// Specify the digest type for the signature challenges
+pub type Challenge = Blake256;
+/// Comms signature type
+pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 
 /// Specify the RNG that should be used for random selection
 pub type CommsRng = rand::rngs::OsRng;

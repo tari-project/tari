@@ -25,7 +25,8 @@ use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
     multiplexing::Yamux,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    proto,
     proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
@@ -126,6 +127,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols.clone();
             peer.user_agent = peer_identity.user_agent;
+            if let Some(identity_signature) = peer_identity.identity_signature {
+                add_valid_identity_signature_to_peer(&mut peer, &identity_signature)?;
+            }
             peer
         },
         None => {
@@ -144,6 +148,10 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
+            // TODO(testnetreset): Require an identity signature once majority nodes are upgraded
+            if let Some(identity_sig) = peer_identity.identity_signature {
+                add_valid_identity_signature_to_peer(&mut new_peer, &identity_sig)?;
+            }
             if let Some(addr) = dialed_addr {
                 new_peer.addresses.mark_successful_connection_attempt(addr);
             }
@@ -156,14 +164,28 @@ pub async fn validate_and_add_peer_from_peer_identity(
     Ok((peer_node_id, supported_protocols))
 }
 
+fn add_valid_identity_signature_to_peer(
+    peer: &mut Peer,
+    identity_sig: &proto::identity::IdentitySignature,
+) -> Result<(), ConnectionManagerError> {
+    let identity_sig =
+        IdentitySignature::try_from(identity_sig).map_err(|_| ConnectionManagerError::PeerIdentityInvalidSignature)?;
+
+    if !identity_sig.is_valid_for_peer(peer) {
+        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+    }
+
+    peer.identity_signature = Some(identity_sig);
+    Ok(())
+}
+
 pub async fn find_unbanned_peer(
     peer_manager: &PeerManager,
     authenticated_public_key: &CommsPublicKey,
 ) -> Result<Option<Peer>, ConnectionManagerError> {
     match peer_manager.find_by_public_key(authenticated_public_key).await {
-        Ok(peer) if peer.is_banned() => Err(ConnectionManagerError::PeerBanned),
-        Ok(peer) => Ok(Some(peer)),
-        Err(err) if err.is_peer_not_found() => Ok(None),
+        Ok(Some(peer)) if peer.is_banned() => Err(ConnectionManagerError::PeerBanned),
+        Ok(peer) => Ok(peer),
         Err(err) => Err(err.into()),
     }
 }
@@ -172,8 +194,13 @@ pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
     addresses: A,
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError> {
+    let mut has_address = false;
     for addr in addresses.into_iter() {
+        has_address = true;
         validate_address(addr, allow_test_addrs)?;
+    }
+    if !has_address {
+        return Err(ConnectionManagerError::PeerHasNoAddresses);
     }
     Ok(())
 }

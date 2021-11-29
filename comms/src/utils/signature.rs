@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::{Challenge, CommsPublicKey};
+use crate::types::{Challenge, CommsPublicKey, CommsSecretKey, Signature};
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use tari_crypto::{
@@ -31,9 +31,9 @@ use tari_crypto::{
 
 pub fn sign_challenge<R>(
     rng: &mut R,
-    secret_key: <CommsPublicKey as PublicKey>::K,
+    secret_key: CommsSecretKey,
     challenge: Challenge,
-) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+) -> Result<Signature, SchnorrSignatureError>
 where
     R: CryptoRng + Rng,
 {
@@ -43,7 +43,7 @@ where
 
 /// Verify that the signature is valid for the challenge
 pub fn verify_challenge(public_key: &CommsPublicKey, signature: &[u8], challenge: Challenge) -> bool {
-    match SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature) {
+    match Signature::from_binary(signature) {
         Ok(signature) => signature.verify_challenge(public_key, &challenge.finalize()),
         Err(_) => false,
     }

@@ -269,7 +269,7 @@ async fn ban_peer() {
     unpack_enum!(ConnectivityEvent::PeerBanned(node_id) = event);
     assert_eq!(node_id, peer.node_id);
 
-    let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap();
+    let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap().unwrap();
     assert!(peer.is_banned());
 
     let conn = connectivity.get_connection(peer.node_id.clone()).await.unwrap();

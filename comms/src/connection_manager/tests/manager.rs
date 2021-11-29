@@ -153,7 +153,11 @@ async fn dial_success() {
 
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
-    let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
+    let peer2 = peer_manager1
+        .find_by_node_id(conn_out.peer_node_id())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
 
@@ -161,7 +165,11 @@ async fn dial_success() {
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
+    let peer1 = peer_manager2
+        .find_by_node_id(node_identity1.node_id())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
     assert_eq!(peer1.user_agent, "node1");
 

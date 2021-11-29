@@ -35,6 +35,7 @@ once_cell = "1.8.0"
 openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }
 pin-project = "1.0.8"
 prost = "=0.8.0"
+prost-types = "0.8.0"
 rand = "0.8"
 serde = "1.0.119"
 serde_derive = "1.0.119"
@@ -69,4 +70,4 @@ tari_common = { version = "^0.21", path = "../common", features = ["build"] }
 c_integration = []
 avx2 = ["tari_crypto/avx2"]
 metrics = []
-rpc = ["tower-make"]
+rpc = ["tower-make", "tower/util"]

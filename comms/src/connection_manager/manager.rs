@@ -32,7 +32,7 @@ use crate::{
     connection_manager::{metrics, ConnectionDirection},
     multiplexing::Substream,
     noise::NoiseConfig,
-    peer_manager::{NodeId, NodeIdentity},
+    peer_manager::{NodeId, NodeIdentity, PeerManagerError},
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
     PeerManager,
@@ -458,9 +458,17 @@ where
         reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
-            Ok(peer) => {
+            Ok(Some(peer)) => {
                 self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
                     .await;
+            },
+            Ok(None) => {
+                warn!(target: LOG_TARGET, "Peer not found for dial");
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(
+                        PeerManagerError::PeerNotFoundError,
+                    )));
+                }
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);

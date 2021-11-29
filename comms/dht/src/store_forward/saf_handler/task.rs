@@ -193,7 +193,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Compile a set of stored messages for the requesting peer
         let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id.clone());
 
-        let since: Option<DateTime<Utc>> = match retrieve_msgs.since.map(timestamp_to_datetime) {
+        let since = match retrieve_msgs.since.and_then(timestamp_to_datetime) {
             Some(since) => {
                 debug!(
                     target: LOG_TARGET,
@@ -431,11 +431,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let stored_at = message
             .stored_at
             .map(|t| {
-                DateTime::from_utc(
-                    NaiveDateTime::from_timestamp(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX)),
+                Result::<_, StoreAndForwardError>::Ok(DateTime::from_utc(
+                    NaiveDateTime::from_timestamp_opt(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX))
+                        .ok_or(StoreAndForwardError::InvalidStoreMessage)?,
                     Utc,
-                )
+                ))
             })
+            .transpose()?
             .unwrap_or(chrono::MIN_DATETIME);
 
         if stored_at > Utc::now() {
