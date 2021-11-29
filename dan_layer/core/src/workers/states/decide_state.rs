@@ -27,8 +27,12 @@ use crate::{
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use tari_crypto::tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
+
+const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 
 // TODO: This is very similar to pre-commit, and commit state
 pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
@@ -128,14 +132,15 @@ where
         }
 
         if self.received_new_view_messages.contains_key(sender) {
-            dbg!("Already received message from {:?}", &sender);
+            warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
 
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[DECIDE] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -145,10 +150,11 @@ where
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 return Ok(None); // Replica will move this on
             }
-            dbg!("committee did not agree on node");
+            warn!(target: LOG_TARGET, "committee did not agree on node");
             Ok(None)
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[DECIDE] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -205,8 +211,9 @@ where
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
-                dbg!(
-                    "Wrong justify message type received, log",
+                warn!(
+                    target: LOG_TARGET,
+                    "Wrong justify message type received, log. {}, {:?}, {}",
                     &self.node_id,
                     &justify.message_type(),
                     current_view.view_id
@@ -218,14 +225,15 @@ where
             // }
 
             if from != view_leader {
-                dbg!("Message not from leader");
+                warn!(target: LOG_TARGET, "Message not from leader");
                 return Ok(None);
             }
 
             unit_of_work.commit_node(justify.node_hash())?;
+            info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().0.to_hex());
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
-            dbg!("received non justify message");
+            warn!(target: LOG_TARGET, "received non justify message");
             Ok(None)
         }
     }

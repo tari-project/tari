@@ -213,7 +213,7 @@ where
                 break;
             }
             let trns = self.transition(next_event)?;
-            info!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
+            debug!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
 
             self.events_publisher.publish(ConsensusWorkerDomainEvent::StateChanged {
                 old: trns.0,

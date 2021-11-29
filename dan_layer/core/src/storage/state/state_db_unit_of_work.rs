@@ -32,6 +32,7 @@ use std::sync::{Arc, RwLock};
 
 pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
+    fn get_value(&mut self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
     fn commit(&mut self) -> Result<StateRoot, StorageError>;
     fn calculate_root(&self) -> Result<StateRoot, StorageError>;
 }
@@ -64,6 +65,34 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .push(UnitOfWorkTracker::new(DbKeyValue { schema, key, value }, true));
 
         Ok(())
+    }
+
+    fn get_value(&mut self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
+        let mut inner = self.inner.write().unwrap();
+        for v in &inner.updates {
+            let inner_v = v.get();
+            if &inner_v.schema == schema && &inner_v.key == key {
+                return Ok(Some(inner_v.value.clone()));
+            }
+        }
+        // Hit the DB.
+        let value = inner
+            .backend_adapter
+            .get(schema, key)
+            .map_err(TBackendAdapter::Error::into)?;
+        if let Some(value) = value {
+            inner.updates.push(UnitOfWorkTracker::new(
+                DbKeyValue {
+                    schema: schema.to_string(),
+                    key: Vec::from(key),
+                    value: value.clone(),
+                },
+                false,
+            ));
+            Ok(Some(value))
+        } else {
+            Ok(None)
+        }
     }
 
     fn commit(&mut self) -> Result<StateRoot, StorageError> {

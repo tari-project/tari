@@ -30,8 +30,11 @@ use crate::{
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
+
+const LOG_TARGET: &str = "tari::dan::workers::states::precommit";
 
 pub struct PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
@@ -142,7 +145,8 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -154,10 +158,11 @@ where
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
                 return Ok(None);
             }
-            dbg!("committee did not agree on node");
+            warn!(target: LOG_TARGET, "committee did not agree on node");
             Ok(None)
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -217,8 +222,9 @@ where
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-                dbg!(
-                    "Wrong justify message type received, log",
+                warn!(
+                    target: LOG_TARGET,
+                    "Wrong justify message type received, log. {}, {:?}, {}",
                     &self.node_id,
                     &justify.message_type(),
                     current_view.view_id
@@ -227,7 +233,7 @@ where
             }
 
             if from != view_leader {
-                dbg!("Message not from leader");
+                warn!(target: LOG_TARGET, "Message not from leader");
                 return Ok(None);
             }
 

@@ -106,7 +106,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
         self.send_dial_peer(node_id, None).await?;
         Ok(())

@@ -35,7 +35,8 @@ class AccountDashboard extends React.Component {
             isSaving: false,
             tip101: false,
             tip102: false,
-            assetPubKey: props.match.params.assetPubKey
+            assetPubKey: props.match.params.assetPubKey,
+            balance: -1
         };
     }
 
@@ -44,6 +45,8 @@ class AccountDashboard extends React.Component {
             this.setState({error: null});
             let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
             console.log("balance", balance);
+            this.setState({balance});
+
         }
         catch(err) {
             this.setState({error: err.message});
@@ -65,7 +68,7 @@ class AccountDashboard extends React.Component {
                 </Typography>
                 <Stack>
 
-                    <Typography>Balance: </Typography>
+                    <Typography>Balance: {this.state.balance}</Typography>
                 </Stack>
             </Container>
         );

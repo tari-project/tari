@@ -45,6 +45,11 @@ pub enum DigitalAssetError {
         source: prost::DecodeError,
         message_type: String,
     },
+    #[error("Could not encode protobuf message for {message_type}:{source}")]
+    ProtoBufEncodeError {
+        source: prost::EncodeError,
+        message_type: String,
+    },
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

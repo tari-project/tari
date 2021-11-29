@@ -44,3 +44,45 @@ pub fn init<TUnitOfWork: StateDbUnitOfWork>(
     )?;
     Ok(())
 }
+
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: String,
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    match method.as_str() {
+        "BalanceOf" => balance_of(args, state_db),
+        _ => todo!(),
+    }
+}
+
+fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    let request = tip002::BalanceOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+        source: e,
+        message_type: "tip002::BalanceOfRequest".to_string(),
+    })?;
+
+    let data = state_db.get_value("owners", &request.owner)?;
+    match data {
+        Some(data) => {
+            let mut data2: [u8; 8] = [0; 8];
+            data2.copy_from_slice(&data);
+
+            let balance = u64::from_le_bytes(data2);
+            let response = tip002::BalanceOfResponse { balance };
+            let mut output_buffer = vec![];
+            response
+                .encode(&mut output_buffer)
+                .map_err(|e| DigitalAssetError::ProtoBufEncodeError {
+                    source: e,
+                    message_type: "tip002::BalanceOfResponse".to_string(),
+                })?;
+
+            Ok(Some(output_buffer))
+        },
+        None => Ok(None),
+    }
+}

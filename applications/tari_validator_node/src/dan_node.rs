@@ -210,8 +210,7 @@ impl DanNode {
         let _backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
             .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
         // let data_store = AssetDataStore::new(backend);
-        let instruction_log = MemoryInstructionLog::default();
-        let asset_processor = ConcreteAssetProcessor::new(instruction_log);
+        let asset_processor = ConcreteAssetProcessor::new();
 
         let payload_processor = TariDanPayloadProcessor::new(asset_processor);
         let mut inbound = TariCommsInboundConnectionService::new();

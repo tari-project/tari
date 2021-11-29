@@ -36,7 +36,7 @@ use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_dan_core::{
-    services::{MempoolService, MempoolServiceHandle},
+    services::{AssetProcessor, ConcreteAssetProcessor, MempoolService, MempoolServiceHandle},
     storage::DbFactory,
 };
 use tari_dan_storage_sqlite::SqliteDbFactory;
@@ -78,8 +78,9 @@ async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
 
     let mempool_service = MempoolServiceHandle::default();
     let db_factory = SqliteDbFactory::new(&config);
+    let asset_processor = ConcreteAssetProcessor::new();
 
-    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory);
+    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory, asset_processor);
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144);
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
@@ -107,8 +108,9 @@ async fn run_dan_node(
 async fn run_grpc<
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
     TDbFactory: DbFactory + Sync + Send + 'static,
+    TAssetProcessor: AssetProcessor + Sync + Send + 'static,
 >(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory>,
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

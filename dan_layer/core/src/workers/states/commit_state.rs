@@ -30,8 +30,11 @@ use crate::{
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
+
+const LOG_TARGET: &str = "tari::dan::workers::states::commit";
 
 // TODO: This is very similar to pre-commit state
 pub struct CommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
@@ -139,27 +142,29 @@ where
 
         // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(sender) {
-            dbg!("Already received message from {:?}", &sender);
+            warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
 
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[COMMIT] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
-                self.committee.len()
+                self.committee.len(),
             );
 
             if let Some(qc) = self.create_qc(current_view) {
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 return Ok(None); // Replica will move this on
             }
-            dbg!("committee did not agree on node");
+            warn!(target: LOG_TARGET, "committee did not agree on node");
             Ok(None)
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[COMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -219,8 +224,9 @@ where
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::PreCommit, current_view.view_id) {
-                dbg!(
-                    "Wrong justify message type received, log",
+                warn!(
+                    target: LOG_TARGET,
+                    "Wrong justify message type received, log: {} {:?} {}",
                     &self.node_id,
                     &justify.message_type(),
                     current_view.view_id
@@ -232,7 +238,7 @@ where
             // }
 
             if from != view_leader {
-                dbg!("Message not from leader");
+                warn!(target: LOG_TARGET, "Message not from leader");
                 return Ok(None);
             }
 
@@ -247,7 +253,7 @@ where
             .await?;
             Ok(Some(ConsensusWorkerStateEvent::Committed))
         } else {
-            dbg!("received non justify message");
+            warn!(target: LOG_TARGET, "received non justify message");
             Ok(None)
         }
     }

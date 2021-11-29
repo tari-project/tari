@@ -45,14 +45,21 @@ pub trait AssetProcessor {
         instruction: &Instruction,
         db: TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        template_id: TemplateId,
+        method: String,
+        args: &[u8],
+        state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
-pub struct ConcreteAssetProcessor<TInstructionLog> {
+pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
-    _instruction_log: TInstructionLog,
 }
 
-impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
+impl AssetProcessor for ConcreteAssetProcessor {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
@@ -79,13 +86,27 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
             db,
         )
     }
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        template_id: TemplateId,
+        method: String,
+        args: &[u8],
+        state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        match template_id {
+            TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
+            _ => {
+                todo!()
+            },
+        }
+    }
 }
 
-impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
-    pub fn new(instruction_log: TInstructionLog) -> Self {
+impl ConcreteAssetProcessor {
+    pub fn new() -> Self {
         Self {
             template_factory: TemplateFactory {},
-            _instruction_log: instruction_log,
         }
     }
 
