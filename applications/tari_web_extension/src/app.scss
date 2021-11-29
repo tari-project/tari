@@ -5,3 +5,52 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  .caption {
+    font-size: x-large;
+    margin: 10px;
+  }
+
+  .button {
+    border: 1px solid #00ac42;
+    border-radius: 15px;
+    background-color: #00993b;
+    padding: 10px;
+    padding-left: 30px;
+    padding-right: 30px;
+    color: white;
+    font-weight: bold;
+    font-size: x-large;
+    transition: 0.1s;
+    margin: 10px;
+    text-decoration: none;
+  }
+
+  .button:hover {
+    background-color: #00ac42;
+    cursor: pointer;
+  }
+
+  .disabled-button {
+    pointer-events: none;
+    border: 1px solid #bbbbbb;
+    background-color: #aaaaaa;
+  }
+
+  .text {
+    max-width: 357px;
+    font-size: large;
+    margin: 10px;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: row;
+  }
+}

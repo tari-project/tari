@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useDispatch } from "react-redux";
 import { Link } from "react-router-dom";
-import { login } from "../../redux/loginSlice";
+import { createAccount } from "../../redux/accountSlice";
 
 export default function CreateWallet() {
   const [password, setPassword] = useState("");
@@ -20,9 +20,7 @@ export default function CreateWallet() {
     password === confirmPassword && password.length >= 6;
 
   const createWallet = () => {
-    console.log("dispatching login");
-    const username = "username";
-    dispatch(login({ username, password }));
+    dispatch(createAccount(password));
   };
 
   return (

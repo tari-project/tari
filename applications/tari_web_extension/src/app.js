@@ -2,25 +2,25 @@ import "./app.scss";
 import React, { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  getCredentials,
-  getCredentialsCalled,
-  refreshLogin,
-} from "./redux/loginSlice";
 import Onboarding from "./onboarding/Onboarding";
 import { HashRouter } from "react-router-dom";
 import Popup from "./popup/Popup";
+import { getAccounts, getAccountsStatusSelector } from "./redux/accountSlice";
+import Connecting from "./connecting/Connecting";
 
 export default function App() {
-  const credentials = useSelector(getCredentials);
-  const credentialsCalled = useSelector(getCredentialsCalled);
+  const accountsStatus = useSelector(getAccountsStatusSelector);
+
   const dispatch = useDispatch();
   useEffect(() => {
-    dispatch(refreshLogin());
+    dispatch(getAccounts());
   }, [dispatch]);
-  if (!credentials) {
-    if (!window.location.href.includes("#/onboarding") && credentialsCalled) {
+  console.log("accountsStatus", accountsStatus);
+  if (accountsStatus === "empty") {
+    if (!window.location.href.includes("#/onboarding")) {
       window.open("#/onboarding");
+      window.close();
+      return <div></div>;
     }
   }
   return (
@@ -28,6 +28,7 @@ export default function App() {
       <HashRouter>
         <Routes>
           <Route path="/onboarding/*" element={<Onboarding />} />
+          <Route path="/connecting/:site/:id" element={<Connecting />} />
           <Route path="/popup/*" element={<Popup />} />
           <Route path="" element={<Navigate replace to="popup" />} />
         </Routes>

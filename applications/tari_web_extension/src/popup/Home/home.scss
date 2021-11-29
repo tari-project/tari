@@ -1,6 +1,7 @@
-.assets {
-  display: grid;
-  grid-template-columns: auto;
+.home {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
 }
 
 .title {
@@ -8,4 +9,5 @@
   text-align: center;
   justify-self: stretch;
   border-bottom: 1px solid;
+  width: 100%;
 }

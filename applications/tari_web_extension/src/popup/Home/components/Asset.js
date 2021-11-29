@@ -1,4 +1,4 @@
-import "./asset.css";
+import "./asset.scss";
 
 export default function Asset({ name, selected, onClick }) {
   return (
