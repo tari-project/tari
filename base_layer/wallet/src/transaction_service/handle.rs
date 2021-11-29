@@ -166,7 +166,7 @@ pub enum TransactionEvent {
         is_valid: bool,
     },
     TransactionValidationTimedOut(u64),
-    TransactionValidationSuccess(u64),
+    TransactionValidationStateChanged(u64),
     TransactionValidationFailure(u64),
     TransactionValidationAborted(u64),
     TransactionValidationDelayed(u64),
