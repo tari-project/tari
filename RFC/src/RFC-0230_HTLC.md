@@ -90,8 +90,8 @@ CheckHeightVerify(4000)
 #### Hashed Time-locked Contract
 Hashed time-locked contracts ([HTLC]) are a way of reserving funds that can only be spent if a hash pre-image can be provided or
 if a specified amount of time has passed. The hash pre-image is a secret that can be revealed under the right conditions
-to enable spending of the UTXO before the time-lock is reached. The secret can be revealed directly by a party or by
-a party spending another output via a signature. 
+to enable spending of the UTXO before the time-lock is reached. The secret can be directly exchanged between the parties or
+revealed to the other party by spending an output that makes use of an adaptor signature.
 
 [HTLC]s enable a number of interesting transaction constructions. For example, [Atomic Swaps](https://tlu.tarilabs.com/protocols/atomic-swaps/AtomicSwaps.html)
 and Payment Channels like those in the [Lightning Network](https://tlu.tarilabs.com/protocols/lightning-network-for-dummies).
