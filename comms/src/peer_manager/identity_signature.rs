@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    message::MessageExt,
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerManagerError},
     proto,
@@ -28,9 +29,10 @@ use crate::{
 };
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
+use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
 
 /// Signature that secures the peer identity
@@ -118,12 +120,23 @@ impl IdentitySignature {
             .into_iter()
             .fold(challenge, |challenge, addr| challenge.chain(&addr))
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        proto::identity::IdentitySignature::from(self).to_encoded_bytes()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, PeerManagerError> {
+        let sig = proto::identity::IdentitySignature::decode(bytes)
+            .map_err(|_| PeerManagerError::InvalidIdentitySignature)?
+            .try_into()?;
+        Ok(sig)
+    }
 }
 
-impl TryFrom<&proto::identity::IdentitySignature> for IdentitySignature {
+impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
     type Error = PeerManagerError;
 
-    fn try_from(value: &proto::identity::IdentitySignature) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::identity::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
         let public_nonce =
             CommsPublicKey::from_bytes(&value.public_nonce).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;

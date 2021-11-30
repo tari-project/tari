@@ -126,7 +126,7 @@ use tari_comms::{
     socks,
     tor,
     transports::MemoryTransport,
-    types::CommsSecretKey,
+    types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::OutputFeatures, CryptoFactories};
@@ -154,6 +154,7 @@ use tari_wallet::{
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -3202,6 +3203,50 @@ pub unsafe extern "C" fn wallet_create(
         },
         _ => comms_config.transport_type,
     };
+
+    let result = runtime.block_on(async {
+        let identity_sig = wallet_database.get_comms_identity_signature().await?;
+
+        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database).await?;
+        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
+
+        // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
+        // to None
+        let identity_sig = identity_sig.filter(|sig| {
+            let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+            sig.is_valid(&comms_public_key, node_features, [&node_address])
+        });
+
+        // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+        let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+            comms_secret_key,
+            node_address,
+            node_features,
+            identity_sig,
+        ));
+        if !node_identity.is_signed() {
+            node_identity.sign();
+            // unreachable panic: signed above
+            wallet_database.set_comms_identity_signature(
+                node_identity
+                    .identity_signature_read()
+                    .as_ref()
+                    .expect("unreachable panic")
+                    .clone(),
+            )
+        }
+        Ok(node_identity)
+    });
+    match result {
+        Ok(node_identity) => {
+            comms_config.node_identity = node_identity;
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    }
 
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig::new(

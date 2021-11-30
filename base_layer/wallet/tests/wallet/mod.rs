@@ -69,6 +69,7 @@ use tari_wallet::{
         handle::TransactionEvent,
         storage::sqlite_db::TransactionServiceSqliteDatabase,
     },
+    wallet::read_or_create_master_seed,
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -159,14 +160,17 @@ async fn create_wallet(
 
     let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
+    let wallet_db = WalletDatabase::new(wallet_backend);
+    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+
     Wallet::start(
         config,
-        WalletDatabase::new(wallet_backend),
+        wallet_db,
         transaction_backend,
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_seed,
+        master_seed,
     )
     .await
 }
@@ -230,7 +234,7 @@ async fn test_wallet() {
     alice_wallet
         .set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            get_next_memory_address().to_string(),
+            base_node_identity.public_address().clone(),
         )
         .await
         .unwrap();
@@ -255,11 +259,11 @@ async fn test_wallet() {
 
     let delay = sleep(Duration::from_secs(60));
     tokio::pin!(delay);
-    let mut reply_count = false;
+    let mut received_reply = false;
     loop {
         tokio::select! {
             event = alice_event_stream.recv() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
-                reply_count = true;
+                received_reply = true;
                 break;
             },
             () = &mut delay => {
@@ -267,7 +271,7 @@ async fn test_wallet() {
             },
         }
     }
-    assert!(reply_count);
+    assert!(received_reply);
 
     let mut contacts = Vec::new();
     for i in 0..2 {
@@ -704,6 +708,7 @@ async fn test_import_utxo() {
         None,
         None,
     );
+
     let mut alice_wallet = Wallet::start(
         config,
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
@@ -711,7 +716,7 @@ async fn test_import_utxo() {
         OutputManagerSqliteDatabase::new(connection.clone(), None),
         ContactsServiceSqliteDatabase::new(connection),
         shutdown.to_signal(),
-        None,
+        CipherSeed::new(),
     )
     .await
     .unwrap();

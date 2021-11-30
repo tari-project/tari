@@ -536,7 +536,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let config = self.config.clone();
+        let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
         let mut builder = CommsBuilder::new()
@@ -552,6 +552,8 @@ impl ServiceInitializer for P2pInitializer {
         if config.allow_test_addresses {
             builder = builder.allow_test_addresses();
         }
+        // Ensure this setting always matches
+        config.dht.allow_test_addresses = config.allow_test_addresses;
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 

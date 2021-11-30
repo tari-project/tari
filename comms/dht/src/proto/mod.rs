@@ -126,16 +126,16 @@ impl TryInto<Peer> for rpc::Peer {
             String::new(),
         );
 
-        peer.identity_signature = self.identity_signature.as_ref().map(TryInto::try_into).transpose()?;
+        peer.identity_signature = self.identity_signature.map(TryInto::try_into).transpose()?;
 
         Ok(peer)
     }
 }
 
-impl TryFrom<&common::IdentitySignature> for IdentitySignature {
+impl TryFrom<common::IdentitySignature> for IdentitySignature {
     type Error = anyhow::Error;
 
-    fn try_from(value: &common::IdentitySignature) -> Result<Self, Self::Error> {
+    fn try_from(value: common::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version)
             .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
         let public_nonce = CommsPublicKey::from_bytes(&value.public_nonce)?;

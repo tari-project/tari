@@ -43,7 +43,11 @@ use tari_crypto::tari_utilities::{
 use tokio::time::Instant;
 
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{IdentitySignature, PeerFeatures},
+    tor::TorIdentity,
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 
 use crate::{
@@ -262,6 +266,14 @@ impl WalletSqliteDatabase {
                 kvp_text = "CommsFeatures";
                 WalletSettingSql::new(DbKey::CommsFeatures.to_string(), cf.bits().to_string()).set(&conn)?;
             },
+            DbKeyValuePair::CommsIdentitySignature(identity_sig) => {
+                kvp_text = "CommsIdentitySignature";
+                WalletSettingSql::new(
+                    DbKey::CommsIdentitySignature.to_string(),
+                    identity_sig.to_bytes().to_hex(),
+                )
+                .set(&conn)?;
+            },
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -289,25 +301,16 @@ impl WalletSqliteDatabase {
                     return Ok(Some(DbValue::ValueCleared));
                 }
             },
-            DbKey::CommsFeatures => {
-                return Err(WalletStorageError::OperationNotSupported);
-            },
-            DbKey::CommsAddress => {
-                return Err(WalletStorageError::OperationNotSupported);
-            },
-            DbKey::BaseNodeChainMetadata => {
-                return Err(WalletStorageError::OperationNotSupported);
-            },
             DbKey::TorId => {
                 let _ = WalletSettingSql::clear(DbKey::TorId.to_string(), &conn)?;
             },
-            DbKey::PassphraseHash => {
-                return Err(WalletStorageError::OperationNotSupported);
-            },
-            DbKey::EncryptionSalt => {
-                return Err(WalletStorageError::OperationNotSupported);
-            },
-            DbKey::WalletBirthday => {
+            DbKey::CommsFeatures |
+            DbKey::CommsAddress |
+            DbKey::BaseNodeChainMetadata |
+            DbKey::PassphraseHash |
+            DbKey::EncryptionSalt |
+            DbKey::WalletBirthday |
+            DbKey::CommsIdentitySignature => {
                 return Err(WalletStorageError::OperationNotSupported);
             },
         };
@@ -352,6 +355,10 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::PassphraseHash => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::PassphraseHash),
             DbKey::EncryptionSalt => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::EncryptionSalt),
             DbKey::WalletBirthday => WalletSettingSql::get(key.to_string(), &conn)?.map(DbValue::WalletBirthday),
+            DbKey::CommsIdentitySignature => WalletSettingSql::get(key.to_string(), &conn)?
+                .and_then(|s| from_hex(&s).ok())
+                .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
+                .map(DbValue::CommsIdentitySignature),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(

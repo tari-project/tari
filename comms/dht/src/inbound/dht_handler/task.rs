@@ -187,7 +187,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         );
         new_peer.identity_signature = join_msg
             .identity_signature
-            .map(|id| IdentitySignature::try_from(&id))
+            .map(IdentitySignature::try_from)
             .transpose()
             .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
 
@@ -308,7 +308,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         );
         new_peer.identity_signature = discover_msg
             .identity_signature
-            .map(|id| IdentitySignature::try_from(&id))
+            .map(IdentitySignature::try_from)
             .transpose()
             .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
 

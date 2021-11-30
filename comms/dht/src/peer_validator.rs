@@ -58,7 +58,8 @@ impl<'a> PeerValidator<'a> {
     pub async fn validate_and_add_peer(&self, new_peer: Peer) -> Result<bool, PeerValidatorError> {
         validate_node_id(&new_peer.public_key, &new_peer.node_id)?;
 
-        if validate_peer_addresses(new_peer.addresses.iter(), self.config.allow_test_addresses).is_err() {
+        if let Err(err) = validate_peer_addresses(new_peer.addresses.iter(), self.config.allow_test_addresses) {
+            warn!(target: LOG_TARGET, "Invalid peer address: {}", err);
             return Err(PeerValidatorError::InvalidPeerAddresses);
         }
 

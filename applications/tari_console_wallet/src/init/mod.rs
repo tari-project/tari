@@ -25,13 +25,14 @@ use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
+use tari_crypto::keys::PublicKey;
 
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    types::CommsSecretKey,
+    types::{CommsPublicKey, CommsSecretKey},
     NodeIdentity,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
@@ -51,6 +52,7 @@ use tari_wallet::{
     output_manager_service::config::OutputManagerServiceConfig,
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::config::{TransactionRoutingMechanism, TransactionServiceConfig},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -299,24 +301,42 @@ pub async fn init_wallet(
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
 
-    let node_address = match wallet_db.get_node_address().await? {
-        None => match config.public_address.clone() {
-            Some(val) => val,
-            None => Multiaddr::empty(),
-        },
-        Some(a) => a,
-    };
+    let db_addr = wallet_db.get_node_address().await?;
+    let config_addr = config.public_address.clone();
+    let node_address = config_addr.or(db_addr).unwrap_or_else(|| Multiaddr::empty());
 
-    let node_features = match wallet_db.get_node_features().await? {
-        None => PeerFeatures::COMMUNICATION_CLIENT,
-        Some(nf) => nf,
-    };
+    let node_features = wallet_db
+        .get_node_features()
+        .await?
+        .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
 
-    let node_identity = Arc::new(NodeIdentity::new(
-        CommsSecretKey::default(),
-        node_address,
-        node_features,
-    ));
+    let identity_sig = wallet_db.get_comms_identity_signature().await?;
+
+    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+    let comms_secret_key = derive_comms_secret_key(&master_seed)?;
+
+    // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig to
+    // None
+    let identity_sig = identity_sig.filter(|sig| {
+        let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+        sig.is_valid(&comms_public_key, node_features, [&node_address])
+    });
+
+    // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+    let node_identity = Arc::new(unsafe {
+        NodeIdentity::with_signature_unchecked(comms_secret_key, node_address, node_features, identity_sig)
+    });
+    if !node_identity.is_signed() {
+        node_identity.sign();
+        // unreachable panic: signed above
+        wallet_db.set_comms_identity_signature(
+            node_identity
+                .identity_signature_read()
+                .as_ref()
+                .expect("unreachable panic")
+                .clone(),
+        )
+    }
 
     let transport_type = create_transport_type(config);
     let transport_type = match transport_type {
@@ -415,7 +435,6 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_seed.clone(),
     )
     .await
     .map_err(|e| {

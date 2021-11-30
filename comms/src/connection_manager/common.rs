@@ -128,7 +128,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.supported_protocols = supported_protocols.clone();
             peer.user_agent = peer_identity.user_agent;
             if let Some(identity_signature) = peer_identity.identity_signature {
-                add_valid_identity_signature_to_peer(&mut peer, &identity_signature)?;
+                add_valid_identity_signature_to_peer(&mut peer, identity_signature)?;
             }
             peer
         },
@@ -150,7 +150,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
             new_peer.connection_stats.set_connection_success();
             // TODO(testnetreset): Require an identity signature once majority nodes are upgraded
             if let Some(identity_sig) = peer_identity.identity_signature {
-                add_valid_identity_signature_to_peer(&mut new_peer, &identity_sig)?;
+                add_valid_identity_signature_to_peer(&mut new_peer, identity_sig)?;
             }
             if let Some(addr) = dialed_addr {
                 new_peer.addresses.mark_successful_connection_attempt(addr);
@@ -166,7 +166,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
 
 fn add_valid_identity_signature_to_peer(
     peer: &mut Peer,
-    identity_sig: &proto::identity::IdentitySignature,
+    identity_sig: proto::identity::IdentitySignature,
 ) -> Result<(), ConnectionManagerError> {
     let identity_sig =
         IdentitySignature::try_from(identity_sig).map_err(|_| ConnectionManagerError::PeerIdentityInvalidSignature)?;

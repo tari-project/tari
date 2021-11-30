@@ -74,6 +74,29 @@ impl NodeIdentity {
         node_identity
     }
 
+    /// Create a new NodeIdentity from the provided key pair and control service address.
+    ///
+    /// # Safety
+    /// It is up to the caller to ensure that the given signature is valid for the node identity
+    pub unsafe fn with_signature_unchecked(
+        secret_key: CommsSecretKey,
+        public_address: Multiaddr,
+        features: PeerFeatures,
+        identity_signature: Option<IdentitySignature>,
+    ) -> Self {
+        let public_key = CommsPublicKey::from_secret_key(&secret_key);
+        let node_id = NodeId::from_key(&public_key);
+
+        NodeIdentity {
+            node_id,
+            public_key,
+            features,
+            secret_key,
+            public_address: RwLock::new(public_address),
+            identity_signature: RwLock::new(identity_signature),
+        }
+    }
+
     /// Generates a new random NodeIdentity for CommsPublicKey
     pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
     where R: CryptoRng + Rng {
