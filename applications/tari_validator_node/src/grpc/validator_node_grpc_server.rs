@@ -21,29 +21,43 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_app_grpc::tari_rpc as rpc;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{models::Instruction, services::MempoolService, storage::DbFactory, types::PublicKey};
+use tari_dan_core::{
+    models::{Instruction, TemplateId},
+    services::{AssetProcessor, MempoolService},
+    storage::DbFactory,
+    types::PublicKey,
+};
 use tonic::{Request, Response, Status};
 
-pub struct ValidatorNodeGrpcServer<TMempoolService: MempoolService, TDbFactory: DbFactory> {
+pub struct ValidatorNodeGrpcServer<
+    TMempoolService: MempoolService,
+    TDbFactory: DbFactory,
+    TAssetProcessor: AssetProcessor,
+> {
     mempool: TMempoolService,
-    _db_factory: TDbFactory,
+    db_factory: TDbFactory,
+    asset_processor: TAssetProcessor,
 }
 
-impl<TMempoolService: MempoolService, TDbFactory: DbFactory> ValidatorNodeGrpcServer<TMempoolService, TDbFactory> {
-    pub fn new(mempool: TMempoolService, db_factory: TDbFactory) -> Self {
+impl<TMempoolService: MempoolService, TDbFactory: DbFactory, TAssetProcessor: AssetProcessor>
+    ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor>
+{
+    pub fn new(mempool: TMempoolService, db_factory: TDbFactory, asset_processor: TAssetProcessor) -> Self {
         Self {
             mempool,
-            _db_factory: db_factory,
+            db_factory,
+            asset_processor,
         }
     }
 }
 
 #[tonic::async_trait]
-impl<TMempoolService, TDbFactory> rpc::validator_node_server::ValidatorNode
-    for ValidatorNodeGrpcServer<TMempoolService, TDbFactory>
+impl<TMempoolService, TDbFactory, TAssetProcessor> rpc::validator_node_server::ValidatorNode
+    for ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor>
 where
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
     TDbFactory: DbFactory + Sync + Send + 'static,
+    TAssetProcessor: AssetProcessor + Sync + Send + 'static,
 {
     async fn get_token_data(
         &self,
@@ -53,10 +67,10 @@ where
         Err(Status::internal("Oh noes"))
     }
 
-    async fn execute_instruction(
+    async fn invoke_method(
         &self,
-        request: Request<rpc::ExecuteInstructionRequest>,
-    ) -> Result<Response<rpc::ExecuteInstructionResponse>, Status> {
+        request: Request<rpc::InvokeMethodRequest>,
+    ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
         dbg!(&request);
         let request = request.into_inner();
         let instruction = Instruction::new(
@@ -75,13 +89,13 @@ where
         let mut mempool = self.mempool.clone();
         match mempool.submit_instruction(instruction).await {
             Ok(_) => {
-                return Ok(Response::new(rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::InvokeMethodResponse {
                     status: "Accepted".to_string(),
                     result: None,
                 }))
             },
             Err(_) => {
-                return Ok(Response::new(rpc::ExecuteInstructionResponse {
+                return Ok(Response::new(rpc::InvokeMethodResponse {
                     status: "Errored".to_string(),
                     result: None,
                 }))
@@ -109,6 +123,21 @@ where
         request: Request<rpc::InvokeReadMethodRequest>,
     ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
         dbg!(&request);
-        todo!()
+        let state = self
+            .db_factory
+            .create_state_db()
+            .map_err(|e| Status::internal(format!("Could not create state db: {}", e)))?;
+        let request = request.into_inner();
+        let mut unit_of_work = state.new_unit_of_work();
+        let response_bytes = self
+            .asset_processor
+            .invoke_read_method(
+                TemplateId::from(request.template_id),
+                request.method,
+                &request.args,
+                &mut unit_of_work,
+            )
+            .map_err(|e| Status::internal(format!("Could not invoke read method: {}", e)))?;
+        Ok(Response::new(rpc::InvokeReadMethodResponse { result: response_bytes }))
     }
 }

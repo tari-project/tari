@@ -22,10 +22,12 @@
 
 use crate::{
   app_state::ConcurrentAppState,
+  providers::KeyManagerProvider,
   status::Status,
   storage::{
-    models::{asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
-    AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
+    models::{address_row::AddressRow, asset_row::AssetRow, asset_wallet_row::AssetWalletRow},
+    AddressesTableGateway, AssetWalletsTableGateway, AssetsTableGateway, CollectiblesStorage,
+    StorageTransaction,
   },
 };
 use prost::Message;
@@ -94,34 +96,54 @@ pub(crate) async fn asset_wallets_get_balance(
   dbg!(&asset_public_key);
   let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
 
-  let owner = PublicKey::default();
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let asset = db.assets().find_by_public_key(&asset_public_key, &tx)?;
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset.id, wallet_id, &tx)?;
+
+  let mut total = 0;
 
   let mut client = state.connect_validator_node_client().await?;
-  let args = tip002::BalanceOfRequest {
-    owner: Vec::from(owner.as_bytes()),
-  };
-  dbg!(&args);
-  let mut args_bytes = vec![];
-  args.encode(&mut args_bytes)?;
-  // let req = grpc::InvokeReadMethodRequest{
-  //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
-  //   template_id: 2,
-  //   method: "BalanceOf",
-  //   args
-  // };
+  for owner in addresses {
+    let args = tip002::BalanceOfRequest {
+      owner: Vec::from(owner.public_key.as_bytes()),
+    };
+    dbg!(&args);
+    let mut args_bytes = vec![];
+    args.encode(&mut args_bytes)?;
+    // let req = grpc::InvokeReadMethodRequest{
+    //   asset_public_key: Vec::from(asset_public_key.as_bytes()),
+    //   template_id: 2,
+    //   method: "BalanceOf",
+    //   args
+    // };
 
-  let resp = client
-    .invoke_read_method(asset_public_key, 2, "BalanceOf".to_string(), args_bytes)
-    .await?;
+    let resp = client
+      .invoke_read_method(
+        asset_public_key.clone(),
+        2,
+        "BalanceOf".to_string(),
+        args_bytes,
+      )
+      .await?;
 
-  dbg!(&resp);
-  match resp {
-    Some(resp) => {
-      let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
-      Ok(proto_resp.balance)
+    dbg!(&resp);
+    match resp {
+      Some(resp) => {
+        let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
+        total += proto_resp.balance;
+      }
+      None => (),
     }
-    None => Ok(0),
   }
+  Ok(total)
 }
 
 #[tauri::command]
@@ -139,4 +161,117 @@ pub(crate) async fn asset_wallets_list(
     result.push(db.assets().find(asset_wallet.asset_id, &tx)?);
   }
   Ok(result)
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_create_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+
+  let db = state.create_db().await?;
+  let transaction = db.create_transaction()?;
+  let asset_id = db
+    .assets()
+    .find_by_public_key(&asset_public_key, &transaction)?
+    .id;
+  let asset_wallet_row =
+    db.asset_wallets()
+      .find_by_asset_and_wallet(asset_id, wallet_id, &transaction)?;
+
+  let (key_manager_path, _, address_public_key) = state
+    .key_manager()
+    .await
+    .generate_asset_address(wallet_id, &asset_public_key, None, &transaction)
+    .map_err(|e| Status::internal(format!("could not generate address key: {}", e)))?;
+  let address = AddressRow {
+    id: Uuid::new_v4(),
+    asset_wallet_id: asset_wallet_row.id,
+    name: None,
+    public_key: address_public_key,
+    key_manager_path: key_manager_path.clone(),
+  };
+  dbg!(&address);
+  db.addresses().insert(&address, &transaction)?;
+  transaction.commit()?;
+  Ok(address)
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_get_latest_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+
+  let db = state.create_db().await?;
+  let tx = db.create_transaction()?;
+  let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
+  Ok(
+    addresses
+      .into_iter()
+      .last()
+      .ok_or_else(|| Status::not_found("Address".to_string()))?,
+  )
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_send_to(
+  asset_public_key: String,
+  amount: u64,
+  to_address: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let to_public_key = PublicKey::from_hex(&to_address)?;
+  let args;
+  let db = state.create_db().await?;
+
+  let tx = db.create_transaction()?;
+  let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
+  // TODO: Get addresses with balance
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
+
+  let from_address = Vec::from(
+    addresses
+      .first()
+      .ok_or_else(|| Status::not_found("address".to_string()))?
+      .public_key
+      .as_bytes(),
+  );
+  args = tip002::TransferRequest {
+    to: Vec::from(to_public_key.as_bytes()),
+    amount,
+    from: from_address.clone(),
+    caller: from_address,
+  };
+
+  let mut args_bytes = vec![];
+  args.encode(&mut args_bytes)?;
+  let mut client = state.connect_validator_node_client().await?;
+
+  let resp = client
+    .invoke_method(asset_public_key, 2, "transfer".to_string(), args_bytes)
+    .await?;
+
+  dbg!(&resp);
+  Ok(())
 }

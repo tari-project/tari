@@ -21,15 +21,18 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-  schema::addresses,
+  diesel::ExpressionMethods,
+  schema::{addresses, asset_wallets},
   storage::{
     models::address_row::AddressRow,
     sqlite::{models, sqlite_transaction::SqliteTransaction},
     AddressesTableGateway, StorageError,
   },
 };
-use diesel::RunQueryDsl;
+use diesel::{QueryDsl, RunQueryDsl};
+use tari_common_types::types::PublicKey;
 use tari_utilities::ByteArray;
+use uuid::Uuid;
 
 pub struct SqliteAddressesTableGateway {}
 
@@ -38,7 +41,7 @@ impl AddressesTableGateway<SqliteTransaction> for SqliteAddressesTableGateway {
     let model = models::Address {
       id: Vec::from(row.id.as_bytes().as_slice()),
       asset_wallet_id: Vec::from(row.asset_wallet_id.as_bytes().as_slice()),
-      name: Some(row.name.clone()),
+      name: row.name.clone(),
       public_key: Vec::from(row.public_key.as_bytes()),
       key_manager_path: row.key_manager_path.clone(),
     };
@@ -46,5 +49,31 @@ impl AddressesTableGateway<SqliteTransaction> for SqliteAddressesTableGateway {
       .values(model)
       .execute(tx.connection())?;
     Ok(())
+  }
+
+  fn find_by_asset_and_wallet(
+    &self,
+    asset_id: Uuid,
+    wallet_id: Uuid,
+    tx: &SqliteTransaction,
+  ) -> Result<Vec<AddressRow>, StorageError> {
+    let addresses: Vec<models::Address> = addresses::table
+      .inner_join(asset_wallets::table)
+      .filter(asset_wallets::asset_id.eq(Vec::from(asset_id.as_bytes().as_slice())))
+      .filter(asset_wallets::wallet_id.eq(Vec::from(wallet_id.as_bytes().as_slice())))
+      .select(addresses::all_columns)
+      .load(tx.connection())?;
+
+    let mut result = vec![];
+    for row in addresses {
+      result.push(AddressRow {
+        id: Uuid::from_slice(&row.id)?,
+        asset_wallet_id: Uuid::from_slice(&row.asset_wallet_id)?,
+        name: row.name.clone(),
+        public_key: PublicKey::from_bytes(&row.public_key)?,
+        key_manager_path: row.key_manager_path.clone(),
+      });
+    }
+    Ok(result)
   }
 }

@@ -101,6 +101,20 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
         Ok(())
     }
 
+    fn get(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        use crate::schema::state_keys::dsl;
+        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let row: Option<StateKey> = dsl::state_keys
+            .find((schema, key))
+            .first(&connection)
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get::state_key".to_string(),
+            })?;
+        Ok(row.map(|r| r.value))
+    }
+
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
         debug!(target: LOG_TARGET, "Committing transaction");
         tx.connection()

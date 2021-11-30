@@ -22,7 +22,7 @@
 
 import React from "react";
 import {withRouter} from "react-router-dom";
-import {Alert, Container, Stack, Typography} from "@mui/material";
+import {Alert, Button, Container, Stack, TextField, Typography} from "@mui/material";
 import binding from "./binding";
 
 class AccountDashboard extends React.Component {
@@ -35,17 +35,64 @@ class AccountDashboard extends React.Component {
             isSaving: false,
             tip101: false,
             tip102: false,
-            assetPubKey: props.match.params.assetPubKey
+            assetPubKey: props.match.params.assetPubKey,
+            balance: -1,
+            receiveAddress: "",
+            sendToAddress: ""
         };
     }
 
     async componentDidMount() {
         try {
-            this.setState({error: null});
-            let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
-            console.log("balance", balance);
+            await this.refreshBalance();
+
+            let receiveAddress = await binding.command_asset_wallets_get_latest_address(this.state.assetPubKey);
+            this.setState({receiveAddress: receiveAddress.public_key});
+        } catch (err) {
+            console.error(err);
+            this.setState({error: err.message});
         }
-        catch(err) {
+    }
+
+    refreshBalance = async () => {
+        this.setState({error: null});
+        let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
+        console.log("balance", balance);
+        this.setState({balance});
+        return balance;
+    }
+
+    onGenerateReceiveAddress = async () => {
+        console.log("hello");
+        try {
+            this.setState({error: null});
+            let receiveAddress = await binding.command_asset_wallets_create_address(this.state.assetPubKey);
+            console.log("new address", receiveAddress);
+            this.setState({receiveAddress: receiveAddress.public_key});
+        } catch (err) {
+            console.error(err);
+            this.setState({error: err.message});
+        }
+    }
+
+    onSendToChanged = async (e) => {
+        this.setState({sendToAddress: e.target.value});
+    }
+
+    onSendToAmountChanged = async (e) => {
+        this.setState({sendToAmount: parseInt(e.target.value)});
+    }
+    onSend = async () => {
+        try {
+            this.setState({error: ""});
+            let result = await binding.command_asset_wallets_send_to(this.state.assetPubKey, this.state.sendToAmount, this.state.sendToAddress);
+            console.log(result);
+            this.setState({
+                sendToAddress: "", sendToAmount: ""
+            });
+            await this.refreshBalance();
+        } catch (err) {
+            console.error("Error sending:", err);
             this.setState({error: err.message});
         }
     }
@@ -55,17 +102,22 @@ class AccountDashboard extends React.Component {
                 {this.state.error ? (
                     <Alert severity="error">{this.state.error}</Alert>
                 ) : (
-                    <span />
+                    <span/>
                 )}
                 <Typography variant="h3" sx={{mb: "30px"}}>
                     Asset Details
                 </Typography>
                 <Typography>
-                    { this.state.assetPubKey }
+                    {this.state.assetPubKey}
                 </Typography>
                 <Stack>
-
-                    <Typography>Balance: </Typography>
+                    <Typography>Balance: {this.state.balance}</Typography>
+                    <Typography>Receive Address: {this.state.receiveAddress}</Typography>
+                    <Button onClick={this.onGenerateReceiveAddress}>Generate new receive address</Button>
+                    <TextField onChange={this.onSendToChanged} value={this.state.sendToAddress}></TextField>
+                    <TextField onChange={this.onSendToAmountChanged} value={this.state.sendToAmount}
+                               type="number"></TextField>
+                    <Button onClick={this.onSend}>Send</Button>
                 </Stack>
             </Container>
         );

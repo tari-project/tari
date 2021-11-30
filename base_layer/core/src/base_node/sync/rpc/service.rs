@@ -91,7 +91,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
-    #[instrument(name = "sync_rpc::sync_blocks", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -204,7 +204,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
-    #[instrument(name = "sync_rpc::sync_headers", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_headers", skip(self), err)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,

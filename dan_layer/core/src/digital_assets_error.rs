@@ -45,6 +45,17 @@ pub enum DigitalAssetError {
         source: prost::DecodeError,
         message_type: String,
     },
+    #[error("Could not encode protobuf message for {message_type}:{source}")]
+    ProtoBufEncodeError {
+        source: prost::EncodeError,
+        message_type: String,
+    },
+    #[error("Arithmetic overflow")]
+    Overflow,
+    #[error("Not enough funds")]
+    NotEnoughFunds,
+    #[error("Entity {entity}:{id} was not found")]
+    NotFound { entity: &'static str, id: String },
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

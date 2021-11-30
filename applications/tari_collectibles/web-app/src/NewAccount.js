@@ -59,7 +59,7 @@ class NewAccount extends React.Component {
       history.push(path);
       return;
     } catch (e) {
-      this.setState({ error: e });
+      this.setState({ error: e.message });
       console.error(e);
     }
     this.setState({ isSaving: false });

@@ -102,7 +102,7 @@ class Create extends React.Component {
         let payload = {
           symbol: this.state.tip002Data.symbol,
           decimals: parseInt(this.state.tip002Data.decimals),
-          total_supply: parseInt(this.state.tip002Data.totalSupply),
+          totalSupply: parseInt(this.state.tip002Data.totalSupply),
         };
 
         await protobuf.load("proto/tip002.proto").then(function (root) {

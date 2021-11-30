@@ -23,12 +23,19 @@
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
-    services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+    services::{
+        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        PayloadProcessor,
+    },
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use tari_crypto::tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
+
+const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 
 // TODO: This is very similar to pre-commit, and commit state
 pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
@@ -67,18 +74,18 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork>(
+    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork, TPayloadProcessor: PayloadProcessor<TPayload>>(
         &mut self,
         timeout: Duration,
         current_view: &View,
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         unit_of_work: TUnitOfWork,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
-        dbg!(next_event_result);
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
@@ -95,7 +102,7 @@ where
 
                               }
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work).await? {
+                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_processor).await? {
                                   next_event_result = result;
                                   break;
                               }
@@ -129,14 +136,15 @@ where
         }
 
         if self.received_new_view_messages.contains_key(sender) {
-            dbg!("Already received message from {:?}", &sender);
+            warn!(target: LOG_TARGET, "Already received message from {:?}", &sender);
             return Ok(None);
         }
 
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[DECIDE] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -146,10 +154,11 @@ where
                 self.broadcast(outbound, qc, current_view.view_id).await?;
                 return Ok(None); // Replica will move this on
             }
-            dbg!("committee did not agree on node");
+            warn!(target: LOG_TARGET, "committee did not agree on node");
             Ok(None)
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[DECIDE] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -196,18 +205,20 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
+    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork, TPayloadProcessor: PayloadProcessor<TPayload>>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
         from: &TAddr,
         view_leader: &TAddr,
         unit_of_work: &mut TUnitOfWork,
+        payload_processor: &mut TPayloadProcessor,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
-                dbg!(
-                    "Wrong justify message type received, log",
+                warn!(
+                    target: LOG_TARGET,
+                    "Wrong justify message type received, log. {}, {:?}, {}",
                     &self.node_id,
                     &justify.message_type(),
                     current_view.view_id
@@ -219,14 +230,16 @@ where
             // }
 
             if from != view_leader {
-                dbg!("Message not from leader");
+                warn!(target: LOG_TARGET, "Message not from leader");
                 return Ok(None);
             }
 
+            payload_processor.remove_payload_for_node(justify.node_hash()).await?;
             unit_of_work.commit_node(justify.node_hash())?;
+            info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().0.to_hex());
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
-            dbg!("received non justify message");
+            warn!(target: LOG_TARGET, "received non justify message");
             Ok(None)
         }
     }

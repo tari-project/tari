@@ -142,7 +142,6 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
-        trace!(target: LOG_TARGET, "next_event_result: {:?}", next_event_result);
 
         let started = Instant::now();
         let mut chain_tx = chain_tx;
@@ -224,14 +223,14 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PREPARE] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 committee.len()
             );
             let high_qc = self.find_highest_qc();
 
-            // TODO: get actual height
             let proposal = self
                 .create_proposal(high_qc.node_hash().clone(), payload_provider, 0)
                 .await?;
@@ -239,7 +238,8 @@ where
                 .await?;
             Ok(None) // Will move to pre-commit when it receives the message as a replica
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PREPARE] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 committee.len()
@@ -288,9 +288,8 @@ where
                     unimplemented!("Node is not safe")
                 }
 
-                dbg!(&node);
                 let res = payload_processor
-                    .process_payload(node.payload(), state_tx.clone())
+                    .process_payload(node.hash().clone(), node.payload(), state_tx.clone())
                     .await?;
                 if res == node.payload().state_root() {
                     chain_storage_service
@@ -339,10 +338,10 @@ where
         payload_provider: &TPayloadProvider,
         height: u32,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
-        info!(target: LOG_TARGET, "Creating new proposal");
+        debug!(target: LOG_TARGET, "Creating new proposal");
 
         // TODO: Artificial delay here to set the block time
-        sleep(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(10)).await;
 
         let payload = payload_provider.create_payload().await?;
         Ok(HotStuffTreeNode::from_parent(parent, payload, height))

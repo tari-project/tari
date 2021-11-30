@@ -63,9 +63,44 @@ impl GrpcValidatorNodeClient {
       .invoke_read_method(req)
       .await
       .map(|resp| resp.into_inner())
-      .map_err(|e| CollectiblesError::ClientRequestError {
-        source: e,
-        request: "invoke_read_method".to_string(),
+      .map_err(|e| {
+        dbg!(&e);
+
+        CollectiblesError::ClientRequestError {
+          source: e,
+          request: "invoke_read_method".to_string(),
+        }
+      })?;
+    dbg!(&response);
+    Ok(response.result)
+  }
+
+  pub async fn invoke_method(
+    &mut self,
+    asset_public_key: PublicKey,
+    template_id: u32,
+    method: String,
+    args: Vec<u8>,
+  ) -> Result<Option<Vec<u8>>, CollectiblesError> {
+    let req = grpc::InvokeMethodRequest {
+      asset_public_key: Vec::from(asset_public_key.as_bytes()),
+      template_id,
+      method,
+      args,
+    };
+    dbg!(&req);
+    let response = self
+      .client
+      .invoke_method(req)
+      .await
+      .map(|resp| resp.into_inner())
+      .map_err(|e| {
+        dbg!(&e);
+
+        CollectiblesError::ClientRequestError {
+          source: e,
+          request: "invoke_method".to_string(),
+        }
       })?;
     dbg!(&response);
     Ok(response.result)

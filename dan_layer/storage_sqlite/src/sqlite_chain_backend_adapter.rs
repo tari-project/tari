@@ -23,6 +23,7 @@
 use crate::{
     error::SqliteStorageError,
     models::{
+        instruction::NewInstruction,
         locked_qc::LockedQc,
         node::{NewNode, Node},
         prepare_qc::PrepareQc,
@@ -203,23 +204,25 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(())
     }
 
-    fn get_prepare_qc(&self) -> Result<QuorumCertificate, Self::Error> {
+    fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error> {
         let connection = SqliteConnection::establish(self.database_url.as_str())?;
         use crate::schema::prepare_qc::dsl;
-        let qc: PrepareQc =
-            dsl::prepare_qc
-                .find(1)
-                .first(&connection)
-                .map_err(|source| SqliteStorageError::DieselError {
-                    source,
-                    operation: "get_prepare_qc".to_string(),
-                })?;
-        Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
-            ViewId::from(qc.view_number as u64),
-            TreeNodeHash(qc.node_hash.clone()),
-            qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
-        ))
+        let qc: Option<PrepareQc> = dsl::prepare_qc
+            .find(1)
+            .first(&connection)
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_prepare_qc".to_string(),
+            })?;
+        Ok(qc.map(|qc| {
+            QuorumCertificate::new(
+                HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+                ViewId::from(qc.view_number as u64),
+                TreeNodeHash(qc.node_hash.clone()),
+                qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
+            )
+        }))
     }
 
     fn commit(&self, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
@@ -319,9 +322,32 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn insert_instruction(
         &self,
-        _item: &DbInstruction,
-        _transaction: &Self::BackendTransaction,
+        item: &DbInstruction,
+        transaction: &Self::BackendTransaction,
     ) -> Result<(), Self::Error> {
-        todo!()
+        use crate::schema::nodes::dsl;
+        // TODO: this could be made more efficient
+        let node: Node = dsl::nodes
+            .filter(nodes::hash.eq(&item.node_hash.0))
+            .first(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert_instruction::find_node".to_string(),
+            })?;
+        let new_instruction = NewInstruction {
+            hash: Vec::from(item.instruction.hash()),
+            node_id: node.id,
+            template_id: item.instruction.template_id() as i32,
+            method: item.instruction.method().to_string(),
+            args: Vec::from(item.instruction.args()),
+        };
+        diesel::insert_into(instructions::table)
+            .values(new_instruction)
+            .execute(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert_instruction".to_string(),
+            })?;
+        Ok(())
     }
 }

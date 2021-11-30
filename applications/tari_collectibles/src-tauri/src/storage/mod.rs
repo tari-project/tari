@@ -29,6 +29,7 @@ use crate::storage::models::{
   key_index_row::KeyIndexRow, tip002_address_row::Tip002AddressRow, wallet_row::WalletRow,
 };
 pub use storage_error::StorageError;
+use tari_common_types::types::PublicKey;
 use tari_key_manager::cipher_seed::CipherSeed;
 use uuid::Uuid;
 
@@ -60,6 +61,7 @@ pub trait AssetsTableGateway<T: StorageTransaction> {
   fn list(&self, tx: &T) -> Result<Vec<AssetRow>, StorageError>;
   fn insert(&self, asset: &AssetRow, tx: &T) -> Result<(), StorageError>;
   fn find(&self, asset_id: Uuid, tx: &T) -> Result<AssetRow, StorageError>;
+  fn find_by_public_key(&self, public_key: &PublicKey, tx: &T) -> Result<AssetRow, StorageError>;
 }
 
 pub trait WalletsTableGateway<T: StorageTransaction> {
@@ -97,10 +99,22 @@ pub trait AssetWalletsTableGateway<T: StorageTransaction> {
   fn insert(&self, row: &AssetWalletRow, tx: &T) -> Result<(), StorageError>;
   fn find_by_wallet_id(&self, wallet_id: Uuid, tx: &T)
     -> Result<Vec<AssetWalletRow>, StorageError>;
+  fn find_by_asset_and_wallet(
+    &self,
+    asset_id: Uuid,
+    wallet_id: Uuid,
+    tx: &T,
+  ) -> Result<AssetWalletRow, StorageError>;
 }
 
 pub trait AddressesTableGateway<T: StorageTransaction> {
   fn insert(&self, row: &AddressRow, tx: &T) -> Result<(), StorageError>;
+  fn find_by_asset_and_wallet(
+    &self,
+    asset_id: Uuid,
+    wallet_id: Uuid,
+    tx: &T,
+  ) -> Result<Vec<AddressRow>, StorageError>;
 }
 
 pub trait IssuedAssetsTableGateway {}

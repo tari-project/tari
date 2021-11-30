@@ -43,16 +43,23 @@ pub trait AssetProcessor {
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: TUnitOfWork,
+        db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        template_id: TemplateId,
+        method: String,
+        args: &[u8],
+        state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
-pub struct ConcreteAssetProcessor<TInstructionLog> {
+pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
-    _instruction_log: TInstructionLog,
 }
 
-impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetProcessor<TInstructionLog> {
+impl AssetProcessor for ConcreteAssetProcessor {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
@@ -66,7 +73,7 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: TUnitOfWork,
+        db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         self.execute(
             instruction.template_id(),
@@ -75,36 +82,55 @@ impl<TInstructionLog: InstructionLog + Send> AssetProcessor for ConcreteAssetPro
             // InstructionCaller {
             //     owner_token_id: instruction.from_owner().to_owned(),
             // },
-            instruction.hash().into(),
             db,
         )
     }
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        template_id: TemplateId,
+        method: String,
+        args: &[u8],
+        state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        match template_id {
+            TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
+            _ => {
+                todo!()
+            },
+        }
+    }
 }
 
-impl<TInstructionLog: InstructionLog> ConcreteAssetProcessor<TInstructionLog> {
-    pub fn new(instruction_log: TInstructionLog) -> Self {
+impl ConcreteAssetProcessor {
+    pub fn new() -> Self {
         Self {
             template_factory: TemplateFactory {},
-            _instruction_log: instruction_log,
         }
     }
 
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
-        _template_id: TemplateId,
-        _method: String,
-        _args: Vec<u8>,
-        // caller: InstructionCaller,
-        _hash: Vec<u8>,
-        _db: TUnitOfWork,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+        state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        todo!()
+        match template_id {
+            TemplateId::Tip002 => {
+                tip002_template::invoke_method(method, &args, state_db)?;
+            },
+            _ => {
+                todo!()
+            },
+        }
         // let instruction = self.template_factory.create_command(template_id, method, args)?;
         // let unit_of_work = state_db.new_unit_of_work();
         // let result = instruction.try_execute(db)?;
         // unit_of_work.commit()?;
         // self.instruction_log.store(hash, result);
         // Ok(())
+        Ok(())
     }
 }
 

@@ -30,8 +30,11 @@ use crate::{
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
+use log::*;
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 use tokio::time::{sleep, Duration};
+
+const LOG_TARGET: &str = "tari::dan::workers::states::precommit";
 
 pub struct PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
 where
@@ -85,7 +88,6 @@ where
         let mut next_event_result = ConsensusWorkerStateEvent::Errored {
             reason: "loop ended without setting this event".to_string(),
         };
-        dbg!(next_event_result);
 
         self.received_new_view_messages.clear();
         let started = Instant::now();
@@ -143,7 +145,8 @@ where
         self.received_new_view_messages.insert(sender.clone(), message);
 
         if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -155,16 +158,11 @@ where
                 // return Ok(Some(ConsensusWorkerStateEvent::PreCommitted));
                 return Ok(None);
             }
-            dbg!("committee did not agree on node");
+            warn!(target: LOG_TARGET, "committee did not agree on node");
             Ok(None)
-
-            // let high_qc = self.find_highest_qc();
-            // let proposal = self.create_proposal(high_qc.node(), payload_provider);
-            // self.broadcast_proposal(outbound, proposal, high_qc, current_view.view_id)
-            //     .await?;
-            // Ok(Some(ConsensusWorkerStateEvent::Prepared))
         } else {
-            println!(
+            debug!(
+                target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
                 self.received_new_view_messages.len(),
                 self.committee.len()
@@ -224,20 +222,18 @@ where
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-                dbg!(
-                    "Wrong justify message type received, log",
+                warn!(
+                    target: LOG_TARGET,
+                    "Wrong justify message type received, log. {}, {:?}, {}",
                     &self.node_id,
                     &justify.message_type(),
                     current_view.view_id
                 );
                 return Ok(None);
             }
-            // if message.node().is_none() {
-            //     unimplemented!("Empty message");
-            // }
 
             if from != view_leader {
-                dbg!("Message not from leader");
+                warn!(target: LOG_TARGET, "Message not from leader");
                 return Ok(None);
             }
 

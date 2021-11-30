@@ -30,7 +30,7 @@ use std::fmt::Display;
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
 use tari_key_manager::key_manager::KeyManager;
-use tari_utilities::ByteArrayError;
+use tari_utilities::{hex::Hex, ByteArrayError};
 use uuid::Uuid;
 
 pub trait KeyManagerProvider<T: StorageTransaction> {
@@ -38,6 +38,15 @@ pub trait KeyManagerProvider<T: StorageTransaction> {
   fn generate_asset_public_key(
     &self,
     wallet_id: Uuid,
+    passphrase: Option<String>,
+    transaction: &T,
+  ) -> Result<(String, PrivateKey, PublicKey), Self::Error>;
+
+  // TODO: Maybe a better name here so that it doesn't get confused with generate_asset_public_key. This is used by ERC20-like receiving addresses
+  fn generate_asset_address(
+    &self,
+    wallet_id: Uuid,
+    asset_public_key: &PublicKey,
     passphrase: Option<String>,
     transaction: &T,
   ) -> Result<(String, PrivateKey, PublicKey), Self::Error>;
@@ -102,5 +111,53 @@ impl KeyManagerProvider<SqliteTransaction> for ConcreteKeyManagerProvider {
 
     let pub_key = PublicKey::from_secret_key(&new_key.k);
     Ok((format!("assets:{}", new_key.key_index), new_key.k, pub_key))
+  }
+
+  fn generate_asset_address(
+    &self,
+    wallet_id: Uuid,
+    asset_public_key: &PublicKey,
+    passphrase: Option<String>,
+    transaction: &SqliteTransaction,
+  ) -> Result<(String, PrivateKey, PublicKey), Self::Error> {
+    let db = self.db_factory.create_db()?;
+    let cipher_seed = db
+      .wallets()
+      .get_cipher_seed(wallet_id, passphrase, Some(transaction))?;
+    let row = match db
+      .key_indices()
+      .find(format!("assets/{}", asset_public_key.to_hex()), transaction)?
+    {
+      Some(row) => row,
+      None => {
+        let row = KeyIndexRow {
+          id: Uuid::new_v4(),
+          branch_seed: format!("assets/{}", asset_public_key.to_hex()),
+          last_index: 0,
+        };
+
+        db.key_indices().insert(&row, transaction)?;
+        row
+      }
+    };
+
+    let mut key_manager = KeyManager::<PrivateKey, Blake256>::from(
+      cipher_seed,
+      row.branch_seed.clone(),
+      row.last_index,
+    );
+    let new_key = key_manager
+      .next_key()
+      .map_err(KeyManagerProviderError::CouldNotDeriveKey)?;
+
+    db.key_indices()
+      .update_last_index(&row, new_key.key_index, transaction)?;
+
+    let pub_key = PublicKey::from_secret_key(&new_key.k);
+    Ok((
+      format!("assets/{}:{}", asset_public_key.to_hex(), new_key.key_index),
+      new_key.k,
+      pub_key,
+    ))
   }
 }
