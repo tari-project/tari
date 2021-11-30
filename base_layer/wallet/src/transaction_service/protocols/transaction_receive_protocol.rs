@@ -49,7 +49,6 @@ use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionReceiveProtocolStage {
@@ -356,12 +355,6 @@ where
 
             info!(
                 target: LOG_TARGET,
-                "Finalized Transaction with TX_ID = {} received from {}",
-                self.id,
-                self.source_pubkey.clone()
-            );
-            debug!(
-                target: LOG_TARGET_STRESS,
                 "Finalized Transaction with TX_ID = {} received from {}",
                 self.id,
                 self.source_pubkey.clone()
