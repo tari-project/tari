@@ -326,6 +326,7 @@ where
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         unit_of_work.clone(),
+                        &mut self.payload_processor,
                     )
                     .await?;
                 unit_of_work.commit()?;

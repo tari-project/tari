@@ -289,7 +289,7 @@ where
                 }
 
                 let res = payload_processor
-                    .process_payload(node.payload(), state_tx.clone())
+                    .process_payload(node.hash().clone(), node.payload(), state_tx.clone())
                     .await?;
                 if res == node.payload().state_root() {
                     chain_storage_service

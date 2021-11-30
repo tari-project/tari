@@ -212,7 +212,7 @@ impl DanNode {
         // let data_store = AssetDataStore::new(backend);
         let asset_processor = ConcreteAssetProcessor::new();
 
-        let payload_processor = TariDanPayloadProcessor::new(asset_processor);
+        let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service.clone());
         let mut inbound = TariCommsInboundConnectionService::new();
         let receiver = inbound.take_receiver().unwrap();
 
