@@ -165,11 +165,7 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
-    TransactionValidationTimedOut(u64),
     TransactionValidationStateChanged(u64),
-    TransactionValidationFailure(u64),
-    TransactionValidationAborted(u64),
-    TransactionValidationDelayed(u64),
     Error(String),
 }
 
