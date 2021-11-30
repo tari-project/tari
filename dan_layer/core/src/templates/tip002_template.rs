@@ -19,10 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
 use prost::Message;
 use tari_core::transactions::transaction::TemplateParameter;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip002;
 
 pub fn init<TUnitOfWork: StateDbUnitOfWork>(
@@ -50,8 +51,19 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.as_str() {
-        "BalanceOf" => balance_of(args, state_db),
+    match method.to_lowercase().as_str() {
+        "balanceof" => balance_of(args, state_db),
+        _ => todo!(),
+    }
+}
+
+pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: String,
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<(), DigitalAssetError> {
+    match method.to_lowercase().as_str() {
+        "transfer" => transfer(args, state_db),
         _ => todo!(),
     }
 }
@@ -84,5 +96,54 @@ fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
             Ok(Some(output_buffer))
         },
         None => Ok(None),
+    }
+}
+
+fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork) -> Result<(), DigitalAssetError> {
+    let request = tip002::TransferRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+        source: e,
+        message_type: "tip002::TransferRequest".to_string(),
+    })?;
+
+    let data = state_db.get_value("owners", &request.from)?;
+    match data {
+        Some(data) => {
+            let mut data2: [u8; 8] = [0; 8];
+            data2.copy_from_slice(&data);
+            let balance = u64::from_le_bytes(data2);
+            if balance < request.amount {
+                return Err(DigitalAssetError::NotEnoughFunds);
+            }
+            let new_balance = balance - request.amount;
+            state_db.set_value(
+                "owners".to_string(),
+                request.from.clone(),
+                Vec::from(new_balance.to_le_bytes()),
+            )?;
+            let receiver_data = state_db.get_value("owners", &request.to)?;
+            let receiver_balance = match receiver_data {
+                Some(d) => {
+                    let mut data2: [u8; 8] = [0; 8];
+                    data2.copy_from_slice(&data);
+                    let balance = u64::from_le_bytes(data2);
+                    balance
+                },
+                None => 0,
+            };
+            receiver_balance
+                .checked_add(request.amount)
+                .ok_or_else(|| DigitalAssetError::Overflow);
+
+            state_db.set_value(
+                "owners".to_string(),
+                request.to.clone(),
+                Vec::from(receiver_balance.to_le_bytes()),
+            )?;
+            Ok(())
+        },
+        None => Err(DigitalAssetError::NotFound {
+            entity: "address",
+            id: request.from.to_hex(),
+        }),
     }
 }

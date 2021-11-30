@@ -77,12 +77,12 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync> PayloadProcessor<TariDanPayl
         payload: &TariDanPayload,
         state_tx: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
+        let mut state_tx = state_tx;
         for instruction in payload.instructions() {
             dbg!("Executing instruction");
             dbg!(&instruction);
             // TODO: Should we swallow + log the error instead of propagating it?
-            self.asset_processor
-                .execute_instruction(instruction, state_tx.clone())?;
+            self.asset_processor.execute_instruction(instruction, &mut state_tx)?;
         }
 
         Ok(state_tx.calculate_root()?)

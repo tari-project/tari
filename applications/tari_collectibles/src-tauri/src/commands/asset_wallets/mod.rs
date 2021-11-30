@@ -242,33 +242,35 @@ pub(crate) async fn asset_wallets_send_to(
   let to_public_key = PublicKey::from_hex(&to_address)?;
   let args;
   let db = state.create_db().await?;
-  {
-    let tx = db.create_transaction()?;
-    let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
-    // TODO: Get addresses with balance
-    let addresses = db
-      .addresses()
-      .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
 
-    let from_address = Vec::from(
-      addresses
-        .first()
-        .ok_or_else(|| Status::not_found("address".to_string()))?
-        .public_key
-        .as_bytes(),
-    );
-    args = tip002::TransferRequest {
-      to: Vec::from(to_public_key.as_bytes()),
-      amount,
-      from: from_address.clone(),
-      caller: from_address,
-    };
-  }
+  let tx = db.create_transaction()?;
+  let asset_id = db.assets().find_by_public_key(&asset_public_key, &tx)?.id;
+  // TODO: Get addresses with balance
+  let addresses = db
+    .addresses()
+    .find_by_asset_and_wallet(asset_id, wallet_id, &tx)?;
+
+  let from_address = Vec::from(
+    addresses
+      .first()
+      .ok_or_else(|| Status::not_found("address".to_string()))?
+      .public_key
+      .as_bytes(),
+  );
+  args = tip002::TransferRequest {
+    to: Vec::from(to_public_key.as_bytes()),
+    amount,
+    from: from_address.clone(),
+    caller: from_address,
+  };
+
   let mut args_bytes = vec![];
   args.encode(&mut args_bytes)?;
   let mut client = state.connect_validator_node_client().await?;
 
-  let resp = client.invoke_method(asset_public_key, 2, "transfer".to_string(), args_bytes)?;
+  let resp = client
+    .invoke_method(asset_public_key, 2, "transfer".to_string(), args_bytes)
+    .await?;
 
   dbg!(&resp);
   Ok(())

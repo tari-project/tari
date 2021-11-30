@@ -23,6 +23,7 @@
 use crate::{
     error::SqliteStorageError,
     models::{
+        instruction::NewInstruction,
         locked_qc::LockedQc,
         node::{NewNode, Node},
         prepare_qc::PrepareQc,
@@ -321,9 +322,32 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn insert_instruction(
         &self,
-        _item: &DbInstruction,
-        _transaction: &Self::BackendTransaction,
+        item: &DbInstruction,
+        transaction: &Self::BackendTransaction,
     ) -> Result<(), Self::Error> {
-        todo!()
+        use crate::schema::nodes::dsl;
+        // TODO: this could be made more efficient
+        let node: Node = dsl::nodes
+            .filter(nodes::hash.eq(&item.node_hash.0))
+            .first(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert_instruction::find_node".to_string(),
+            })?;
+        let new_instruction = NewInstruction {
+            hash: Vec::from(item.instruction.hash()),
+            node_id: node.id,
+            template_id: item.instruction.template_id() as i32,
+            method: item.instruction.method().to_string(),
+            args: Vec::from(item.instruction.args()),
+        };
+        diesel::insert_into(instructions::table)
+            .values(new_instruction)
+            .execute(transaction.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "insert_instruction".to_string(),
+            })?;
+        Ok(())
     }
 }

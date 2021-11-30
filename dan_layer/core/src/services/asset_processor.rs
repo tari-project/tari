@@ -43,7 +43,7 @@ pub trait AssetProcessor {
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: TUnitOfWork,
+        db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 
     fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
@@ -73,7 +73,7 @@ impl AssetProcessor for ConcreteAssetProcessor {
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: TUnitOfWork,
+        db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
         self.execute(
             instruction.template_id(),
@@ -82,7 +82,6 @@ impl AssetProcessor for ConcreteAssetProcessor {
             // InstructionCaller {
             //     owner_token_id: instruction.from_owner().to_owned(),
             // },
-            instruction.hash().into(),
             db,
         )
     }
@@ -112,20 +111,26 @@ impl ConcreteAssetProcessor {
 
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
-        _template_id: TemplateId,
-        _method: String,
-        _args: Vec<u8>,
-        // caller: InstructionCaller,
-        _hash: Vec<u8>,
-        _db: TUnitOfWork,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+        state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        todo!()
+        match template_id {
+            TemplateId::Tip002 => {
+                tip002_template::invoke_method(method, &args, state_db)?;
+            },
+            _ => {
+                todo!()
+            },
+        }
         // let instruction = self.template_factory.create_command(template_id, method, args)?;
         // let unit_of_work = state_db.new_unit_of_work();
         // let result = instruction.try_execute(db)?;
         // unit_of_work.commit()?;
         // self.instruction_log.store(hash, result);
         // Ok(())
+        Ok(())
     }
 }
 

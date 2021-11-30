@@ -85,7 +85,7 @@ class AccountDashboard extends React.Component {
     onSend = async () => {
         try {
             this.setState({error: ""});
-            let result = binding.command_asset_wallets_send_to(this.state.assetPubKey, this.state.sendToAmount, this.state.sendToAddress);
+            let result = await binding.command_asset_wallets_send_to(this.state.assetPubKey, this.state.sendToAmount, this.state.sendToAddress);
             console.log(result);
             this.setState({
                 sendToAddress: "", sendToAmount: ""
