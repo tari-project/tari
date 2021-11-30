@@ -158,6 +158,8 @@ pub enum WalletStorageError {
     DeprecatedOperation,
     #[error("Key Manager Error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+    #[error("Recovery Seed Error: {0}")]
+    RecoverySeedError(String),
 }
 
 impl From<WalletStorageError> for ExitCodes {

@@ -755,7 +755,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 
@@ -779,7 +779,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 
@@ -821,7 +821,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                previous.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 

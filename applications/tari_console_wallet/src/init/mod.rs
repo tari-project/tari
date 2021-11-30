@@ -32,7 +32,7 @@ use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsPublicKey,
     NodeIdentity,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
@@ -301,9 +301,13 @@ pub async fn init_wallet(
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
 
-    let db_addr = wallet_db.get_node_address().await?;
-    let config_addr = config.public_address.clone();
-    let node_address = config_addr.or(db_addr).unwrap_or_else(|| Multiaddr::empty());
+    let node_address = match config.public_address.clone() {
+        Some(addr) => addr,
+        None => match wallet_db.get_node_address().await? {
+            Some(addr) => addr,
+            None => Multiaddr::empty(),
+        },
+    };
 
     let node_features = wallet_db
         .get_node_features()
@@ -312,7 +316,7 @@ pub async fn init_wallet(
 
     let identity_sig = wallet_db.get_comms_identity_signature().await?;
 
-    let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
+    let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db).await?;
     let comms_secret_key = derive_comms_secret_key(&master_seed)?;
 
     // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig to
@@ -329,13 +333,15 @@ pub async fn init_wallet(
     if !node_identity.is_signed() {
         node_identity.sign();
         // unreachable panic: signed above
-        wallet_db.set_comms_identity_signature(
-            node_identity
-                .identity_signature_read()
-                .as_ref()
-                .expect("unreachable panic")
-                .clone(),
-        )
+        wallet_db
+            .set_comms_identity_signature(
+                node_identity
+                    .identity_signature_read()
+                    .as_ref()
+                    .expect("unreachable panic")
+                    .clone(),
+            )
+            .await?;
     }
 
     let transport_type = create_transport_type(config);
@@ -435,6 +441,7 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
+        master_seed,
     )
     .await
     .map_err(|e| {
@@ -508,11 +515,10 @@ pub async fn start_wallet(
     let net_address = base_node
         .addresses
         .first()
-        .ok_or_else(|| ExitCodes::ConfigError("Configured base node has no address!".to_string()))?
-        .to_string();
+        .ok_or_else(|| ExitCodes::ConfigError("Configured base node has no address!".to_string()))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), net_address)
+        .set_base_node_peer(base_node.public_key.clone(), net_address.address.clone())
         .await
         .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
 

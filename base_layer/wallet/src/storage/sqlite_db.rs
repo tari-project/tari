@@ -358,6 +358,7 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key.to_string(), &conn)?
                 .and_then(|s| from_hex(&s).ok())
                 .and_then(|bytes| IdentitySignature::from_bytes(&bytes).ok())
+                .map(Box::new)
                 .map(DbValue::CommsIdentitySignature),
         };
         if start.elapsed().as_millis() > 0 {

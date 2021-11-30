@@ -66,7 +66,7 @@ pub enum DbKey {
 pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
-    CommsIdentitySignature(IdentitySignature),
+    CommsIdentitySignature(Box<IdentitySignature>),
     TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
@@ -85,7 +85,7 @@ pub enum DbKeyValuePair {
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
-    CommsIdentitySignature(IdentitySignature),
+    CommsIdentitySignature(Box<IdentitySignature>),
 }
 
 pub enum WriteOperation {
@@ -212,9 +212,9 @@ where T: WalletBackend + 'static
     pub async fn get_comms_identity_signature(&self) -> Result<Option<IdentitySignature>, WalletStorageError> {
         let db = self.db.clone();
 
-        let sig = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::CommsFeatures) {
+        let sig = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::CommsIdentitySignature) {
             Ok(None) => Ok(None),
-            Ok(Some(DbValue::CommsIdentitySignature(k))) => Ok(Some(k)),
+            Ok(Some(DbValue::CommsIdentitySignature(k))) => Ok(Some(*k)),
             Ok(Some(other)) => unexpected_result(DbKey::CommsIdentitySignature, other),
             Err(e) => log_error(DbKey::CommsIdentitySignature, e),
         })
@@ -227,7 +227,9 @@ where T: WalletBackend + 'static
         let db = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
-            db.write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(sig)))
+            db.write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
+                Box::new(sig),
+            )))
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
@@ -363,7 +365,7 @@ impl Display for DbKey {
         match self {
             DbKey::MasterSeed => f.write_str("MasterSeed"),
             DbKey::CommsAddress => f.write_str("CommsAddress"),
-            DbKey::CommsFeatures => f.write_str(&"Nod features"),
+            DbKey::CommsFeatures => f.write_str("Nod features"),
             DbKey::TorId => f.write_str("TorId"),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
             DbKey::BaseNodeChainMetadata => f.write_str("Last seen Chain metadata from basw node"),

@@ -3207,8 +3207,13 @@ pub unsafe extern "C" fn wallet_create(
     let result = runtime.block_on(async {
         let identity_sig = wallet_database.get_comms_identity_signature().await?;
 
-        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database).await?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
+        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
+            .await
+            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+        let comms_secret_key = derive_comms_secret_key(&master_seed)
+            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+        let node_features = comms_config.node_identity.features();
+        let node_address = comms_config.node_identity.public_address();
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
         // to None
@@ -3227,18 +3232,22 @@ pub unsafe extern "C" fn wallet_create(
         if !node_identity.is_signed() {
             node_identity.sign();
             // unreachable panic: signed above
-            wallet_database.set_comms_identity_signature(
-                node_identity
-                    .identity_signature_read()
-                    .as_ref()
-                    .expect("unreachable panic")
-                    .clone(),
-            )
+            wallet_database
+                .set_comms_identity_signature(
+                    node_identity
+                        .identity_signature_read()
+                        .as_ref()
+                        .expect("unreachable panic")
+                        .clone(),
+                )
+                .await?;
         }
-        Ok(node_identity)
+        Ok((master_seed, node_identity))
     });
+    let master_seed;
     match result {
-        Ok(node_identity) => {
+        Ok((seed, node_identity)) => {
+            master_seed = seed;
             comms_config.node_identity = node_identity;
         },
         Err(e) => {
@@ -3279,7 +3288,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        recovery_seed,
+        master_seed,
     ));
 
     match w {
@@ -3578,11 +3587,19 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    let address_string;
+    let parsed_addr;
     if !address.is_null() {
         match CStr::from_ptr(address).to_str() {
             Ok(v) => {
-                address_string = v.to_owned();
+                parsed_addr = match Multiaddr::from_str(v) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        error = LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string()))
+                            .code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return false;
+                    },
+                }
             },
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("address".to_string())).code;
@@ -3596,11 +3613,10 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .set_base_node_peer((*public_key).clone(), address_string),
-    ) {
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.set_base_node_peer((*public_key).clone(), parsed_addr))
+    {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
