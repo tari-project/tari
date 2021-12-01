@@ -650,6 +650,7 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission disabled/,
+  { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -668,6 +669,7 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission enabled/,
+  { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -2030,7 +2032,7 @@ When(
 
 When(
   /I send(.*) uT without waiting for broadcast from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 120 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();

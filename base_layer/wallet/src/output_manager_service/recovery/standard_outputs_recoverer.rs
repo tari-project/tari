@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use log::*;
 use rand::rngs::OsRng;
@@ -73,6 +73,8 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        let start = Instant::now();
+        let outputs_length = outputs.len();
         let mut rewound_outputs: Vec<UnblindedOutput> = outputs
             .into_iter()
             .filter_map(|output| {
@@ -114,6 +116,13 @@ where TBackend: OutputManagerBackend + 'static
                 },
             )
             .collect();
+        let rewind_time = start.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "bulletproof rewind profile - rewound {} outputs in {} ms",
+            outputs_length,
+            rewind_time.as_millis(),
+        );
 
         for output in rewound_outputs.iter_mut() {
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
@@ -136,10 +145,7 @@ where TBackend: OutputManagerBackend + 'static
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
-                output
-                    .as_transaction_input(&self.factories.commitment)?
-                    .commitment
-                    .to_hex(),
+                output_hex,
                 output.value,
                 output.features,
             );

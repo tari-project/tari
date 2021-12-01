@@ -129,13 +129,13 @@ First you'll need to make sure you have a full development environment set up:
 - Build Tools
 
   - [CMake](https://cmake.org/download/) (Used for RandomX)
-  
-  - Either: 
+
+  - Either:
     - Microsoft Visual Studio Version 2019 or later
       - C++ CMake tools for Windows
       - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
       - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
-    
+
     or
     - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
@@ -432,15 +432,19 @@ will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPR
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under section **`base_node.weatherwax`**:
+the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under sections **`base_node.weatherwax`** and **`wallet`** respectively:
 
+```
+[wallet]
+
+grpc_address = "127.0.0.1:18143"
+```
 ```
 [base_node.weatherwax]
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
 grpc_base_node_address = "127.0.0.1:18142"
-grpc_console_wallet_address = "127.0.0.1:18143"
 ```
 
 For Tari Stratum Transcoder:
@@ -468,7 +472,7 @@ For the Tari Mining Node there are some additional settings under section **`min
 #base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet
-# Default: value from `base_node.grpc_console_wallet_address`
+# Default: value from `wallet.grpc_address`
 #wallet_grpc_address = "127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
@@ -492,14 +496,14 @@ For pooled SHA3 mining:
 
 # Stratum Mode configuration
 # mining_pool_address = "miningcore.tari.com:3052"
-# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY" 
+# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
 ```
-Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration. 
+Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration.
 `mining_worker_name` is an optional configuration field allowing you to name your worker.
 
 #### Perform SHA3 mining
-* For SHA3 mining: 
+* For SHA3 mining:
   Tor and the required Tari applications must be started and preferably in this order:
 
   - Tor:
@@ -545,7 +549,7 @@ and performing mining:
   * Pool Operators:
     Tor and the required Tari applications must be started in this order:
     - Tor:
-      
+
       - Linux/OSX: Execute `start_tor.sh`.
       - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
@@ -566,7 +570,7 @@ and performing mining:
     - Tari Mining Node:
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
-    or `start_tari_mining_node` shortcut in the Tari installation folder. 
+    or `start_tari_mining_node` shortcut in the Tari installation folder.
 
 ### Tari merge mining
 
@@ -603,14 +607,17 @@ directory.
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.weatherwax`**
+- For the Tari Base Node and the Tari Console Wallet, under sections **`base_node.weatherwax`** and **`wallet`** respectively
+  ```
+  [wallet]
+  grpc_address = "127.0.0.1:18143"
+  ```
   ```
   [base_node.weatherwax]
   transport = "tor"
   allow_test_addresses = false
   grpc_enabled = true
   grpc_base_node_address = "127.0.0.1:18142"
-  grpc_console_wallet_address = "127.0.0.1:18143"
   ```
 
 And then depending on if you are using solo mining or self-select mining you will use one of the following:

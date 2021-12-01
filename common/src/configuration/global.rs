@@ -112,6 +112,7 @@ pub struct GlobalConfig {
     pub base_node_event_channel_size: usize,
     pub output_manager_event_channel_size: usize,
     pub wallet_connection_manager_pool_size: usize,
+    pub wallet_recovery_retry_limit: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -345,11 +346,11 @@ fn convert_node_config(
         .get_str(&key)
         .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
-    let key = config_string("base_node", net_str, "grpc_console_wallet_address");
+    let key = "wallet.grpc_address";
     let grpc_console_wallet_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(key, &e.to_string())))??;
 
     // Peer and DNS seeds
     let key = "common.peer_seeds";
@@ -483,6 +484,9 @@ fn convert_node_config(
 
     let key = "wallet.connection_manager_pool_size";
     let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16) as usize;
+
+    let key = "wallet.wallet_recovery_retry_limit";
+    let wallet_recovery_retry_limit = optional(cfg.get_int(key))?.unwrap_or(3) as usize;
 
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
@@ -759,6 +763,7 @@ fn convert_node_config(
         transaction_event_channel_size,
         base_node_event_channel_size,
         wallet_connection_manager_pool_size,
+        wallet_recovery_retry_limit,
         output_manager_event_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,

@@ -136,7 +136,7 @@ function createEnv(
 
   const configEnvs = {
     [`TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    [`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
+    [`TARI_WALLET__GRPC_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
 
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
 
