@@ -327,9 +327,12 @@ pub async fn init_wallet(
     });
 
     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-    let node_identity = Arc::new(unsafe {
-        NodeIdentity::with_signature_unchecked(comms_secret_key, node_address, node_features, identity_sig)
-    });
+    let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+        comms_secret_key,
+        node_address,
+        node_features,
+        identity_sig,
+    ));
     if !node_identity.is_signed() {
         node_identity.sign();
         // unreachable panic: signed above

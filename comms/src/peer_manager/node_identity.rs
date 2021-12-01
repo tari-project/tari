@@ -76,9 +76,10 @@ impl NodeIdentity {
 
     /// Create a new NodeIdentity from the provided key pair and control service address.
     ///
-    /// # Safety
-    /// It is up to the caller to ensure that the given signature is valid for the node identity
-    pub unsafe fn with_signature_unchecked(
+    /// # Unchecked
+    /// It is up to the caller to ensure that the given signature is valid for the node identity.
+    /// Prefer using NodeIdentity::new over this function.
+    pub fn with_signature_unchecked(
         secret_key: CommsSecretKey,
         public_address: Multiaddr,
         features: PeerFeatures,
