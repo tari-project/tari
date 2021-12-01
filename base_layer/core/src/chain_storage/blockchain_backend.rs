@@ -135,6 +135,10 @@ pub trait BlockchainBackend: Send + Sync {
     fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError>;
+
+    /// Clear all headers that are beyond the current height of longest chain, returning the number of headers that were
+    /// deleted.
+    fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header and accumulated data with the highest height.
     fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
@@ -181,4 +185,7 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         mmr_positions: Vec<u32>,
     ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError>;
+
+    /// Check if a block hash is in the bad block list
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError>;
 }

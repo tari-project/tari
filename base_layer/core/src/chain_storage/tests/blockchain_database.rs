@@ -20,16 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
-use tari_common::configuration::Network;
-use tari_test_utils::unpack_enum;
-
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
-    proof_of_work::Difficulty,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     tari_utilities::Hashable,
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
@@ -41,6 +36,9 @@ use crate::{
         transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
     },
 };
+use std::sync::Arc;
+use tari_common::configuration::Network;
+use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -482,5 +480,54 @@ mod prepare_new_block {
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
+    }
+}
+
+mod clear_all_pending_headers {
+    use super::*;
+
+    #[test]
+    fn it_clears_no_headers() {
+        let db = setup();
+        assert_eq!(db.clear_all_pending_headers().unwrap(), 0);
+        let _ = add_many_chained_blocks(2, &db);
+        db.clear_all_pending_headers().unwrap();
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 2);
+    }
+
+    #[test]
+    fn it_clears_headers_after_tip() {
+        let db = setup();
+        let _ = add_many_chained_blocks(2, &db);
+        let prev_block = db.fetch_block(2).unwrap();
+        let mut prev_accum = prev_block.accumulated_data.clone();
+        let mut prev_block = Arc::new(prev_block.try_into_block().unwrap());
+        let headers = (0..5)
+            .map(|_| {
+                let (block, _) = create_next_block(&prev_block, vec![]);
+                let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
+                    .with_hash(block.hash())
+                    .with_achieved_target_difficulty(
+                        AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, 0.into(), 0.into()).unwrap(),
+                    )
+                    .with_total_kernel_offset(Default::default())
+                    .build()
+                    .unwrap();
+
+                let header = ChainHeader::try_construct(block.header.clone(), accum.clone()).unwrap();
+
+                prev_block = block;
+                prev_accum = accum;
+                header
+            })
+            .collect();
+        db.insert_valid_headers(headers).unwrap();
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 7);
+        let num_deleted = db.clear_all_pending_headers().unwrap();
+        assert_eq!(num_deleted, 5);
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 2);
     }
 }

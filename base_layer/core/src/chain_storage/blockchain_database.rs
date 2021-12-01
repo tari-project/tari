@@ -84,7 +84,6 @@ use crate::{
         HeaderValidation,
         OrphanValidation,
         PostOrphanBodyValidation,
-        ValidationError,
     },
 };
 
@@ -853,6 +852,11 @@ where B: BlockchainBackend
         Ok(())
     }
 
+    pub fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_write_access()?;
+        db.clear_all_pending_headers()
+    }
+
     /// Clean out the entire orphan pool
     pub fn cleanup_all_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
@@ -947,6 +951,12 @@ where B: BlockchainBackend
     pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.contains(&DbKey::BlockHash(hash.clone()))? || db.contains(&DbKey::OrphanBlock(hash))?)
+    }
+
+    /// Returns true if this block exists in the chain, or is orphaned.
+    pub fn bad_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.bad_block_exists(hash)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -1263,10 +1273,13 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
         block_hash.to_hex()
     );
     if block.header().pow_algo() == PowAlgorithm::Monero {
-        let monero_seed = MoneroPowData::from_header(block.header())
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .randomx_key;
-        txn.insert_monero_seed_height(monero_seed.to_vec(), block.height());
+        let monero_header =
+            MoneroPowData::from_header(block.header()).map_err(|e| ChainStorageError::InvalidArguments {
+                func: "insert_best_block",
+                arg: "block",
+                message: format!("block contained invalid or malformed monero PoW data: {}", e),
+            })?;
+        txn.insert_monero_seed_height(monero_header.randomx_key.to_vec(), block.height());
     }
 
     let height = block.height();
