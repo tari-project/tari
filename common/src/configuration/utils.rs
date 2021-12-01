@@ -81,25 +81,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();
 
-    cfg.set_default("common.auto_update.dns_hosts", vec!["versions.tari.com"])
-        .unwrap();
-    // TODO: Change to a more permanent link
-    cfg.set_default(
-        "common.auto_update.hashes_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
-    )
-    .unwrap();
-    cfg.set_default(
-        "common.auto_update.hashes_sig_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
-    )
-    .unwrap();
-    cfg.set_default("common.peer_seeds", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.dns_seeds", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
-        .unwrap();
-    cfg.set_default("common.dns_seeds_use_dnssec", true).unwrap();
-
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
     cfg.set_default("wallet.grpc_address", "127.0.0.1:18040").unwrap();
@@ -179,6 +160,26 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
+    cfg.set_default("common.mainnet.peer_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("common.mainnet.dns_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("common.mainnet.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
+        .unwrap();
+    cfg.set_default("common.mainnet.dns_seeds_use_dnssec", true).unwrap();
+    cfg.set_default("common.mainnet.auto_update.dns_hosts", vec!["versions.tari.com"])
+        .unwrap();
+    cfg.set_default(
+        "common.mainnet.auto_update.hashes_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
+    )
+    .unwrap();
+    cfg.set_default(
+        "common.mainnet.auto_update.hashes_sig_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
+    )
+    .unwrap();
+
     //---------------------------------- Weatherwax Defaults --------------------------------------------//
 
     cfg.set_default("base_node.weatherwax.db_type", "lmdb").unwrap();
@@ -235,6 +236,29 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
+
+    cfg.set_default("common.weatherwax.peer_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("common.weatherwax.dns_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default(
+        "common.weatherwax.dns_seeds_name_server",
+        "1.1.1.1:853/cloudflare-dns.com",
+    )
+    .unwrap();
+    cfg.set_default("common.weatherwax.dns_seeds_use_dnssec", true).unwrap();
+    cfg.set_default("common.weatherwax.auto_update.dns_hosts", vec!["versions.tari.com"])
+        .unwrap();
+    cfg.set_default(
+        "common.weatherwax.auto_update.hashes_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
+    )
+    .unwrap();
+    cfg.set_default(
+        "common.weatherwax.auto_update.hashes_sig_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
+    )
+    .unwrap();
     //---------------------------------- Igor Defaults --------------------------------------------//
 
     cfg.set_default("base_node.igor.db_type", "lmdb").unwrap();
@@ -252,6 +276,24 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.igor.dns_seeds_use_dnssec", true).unwrap();
     cfg.set_default("base_node.igor.auto_ping_interval", 30).unwrap();
+
+    cfg.set_default("common.igor.peer_seeds", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.igor.dns_seeds", Vec::<String>::new()).unwrap();
+    cfg.set_default("common.igor.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
+        .unwrap();
+    cfg.set_default("common.igor.dns_seeds_use_dnssec", true).unwrap();
+    cfg.set_default("common.igor.auto_update.dns_hosts", vec!["versions.tari.com"])
+        .unwrap();
+    cfg.set_default(
+        "common.igor.auto_update.hashes_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
+    )
+    .unwrap();
+    cfg.set_default(
+        "common.igor.auto_update.hashes_sig_url",
+        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
+    )
+    .unwrap();
 
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
@@ -306,6 +348,11 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
         .unwrap();
+    cfg.set_default(
+        "merge_mining_proxy.igor.monerod_url",
+        "http://monero-stagenet.exan.tech:38081",
+    )
+    .unwrap();
     cfg.set_default("merge_mining_proxy.igor.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
     cfg.set_default("merge_mining_proxy.igor.proxy_submit_to_origin", true)
