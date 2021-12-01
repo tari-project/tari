@@ -40,21 +40,25 @@ function mapEnvs(options) {
   if (options.common && options.common.auto_update) {
     let { auto_update } = options.common;
     if (auto_update.enabled) {
-      res.TARI_COMMON__AUTO_UPDATE__ENABLED = auto_update.enabled
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__ENABLED = auto_update.enabled
         ? "true"
         : "false";
     }
     if (auto_update.check_interval) {
-      res.TARI_COMMON__AUTO_UPDATE__CHECK_INTERVAL = auto_update.check_interval;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__CHECK_INTERVAL =
+        auto_update.check_interval;
     }
     if (auto_update.dns_hosts) {
-      res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__DNS_HOSTS =
+        auto_update.dns_hosts.join(",");
     }
     if (auto_update.hashes_url) {
-      res.TARI_COMMON__AUTO_UPDATE__HASHES_URL = auto_update.hashes_url;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__HASHES_URL =
+        auto_update.hashes_url;
     }
     if (auto_update.hashes_sig_url) {
-      res.TARI_COMMON__AUTO_UPDATE__HASHES_SIG_URL = auto_update.hashes_sig_url;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__HASHES_SIG_URL =
+        auto_update.hashes_sig_url;
     }
   }
   return res;
@@ -83,8 +87,8 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
     TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
-    TARI_COMMON__DNS_SEEDS_USE_DNSSEC: "false",
-    TARI_COMMON__DNS_SEEDS: "",
+    TARI_COMMON__LOCALNET__DNS_SEEDS_USE_DNSSEC: "false",
+    TARI_COMMON__LOCALNET__DNS_SEEDS: "",
     TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
     TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
@@ -107,7 +111,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");
   }
   if (peerSeeds.length > 0) {
-    envs.TARI_COMMON__PEER_SEEDS = peerSeeds.join(",");
+    envs.TARI_COMMON__LOCALNET__PEER_SEEDS = peerSeeds.join(",");
   }
 
   return envs;
