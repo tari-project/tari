@@ -373,14 +373,15 @@ class Wallet {
     return result;
   }
 
-  sendTransaction(destination, amount, fee_per_gram, message) {
+  sendTransaction(destination, amount, fee_per_gram, message, one_sided) {
     let dest_public_key = PublicKey.fromHexString(utf8.encode(destination));
     let result = InterfaceFFI.walletSendTransaction(
       this.ptr,
       dest_public_key.getPtr(),
       amount,
       fee_per_gram,
-      utf8.encode(message)
+      utf8.encode(message),
+      one_sided
     );
     dest_public_key.destroy();
     return result;
