@@ -160,26 +160,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
-    cfg.set_default("common.mainnet.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("common.mainnet.dns_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("common.mainnet.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
-        .unwrap();
-    cfg.set_default("common.mainnet.dns_seeds_use_dnssec", true).unwrap();
-    cfg.set_default("common.mainnet.auto_update.dns_hosts", vec!["versions.tari.com"])
-        .unwrap();
-    cfg.set_default(
-        "common.mainnet.auto_update.hashes_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
-    )
-    .unwrap();
-    cfg.set_default(
-        "common.mainnet.auto_update.hashes_sig_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
-    )
-    .unwrap();
-
     //---------------------------------- Weatherwax Defaults --------------------------------------------//
 
     cfg.set_default("base_node.weatherwax.db_type", "lmdb").unwrap();
@@ -225,40 +205,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.weatherwax.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default(
-        "base_node.weatherwax.dns_seeds_name_server",
-        "1.1.1.1:853/cloudflare-dns.com",
-    )
-    .unwrap();
-    cfg.set_default("base_node.weatherwax.dns_seeds_use_dnssec", true)
-        .unwrap();
-    cfg.set_default("base_node.weatherwax.auto_ping_interval", 30).unwrap();
 
-    cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
-        .unwrap();
-
-    cfg.set_default("common.weatherwax.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("common.weatherwax.dns_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default(
-        "common.weatherwax.dns_seeds_name_server",
-        "1.1.1.1:853/cloudflare-dns.com",
-    )
-    .unwrap();
-    cfg.set_default("common.weatherwax.dns_seeds_use_dnssec", true).unwrap();
-    cfg.set_default("common.weatherwax.auto_update.dns_hosts", vec!["versions.tari.com"])
-        .unwrap();
-    cfg.set_default(
-        "common.weatherwax.auto_update.hashes_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
-    )
-    .unwrap();
-    cfg.set_default(
-        "common.weatherwax.auto_update.hashes_sig_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
-    )
-    .unwrap();
     //---------------------------------- Igor Defaults --------------------------------------------//
 
     cfg.set_default("base_node.igor.db_type", "lmdb").unwrap();
@@ -272,35 +219,56 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.igor.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
-        .unwrap();
-    cfg.set_default("base_node.igor.dns_seeds_use_dnssec", true).unwrap();
-    cfg.set_default("base_node.igor.auto_ping_interval", 30).unwrap();
 
-    cfg.set_default("common.igor.peer_seeds", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.igor.dns_seeds", Vec::<String>::new()).unwrap();
-    cfg.set_default("common.igor.dns_seeds_name_server", "1.1.1.1:853/cloudflare-dns.com")
-        .unwrap();
-    cfg.set_default("common.igor.dns_seeds_use_dnssec", true).unwrap();
-    cfg.set_default("common.igor.auto_update.dns_hosts", vec!["versions.tari.com"])
-        .unwrap();
-    cfg.set_default(
-        "common.igor.auto_update.hashes_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
-    )
-    .unwrap();
-    cfg.set_default(
-        "common.igor.auto_update.hashes_sig_url",
-        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
-    )
-    .unwrap();
-
+    set_common_network_defaults(&mut cfg);
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
     set_mining_node_defaults(&mut cfg);
     set_stratum_transcoder_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_common_network_defaults(cfg: &mut Config) {
+    for network in ["mainnet", "weatherwax", "igor", "localnet"] {
+        let key = format!("base_node.{}.dns_seeds_name_server", network);
+        cfg.set_default(&key, "1.1.1.1:853/cloudflare-dns.com").unwrap();
+
+        let key = format!("base_node.{}.dns_seeds_use_dnssec", network);
+        cfg.set_default(&key, true).unwrap();
+
+        let key = format!("base_node.{}.auto_ping_interval", network);
+        cfg.set_default(&key, 30).unwrap();
+
+        let key = format!("common.{}.peer_seeds", network);
+        cfg.set_default(&key, Vec::<String>::new()).unwrap();
+
+        let key = format!("common.{}.dns_seeds", network);
+        cfg.set_default(&key, Vec::<String>::new()).unwrap();
+
+        let key = format!("common.{}.dns_seeds_name_server", network);
+        cfg.set_default(&key, "1.1.1.1:853/cloudflare-dns.com").unwrap();
+
+        let key = format!("common.{}.dns_seeds_use_dnssec", network);
+        cfg.set_default(&key, true).unwrap();
+
+        let key = format!("common.{}.auto_update.dns_hosts", network);
+        cfg.set_default(&key, vec!["versions.tari.com"]).unwrap();
+
+        let key = format!("common.{}.auto_update.hashes_url", network);
+        cfg.set_default(
+            &key,
+            "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt",
+        )
+        .unwrap();
+
+        let key = format!("common.{}.auto_update.hashes_sig_url", network);
+        cfg.set_default(
+            &key,
+            "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig",
+        )
+        .unwrap();
+    }
 }
 
 fn set_stratum_transcoder_defaults(cfg: &mut Config) {
