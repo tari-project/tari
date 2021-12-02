@@ -70,7 +70,7 @@
 //! # args.init = true;
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config).unwrap();
+//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("weatherwax".into())).unwrap();
 //! assert_eq!(global.network, Network::Weatherwax);
 //! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
