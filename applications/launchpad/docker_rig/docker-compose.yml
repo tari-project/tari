@@ -159,7 +159,7 @@ services:
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
       TARI_WALLET__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"
-      TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_URL: ${TARI_MONEROD_URL:-http://monero-stagenet.exan.tech:38081}
+      TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_URL: ${TARI_MONEROD_URL:-["http://stagenet.community.xmr.to:38081","http://monero-stagenet.exan.tech:38081","http://stagenet.xmr-tw.org:38081","http://xmr-lux.boldsuck.org:38081","http://singapore.node.xmr.pm:38081"]}
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_USERNAME: ${TARI_MONEROD_USERNAME}
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_PASSWORD: ${TARI_MONEROD_PASSWORD}
       TARI_MERGE_MINING_PROXY__WEATHERWAX__MONEROD_USE_AUTH: ${TARI_MONEROD_USE_AUTH:-0}
@@ -179,6 +179,3 @@ volumes:
   # `docker run --rm -v $(pwd):/backup -v blockchain:/blockchain ubuntu tar czvf /backup/backup.tar.gz /blockchain`
   blockchain:
   monero-blockchain:
-
-
-
