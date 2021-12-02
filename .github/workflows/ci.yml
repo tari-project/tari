@@ -11,6 +11,7 @@ name: CI
 
 env:
   CARGO_HTTP_MULTIPLEXING: false
+  PROTOC: protoc
   toolchain: nightly-2021-09-18
 
 jobs:
@@ -18,6 +19,21 @@ jobs:
     name: clippy
     runs-on: ubuntu-18.04
     steps:
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update && \
+          sudo apt-get -y install \
+            libssl-dev \
+            openssl \
+            libsqlite3-dev \
+            pkg-config \
+            git \
+            cmake \
+            zip \
+            libc++-dev \
+            libc++abi-dev \
+            libprotobuf-dev \
+            protobuf-compiler
       - name: checkout
         uses: actions/checkout@v2
       - name: toolchain
@@ -40,10 +56,10 @@ jobs:
           command: fmt
           args: --all -- --check
       - name: Clippy check
-        uses: actions-rs/clippy-check@v1
+        uses: actions-rs/cargo@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+          command: clippy
+          args: --all-targets -- -D warnings
   test:
     name: test
     runs-on: ubuntu-18.04
@@ -59,7 +75,6 @@ jobs:
             target
           key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: ubuntu dependencies
-        if: startsWith(matrix.os,'ubuntu')
         run: |
           sudo apt-get update && \
           sudo apt-get -y install \

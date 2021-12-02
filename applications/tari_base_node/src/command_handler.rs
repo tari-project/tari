@@ -32,7 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_app_utilities::consts;
+use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
     emoji::EmojiId,
@@ -417,36 +417,46 @@ impl CommandHandler {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_all_starts_with(&partial).await {
+            let peer = match peer_manager.find_all_starts_with(&partial).await {
                 Ok(peers) if peers.is_empty() => {
-                    println!("No peer matching '{}'", original_str);
-                },
-                Ok(peers) => {
-                    let peer = peers.first().unwrap();
-                    let eid = EmojiId::from_pubkey(&peer.public_key);
-                    println!("Emoji ID: {}", eid);
-                    println!("Public Key: {}", peer.public_key);
-                    println!("NodeId: {}", peer.node_id);
-                    println!("Addresses:");
-                    peer.addresses.iter().for_each(|a| {
-                        println!("- {}", a);
-                    });
-                    println!("User agent: {}", peer.user_agent);
-                    println!("Features: {:?}", peer.features);
-                    println!("Supported protocols:");
-                    peer.supported_protocols.iter().for_each(|p| {
-                        println!("- {}", String::from_utf8_lossy(p));
-                    });
-                    if let Some(dt) = peer.banned_until() {
-                        println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-                    }
-                    if let Some(dt) = peer.last_seen() {
-                        println!("Last seen: {}", dt);
+                    if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
+                        if let Ok(peer) = peer_manager.find_by_public_key(&pk).await {
+                            peer
+                        } else {
+                            println!("No peer matching '{}'", original_str);
+                            return;
+                        }
+                    } else {
+                        println!("No peer matching '{}'", original_str);
+                        return;
                     }
                 },
+                Ok(mut peers) => peers.remove(0),
                 Err(err) => {
                     println!("{}", err);
+                    return;
                 },
+            };
+
+            let eid = EmojiId::from_pubkey(&peer.public_key);
+            println!("Emoji ID: {}", eid);
+            println!("Public Key: {}", peer.public_key);
+            println!("NodeId: {}", peer.node_id);
+            println!("Addresses:");
+            peer.addresses.iter().for_each(|a| {
+                println!("- {}", a);
+            });
+            println!("User agent: {}", peer.user_agent);
+            println!("Features: {:?}", peer.features);
+            println!("Supported protocols:");
+            peer.supported_protocols.iter().for_each(|p| {
+                println!("- {}", String::from_utf8_lossy(p));
+            });
+            if let Some(dt) = peer.banned_until() {
+                println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+            }
+            if let Some(dt) = peer.last_seen() {
+                println!("Last seen: {}", dt);
             }
         });
     }
