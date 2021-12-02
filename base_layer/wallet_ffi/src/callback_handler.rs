@@ -258,18 +258,9 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionValidationStateChanged(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
+                                TransactionEvent::TransactionValidationStateChanged(request_key)  => {
+                                    self.transaction_validation_complete_event(request_key);
                                     self.trigger_balance_refresh().await;
-                                },
-                                TransactionEvent::TransactionValidationFailure(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Failure);
-                                },
-                                TransactionEvent::TransactionValidationAborted(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Aborted);
-                                },
-                                TransactionEvent::TransactionValidationDelayed(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::BaseNodeNotInSync);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id) |
@@ -505,29 +496,13 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn transaction_validation_complete_event(&mut self, request_key: u64, result: CallbackValidationResults) {
+    fn transaction_validation_complete_event(&mut self, request_key: u64) {
         debug!(
             target: LOG_TARGET,
-            "Calling Transaction Validation Complete callback function for Request Key: {} with result {:?}",
-            request_key,
-            result as u8,
+            "Calling Transaction Validation Complete callback function for Request Key: {}", request_key,
         );
-        match result {
-            CallbackValidationResults::Success => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
-            },
-            CallbackValidationResults::Aborted => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
-            },
-            CallbackValidationResults::Failure => unsafe {
-                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
-            },
-            CallbackValidationResults::BaseNodeNotInSync => unsafe {
-                (self.callback_transaction_validation_complete)(
-                    request_key,
-                    CallbackValidationResults::BaseNodeNotInSync as u8,
-                );
-            },
+        unsafe {
+            (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
         }
     }
 

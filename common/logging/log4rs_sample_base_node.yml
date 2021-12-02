@@ -146,8 +146,3 @@ loggers:
     level: info
     appenders:
       - base_layer
-  # Route log events sent to the "stress_test" logger to the "base_layer" appender
-  stress_test:
-    level: info
-    appenders:
-      - base_layer
