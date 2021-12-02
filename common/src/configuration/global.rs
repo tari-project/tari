@@ -121,7 +121,7 @@ pub struct GlobalConfig {
     pub wallet_base_node_service_request_max_age: u64,
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
-    pub monerod_url: String,
+    pub monerod_url: Vec<String>,
     pub monerod_username: String,
     pub monerod_password: String,
     pub monerod_use_auth: bool,
@@ -623,9 +623,25 @@ fn convert_node_config(
     );
 
     let key = config_string("merge_mining_proxy", net_str, "monerod_url");
-    let monerod_url = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let mut monerod_url: Vec<String> = cfg
+        .get_array(&key)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| {
+            v.into_str()
+                .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+        })
+        .collect::<Result<_, _>>()?;
+
+    // default to stagenet on empty
+    if monerod_url.is_empty() {
+        monerod_url = vec![
+            "http://stagenet.xmr-tw.org:38081".to_string(),
+            "http://singapore.node.xmr.pm:38081".to_string(),
+            "http://xmr-lux.boldsuck.org:38081".to_string(),
+            "http://monero-stagenet.exan.tech:38081".to_string(),
+        ];
+    }
 
     let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
     let monerod_use_auth = cfg
