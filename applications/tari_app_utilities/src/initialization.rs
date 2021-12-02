@@ -31,8 +31,7 @@ pub fn init_configuration(
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
 
     // Populate the configuration struct
-    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone())
-        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone(), bootstrap.network.clone())?;
 
     if let Some(str) = bootstrap.network.clone() {
         log::info!(target: LOG_TARGET, "Network selection requested");
@@ -54,11 +53,9 @@ pub fn init_configuration(
                 global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
                 global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
-            Err(_) => {
-                log::warn!(
-                    target: LOG_TARGET,
-                    "Network selection was invalid, continuing with default network."
-                );
+            Err(e) => {
+                log::error!(target: LOG_TARGET, "Network selection was invalid, exiting.");
+                return Err(e.into());
             },
         }
     }
