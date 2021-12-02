@@ -441,10 +441,9 @@ mod fetch_total_size_stats {
         let db = setup();
         let _ = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
-        // Returns one per db
         assert_eq!(
-            stats.sizes().iter().find(|s| s.name == "utxo_db").unwrap().num_entries,
-            2
+            stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
+            4003
         );
     }
 }
