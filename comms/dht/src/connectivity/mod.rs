@@ -67,6 +67,7 @@ pub struct DhtConnectivity {
     config: DhtConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    message_rate_immune_node: Arc<Option<NodeId>>,
     connectivity: ConnectivityRequester,
     dht_requester: DhtRequester,
     /// List of neighbours managed by DhtConnectivity ordered by distance from this node
@@ -102,6 +103,7 @@ impl DhtConnectivity {
             config,
             peer_manager,
             node_identity,
+            message_rate_immune_node: Arc::new(None),
             connectivity,
             dht_requester,
             metrics_collector,
@@ -245,17 +247,24 @@ impl DhtConnectivity {
             .await?;
 
         for (peer, mps) in nodes {
-            warn!(
-                target: LOG_TARGET,
-                "Banning peer `{}` because of flooding. Message rate: {:.2}m/s", peer, mps
-            );
-            self.connectivity
-                .ban_peer_until(
-                    peer,
-                    self.config.ban_duration,
-                    "Exceeded maximum message rate".to_string(),
-                )
-                .await?;
+            if *self.message_rate_immune_node != Some(peer.clone()) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Banning peer `{}` because of flooding. Message rate: {:.2}m/s", peer, mps
+                );
+                self.connectivity
+                    .ban_peer_until(
+                        peer,
+                        self.config.ban_duration,
+                        "Exceeded maximum message rate".to_string(),
+                    )
+                    .await?;
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer `{}` immune from banning. Message rate: {:.2}m/s", peer, mps
+                );
+            }
         }
         Ok(())
     }
@@ -469,6 +478,9 @@ impl DhtConnectivity {
             ConnectivityStateOffline => {
                 debug!(target: LOG_TARGET, "Node is OFFLINE");
                 self.refresh_peer_pools().await?;
+            },
+            SetMessageRateImmuneNode(node_id) => {
+                self.message_rate_immune_node = Arc::new(Some(node_id));
             },
             _ => {},
         }

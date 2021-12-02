@@ -294,6 +294,10 @@ where
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
         self.wallet_connectivity.set_base_node(peer);
+        self.comms
+            .connectivity()
+            .message_rate_immune_peer(NodeId::from_key(&public_key))
+            .await?;
 
         Ok(())
     }

@@ -274,6 +274,11 @@ impl ConnectivityManagerActor {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 }
             },
+            SetMessageRateImmuneNode(node_id) => {
+                if let Err(err) = self.message_rate_immune_peer(&node_id).await {
+                    error!(target: LOG_TARGET, "Error when excluding peer from banning: {:?}", err);
+                }
+            },
             GetActiveConnections(reply) => {
                 let _ = reply.send(
                     self.pool
@@ -746,6 +751,13 @@ impl ConnectivityManagerActor {
                 "Disconnected banned peer {}. The peer connection status is {}", node_id, status
             );
         }
+        Ok(())
+    }
+
+    async fn message_rate_immune_peer(&mut self, node_id: &NodeId) -> Result<(), ConnectivityError> {
+        info!(target: LOG_TARGET, "Excluding peer {} from banning", node_id);
+        self.publish_event(ConnectivityEvent::SetMessageRateImmuneNode(node_id.clone()));
+
         Ok(())
     }
 }

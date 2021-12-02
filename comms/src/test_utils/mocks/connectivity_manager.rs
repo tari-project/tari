@@ -258,6 +258,7 @@ impl ConnectivityManagerMock {
             },
             GetAllConnectionStates(_) => unimplemented!(),
             BanPeer(_, _, _) => {},
+            SetMessageRateImmuneNode(_) => {},
             GetActiveConnections(reply) => {
                 self.state
                     .with_state(|state| reply.send(state.active_conns.values().cloned().collect()).unwrap())

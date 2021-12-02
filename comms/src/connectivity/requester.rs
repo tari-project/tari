@@ -54,6 +54,7 @@ pub enum ConnectivityEvent {
     PeerConnected(PeerConnection),
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
+    SetMessageRateImmuneNode(NodeId),
     PeerOffline(NodeId),
     PeerConnectionWillClose(NodeId, ConnectionDirection),
 
@@ -71,6 +72,7 @@ impl fmt::Display for ConnectivityEvent {
             PeerConnected(node_id) => write!(f, "PeerConnected({})", node_id),
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
+            SetMessageRateImmuneNode(node_id) => write!(f, "SetMessageRateImmuneNode({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
             PeerConnectionWillClose(node_id, direction) => {
                 write!(f, "PeerConnectionWillClose({}, {})", node_id, direction)
@@ -99,6 +101,7 @@ pub enum ConnectivityRequest {
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
+    SetMessageRateImmuneNode(NodeId),
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +244,14 @@ impl ConnectivityRequester {
     pub async fn ban_peer(&mut self, node_id: NodeId, reason: String) -> Result<(), ConnectivityError> {
         self.ban_peer_until(node_id, Duration::from_secs(u64::MAX), reason)
             .await
+    }
+
+    pub async fn message_rate_immune_peer(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
+        self.sender
+            .send(ConnectivityRequest::SetMessageRateImmuneNode(node_id))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        Ok(())
     }
 
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {
