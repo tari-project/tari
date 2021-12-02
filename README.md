@@ -614,7 +614,7 @@ they are not enabled already:
   ```
   ```
   [base_node.weatherwax]
-  transport = "tor"
+  transpo*_r_*t = "tor"
   allow_test_addresses = false
   grpc_enabled = true
   grpc_base_node_address = "127.0.0.1:18142"
@@ -627,7 +627,14 @@ And then depending on if you are using solo mining or self-select mining you wil
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
   [merge_mining_proxy.weatherwax]
-  monerod_url = "http://monero-stagenet.exan.tech:38081"
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
+
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = true
   monerod_use_auth = false
@@ -640,7 +647,14 @@ And then depending on if you are using solo mining or self-select mining you wil
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
   [merge_mining_proxy.weatherwax]
-  monerod_url = "http://18.132.124.81:18081"
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
+
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = false
   monerod_use_auth = false
@@ -651,8 +665,8 @@ And then depending on if you are using solo mining or self-select mining you wil
 **Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If
 they are, choose different ports. You will need to update the ports in the steps below as well.
 
-The `monerod_url` must be set to a valid address (`host:port`) for `monerod` that is running Monero mainnet (e.g.
-`http://18.132.124.81:18081`) or stagenet (e.g. `http://monero-stagenet.exan.tech:38081`), which can be a
+The `monerod_url` set must contain valid addresses (`host:port`) for `monerod` that is running Monero mainnet (e.g.
+`["http://18.132.124.81:18081"]`) or stagenet (e.g. `["http://monero-stagenet.exan.tech:38081"]`), which can be a
 [public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the
 `monerod_url` address is working properly, try to paste `host:port/get_height` in an internet browser, for example:
 
@@ -688,7 +702,7 @@ in via the command line upon runtime.
   being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner
   with the wallet address of the pool.
 
-###### Solo mining
+###### Solo-mining
 
 The [XMRig configuration wizard](https://xmrig.com/wizard) can be used to create a solo mining configuration file
 in JSON format:
@@ -832,8 +846,19 @@ Monero wallet address:
 
 ```
 # URL to monerod
-#monerod_url = "http://18.132.124.81:18081" # mainnet
-monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
+  monerod_url = [ # mainnet
+  "http://18.132.124.81:18081",
+  "http://xmr.support:18081",
+  "http://node1.xmr-tw.org:18081",
+  "http://xmr.nthrow.nyc:18081",
+  ]
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
 ```
 
 ###### Runtime
@@ -891,8 +916,12 @@ The `monerod_url` field in the `config.toml` should be enabled for the mainnet v
 
 ```
 # URL to monerod
-monerod_url = "http://18.132.124.81:18081" # mainnet
-#monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
+  monerod_url = [ # mainnet
+  "http://18.132.124.81:18081",
+  "http://xmr.support:18081",
+  "http://node1.xmr-tw.org:18081",
+  "http://xmr.nthrow.nyc:18081",
+  ]
 ```
 
 ###### Runtime

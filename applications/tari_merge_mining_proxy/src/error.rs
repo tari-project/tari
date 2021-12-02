@@ -79,6 +79,8 @@ pub enum MmProxyError {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error("Block was lost due to a failed precondition, and should be retried")]
     FailedPreconditionBlockLostRetry,
+    #[error("No reachable servers in configuration")]
+    ServersUnavailable,
 }
 
 impl From<tonic::Status> for MmProxyError {
