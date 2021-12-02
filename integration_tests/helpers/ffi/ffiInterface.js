@@ -341,6 +341,7 @@ class InterfaceFFI {
           this.ulonglong,
           this.ulonglong,
           this.string,
+          this.bool,
           this.intPtr,
         ],
       ],
@@ -1331,7 +1332,8 @@ class InterfaceFFI {
     destination,
     amount,
     fee_per_gram,
-    message
+    message,
+    one_sided
   ) {
     let error = this.initError();
     let result = this.fn.wallet_send_transaction(
@@ -1340,6 +1342,7 @@ class InterfaceFFI {
       amount,
       fee_per_gram,
       message,
+      one_sided,
       error
     );
     this.checkErrorResult(error, `walletSendTransaction`);
