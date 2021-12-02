@@ -119,7 +119,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_sent(tx_id);
                                     },
-                                    TransactionEvent::TransactionValidationSuccess(_) => {
+                                    TransactionEvent::TransactionValidationStateChanged(_) => {
                                         self.trigger_full_tx_state_refresh().await;
                                         self.trigger_balance_refresh();
                                     },

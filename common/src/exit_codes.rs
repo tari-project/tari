@@ -86,6 +86,12 @@ impl From<super::ConfigError> for ExitCodes {
     }
 }
 
+impl From<crate::ConfigurationError> for ExitCodes {
+    fn from(err: crate::ConfigurationError) -> Self {
+        Self::ConfigError(err.to_string())
+    }
+}
+
 impl ExitCodes {
     pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
         ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
