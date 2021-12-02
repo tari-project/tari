@@ -437,11 +437,15 @@ mod fetch_total_size_stats {
     use super::*;
 
     #[test]
-    fn it_works_when_db_is_empty() {
+    fn it_measures_the_number_of_entries() {
         let db = setup();
+        let _ = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
         // Returns one per db
-        assert_eq!(stats.sizes().len(), 20);
+        assert_eq!(
+            stats.sizes().iter().find(|s| s.name == "utxo_db").unwrap().num_entries,
+            2
+        );
     }
 }
 
