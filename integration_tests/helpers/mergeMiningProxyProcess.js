@@ -40,7 +40,7 @@ class MergeMiningProxyProcess {
     // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
   }
 
-  run(cmd, args, monerodUrl) {
+  async run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -67,9 +67,9 @@ class MergeMiningProxyProcess {
       const extraEnvs = {
         TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
           this.submitOrigin,
-        TARI_MERGE_MINING_PROXY__LOCALNET__monerod_url: monerodUrl,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
+      console.log(completeEnvs);
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
@@ -105,75 +105,6 @@ class MergeMiningProxyProcess {
     });
   }
 
-  async testWebsite(protocol, address, port, path) {
-    const url = protocol + "://" + address + ":" + port;
-    const webRequest = require(protocol);
-
-    let request;
-    let thePromise;
-    const displayData = false;
-    try {
-      thePromise = await new Promise((resolve, reject) => {
-        request = webRequest
-          .get(url + path, (resp) => {
-            let data = "";
-            // Read all data chunks until the end
-            resp.on("data", (chunk) => {
-              data += chunk;
-            });
-            // Finish when complete response has been received
-            resp.on("end", () => {
-              if (displayData) {
-                console.log(data); // `data` is 'used' here to keep eslint happy
-              }
-              return resolve(true);
-            });
-          })
-          .on("error", () => {
-            return reject(false);
-          });
-      });
-      console.log(
-        "  >> Info: `monerod` at",
-        url,
-        "is responsive and available"
-      );
-    } catch {
-      console.log("  >> Warn: `monerod` at", url, "is not available!");
-    }
-    request.end();
-
-    return thePromise;
-  }
-
-  async getMoneroStagenetUrl() {
-    // See: https://monero.fail/?nettype=stagenet
-    const monerodUrl = [
-      ["http", "singapore.node.xmr.pm", "38081"],
-      ["http", "stagenet.xmr-tw.org", "38081"],
-      ["http", "xmr-lux.boldsuck.org", "38081"],
-      ["http", "monero-stagenet.exan.tech", "38081"],
-      ["http", "3.104.4.129", "18081"], // flaky
-      ["http", "stagenet.community.xmr.to", "38081"], // flaky
-      ["http", "super.fast.node.xmr.pm", "38089"], // flaky
-    ];
-    let url;
-    for (let i = 0; i < monerodUrl.length; i++) {
-      let availble = await this.testWebsite(
-        monerodUrl[i][0],
-        monerodUrl[i][1],
-        monerodUrl[i][2],
-        "/get_height"
-      );
-      if (availble) {
-        url =
-          monerodUrl[i][0] + "://" + monerodUrl[i][1] + ":" + monerodUrl[i][2];
-        break;
-      }
-    }
-    return url;
-  }
-
   async startNew() {
     await this.init();
     const args = ["--base-path", ".", "--init"];
@@ -181,8 +112,7 @@ class MergeMiningProxyProcess {
       args.push("--log-config", this.logFilePath);
     }
 
-    let url = await this.getMoneroStagenetUrl();
-    return await this.run(await this.compile(), args, url);
+    return await this.run(await this.compile(), args);
   }
 
   async compile() {

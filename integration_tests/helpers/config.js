@@ -94,8 +94,13 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
-    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL:
+    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: [
+      "http://stagenet.xmr-tw.org:38081",
+      "http://stagenet.community.xmr.to:38081",
       "http://monero-stagenet.exan.tech:38081",
+      "http://xmr-lux.boldsuck.org:38081",
+      "http://singapore.node.xmr.pm:38081",
+    ],
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',
