@@ -31,7 +31,23 @@ When(
       this.getWalletPubkey(receiver),
       amount,
       feePerGram,
-      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`
+      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`,
+      false
+    );
+    console.log(result);
+  }
+);
+
+When(
+  "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions",
+  function (amount, sender, receiver, feePerGram) {
+    let ffiWallet = this.getWallet(sender);
+    let result = ffiWallet.sendTransaction(
+      this.getWalletPubkey(receiver),
+      amount,
+      feePerGram,
+      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`,
+      true
     );
     console.log(result);
   }

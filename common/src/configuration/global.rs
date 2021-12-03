@@ -112,6 +112,7 @@ pub struct GlobalConfig {
     pub base_node_event_channel_size: usize,
     pub output_manager_event_channel_size: usize,
     pub wallet_connection_manager_pool_size: usize,
+    pub wallet_recovery_retry_limit: usize,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -120,7 +121,7 @@ pub struct GlobalConfig {
     pub wallet_base_node_service_request_max_age: u64,
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
-    pub monerod_url: String,
+    pub monerod_url: Vec<String>,
     pub monerod_username: String,
     pub monerod_password: String,
     pub monerod_use_auth: bool,
@@ -144,27 +145,37 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub fn convert_from(application: ApplicationType, mut cfg: Config) -> Result<Self, ConfigurationError> {
+    pub fn convert_from(
+        application: ApplicationType,
+        mut cfg: Config,
+        network: Option<String>,
+    ) -> Result<Self, ConfigurationError> {
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
-        let network = one_of::<Network>(&cfg, &[
-            &format!("{}.network", application.as_config_str()),
-            "common.network",
-            // TODO: Remove this once some time has passed and folks have upgraded their configs
-            "base_node.network",
-        ])?;
 
-        convert_node_config(application, network, cfg)
+        // network override from command line
+        let network = match network {
+            Some(s) => Network::from_str(&s)?,
+            None => {
+                // otherwise specified from config
+                one_of::<Network>(&cfg, &[
+                    "common.network",
+                    &format!("{}.network", application.as_config_str()),
+                ])?
+            },
+        };
+
+        convert_node_config(application, cfg, network)
     }
 }
 
 fn convert_node_config(
     application: ApplicationType,
-    network: Network,
     cfg: Config,
+    network: Network,
 ) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.as_str();
 
@@ -345,45 +356,42 @@ fn convert_node_config(
         .get_str(&key)
         .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
 
-    let key = config_string("base_node", net_str, "grpc_console_wallet_address");
+    let key = "wallet.grpc_address";
     let grpc_console_wallet_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(&key, &e.to_string())))??;
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .map(|addr| socket_or_multi(&addr).map_err(|e| ConfigurationError::new(key, &e.to_string())))??;
 
     // Peer and DNS seeds
-    let key = "common.peer_seeds";
+    let key = config_string("common", net_str, "peer_seeds");
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
-    let peer_seeds = match cfg.get_array(key) {
+    let peer_seeds = match cfg.get_array(&key) {
         Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => optional(cfg.get_str(key))?
+        Err(..) => optional(cfg.get_str(&key))?
             .map(|s| s.split(',').map(|v| v.trim().to_string()).collect())
             .unwrap_or_default(),
     };
 
     // TODO: dns resolver presets e.g. "cloudflare", "quad9", "custom" (maybe just in toml) and
     //       add support for multiple addresses
-    let key = "common.dns_seeds_name_server";
+    let key = config_string("common", net_str, "dns_seeds_name_server");
     let dns_seeds_name_server = cfg
-        .get_str(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         .and_then(|s| {
             s.parse::<DnsNameServer>()
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    let key = config_string("base_node", net_str, "bypass_range_proof_verification");
-    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
-
-    let key = "common.dns_seeds_use_dnssec";
+    let key = config_string("common", net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = cfg
-        .get_bool(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = "common.dns_seeds";
-    let dns_seeds = match cfg.get_array(key) {
+    let key = config_string("common", net_str, "dns_seeds");
+    let dns_seeds = match cfg.get_array(&key) {
         Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
-        Err(..) => optional(cfg.get_str(key))?
+        Err(..) => optional(cfg.get_str(&key))?
             .map(|s| {
                 s.split(',')
                     .map(|v| v.trim().to_string())
@@ -392,6 +400,9 @@ fn convert_node_config(
             })
             .unwrap_or_default(),
     };
+
+    let key = config_string("base_node", net_str, "bypass_range_proof_verification");
+    let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
@@ -483,6 +494,9 @@ fn convert_node_config(
 
     let key = "wallet.connection_manager_pool_size";
     let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16) as usize;
+
+    let key = "wallet.wallet_recovery_retry_limit";
+    let wallet_recovery_retry_limit = optional(cfg.get_int(key))?.unwrap_or(3) as usize;
 
     let key = "wallet.output_manager_event_channel_size";
     let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
@@ -609,9 +623,25 @@ fn convert_node_config(
     );
 
     let key = config_string("merge_mining_proxy", net_str, "monerod_url");
-    let monerod_url = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let mut monerod_url: Vec<String> = cfg
+        .get_array(&key)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| {
+            v.into_str()
+                .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+        })
+        .collect::<Result<_, _>>()?;
+
+    // default to stagenet on empty
+    if monerod_url.is_empty() {
+        monerod_url = vec![
+            "http://stagenet.xmr-tw.org:38081".to_string(),
+            "http://singapore.node.xmr.pm:38081".to_string(),
+            "http://xmr-lux.boldsuck.org:38081".to_string(),
+            "http://monero-stagenet.exan.tech:38081".to_string(),
+        ];
+    }
 
     let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
     let monerod_use_auth = cfg
@@ -664,8 +694,8 @@ fn convert_node_config(
     let validate_tip_timeout_sec = optional(cfg.get_int(key))?.unwrap_or(0) as u64;
 
     // Auto update
-    let key = "common.auto_update.check_interval";
-    let autoupdate_check_interval = optional(cfg.get_int(key))?.and_then(|secs| {
+    let key = config_string("common", net_str, "auto_update.check_interval");
+    let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
         if secs > 0 {
             Some(Duration::from_secs(secs as u64))
         } else {
@@ -673,20 +703,20 @@ fn convert_node_config(
         }
     });
 
-    let key = "common.auto_update.dns_hosts";
+    let key = config_string("common", net_str, "auto_update.dns_hosts");
     let autoupdate_dns_hosts = cfg
-        .get_array(key)
+        .get_array(&key)
         .and_then(|arr| arr.into_iter().map(|s| s.into_str()).collect::<Result<Vec<_>, _>>())
         .or_else(|_| {
-            cfg.get_str(key)
+            cfg.get_str(&key)
                 .map(|s| s.split(',').map(ToString::to_string).collect())
         })?;
 
-    let key = "common.auto_update.hashes_url";
-    let autoupdate_hashes_url = cfg.get_str(key)?;
+    let key = config_string("common", net_str, "auto_update.hashes_url");
+    let autoupdate_hashes_url = cfg.get_str(&key)?;
 
-    let key = "common.auto_update.hashes_sig_url";
-    let autoupdate_hashes_sig_url = cfg.get_str(key)?;
+    let key = config_string("common", net_str, "auto_update.hashes_sig_url");
+    let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
 
     let key = "mining_node.mining_pool_address";
     let mining_pool_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
@@ -759,6 +789,7 @@ fn convert_node_config(
         transaction_event_channel_size,
         base_node_event_channel_size,
         wallet_connection_manager_pool_size,
+        wallet_recovery_retry_limit,
         output_manager_event_channel_size,
         console_wallet_password,
         wallet_command_send_wait_stage,

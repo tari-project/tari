@@ -3801,6 +3801,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     fee_per_gram: c_ulonglong,
     message: *const c_char,
+    one_sided: bool,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3843,19 +3844,40 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .to_owned();
     };
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.send_transaction(
-            (*dest_public_key).clone(),
-            MicroTari::from(amount),
-            MicroTari::from(fee_per_gram),
-            message_string,
-        )) {
-        Ok(tx_id) => tx_id,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
+    match one_sided {
+        true => {
+            match (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                )) {
+                Ok(tx_id) => tx_id,
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    0
+                },
+            }
+        },
+        false => {
+            match (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.transaction_service.send_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                )) {
+                Ok(tx_id) => tx_id,
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    0
+                },
+            }
         },
     }
 }

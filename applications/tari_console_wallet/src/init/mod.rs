@@ -300,7 +300,10 @@ pub async fn init_wallet(
     );
 
     let node_address = match wallet_db.get_node_address().await? {
-        None => config.public_address.clone().unwrap_or_else(Multiaddr::empty),
+        None => match config.public_address.clone() {
+            Some(val) => val,
+            None => Multiaddr::empty(),
+        },
         Some(a) => a,
     };
 
@@ -464,12 +467,12 @@ pub async fn init_wallet(
                 },
             };
         }
-        if let Some(file_name) = seed_words_file_name {
-            let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
-            let _ = fs::write(file_name, seed_words)
-                .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
-        };
     }
+    if let Some(file_name) = seed_words_file_name {
+        let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+        let _ = fs::write(file_name, seed_words)
+            .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
+    };
 
     Ok(wallet)
 }

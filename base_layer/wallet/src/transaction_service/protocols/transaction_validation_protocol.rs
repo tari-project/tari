@@ -102,7 +102,7 @@ where
         self.check_for_reorgs(&mut *base_node_wallet_client).await?;
         info!(
             target: LOG_TARGET,
-            "Checking if transactions have been mined since last we checked"
+            "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
         // Fetch completed but unconfirmed transactions that were not imported
         let unconfirmed_transactions = self
@@ -112,6 +112,7 @@ where
             .for_protocol(self.operation_id)
             .unwrap();
 
+        let mut state_changed = false;
         for batch in unconfirmed_transactions.chunks(self.config.max_tx_query_batch_size) {
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
@@ -119,12 +120,19 @@ where
                 .for_protocol(self.operation_id)?;
             info!(
                 target: LOG_TARGET,
-                "Base node returned {} as mined and {} as unmined",
+                "Base node returned {} as mined and {} as unmined (Operation ID: {})",
                 mined.len(),
-                unmined.len()
+                unmined.len(),
+                self.operation_id
             );
             for (mined_tx, mined_height, mined_in_block, num_confirmations) in &mined {
-                info!(target: LOG_TARGET, "Updating transaction {} as mined", mined_tx.tx_id);
+                info!(
+                    target: LOG_TARGET,
+                    "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
+                    mined_tx.tx_id,
+                    *num_confirmations >= self.config.num_confirmations_required,
+                    self.operation_id
+                );
                 self.update_transaction_as_mined(
                     mined_tx.tx_id,
                     &mined_tx.status,
@@ -133,13 +141,19 @@ where
                     *num_confirmations,
                 )
                 .await?;
+                state_changed = true;
             }
             if let Some((tip_height, tip_block)) = tip_info {
                 for unmined_tx in &unmined {
                     // Treat coinbases separately
                     if unmined_tx.is_coinbase() {
                         if unmined_tx.coinbase_block_height.unwrap_or_default() <= tip_height {
-                            info!(target: LOG_TARGET, "Updated coinbase {} as abandoned", unmined_tx.tx_id);
+                            info!(
+                                target: LOG_TARGET,
+                                "Updated coinbase {} as abandoned (Operation ID: {})",
+                                unmined_tx.tx_id,
+                                self.operation_id
+                            );
                             self.update_coinbase_as_abandoned(
                                 unmined_tx.tx_id,
                                 &tip_block,
@@ -147,27 +161,32 @@ where
                                 tip_height.saturating_sub(unmined_tx.coinbase_block_height.unwrap_or_default()),
                             )
                             .await?;
+                            state_changed = true;
                         } else {
                             info!(
                                 target: LOG_TARGET,
                                 "Coinbase not found, but it is for a block that is not yet in the chain. Coinbase \
-                                 height: {}, tip height:{}",
+                                 height: {}, tip height:{} (Operation ID: {})",
                                 unmined_tx.coinbase_block_height.unwrap_or_default(),
-                                tip_height
+                                tip_height,
+                                self.operation_id
                             );
                         }
                     } else {
                         info!(
                             target: LOG_TARGET,
-                            "Updated transaction {} as unmined", unmined_tx.tx_id
+                            "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
                         );
                         self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
                             .await?;
+                        state_changed = true;
                     }
                 }
             }
         }
-        self.publish_event(TransactionEvent::TransactionValidationSuccess(self.operation_id));
+        if state_changed {
+            self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
+        }
         Ok(self.operation_id)
     }
 
@@ -186,7 +205,8 @@ where
     ) -> Result<(), TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
-            "Checking last mined transactions to see if the base node has re-orged"
+            "Checking last mined transactions to see if the base node has re-orged (Operation ID: {})",
+            self.operation_id
         );
         while let Some(last_mined_transaction) = self
             .db
@@ -223,21 +243,27 @@ where
                 warn!(
                     target: LOG_TARGET,
                     "The block that transaction (excess:{}) was in has been reorged out, will try to find this \
-                     transaction again, but these funds have potentially been re-orged out of the chain",
+                     transaction again, but these funds have potentially been re-orged out of the chain (Operation \
+                     ID: {})",
                     last_mined_transaction
                         .transaction
                         .body
                         .kernels()
                         .first()
                         .map(|k| k.excess.to_hex())
-                        .unwrap()
+                        .unwrap(),
+                    self.operation_id
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
                     .await?;
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged(
+                    last_mined_transaction.tx_id,
+                ));
             } else {
                 info!(
                     target: LOG_TARGET,
-                    "Last mined transaction is still in the block chain according to base node."
+                    "Last mined transaction is still in the block chain according to base node (Operation ID: {}).",
+                    self.operation_id
                 );
                 break;
             }
@@ -269,14 +295,18 @@ where
         }
 
         if batch_signatures.is_empty() {
-            info!(target: LOG_TARGET, "No transactions needed to query with the base node");
+            info!(
+                target: LOG_TARGET,
+                "No transactions needed to query with the base node (Operation ID: {})", self.operation_id
+            );
             return Ok((mined, unmined, None));
         }
 
         info!(
             target: LOG_TARGET,
-            "Asking base node for location of {} transactions by excess signature",
-            batch_signatures.len()
+            "Asking base node for location of {} transactions by excess signature (Operation ID: {})",
+            batch_signatures.len(),
+            self.operation_id
         );
 
         let batch_response = base_node_client
@@ -325,7 +355,10 @@ where
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
             Err(rpc_error) => {
-                warn!(target: LOG_TARGET, "Error asking base node for header:{}", rpc_error);
+                warn!(
+                    target: LOG_TARGET,
+                    "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
+                );
                 match &rpc_error {
                     RequestFailed(status) => {
                         if status.as_status_code() == NotFound {
@@ -382,7 +415,10 @@ where
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx_id, e
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {} (Operation ID: {})",
+                    tx_id,
+                    e,
+                    self.operation_id
                 );
             };
         }
@@ -413,7 +449,10 @@ where
         if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
             warn!(
                 target: LOG_TARGET,
-                "Could not mark coinbase output for TxId: {} as abandoned: {}", tx_id, e
+                "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
+                tx_id,
+                e,
+                self.operation_id
             );
         };
 
@@ -436,7 +475,10 @@ where
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {}", tx_id, e
+                    "Could not mark coinbase output for TxId: {} as not abandoned: {} (Operation ID: {})",
+                    tx_id,
+                    e,
+                    self.operation_id
                 );
             };
         }
