@@ -531,7 +531,7 @@ unsigned long long wallet_get_num_confirmations_required(struct TariWallet *wall
 void wallet_set_num_confirmations_required(struct TariWallet *wallet, unsigned long long num, int *error_out);
 
 // Sends a TariPendingOutboundTransaction
-unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram, const char *message, int *error_out);
+unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram, const char *message, bool one_sided, int *error_out);
 
 // Get the TariContacts from a TariWallet
 struct TariContacts *wallet_get_contacts(struct TariWallet *wallet, int *error_out);
