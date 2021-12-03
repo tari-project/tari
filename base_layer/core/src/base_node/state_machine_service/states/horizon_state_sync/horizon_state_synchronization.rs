@@ -20,22 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
-
-use croaring::Bitmap;
-use futures::StreamExt;
-use log::*;
-use tari_crypto::{
-    commitment::HomomorphicCommitment,
-    tari_utilities::{hex::Hex, Hashable},
-};
-
-use tari_common_types::types::{HashDigest, RangeProofService};
-use tari_mmr::{MerkleMountainRange, MutableMmr};
-
+use super::error::HorizonSyncError;
 use crate::{
     base_node::{
         state_machine_service::{
@@ -44,7 +29,7 @@ use crate::{
         },
         sync::{rpc, SyncPeer},
     },
-    blocks::BlockHeader,
+    blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree, PrunedOutput},
     proto::base_node::{
         sync_utxo as proto_sync_utxo,
@@ -59,8 +44,23 @@ use crate::{
         transaction_output::TransactionOutput,
     },
 };
-
-use super::error::HorizonSyncError;
+use croaring::Bitmap;
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::*;
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+    mem,
+    sync::Arc,
+    time::Instant,
+};
+use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
+use tari_crypto::{
+    commitment::HomomorphicCommitment,
+    tari_utilities::{hex::Hex, Hashable},
+};
+use tari_mmr::{MerkleMountainRange, MutableMmr};
+use tokio::task;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
@@ -68,9 +68,10 @@ pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
     shared: &'a mut BaseNodeStateMachine<B>,
     sync_peer: &'a SyncPeer,
     horizon_sync_height: u64,
-    prover: &'a RangeProofService,
+    prover: Arc<RangeProofService>,
     num_kernels: u64,
     num_outputs: u64,
+    full_bitmap: Option<Bitmap>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -78,7 +79,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         shared: &'a mut BaseNodeStateMachine<B>,
         sync_peer: &'a SyncPeer,
         horizon_sync_height: u64,
-        prover: &'a RangeProofService,
+        prover: Arc<RangeProofService>,
     ) -> Self {
         Self {
             shared,
@@ -87,14 +88,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             prover,
             num_kernels: 0,
             num_outputs: 0,
+            full_bitmap: None,
         }
     }
 
     pub async fn synchronize(&mut self) -> Result<(), HorizonSyncError> {
         debug!(
             target: LOG_TARGET,
-            "Preparing database for horizon sync to height (#{})", self.horizon_sync_height
+            "Preparing database for horizon sync to height #{}", self.horizon_sync_height
         );
+
         let header = self.db().fetch_header(self.horizon_sync_height).await?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
                 entity: "Header",
@@ -130,10 +133,27 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
+        debug!(target: LOG_TARGET, "Initializing");
+        self.initialize().await?;
         debug!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels(client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
         self.synchronize_outputs(client, to_header).await?;
+        Ok(())
+    }
+
+    async fn initialize(&mut self) -> Result<(), HorizonSyncError> {
+        let db = self.db();
+        let local_metadata = db.get_chain_metadata().await?;
+
+        let new_prune_height = cmp::min(local_metadata.height_of_longest_chain(), self.horizon_sync_height);
+        if local_metadata.pruned_height() < new_prune_height {
+            debug!(target: LOG_TARGET, "Pruning block chain to height {}", new_prune_height);
+            db.prune_to_height(new_prune_height).await?;
+        }
+
+        self.full_bitmap = Some(db.fetch_deleted_bitmap_at_tip().await?.into_bitmap());
+
         Ok(())
     }
 
@@ -174,41 +194,43 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             latency.unwrap_or_default().as_millis()
         );
 
-        let start = local_num_kernels;
-        let end = remote_num_kernels;
-        let end_hash = to_header.hash();
-
+        let mut current_header = self
+            .db()
+            .fetch_header_containing_kernel_mmr(local_num_kernels + 1)
+            .await?;
         let req = SyncKernelsRequest {
-            start,
-            end_header_hash: end_hash,
+            start: local_num_kernels,
+            end_header_hash: to_header.hash(),
         };
         let mut kernel_stream = client.sync_kernels(req).await?;
 
-        let mut current_header = self.db().fetch_header_containing_kernel_mmr(start + 1).await?;
         debug!(
             target: LOG_TARGET,
             "Found header for kernels at mmr pos: {} height: {}",
-            start,
+            local_num_kernels,
             current_header.height()
         );
-        let mut kernels = vec![];
+        let mut kernel_hashes = vec![];
         let db = self.db().clone();
         let mut txn = db.write_transaction();
-        let mut mmr_position = start;
+        let mut mmr_position = local_num_kernels;
+        let end = remote_num_kernels;
         while let Some(kernel) = kernel_stream.next().await {
             let kernel: TransactionKernel = kernel?.try_into().map_err(HorizonSyncError::ConversionError)?;
             kernel
                 .verify_signature()
                 .map_err(HorizonSyncError::InvalidKernelSignature)?;
 
-            kernels.push(kernel.clone());
+            kernel_hashes.push(kernel.hash());
+
             txn.insert_kernel_via_horizon_sync(kernel, current_header.hash().clone(), mmr_position as u32);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
+                let num_kernels = kernel_hashes.len();
                 debug!(
                     target: LOG_TARGET,
                     "Header #{} ({} kernels)",
                     current_header.height(),
-                    kernels.len()
+                    num_kernels,
                 );
                 // Validate root
                 let block_data = db
@@ -217,8 +239,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let kernel_pruned_set = block_data.dissolve().0;
                 let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(kernel_pruned_set);
 
-                for kernel in kernels.drain(..) {
-                    kernel_mmr.push(kernel.hash())?;
+                for hash in kernel_hashes.drain(..) {
+                    kernel_mmr.push(hash)?;
                 }
 
                 let mmr_root = kernel_mmr.get_merkle_root()?;
@@ -231,13 +253,29 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     });
                 }
 
-                txn.update_pruned_hash_set(
-                    MmrTree::Kernel,
+                let kernel_hash_set = kernel_mmr.get_pruned_hash_set()?;
+                debug!(
+                    target: LOG_TARGET,
+                    "Updating block data at height {}",
+                    current_header.height()
+                );
+                txn.update_block_accumulated_data_via_horizon_sync(
                     current_header.hash().clone(),
-                    kernel_mmr.get_pruned_hash_set()?,
+                    UpdateBlockAccumulatedData {
+                        kernel_hash_set: Some(kernel_hash_set),
+                        ..Default::default()
+                    },
                 );
 
                 txn.commit().await?;
+                debug!(
+                    target: LOG_TARGET,
+                    "Committed {} kernel(s), ({}/{}) {} remaining",
+                    num_kernels,
+                    mmr_position + 1,
+                    end,
+                    end - (mmr_position + 1)
+                );
                 if mmr_position < end - 1 {
                     current_header = db.fetch_chain_header(current_header.height() + 1).await?;
                 }
@@ -308,39 +346,39 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             include_deleted_bitmaps: true,
             include_pruned_utxos: true,
         };
-        let mut output_stream = client.sync_utxos(req).await?;
 
         let mut current_header = self.db().fetch_header_containing_utxo_mmr(start + 1).await?;
+        let mut output_stream = client.sync_utxos(req).await?;
+
         debug!(
             target: LOG_TARGET,
             "Found header for utxos at mmr pos: {} - {} height: {}",
-            start + 1,
+            start,
             current_header.header().output_mmr_size,
             current_header.height()
         );
 
         let db = self.db().clone();
 
-        let mut output_hashes = vec![];
-        let mut witness_hashes = vec![];
         let mut txn = db.write_transaction();
         let mut unpruned_outputs = vec![];
         let mut mmr_position = start;
         let mut height_utxo_counter = 0u64;
         let mut height_txo_counter = 0u64;
+        let mut timer = Instant::now();
 
         let block_data = db
             .fetch_block_accumulated_data(current_header.header().prev_hash.clone())
             .await?;
-        let (_, output_pruned_set, rp_pruned_set, mut full_bitmap) = block_data.dissolve();
+        let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
 
         let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(rp_pruned_set);
+        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
 
         while let Some(response) = output_stream.next().await {
             let res: SyncUtxosResponse = response?;
 
-            if res.mmr_index > 0 && res.mmr_index != mmr_position {
+            if res.mmr_index != 0 && res.mmr_index != mmr_position {
                 return Err(HorizonSyncError::IncorrectResponse(format!(
                     "Expected MMR position of {} but got {}",
                     mmr_position, res.mmr_index,
@@ -363,9 +401,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    output_hashes.push(output.hash());
-                    witness_hashes.push(output.witness_hash());
                     unpruned_outputs.push(output.clone());
+
+                    output_mmr.push(output.hash())?;
+                    witness_mmr.push(output.witness_hash())?;
+
                     txn.insert_output_via_horizon_sync(
                         output,
                         current_header.hash().clone(),
@@ -384,8 +424,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         current_header.height()
                     );
                     height_txo_counter += 1;
-                    output_hashes.push(utxo.hash.clone());
-                    witness_hashes.push(utxo.witness_hash.clone());
+                    output_mmr.push(utxo.hash.clone())?;
+                    witness_mmr.push(utxo.witness_hash.clone())?;
+
                     txn.insert_pruned_output_via_horizon_sync(
                         utxo.hash,
                         utxo.witness_hash,
@@ -404,29 +445,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         )));
                     }
 
-                    debug!(
-                        target: LOG_TARGET,
-                        "UTXO: {} (Header #{}), added {} utxos, added {} txos",
-                        mmr_position,
-                        current_header.height(),
-                        height_utxo_counter,
-                        height_txo_counter
-                    );
-
-                    height_txo_counter = 0;
-                    height_utxo_counter = 0;
-
-                    // Validate root
-                    for hash in output_hashes.drain(..) {
-                        output_mmr.push(hash)?;
-                    }
-
-                    for hash in witness_hashes.drain(..) {
-                        witness_mmr.push(hash)?;
-                    }
-
-                    // Check that the difference bitmap is excessively large. Bitmap::deserialize panics if greater than
-                    // isize::MAX, however isize::MAX is still an inordinate amount of data. An
+                    // Check that the difference bitmap isn't excessively large. Bitmap::deserialize panics if greater
+                    // than isize::MAX, however isize::MAX is still an inordinate amount of data. An
                     // arbitrary 4 MiB limit is used.
                     const MAX_DIFF_BITMAP_BYTE_LEN: usize = 4 * 1024 * 1024;
                     if diff_bitmap.len() > MAX_DIFF_BITMAP_BYTE_LEN {
@@ -448,11 +468,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                     // Merge the differences into the final bitmap so that we can commit to the entire spend state
                     // in the output MMR
-                    full_bitmap.or_inplace(&diff_bitmap);
-                    full_bitmap.run_optimize();
+                    let bitmap = self.full_bitmap_mut();
+                    bitmap.or_inplace(&diff_bitmap);
+                    bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
-                    let output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set.clone(), full_bitmap.clone())?;
+                    let output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set.clone(), bitmap.clone())?;
 
                     let mmr_root = output_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header().output_mr {
@@ -474,29 +495,54 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         });
                     }
 
-                    // Validate rangeproofs if the MMR matches
-                    for o in unpruned_outputs.drain(..) {
-                        o.verify_range_proof(self.prover)
-                            .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
-                    }
+                    self.validate_rangeproofs(mem::take(&mut unpruned_outputs)).await?;
 
                     txn.update_deleted_bitmap(diff_bitmap.clone());
-                    txn.update_pruned_hash_set(MmrTree::Utxo, current_header.hash().clone(), pruned_output_set);
-                    txn.update_pruned_hash_set(
-                        MmrTree::Witness,
-                        current_header.hash().clone(),
-                        witness_mmr.get_pruned_hash_set()?,
-                    );
-                    txn.update_block_accumulated_data_with_deleted_diff(current_header.hash().clone(), diff_bitmap);
 
+                    let witness_hash_set = witness_mmr.get_pruned_hash_set()?;
+                    txn.update_block_accumulated_data_via_horizon_sync(
+                        current_header.hash().clone(),
+                        UpdateBlockAccumulatedData {
+                            utxo_hash_set: Some(pruned_output_set),
+                            witness_hash_set: Some(witness_hash_set),
+                            deleted_diff: Some(diff_bitmap.into()),
+                            ..Default::default()
+                        },
+                    );
                     txn.commit().await?;
 
-                    current_header = db.fetch_chain_header(current_header.height() + 1).await?;
                     debug!(
                         target: LOG_TARGET,
-                        "Expecting to receive the next UTXO set for header #{}",
-                        current_header.height()
+                        "UTXO: {}/{}, Header #{}, added {} utxos, added {} txos in {:.2?}",
+                        mmr_position,
+                        end,
+                        current_header.height(),
+                        height_utxo_counter,
+                        height_txo_counter,
+                        timer.elapsed()
                     );
+                    height_txo_counter = 0;
+                    height_utxo_counter = 0;
+                    timer = Instant::now();
+
+                    if mmr_position == end {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Sync complete at mmr position {}, height #{}",
+                            mmr_position,
+                            current_header.height()
+                        );
+                        break;
+                    } else {
+                        current_header = db.fetch_chain_header(current_header.height() + 1).await?;
+                        debug!(
+                            target: LOG_TARGET,
+                            "Expecting to receive the next UTXO set {}-{} for header #{}",
+                            mmr_position,
+                            current_header.header().output_mmr_size,
+                            current_header.height()
+                        );
+                    }
                 },
                 v => {
                     error!(target: LOG_TARGET, "Remote node returned an invalid response {:?}", v);
@@ -520,6 +566,37 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 "Sync node did not send all utxos requested".to_string(),
             ));
         }
+
+        Ok(())
+    }
+
+    async fn validate_rangeproofs(&self, mut unpruned_outputs: Vec<TransactionOutput>) -> Result<(), HorizonSyncError> {
+        let concurrency = self.shared.config.sync_validation_concurrency;
+        let mut chunk_size = unpruned_outputs.len() / concurrency;
+        if unpruned_outputs.len() % concurrency > 0 {
+            chunk_size += 1;
+        }
+        // Validate rangeproofs in parallel
+        let mut tasks = (0..concurrency)
+            .map(|_| {
+                let end = cmp::min(unpruned_outputs.len(), chunk_size);
+                unpruned_outputs.drain(..end).collect::<Vec<_>>()
+            })
+            .map(|chunk| {
+                let prover = self.prover.clone();
+                task::spawn_blocking(move || -> Result<(), HorizonSyncError> {
+                    for o in chunk {
+                        o.verify_range_proof(&prover)
+                            .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect::<FuturesUnordered<_>>();
+
+        while let Some(result) = tasks.next().await {
+            result??;
+        }
         Ok(())
     }
 
@@ -528,22 +605,75 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     async fn finalize_horizon_sync(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
 
-        let info = HorizonSyncInfo::new(vec![self.sync_peer.node_id().clone()], HorizonSyncStatus::Finalizing);
-        self.shared.set_state_info(StateInfo::HorizonSync(info));
+        self.shared.set_state_info(StateInfo::HorizonSync(HorizonSyncInfo::new(
+            vec![self.sync_peer.node_id().clone()],
+            HorizonSyncStatus::Finalizing,
+        )));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
+        let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
+
+        self.shared
+            .sync_validators
+            .final_horizon_state
+            .validate(
+                &*self.db().inner().db_read_access()?,
+                header.height(),
+                &calc_utxo_sum,
+                &calc_kernel_sum,
+            )
+            .map_err(HorizonSyncError::FinalStateValidationFailed)?;
+
+        let metadata = self.db().get_chain_metadata().await?;
+        info!(
+            target: LOG_TARGET,
+            "Horizon state validation succeeded! Committing horizon state."
+        );
+        self.db()
+            .write_transaction()
+            .set_best_block(
+                header.height(),
+                header.hash().clone(),
+                header.accumulated_data().total_accumulated_difficulty,
+                metadata.best_block().clone(),
+            )
+            .set_pruned_height(header.height())
+            .set_horizon_data(calc_kernel_sum, calc_utxo_sum)
+            .commit()
+            .await?;
+
+        Ok(())
+    }
+
+    fn take_final_bitmap(&mut self) -> Arc<Bitmap> {
+        self.full_bitmap
+            .take()
+            .map(Arc::new)
+            .expect("take_full_bitmap called before initialize")
+    }
+
+    fn full_bitmap_mut(&mut self) -> &mut Bitmap {
+        self.full_bitmap
+            .as_mut()
+            .expect("full_bitmap_mut called before initialize")
+    }
+
+    /// (UTXO sum, Kernel sum)
+    async fn calculate_commitment_sums(
+        &mut self,
+        header: &ChainHeader,
+    ) -> Result<(Commitment, Commitment), HorizonSyncError> {
         let mut pruned_utxo_sum = HomomorphicCommitment::default();
         let mut pruned_kernel_sum = HomomorphicCommitment::default();
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
-        let bitmap = Arc::new(
-            self.db()
-                .fetch_complete_deleted_bitmap_at(header.hash().clone())
-                .await?
-                .into_bitmap(),
-        );
-        let expected_prev_best_block = self.shared.db.get_chain_metadata().await?.best_block().clone();
+
+        let bitmap = self.take_final_bitmap();
+        let mut txn = self.db().write_transaction();
+        let mut utxo_mmr_position = 0;
+        let mut prune_positions = vec![];
+
         for h in 0..=header.height() {
             let curr_header = self.db().fetch_chain_header(h).await?;
 
@@ -555,10 +685,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 prev_mmr,
                 curr_header.header().output_mmr_size - 1
             );
-            let (utxos, _) = self
-                .db()
-                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header().output_mmr_size - 1, bitmap.clone())
-                .await?;
+            let (utxos, _) = self.db().fetch_utxos_in_block(curr_header.hash().clone(), None).await?;
             trace!(
                 target: LOG_TARGET,
                 "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
@@ -567,74 +694,59 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 prev_kernel_mmr,
                 curr_header.header().kernel_mmr_size - 1
             );
-            let kernels = self
-                .db()
-                .fetch_kernels_by_mmr_position(prev_kernel_mmr, curr_header.header().kernel_mmr_size - 1)
-                .await?;
 
-            let mut utxo_sum = HomomorphicCommitment::default();
-            debug!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
-            debug!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
+            trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
             let mut prune_counter = 0;
             for u in utxos {
                 match u {
                     PrunedOutput::NotPruned { output } => {
-                        utxo_sum = &output.commitment + &utxo_sum;
+                        if bitmap.contains(utxo_mmr_position) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Found output that needs pruning at height: {} position: {}", h, utxo_mmr_position
+                            );
+                            prune_positions.push(utxo_mmr_position);
+                            prune_counter += 1;
+                        } else {
+                            pruned_utxo_sum = &output.commitment + &pruned_utxo_sum;
+                        }
                     },
                     _ => {
                         prune_counter += 1;
                     },
                 }
+                utxo_mmr_position += 1;
             }
             if prune_counter > 0 {
-                debug!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
+                trace!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
             }
             prev_mmr = curr_header.header().output_mmr_size;
 
-            pruned_utxo_sum = &utxo_sum + &pruned_utxo_sum;
-
+            let kernels = self.db().fetch_kernels_in_block(curr_header.hash().clone()).await?;
+            trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
             for k in kernels {
                 pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
             }
             prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
-            trace!(
-                target: LOG_TARGET,
-                "Height: {} Kernel sum:{:?} Pruned UTXO sum: {:?}",
-                h,
-                pruned_kernel_sum,
-                pruned_utxo_sum
-            );
+            if h % 1000 == 0 {
+                debug!(
+                    target: LOG_TARGET,
+                    "Final Validation: {:.2}% complete. Height: {}, mmr_position: {} ",
+                    (h as f32 / header.height() as f32) * 100.0,
+                    h,
+                    utxo_mmr_position,
+                );
+            }
         }
 
-        self.shared
-            .sync_validators
-            .final_horizon_state
-            .validate(
-                &*self.db().clone().into_inner().db_read_access()?,
-                header.height(),
-                &pruned_utxo_sum,
-                &pruned_kernel_sum,
-            )
-            .map_err(HorizonSyncError::FinalStateValidationFailed)?;
+        if !prune_positions.is_empty() {
+            debug!(target: LOG_TARGET, "Pruning {} spent outputs", prune_positions.len());
+            txn.prune_output_at_positions(prune_positions);
+            txn.commit().await?;
+        }
 
-        info!(
-            target: LOG_TARGET,
-            "Horizon state validation succeeded! Committing horizon state."
-        );
-        self.db()
-            .write_transaction()
-            .set_best_block(
-                header.height(),
-                header.hash().clone(),
-                header.accumulated_data().total_accumulated_difficulty,
-                expected_prev_best_block,
-            )
-            .set_pruned_height(header.height(), pruned_kernel_sum, pruned_utxo_sum)
-            .commit()
-            .await?;
-
-        Ok(())
+        Ok((pruned_utxo_sum, pruned_kernel_sum))
     }
 
     #[inline]

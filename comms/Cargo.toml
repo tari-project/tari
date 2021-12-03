@@ -69,4 +69,4 @@ tari_common = { version = "^0.21", path = "../common", features = ["build"] }
 c_integration = []
 avx2 = ["tari_crypto/avx2"]
 metrics = []
-rpc = ["tower-make"]
+rpc = ["tower-make", "tower/util"]

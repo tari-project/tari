@@ -169,13 +169,7 @@ pub trait OrNotFound<U> {
 
 impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
     fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError> {
-        match self {
-            Ok(inner) => match inner {
-                None => Err(ChainStorageError::ValueNotFound { entity, field, value }),
-                Some(v) => Ok(v),
-            },
-            Err(err) => Err(err),
-        }
+        self.and_then(|inner| inner.ok_or(ChainStorageError::ValueNotFound { entity, field, value }))
     }
 }
 

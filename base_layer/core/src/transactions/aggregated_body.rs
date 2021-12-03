@@ -462,11 +462,7 @@ impl AggregateBody {
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
-            if !o.verify_range_proof(range_proof_service)? {
-                return Err(TransactionError::ValidationError(
-                    "Range proof could not be verified".into(),
-                ));
-            }
+            o.verify_range_proof(range_proof_service)?;
         }
         Ok(())
     }

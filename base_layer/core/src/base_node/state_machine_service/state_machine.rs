@@ -54,7 +54,7 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
-    pub block_sync_validation_concurrency: usize,
+    pub sync_validation_concurrency: usize,
 }
 
 impl Default for BaseNodeStateMachineConfig {
@@ -68,7 +68,7 @@ impl Default for BaseNodeStateMachineConfig {
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,
-            block_sync_validation_concurrency: 8,
+            sync_validation_concurrency: 8,
         }
     }
 }
@@ -259,9 +259,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
 /// Polls both the interrupt signal and the given future. If the given future `state_fut` is ready first it's value is
 /// returned, otherwise if the interrupt signal is triggered, `StateEvent::UserQuit` is returned.
-async fn select_next_state_event<F>(interrupt_signal: ShutdownSignal, state_fut: F) -> StateEvent
-where F: Future<Output = StateEvent> {
+async fn select_next_state_event<F, I>(interrupt_signal: I, state_fut: F) -> StateEvent
+where
+    F: Future<Output = StateEvent>,
+    I: Future<Output = ()>,
+{
     futures::pin_mut!(state_fut);
+    futures::pin_mut!(interrupt_signal);
     // If future A and B are both ready `future::select` will prefer A
     match future::select(interrupt_signal, state_fut).await {
         Either::Left(_) => StateEvent::UserQuit,

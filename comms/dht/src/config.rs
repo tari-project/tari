@@ -82,6 +82,7 @@ pub struct DhtConfig {
     /// Default: 6 hrs
     pub ban_duration: Duration,
     /// This allows the use of test addresses in the network.
+    /// Default: false
     pub allow_test_addresses: bool,
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration`)
     /// Default: 1000 messages
