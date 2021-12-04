@@ -221,10 +221,7 @@ mod test {
             factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
             "Output commitment is invalid"
         );
-        assert!(
-            out.verify_range_proof(&factories.range_proof).unwrap(),
-            "Range proof is invalid"
-        );
+        out.verify_range_proof(&factories.range_proof).unwrap();
         assert!(out.features.flags.is_empty(), "Output features flags have changed");
     }
 }

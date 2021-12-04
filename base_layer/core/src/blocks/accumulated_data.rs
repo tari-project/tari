@@ -53,8 +53,8 @@ const LOG_TARGET: &str = "c::bn::acc_data";
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) outputs: PrunedHashSet,
+    pub(crate) witness: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
-    pub(crate) range_proofs: PrunedHashSet,
     pub(crate) kernel_sum: Commitment,
 }
 
@@ -62,14 +62,14 @@ impl BlockAccumulatedData {
     pub fn new(
         kernels: PrunedHashSet,
         outputs: PrunedHashSet,
-        range_proofs: PrunedHashSet,
+        witness: PrunedHashSet,
         deleted: Bitmap,
         total_kernel_sum: Commitment,
     ) -> Self {
         Self {
             kernels,
             outputs,
-            range_proofs,
+            witness,
             deleted: DeletedBitmap { deleted },
             kernel_sum: total_kernel_sum,
         }
@@ -79,8 +79,13 @@ impl BlockAccumulatedData {
         &self.deleted.deleted
     }
 
+    pub fn set_deleted(&mut self, deleted: DeletedBitmap) -> &mut Self {
+        self.deleted = deleted;
+        self
+    }
+
     pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.range_proofs, self.deleted.deleted)
+        (self.kernels, self.outputs, self.witness, self.deleted.deleted)
     }
 
     pub fn kernel_sum(&self) -> &Commitment {
@@ -96,7 +101,7 @@ impl Default for BlockAccumulatedData {
             deleted: DeletedBitmap {
                 deleted: Bitmap::create(),
             },
-            range_proofs: Default::default(),
+            witness: Default::default(),
             kernel_sum: Default::default(),
         }
     }
@@ -110,9 +115,18 @@ impl Display for BlockAccumulatedData {
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
             self.kernels.len().unwrap_or(0),
-            self.range_proofs.len().unwrap_or(0)
+            self.witness.len().unwrap_or(0)
         )
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateBlockAccumulatedData {
+    pub kernel_hash_set: Option<PrunedHashSet>,
+    pub utxo_hash_set: Option<PrunedHashSet>,
+    pub witness_hash_set: Option<PrunedHashSet>,
+    pub deleted_diff: Option<DeletedBitmap>,
+    pub kernel_sum: Option<Commitment>,
 }
 
 /// Wrapper struct to serialize and deserialize Bitmap

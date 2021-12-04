@@ -31,7 +31,7 @@ use crate::{
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
-    validation::BlockSyncBodyValidation,
+    validation::{BlockSyncBodyValidation, ValidationError},
 };
 use futures::StreamExt;
 use log::*;
@@ -96,6 +96,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 self.db.cleanup_orphans().await?;
                 Ok(())
             },
+            Err(err @ BlockSyncError::ValidationError(ValidationError::AsyncTaskFailed(_))) => Err(err),
             Err(err @ BlockSyncError::ValidationError(_)) | Err(err @ BlockSyncError::ReceivedInvalidBlockBody(_)) => {
                 self.ban_peer(node_id, &err).await?;
                 Err(err)

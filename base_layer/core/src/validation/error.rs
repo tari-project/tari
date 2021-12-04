@@ -57,7 +57,7 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
-    #[error("Transaction contains already outputs that already exist")]
+    #[error("Transaction contains outputs that already exist")]
     ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
