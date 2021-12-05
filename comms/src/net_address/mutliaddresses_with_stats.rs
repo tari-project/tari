@@ -140,13 +140,13 @@ impl MultiaddressesWithStats {
         }
     }
 
-    /// Mark that a successful connection was established with the specified net address
+    /// Mark that a successful interaction occurred with the specified address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
-    pub fn mark_successful_connection_attempt(&mut self, address: &Multiaddr) -> bool {
+    pub fn mark_last_seen_now(&mut self, address: &Multiaddr) -> bool {
         match self.find_address_mut(address) {
             Some(addr) => {
-                addr.mark_successful_connection_attempt();
+                addr.mark_last_seen_now();
                 self.last_attempted = Some(Utc::now());
                 self.addresses.sort();
                 true
@@ -260,9 +260,9 @@ mod test {
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
 
-        assert!(net_addresses.mark_successful_connection_attempt(&net_address3));
-        assert!(net_addresses.mark_successful_connection_attempt(&net_address1));
-        assert!(net_addresses.mark_successful_connection_attempt(&net_address2));
+        assert!(net_addresses.mark_last_seen_now(&net_address3));
+        assert!(net_addresses.mark_last_seen_now(&net_address1));
+        assert!(net_addresses.mark_last_seen_now(&net_address2));
         let desired_last_seen = net_addresses.addresses[0].last_seen;
         let last_seen = net_addresses.last_seen();
         assert_eq!(desired_last_seen.unwrap(), last_seen.unwrap());
@@ -342,7 +342,7 @@ mod test {
     //        assert!(net_addresses.mark_failed_connection_attempt(&net_address2));
     //        assert!(net_addresses.mark_failed_connection_attempt(&net_address3));
     //        assert!(net_addresses.mark_failed_connection_attempt(&net_address1));
-    //        assert!(net_addresses.mark_successful_connection_attempt(&net_address2));
+    //        assert!(net_addresses.mark_last_seen_now(&net_address2));
     //        assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
     //        assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
     //        assert_eq!(net_addresses.addresses[2].connection_attempts, 2);
