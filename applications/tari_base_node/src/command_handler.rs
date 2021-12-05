@@ -420,7 +420,7 @@ impl CommandHandler {
             let peer = match peer_manager.find_all_starts_with(&partial).await {
                 Ok(peers) if peers.is_empty() => {
                     if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                        if let Ok(peer) = peer_manager.find_by_public_key(&pk).await {
+                        if let Ok(Some(peer)) = peer_manager.find_by_public_key(&pk).await {
                             peer
                         } else {
                             println!("No peer matching '{}'", original_str);
