@@ -89,6 +89,11 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
     AsyncTaskFailed(#[from] task::JoinError),
+    #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
+    TariScriptExceedsMaxSize {
+        max_script_size: usize,
+        actual_script_size: usize,
+    },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

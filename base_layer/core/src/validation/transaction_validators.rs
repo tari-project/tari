@@ -26,7 +26,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction_entities::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_not_duplicate_txos},
+        helpers::{check_inputs_are_utxos, check_outputs},
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -117,9 +117,10 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let constants = self.db.consensus_constants()?;
         let db = self.db.db_read_access()?;
         check_inputs_are_utxos(&*db, tx.body())?;
-        check_not_duplicate_txos(&*db, tx.body())?;
+        check_outputs(&*db, constants, tx.body())?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
