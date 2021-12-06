@@ -100,14 +100,11 @@ pub trait BlockchainBackend: Send + Sync {
         excess_sig: &Signature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
-    /// Fetch kernels by MMR position
-    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError>;
-
-    fn fetch_utxos_by_mmr_position(
+    /// Fetch all UTXOs and spends in the block
+    fn fetch_utxos_in_block(
         &self,
-        start: u64,
-        end: u64,
-        deleted: &Bitmap,
+        header_hash: &HashOutput,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR

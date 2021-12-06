@@ -324,7 +324,7 @@ mod test {
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
-        assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
+        utxo.verify_range_proof(&factories.range_proof).unwrap();
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
         assert_eq!(
             tx.body.check_coinbase_output(

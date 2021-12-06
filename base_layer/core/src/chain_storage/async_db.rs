@@ -30,7 +30,6 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature},
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
 
 use crate::{
     blocks::{
@@ -44,6 +43,7 @@ use crate::{
         DeletedBitmap,
         HistoricalBlock,
         NewBlockTemplate,
+        UpdateBlockAccumulatedData,
     },
     chain_storage::{
         blockchain_database::MmrRoots,
@@ -157,7 +157,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Metadata --------------------------------------------//
     make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
 
-    make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
+    make_async_fn!(fetch_horizon_data() -> HorizonData, "fetch_horizon_data");
 
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<PrunedOutput>, "fetch_utxo");
@@ -166,12 +166,12 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
-    make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, deleted: Arc<Bitmap>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_by_mmr_position");
+    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
-    make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
+    make_async_fn!(fetch_kernels_in_block(hash: HashOutput) -> Vec<TransactionKernel>, "fetch_kernels_in_block");
 
     //---------------------------------- MMR --------------------------------------------//
     make_async_fn!(prepare_new_block(template: NewBlockTemplate) -> Block, "prepare_new_block");
@@ -244,6 +244,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- Misc. --------------------------------------------//
 
+    make_async_fn!(prune_to_height(height: u64) -> (), "prune_to_height");
+
     make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
 
     make_async_fn!(rewind_to_hash(hash: BlockHash) -> Vec<Arc<ChainBlock>>, "rewind_to_hash");
@@ -296,16 +298,21 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         height: u64,
         hash: HashOutput,
-        accumulated_data: u128,
+        accumulated_difficulty: u128,
         expected_prev_best_block: HashOutput,
     ) -> &mut Self {
         self.transaction
-            .set_best_block(height, hash, accumulated_data, expected_prev_best_block);
+            .set_best_block(height, hash, accumulated_difficulty, expected_prev_best_block);
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
-        self.transaction.set_pruned_height(height, kernel_sum, utxo_sum);
+    pub fn set_pruned_height(&mut self, height: u64) -> &mut Self {
+        self.transaction.set_pruned_height(height);
+        self
+    }
+
+    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.transaction.set_horizon_data(kernel_sum, utxo_sum);
         self
     }
 
@@ -344,23 +351,12 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_pruned_hash_set(
-        &mut self,
-        mmr_tree: MmrTree,
-        header_hash: HashOutput,
-        pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self {
-        self.transaction
-            .update_pruned_hash_set(mmr_tree, header_hash, pruned_hash_set);
-        self
-    }
-
-    pub fn update_block_accumulated_data_with_deleted_diff(
+    pub fn update_block_accumulated_data_via_horizon_sync(
         &mut self,
         header_hash: HashOutput,
-        deleted: Bitmap,
+        values: UpdateBlockAccumulatedData,
     ) -> &mut Self {
-        self.transaction.update_deleted_with_diff(header_hash, deleted);
+        self.transaction.update_block_accumulated_data(header_hash, values);
         self
     }
 
@@ -382,6 +378,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 
     pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64) -> &mut Self {
         self.transaction.insert_bad_block(hash, height);
+        self
+    }
+
+    pub fn prune_output_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
+        self.transaction.prune_outputs_at_positions(positions);
         self
     }
 

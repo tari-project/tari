@@ -170,7 +170,7 @@ where B: BlockchainBackend + 'static
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    block_sync_validation_concurrency: num_cpus::get(),
+                    sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,

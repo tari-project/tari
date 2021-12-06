@@ -107,7 +107,7 @@ where B: BlockchainBackend + 'static
                 rules.clone(),
                 factories,
                 config.bypass_range_proof_verification,
-                config.block_sync_validation_concurrency,
+                config.sync_validation_concurrency,
             );
             let max_randomx_vms = config.max_randomx_vms;
 

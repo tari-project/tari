@@ -96,6 +96,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 self.db.cleanup_orphans().await?;
                 Ok(())
             },
+            Err(err @ BlockSyncError::ValidationError(ValidationError::AsyncTaskFailed(_))) => Err(err),
             Err(BlockSyncError::ValidationError(err)) => {
                 match &err {
                     ValidationError::BlockHeaderError(_) => {},
