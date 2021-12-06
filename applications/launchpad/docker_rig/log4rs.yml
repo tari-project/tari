@@ -155,8 +155,3 @@ loggers:
     appenders:
       - other
     additive: false
-  stress_test:
-    level: info
-    appenders:
-      - other
-    additive: false

@@ -25,7 +25,7 @@ use diesel::result::Error as DieselError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
 pub enum ContactsServiceError {
     #[error("Contact is not found")]
@@ -38,7 +38,7 @@ pub enum ContactsServiceError {
     TransportChannelError(#[from] TransportChannelError),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum ContactsServiceStorageError {
     #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,

@@ -34,6 +34,7 @@ use crate::{
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
             transaction_validation_protocol::TransactionValidationProtocol,
+            TxRejection,
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
@@ -48,7 +49,7 @@ use crate::{
     },
     types::HashDigest,
     util::watch::Watch,
-    utxo_scanner_service::utxo_scanning::RECOVERY_KEY,
+    utxo_scanner_service::RECOVERY_KEY,
 };
 use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
@@ -707,6 +708,7 @@ where
                 }
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
+            BaseNodeEvent::NewBlockDetected(_) => {},
         }
     }
 
@@ -1301,7 +1303,10 @@ where
 
         let _ = self
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(tx_id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                tx_id,
+                TxRejection::UserCancelled,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

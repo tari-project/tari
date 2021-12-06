@@ -152,7 +152,7 @@ impl LivenessState {
             self.failed_pings
                 .entry(node_id)
                 .and_modify(|v| {
-                    *v = *v + 1;
+                    *v += 1;
                 })
                 .or_insert(1);
         }
@@ -167,7 +167,7 @@ impl LivenessState {
     /// a latency sample is added and calculated. The given `peer` must match the recorded peer
     pub fn record_pong(&mut self, nonce: u64, sent_by: &NodeId) -> Option<u32> {
         self.inc_pongs_received();
-        self.failed_pings.remove_entry(&sent_by);
+        self.failed_pings.remove_entry(sent_by);
 
         let (node_id, _) = self.inflight_pings.get(&nonce)?;
         if node_id == sent_by {

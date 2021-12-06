@@ -48,7 +48,7 @@ impl MnemonicLanguage {
     /// Detects the mnemonic language of a specific word by searching all defined mnemonic word lists
     pub fn from(mnemonic_word: &str) -> Result<MnemonicLanguage, MnemonicError> {
         let words = vec![mnemonic_word.to_string()];
-        detect_language(&words)
+        MnemonicLanguage::detect_language(&words)
     }
 
     /// Returns an iterator for the MnemonicLanguage enum group to allow iteration over all defined languages
@@ -76,6 +76,51 @@ impl MnemonicLanguage {
             MnemonicLanguage::Korean => MNEMONIC_KOREAN_WORDS.len(),
             MnemonicLanguage::Spanish => MNEMONIC_SPANISH_WORDS.len(),
         }
+    }
+
+    /// Detects the language of a list of words
+    pub fn detect_language(words: &[String]) -> Result<MnemonicLanguage, MnemonicError> {
+        let count = words.iter().len();
+        match count.cmp(&1) {
+            Ordering::Less => {
+                return Err(MnemonicError::UnknownLanguage);
+            },
+            Ordering::Equal => {
+                let word = words.get(0).ok_or(MnemonicError::EncodeInvalidLength)?;
+                for language in MnemonicLanguage::iterator() {
+                    if find_mnemonic_index_from_word(word, language).is_ok() {
+                        return Ok(*language);
+                    }
+                }
+                return Err(MnemonicError::UnknownLanguage);
+            },
+            Ordering::Greater => {
+                for word in words {
+                    let mut languages = Vec::with_capacity(MnemonicLanguage::iterator().len());
+                    // detect all languages in which a word falls into
+                    for language in MnemonicLanguage::iterator() {
+                        if find_mnemonic_index_from_word(word, language).is_ok() {
+                            languages.push(*language);
+                        }
+                    }
+                    // check if at least one of the languages is consistent for all other words against languages
+                    // yielded from the initial word for this iteration
+                    for language in languages {
+                        let mut consistent = true;
+                        for compare in words {
+                            if compare != word && find_mnemonic_index_from_word(compare, &language).is_err() {
+                                consistent = false;
+                            }
+                        }
+                        if consistent {
+                            return Ok(language);
+                        }
+                    }
+                }
+            },
+        }
+
+        Err(MnemonicError::UnknownLanguage)
     }
 }
 
@@ -106,7 +151,7 @@ fn find_mnemonic_index_from_word(word: &str, language: &MnemonicLanguage) -> Res
     }
     match search_result {
         Ok(v) => Ok(v),
-        Err(_err) => Err(MnemonicError::WordNotFound),
+        Err(_err) => Err(MnemonicError::WordNotFound(word.to_string())),
     }
 }
 
@@ -154,54 +199,10 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
     Ok(mnemonic_sequence)
 }
 
-fn detect_language(words: &[String]) -> Result<MnemonicLanguage, MnemonicError> {
-    let count = words.iter().len();
-    match count.cmp(&1) {
-        Ordering::Less => {
-            return Err(MnemonicError::UnknownLanguage);
-        },
-        Ordering::Equal => {
-            let word = words.get(0).ok_or(MnemonicError::EncodeInvalidLength)?;
-            for language in MnemonicLanguage::iterator() {
-                if find_mnemonic_index_from_word(word, language).is_ok() {
-                    return Ok(*language);
-                }
-            }
-            return Err(MnemonicError::UnknownLanguage);
-        },
-        Ordering::Greater => {
-            for word in words {
-                let mut languages = Vec::with_capacity(MnemonicLanguage::iterator().len());
-                // detect all languages in which a word falls into
-                for language in MnemonicLanguage::iterator() {
-                    if find_mnemonic_index_from_word(word, language).is_ok() {
-                        languages.push(*language);
-                    }
-                }
-                // check if at least one of the languages is consistent for all other words against languages yielded
-                // from the initial word for this iteration
-                for language in languages {
-                    let mut consistent = true;
-                    for compare in words {
-                        if compare != word && find_mnemonic_index_from_word(compare, &language).is_err() {
-                            consistent = false;
-                        }
-                    }
-                    if consistent {
-                        return Ok(language);
-                    }
-                }
-            }
-        },
-    }
-
-    Err(MnemonicError::UnknownLanguage)
-}
-
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words, the language of the mnemonic
 /// sequence is detected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
-    let language = self::detect_language(mnemonic_seq)?;
+    let language = MnemonicLanguage::detect_language(mnemonic_seq)?;
     to_bytes_with_language(mnemonic_seq, &language)
 }
 
@@ -336,7 +337,10 @@ mod test {
             "opera".to_string(),
             "abandon".to_string(),
         ];
-        assert_eq!(detect_language(&words1), Ok(MnemonicLanguage::English));
+        assert_eq!(
+            MnemonicLanguage::detect_language(&words1),
+            Ok(MnemonicLanguage::English)
+        );
 
         // English/Spanish + English/French + Italian/Spanish
         let words2 = vec![
@@ -346,7 +350,7 @@ mod test {
             "abandon".to_string(),
             "tipico".to_string(),
         ];
-        assert!(detect_language(&words2).is_err());
+        assert!(MnemonicLanguage::detect_language(&words2).is_err());
 
         // bounds check (last word is invalid)
         let words3 = vec![
@@ -356,16 +360,16 @@ mod test {
             "abandon".to_string(),
             "topazio".to_string(),
         ];
-        assert!(detect_language(&words3).is_err());
+        assert!(MnemonicLanguage::detect_language(&words3).is_err());
 
         // building up a word list: English/French + French -> French
         let mut words = Vec::with_capacity(3);
         words.push("concert".to_string());
-        assert_eq!(detect_language(&words), Ok(MnemonicLanguage::English));
+        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::English));
         words.push("abandon".to_string());
-        assert_eq!(detect_language(&words), Ok(MnemonicLanguage::English));
+        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::English));
         words.push("barbier".to_string());
-        assert_eq!(detect_language(&words), Ok(MnemonicLanguage::French));
+        assert_eq!(MnemonicLanguage::detect_language(&words), Ok(MnemonicLanguage::French));
     }
 
     #[test]

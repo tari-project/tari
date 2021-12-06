@@ -42,9 +42,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 
 use tari_common::configuration::Network;
@@ -61,6 +62,8 @@ use tari_core::{
         },
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+        sync::rpc::BaseNodeSyncRpcService,
+        BaseNodeSyncService,
     },
     blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
@@ -80,7 +83,7 @@ use tari_core::{
 };
 
 use crate::helpers::{
-    block_builders::{chain_block, create_genesis_block_with_coinbase_value},
+    block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
     nodes::{BaseNodeBuilder, NodeInterfaces},
 };
 
@@ -88,6 +91,7 @@ mod helpers;
 
 async fn setup() -> (
     BaseNodeWalletRpcService<TempDatabase>,
+    BaseNodeSyncRpcService<TempDatabase>,
     NodeInterfaces,
     RpcRequestMock,
     ConsensusManager,
@@ -118,13 +122,15 @@ async fn setup() -> (
     });
 
     let request_mock = RpcRequestMock::new(base_node.comms.peer_manager());
-    let service = BaseNodeWalletRpcService::new(
+    let wallet_service = BaseNodeWalletRpcService::new(
         base_node.blockchain_db.clone().into(),
         base_node.mempool_handle.clone(),
         base_node.state_machine_handle.clone(),
     );
+    let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into());
     (
-        service,
+        wallet_service,
+        base_node_service,
         base_node,
         request_mock,
         consensus_manager,
@@ -138,7 +144,7 @@ async fn setup() -> (
 #[allow(clippy::identity_op)]
 async fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
-    let (service, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
 
     let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
     let tx1 = (*txs1[0]).clone();
@@ -289,4 +295,64 @@ async fn test_base_node_wallet_rpc() {
             .iter()
             .any(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment));
     }
+}
+
+#[tokio::test]
+async fn test_get_height_at_time() {
+    let factories = CryptoFactories::default();
+
+    let (_, service, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir) = setup().await;
+
+    let mut prev_block = block0.clone();
+    let mut times: Vec<EpochTime> = vec![prev_block.header().timestamp];
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let new_block = base_node
+            .blockchain_db
+            .prepare_new_block(chain_block_with_new_coinbase(&prev_block, vec![], &consensus_manager, &factories).0)
+            .unwrap();
+
+        prev_block = base_node
+            .blockchain_db
+            .add_block(Arc::new(new_block))
+            .unwrap()
+            .assert_added();
+        times.push(prev_block.header().timestamp);
+    }
+
+    let req = request_mock.request_with_context(Default::default(), times[0].as_u64() - 100);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 0);
+
+    let req = request_mock.request_with_context(Default::default(), times[0].as_u64());
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 0);
+
+    let req = request_mock.request_with_context(Default::default(), times[0].as_u64() + 1);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 0);
+
+    let req = request_mock.request_with_context(Default::default(), times[7].as_u64());
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 7);
+
+    let req = request_mock.request_with_context(Default::default(), times[7].as_u64() - 1);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 6);
+
+    let req = request_mock.request_with_context(Default::default(), times[7].as_u64() + 1);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 7);
+
+    let req = request_mock.request_with_context(Default::default(), times[10].as_u64());
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 10);
+
+    let req = request_mock.request_with_context(Default::default(), times[10].as_u64() - 1);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 9);
+
+    let req = request_mock.request_with_context(Default::default(), times[10].as_u64() + 1);
+    let resp = service.get_height_at_time(req).await.unwrap().into_message();
+    assert_eq!(resp, 10);
 }

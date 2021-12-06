@@ -87,9 +87,6 @@ grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 grpc_base_node_address = "127.0.0.1:18142"
-# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
-# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
 base_node_identity_file = "config/base_node_id.json"
@@ -265,9 +262,6 @@ grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 grpc_base_node_address = "127.0.0.1:18142"
-# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
-# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
 base_node_identity_file = "config/base_node_id.json"

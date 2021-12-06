@@ -63,7 +63,9 @@ mod test {
     };
 
     use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
+    use tari_wallet::transaction_service::protocols::TxRejection;
 
+    #[derive(Debug)]
     struct CallbackState {
         pub received_tx_callback_called: bool,
         pub received_tx_reply_callback_called: bool,
@@ -168,7 +170,7 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction, _reason: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match (*tx).tx_id {
             3 => lock.tx_cancellation_callback_called_inbound = true,
@@ -193,9 +195,9 @@ mod test {
         Box::from_raw(balance);
     }
 
-    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: u64, result: u8) {
+    unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, _result: u8) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.callback_transaction_validation_complete += result as u32;
+        lock.callback_transaction_validation_complete += request_key as u32;
         drop(lock);
     }
 
@@ -415,7 +417,10 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 4 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(3u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                3u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -431,11 +436,17 @@ mod test {
         assert_eq!(callback_balance_updated, 4);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(4u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                4u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                5u64,
+                TxRejection::UserCancelled,
+            )))
             .unwrap();
 
         oms_event_sender
@@ -466,7 +477,7 @@ mod test {
         assert_eq!(callback_balance_updated, 5);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(1u64)))
             .unwrap();
 
         oms_event_sender
@@ -482,7 +493,7 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationFailure(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(2u64)))
             .unwrap();
 
         oms_event_sender
@@ -498,7 +509,7 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationAborted(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(3u64)))
             .unwrap();
 
         oms_event_sender
@@ -514,7 +525,7 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(4u64)))
             .unwrap();
 
         dht_event_sender
@@ -538,7 +549,7 @@ mod test {
         assert!(lock.saf_messages_received);
         assert_eq!(lock.callback_txo_validation_complete, 18);
         assert_eq!(lock.callback_balance_updated, 5);
-        assert_eq!(lock.callback_transaction_validation_complete, 6);
+        assert_eq!(lock.callback_transaction_validation_complete, 10);
 
         drop(lock);
     }

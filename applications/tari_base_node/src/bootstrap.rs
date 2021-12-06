@@ -58,6 +58,7 @@ use tari_p2p::{
     initialization::{P2pConfig, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
+    transport::TransportType,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
@@ -169,7 +170,7 @@ where B: BlockchainBackend + 'static
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    block_sync_validation_concurrency: num_cpus::get(),
+                    sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,
@@ -184,11 +185,16 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), config);
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
-        identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-            .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+        match transport_type {
+            TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
+            _ => {
+                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
+                    .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+            },
+        };
         if let Some(hs) = comms.hidden_service() {
             identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
                 .map_err(|e| anyhow!("Failed to save tor identity: {:?}", e))?;

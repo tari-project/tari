@@ -95,6 +95,6 @@ fn initialize() -> Result<GlobalConfig, StratumTranscoderProxyError> {
     #[cfg(not(feature = "envlog"))]
     bootstrap.initialize_logging()?;
 
-    let cfg = GlobalConfig::convert_from(application_type, cfg)?;
+    let cfg = GlobalConfig::convert_from(application_type, cfg, bootstrap.network)?;
     Ok(cfg)
 }

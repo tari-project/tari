@@ -154,6 +154,8 @@ pub struct ConfigBootstrap {
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]
     pub network: Option<String>,
+    #[structopt(long, alias = "grpc-address")]
+    pub wallet_grpc_address: Option<String>,
     /// Metrics server bind address (prometheus pull)
     #[structopt(long, alias = "metrics-bind-addr")]
     pub metrics_server_bind_addr: Option<SocketAddr>,
@@ -196,6 +198,7 @@ impl Default for ConfigBootstrap {
             miner_max_diff: None,
             tracing_enabled: false,
             network: None,
+            wallet_grpc_address: None,
             metrics_server_bind_addr: None,
             metrics_push_endpoint: None,
         }

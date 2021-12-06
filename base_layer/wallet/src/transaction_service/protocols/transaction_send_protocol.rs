@@ -26,6 +26,7 @@ use crate::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionServiceResponse},
+        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
@@ -66,7 +67,6 @@ use tokio::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionSendProtocolStage {
@@ -472,10 +472,6 @@ where
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
                 );
-                debug!(
-                    target: LOG_TARGET_STRESS,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
-                );
                 TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
             })?;
 
@@ -505,10 +501,6 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         info!(
             target: LOG_TARGET,
-            "Transaction Recipient Reply for TX_ID = {} received", tx_id,
-        );
-        debug!(
-            target: LOG_TARGET_STRESS,
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
         );
 
@@ -627,10 +619,6 @@ where
                         target: LOG_TARGET,
                         "Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction Send Direct for TxID {} failed: {}", self.id, err
-                    );
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
                 SendMessageResponse::PendingDiscovery(rx) => {
@@ -670,7 +658,6 @@ where
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
-                debug!(target: LOG_TARGET_STRESS, "Direct Transaction Send failed: {:?}", e);
             },
         }
 
@@ -715,13 +702,6 @@ where
                         self.id,
                         successful_sends[0],
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
-                         Tags: {:?}",
-                        self.id,
-                        successful_sends[0],
-                    );
                     Ok(true)
                 } else if !failed_sends.is_empty() {
                     warn!(
@@ -730,22 +710,10 @@ where
                          messages were sent",
                         self.id
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                         messages were sent",
-                        self.id
-                    );
                     Ok(false)
                 } else {
                     warn!(
                         target: LOG_TARGET,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
-                         unsuccessful. Some message might still be sent.",
-                        self.id
-                    );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
                         "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
                          unsuccessful. Some message might still be sent.",
                         self.id
@@ -760,21 +728,11 @@ where
                      messages were sent",
                     self.id
                 );
-                debug!(
-                    target: LOG_TARGET_STRESS,
-                    "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                     messages were sent",
-                    self.id
-                );
                 Ok(false)
             },
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
-                );
-                debug!(
-                    target: LOG_TARGET_STRESS,
                     "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
                 );
                 Ok(false)
@@ -826,7 +784,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

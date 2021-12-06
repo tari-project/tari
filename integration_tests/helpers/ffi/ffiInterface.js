@@ -86,6 +86,7 @@ class InterfaceFFI {
           this.string,
           this.ptr,
           this.ushort,
+          this.bool,
           this.string,
           this.string,
           this.intPtr,
@@ -340,6 +341,7 @@ class InterfaceFFI {
           this.ulonglong,
           this.ulonglong,
           this.string,
+          this.bool,
           this.intPtr,
         ],
       ],
@@ -608,6 +610,7 @@ class InterfaceFFI {
       control_server_address,
       tor_cookie,
       tor_port,
+      true,
       socks_username,
       socks_password,
       error
@@ -1129,7 +1132,7 @@ class InterfaceFFI {
   }
 
   static createCallbackTransactionCancellation(fn) {
-    return ffi.Callback(this.void, [this.ptr], fn);
+    return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
   static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
@@ -1329,7 +1332,8 @@ class InterfaceFFI {
     destination,
     amount,
     fee_per_gram,
-    message
+    message,
+    one_sided
   ) {
     let error = this.initError();
     let result = this.fn.wallet_send_transaction(
@@ -1338,6 +1342,7 @@ class InterfaceFFI {
       amount,
       fee_per_gram,
       message,
+      one_sided,
       error
     );
     this.checkErrorResult(error, `walletSendTransaction`);

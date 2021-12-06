@@ -48,6 +48,7 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
+        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{database::TransactionBackend, models::CompletedTransaction},
     },
@@ -215,19 +216,6 @@ where
 
             self.cancel_transaction().await;
 
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
-
             let reason = match response.rejection_reason {
                 TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => {
                     TransactionServiceError::MempoolRejectionInvalidTransaction
@@ -237,6 +225,31 @@ where
                 TxSubmissionRejectionReason::TimeLocked => TransactionServiceError::MempoolRejectionTimeLocked,
                 _ => TransactionServiceError::UnexpectedBaseNodeResponse,
             };
+
+            let cancellation_event_reason = match reason {
+                TransactionServiceError::MempoolRejectionInvalidTransaction => TxRejection::InvalidTransaction,
+                TransactionServiceError::MempoolRejectionDoubleSpend => TxRejection::DoubleSpend,
+                TransactionServiceError::MempoolRejectionOrphan => TxRejection::Orphan,
+                TransactionServiceError::MempoolRejectionTimeLocked => TxRejection::TimeLocked,
+                _ => TxRejection::Unknown,
+            };
+
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCancelled(
+                    self.tx_id,
+                    cancellation_event_reason,
+                )))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason));
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
             info!(
@@ -342,7 +355,10 @@ where
                 let _ = self
                     .resources
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                    .send(Arc::new(TransactionEvent::TransactionCancelled(
+                        self.tx_id,
+                        TxRejection::InvalidTransaction,
+                    )))
                     .map_err(|e| {
                         trace!(
                             target: LOG_TARGET,

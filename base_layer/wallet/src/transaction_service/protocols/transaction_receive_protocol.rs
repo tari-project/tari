@@ -39,7 +39,7 @@ use tari_common_types::transaction::{TransactionDirection, TransactionStatus, Tx
 use tari_comms::types::CommsPublicKey;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::connectivity_service::WalletConnectivityInterface;
+use crate::{connectivity_service::WalletConnectivityInterface, transaction_service::protocols::TxRejection};
 use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
     transaction_entities::Transaction,
@@ -49,7 +49,6 @@ use tari_crypto::tari_utilities::Hashable;
 use tokio::time::sleep;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionReceiveProtocolStage {
@@ -360,12 +359,6 @@ where
                 self.id,
                 self.source_pubkey.clone()
             );
-            debug!(
-                target: LOG_TARGET_STRESS,
-                "Finalized Transaction with TX_ID = {} received from {}",
-                self.id,
-                self.source_pubkey.clone()
-            );
 
             finalized_transaction
                 .validate_internal_consistency(
@@ -504,7 +497,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

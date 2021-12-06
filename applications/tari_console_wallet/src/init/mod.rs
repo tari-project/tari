@@ -29,6 +29,7 @@ use rustyline::Editor;
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
+    multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     types::CommsSecretKey,
     NodeIdentity,
@@ -299,7 +300,10 @@ pub async fn init_wallet(
     );
 
     let node_address = match wallet_db.get_node_address().await? {
-        None => config.public_address.clone(),
+        None => match config.public_address.clone() {
+            Some(val) => val,
+            None => Multiaddr::empty(),
+        },
         Some(a) => a,
     };
 
@@ -400,7 +404,6 @@ pub async fn init_wallet(
             config.buffer_size_console_wallet,
         )),
         Some(config.buffer_rate_limit_console_wallet),
-        Some(config.scan_for_utxo_interval),
         Some(updater_config),
         config.autoupdate_check_interval,
     );
@@ -464,12 +467,12 @@ pub async fn init_wallet(
                 },
             };
         }
-        if let Some(file_name) = seed_words_file_name {
-            let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
-            let _ = fs::write(file_name, seed_words)
-                .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
-        };
     }
+    if let Some(file_name) = seed_words_file_name {
+        let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+        let _ = fs::write(file_name, seed_words)
+            .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
+    };
 
     Ok(wallet)
 }

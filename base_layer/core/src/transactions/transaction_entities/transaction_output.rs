@@ -117,8 +117,14 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+        if prover.verify(&self.proof.0, &self.commitment) {
+            Ok(())
+        } else {
+            Err(TransactionError::ValidationError(
+                "Recipient output range proof failed to verify".to_string(),
+            ))
+        }
     }
 
     /// Verify that the metadata signature is valid

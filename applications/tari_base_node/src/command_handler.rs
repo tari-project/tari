@@ -32,7 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_app_utilities::consts;
+use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
     emoji::EmojiId,
@@ -90,6 +90,7 @@ pub struct CommandHandler {
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
     software_updater: SoftwareUpdaterHandle,
+    last_time_full: Instant,
 }
 
 impl CommandHandler {
@@ -110,10 +111,11 @@ impl CommandHandler {
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
             software_updater: ctx.software_updater(),
+            last_time_full: Instant::now(),
         }
     }
 
-    pub fn status(&self, output: StatusOutput) {
+    pub fn status(&mut self, output: StatusOutput) {
         let state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
@@ -123,12 +125,17 @@ impl CommandHandler {
         let mut rpc_server = self.rpc_server.clone();
         let config = self.config.clone();
         let consensus_rules = self.consensus_rules.clone();
+        let mut full_log = false;
+        if self.last_time_full.elapsed() > Duration::from_secs(120) {
+            self.last_time_full = Instant::now();
+            full_log = true;
+        }
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
             status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
             status_line.add_field("", config.network);
-            status_line.add_field("State", state_info.borrow().state_info.short_desc());
+            status_line.add_field("State", state_info.borrow().state_info.short_desc(full_log));
 
             let metadata = node.get_metadata().await.unwrap();
             let height = metadata.height_of_longest_chain();
@@ -183,15 +190,16 @@ impl CommandHandler {
                         .unwrap_or_else(|| "∞".to_string()),
                 ),
             );
-
-            status_line.add_field(
-                "RandomX",
-                format!(
-                    "#{} with flags {:?}",
-                    state_info.borrow().randomx_vm_cnt,
-                    state_info.borrow().randomx_vm_flags
-                ),
-            );
+            if full_log {
+                status_line.add_field(
+                    "RandomX",
+                    format!(
+                        "#{} with flags {:?}",
+                        state_info.borrow().randomx_vm_cnt,
+                        state_info.borrow().randomx_vm_flags
+                    ),
+                );
+            }
 
             let target = "base_node::app::status";
             match output {
@@ -409,36 +417,46 @@ impl CommandHandler {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_all_starts_with(&partial).await {
+            let peer = match peer_manager.find_all_starts_with(&partial).await {
                 Ok(peers) if peers.is_empty() => {
-                    println!("No peer matching '{}'", original_str);
-                },
-                Ok(peers) => {
-                    let peer = peers.first().unwrap();
-                    let eid = EmojiId::from_pubkey(&peer.public_key);
-                    println!("Emoji ID: {}", eid);
-                    println!("Public Key: {}", peer.public_key);
-                    println!("NodeId: {}", peer.node_id);
-                    println!("Addresses:");
-                    peer.addresses.iter().for_each(|a| {
-                        println!("- {}", a);
-                    });
-                    println!("User agent: {}", peer.user_agent);
-                    println!("Features: {:?}", peer.features);
-                    println!("Supported protocols:");
-                    peer.supported_protocols.iter().for_each(|p| {
-                        println!("- {}", String::from_utf8_lossy(p));
-                    });
-                    if let Some(dt) = peer.banned_until() {
-                        println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-                    }
-                    if let Some(dt) = peer.last_seen() {
-                        println!("Last seen: {}", dt);
+                    if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
+                        if let Ok(peer) = peer_manager.find_by_public_key(&pk).await {
+                            peer
+                        } else {
+                            println!("No peer matching '{}'", original_str);
+                            return;
+                        }
+                    } else {
+                        println!("No peer matching '{}'", original_str);
+                        return;
                     }
                 },
+                Ok(mut peers) => peers.remove(0),
                 Err(err) => {
                     println!("{}", err);
+                    return;
                 },
+            };
+
+            let eid = EmojiId::from_pubkey(&peer.public_key);
+            println!("Emoji ID: {}", eid);
+            println!("Public Key: {}", peer.public_key);
+            println!("NodeId: {}", peer.node_id);
+            println!("Addresses:");
+            peer.addresses.iter().for_each(|a| {
+                println!("- {}", a);
+            });
+            println!("User agent: {}", peer.user_agent);
+            println!("Features: {:?}", peer.features);
+            println!("Supported protocols:");
+            peer.supported_protocols.iter().for_each(|p| {
+                println!("- {}", String::from_utf8_lossy(p));
+            });
+            if let Some(dt) = peer.banned_until() {
+                println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+            }
+            if let Some(dt) = peer.last_seen() {
+                println!("Last seen: {}", dt);
             }
         });
     }

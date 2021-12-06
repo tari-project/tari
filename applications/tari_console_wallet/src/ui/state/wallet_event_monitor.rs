@@ -100,7 +100,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
                                     },
-                                    TransactionEvent::TransactionCancelled(tx_id) => {
+                                    TransactionEvent::TransactionCancelled(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);
@@ -119,7 +119,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_sent(tx_id);
                                     },
-                                    TransactionEvent::TransactionValidationSuccess(_) => {
+                                    TransactionEvent::TransactionValidationStateChanged(_) => {
                                         self.trigger_full_tx_state_refresh().await;
                                         self.trigger_balance_refresh();
                                     },
@@ -180,10 +180,8 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
-                                match (*msg).clone() {
-                                    BaseNodeEvent::BaseNodeStateChanged(state) => {
+                                if let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone() {
                                         self.trigger_base_node_state_refresh(state).await;
-                                    }
                                 }
                             },
                             Err(broadcast::error::RecvError::Lagged(n)) => {
