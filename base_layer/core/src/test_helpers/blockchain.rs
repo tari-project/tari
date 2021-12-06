@@ -314,6 +314,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_last_header()
     }
 
+    fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {
+        self.db.as_ref().unwrap().clear_all_pending_headers()
+    }
+
     fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_last_chain_header()
     }
@@ -385,6 +389,10 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
+    }
+
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
+        self.db.as_ref().unwrap().bad_block_exists(block_hash)
     }
 }
 
