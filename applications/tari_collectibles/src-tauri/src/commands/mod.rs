@@ -25,6 +25,7 @@ use crate::app_state::ConcurrentAppState;
 pub mod asset_wallets;
 pub mod assets;
 pub mod keys;
+pub mod tip004;
 pub mod wallets;
 
 #[tauri::command]

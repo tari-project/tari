@@ -1,9 +1,11 @@
 syntax = "proto3";
 package tari.dan.tips.tip721;
 
+
+// ERC 721 copy
 service Tip721 {
   rpc Init(InitRequest) returns (Empty);
-  //  rpc Transfer(TransferRequest) returns (TransferResponse);
+  rpc Transfer(TransferRequest) returns (TransferResponse);
 }
 
 message InitRequest{
@@ -11,5 +13,13 @@ message InitRequest{
 }
 
 message Empty {
+
+}
+
+message TransferRequest {
+
+}
+
+message TransferResponse {
 
 }

@@ -28,6 +28,7 @@ use crate::{
     templates::tip002_template,
 };
 
+use crate::templates::tip004_template;
 use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
@@ -95,6 +96,7 @@ impl AssetProcessor for ConcreteAssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         match template_id {
             TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
+            TemplateId::Tip004 => tip004_template::invoke_read_method(method, args, state_db),
             _ => {
                 todo!()
             },
@@ -119,6 +121,9 @@ impl ConcreteAssetProcessor {
         match template_id {
             TemplateId::Tip002 => {
                 tip002_template::invoke_method(method, &args, state_db)?;
+            },
+            TemplateId::Tip004 => {
+                tip004_template::invoke_method(method, &args, state_db)?;
             },
             _ => {
                 todo!()

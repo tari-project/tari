@@ -26,7 +26,8 @@ use crate::storage::{
     sqlite_issued_assets_table_gateway::SqliteIssuedAssetsTableGateway,
     sqlite_key_indices_table_gateway::SqliteKeyIndicesTableGateway,
     sqlite_tip002_addresses_table_gateway::SqliteTip002AddressesTableGateway,
-    sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway, SqliteWalletsTableGateway,
+    sqlite_transaction::SqliteTransaction, SqliteAssetsTableGateway,
+    SqliteTip721TokensTableGateway, SqliteWalletsTableGateway,
   },
   CollectiblesStorage, StorageError,
 };
@@ -44,6 +45,7 @@ impl CollectiblesStorage for SqliteCollectiblesStorage {
   type Tip002Addresses = SqliteTip002AddressesTableGateway;
   type KeyIndices = SqliteKeyIndicesTableGateway;
   type Wallets = SqliteWalletsTableGateway;
+  type Tip721Tokens = SqliteTip721TokensTableGateway;
   type Transaction = SqliteTransaction;
 
   fn create_transaction(&self) -> Result<Self::Transaction, StorageError> {
@@ -74,6 +76,10 @@ impl CollectiblesStorage for SqliteCollectiblesStorage {
 
   fn tip002_addresses(&self) -> Self::Tip002Addresses {
     SqliteTip002AddressesTableGateway {}
+  }
+
+  fn tip721_tokens(&self) -> Self::Tip721Tokens {
+    SqliteTip721TokensTableGateway {}
   }
 
   fn key_indices(&self) -> Self::KeyIndices {

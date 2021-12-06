@@ -19,11 +19,13 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::schema::*;
 
-pub mod address_row;
-pub mod asset_row;
-pub mod asset_wallet_row;
-pub mod key_index_row;
-pub mod tip002_address_row;
-pub mod tip721_token_row;
-pub mod wallet_row;
+#[derive(Queryable, Insertable, Identifiable)]
+#[table_name = "tip721_tokens"]
+pub struct Tip721Token {
+  pub id: Vec<u8>,
+  pub address_id: Vec<u8>,
+  pub token_id: i64,
+  pub is_deleted: bool,
+}

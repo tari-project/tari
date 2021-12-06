@@ -42,6 +42,8 @@ fn main() {
       commands::asset_wallets::asset_wallets_create_address,
       commands::asset_wallets::asset_wallets_send_to,
       commands::keys::next_asset_public_key,
+      commands::tip004::tip004_mint_token,
+      commands::tip004::tip004_list_tokens,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
       commands::wallets::wallets_unlock,

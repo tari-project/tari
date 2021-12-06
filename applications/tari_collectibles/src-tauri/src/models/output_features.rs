@@ -25,21 +25,25 @@ use tari_app_grpc::tari_rpc;
 
 #[derive(Serialize, Deserialize)]
 pub struct OutputFeatures {
+  template_ids_implemented: Vec<u32>,
   template_parameters: Vec<TemplateParameter>,
 }
 
 impl From<tari_rpc::OutputFeatures> for OutputFeatures {
   fn from(v: tari_rpc::OutputFeatures) -> Self {
+    let asset = v.asset.as_ref();
     Self {
-      template_parameters: v
-        .asset
+      template_ids_implemented: asset
+        .map(|f| f.template_ids_implemented.clone())
+        .unwrap_or_default(),
+      template_parameters: asset
         .map(|f| {
           f.template_parameters
-            .into_iter()
+            .iter()
             .map(|tp| TemplateParameter {
               template_id: tp.template_id,
               template_data_version: tp.template_data_version,
-              template_data: tp.template_data,
+              template_data: tp.template_data.clone(),
             })
             .collect()
         })

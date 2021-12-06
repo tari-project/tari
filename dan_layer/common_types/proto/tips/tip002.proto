@@ -3,6 +3,7 @@
 syntax = "proto3";
 package tari.dan.tips.tip002;
 
+// ERC20 copy - Should be renamed to TIP020
 service Tip002 {
   rpc Init(InitRequest) returns (Empty);
   //  rpc Info(InfoRequest) returns (InfoResponse);

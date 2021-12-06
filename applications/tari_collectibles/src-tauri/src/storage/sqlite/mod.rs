@@ -29,11 +29,13 @@ mod sqlite_db_factory;
 mod sqlite_issued_assets_table_gateway;
 mod sqlite_key_indices_table_gateway;
 mod sqlite_tip002_addresses_table_gateway;
+mod sqlite_tip721_tokens_table_gateway;
 mod sqlite_transaction;
 mod sqlite_wallets_table_gateway;
 
 pub use sqlite_assets_table_gateway::SqliteAssetsTableGateway;
 pub use sqlite_collectibles_storage::SqliteCollectiblesStorage;
 pub use sqlite_db_factory::SqliteDbFactory;
+pub use sqlite_tip721_tokens_table_gateway::SqliteTip721TokensTableGateway;
 pub use sqlite_transaction::SqliteTransaction;
 pub use sqlite_wallets_table_gateway::SqliteWalletsTableGateway;

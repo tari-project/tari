@@ -33,6 +33,9 @@ use std::sync::{Arc, RwLock};
 pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
     fn get_value(&mut self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
+    fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError>;
+    fn set_u64(&mut self, schema: &str, key: &[u8], value: u64) -> Result<(), StorageError>;
+    fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, StorageError>;
     fn commit(&mut self) -> Result<StateRoot, StorageError>;
     fn calculate_root(&self) -> Result<StateRoot, StorageError>;
 }
@@ -93,6 +96,31 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
         } else {
             Ok(None)
         }
+    }
+
+    fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError> {
+        let data = self.get_value(schema, key)?;
+        match data {
+            Some(data) => {
+                let mut data2: [u8; 8] = [0; 8];
+                data2.copy_from_slice(&data);
+
+                Ok(Some(u64::from_le_bytes(data2)))
+            },
+            None => Ok(None),
+        }
+    }
+
+    fn set_u64(&mut self, schema: &str, key: &[u8], value: u64) -> Result<(), StorageError> {
+        self.set_value(schema.to_string(), Vec::from(key), Vec::from(value.to_le_bytes()))
+    }
+
+    fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, StorageError> {
+        let inner = self.inner.read().unwrap();
+        inner
+            .backend_adapter
+            .find_keys_by_value(schema, value)
+            .map_err(TBackendAdapter::Error::into)
     }
 
     fn commit(&mut self) -> Result<StateRoot, StorageError> {

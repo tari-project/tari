@@ -26,7 +26,8 @@ mod storage_error;
 
 use crate::storage::models::{
   address_row::AddressRow, asset_row::AssetRow, asset_wallet_row::AssetWalletRow,
-  key_index_row::KeyIndexRow, tip002_address_row::Tip002AddressRow, wallet_row::WalletRow,
+  key_index_row::KeyIndexRow, tip002_address_row::Tip002AddressRow,
+  tip721_token_row::Tip721TokenRow, wallet_row::WalletRow,
 };
 pub use storage_error::StorageError;
 use tari_common_types::types::PublicKey;
@@ -45,6 +46,7 @@ pub trait CollectiblesStorage {
   type Tip002Addresses: Tip002AddressesTableGateway<Self::Transaction>;
   type KeyIndices: KeyIndicesTableGateway<Self::Transaction>;
   type Wallets: WalletsTableGateway<Self::Transaction>;
+  type Tip721Tokens: Tip721TokensTableGateway<Self::Transaction>;
   type Transaction: StorageTransaction;
 
   fn create_transaction(&self) -> Result<Self::Transaction, StorageError>;
@@ -53,6 +55,7 @@ pub trait CollectiblesStorage {
   fn asset_wallets(&self) -> Self::AssetWallets;
   fn issued_assets(&self) -> Self::IssuedAssets;
   fn tip002_addresses(&self) -> Self::Tip002Addresses;
+  fn tip721_tokens(&self) -> Self::Tip721Tokens;
   fn key_indices(&self) -> Self::KeyIndices;
   fn wallets(&self) -> Self::Wallets;
 }
@@ -121,4 +124,9 @@ pub trait IssuedAssetsTableGateway {}
 
 pub trait Tip002AddressesTableGateway<T: StorageTransaction> {
   fn insert(&self, row: &Tip002AddressRow, tx: &T) -> Result<(), StorageError>;
+}
+
+pub trait Tip721TokensTableGateway<T: StorageTransaction> {
+  fn insert(&self, row: &Tip721TokenRow, tx: &T) -> Result<(), StorageError>;
+  fn delete_all_for_address(&self, address_id: Uuid, tx: &T) -> Result<(), StorageError>;
 }

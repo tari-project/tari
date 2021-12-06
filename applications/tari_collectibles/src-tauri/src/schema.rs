@@ -56,6 +56,15 @@ table! {
 }
 
 table! {
+    tip721_tokens (id) {
+        id -> Binary,
+        address_id -> Binary,
+        token_id -> BigInt,
+        is_deleted -> Bool,
+    }
+}
+
+table! {
     wallets (id) {
         id -> Binary,
         name -> Nullable<Text>,
@@ -68,13 +77,15 @@ joinable!(asset_wallets -> assets (asset_id));
 joinable!(asset_wallets -> wallets (wallet_id));
 joinable!(issued_assets -> wallets (wallet_id));
 joinable!(tip002_address -> addresses (address_id));
+joinable!(tip721_tokens -> addresses (address_id));
 
 allow_tables_to_appear_in_same_query!(
-  addresses,
-  asset_wallets,
-  assets,
-  issued_assets,
-  key_indices,
-  tip002_address,
-  wallets,
+    addresses,
+    asset_wallets,
+    assets,
+    issued_assets,
+    key_indices,
+    tip002_address,
+    tip721_tokens,
+    wallets,
 );
