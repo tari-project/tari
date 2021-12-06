@@ -25,7 +25,7 @@ use lmdb_zero::{
     del,
     error::{self, LmdbResultExt},
     put,
-    traits::{AsLmdbBytes, FromLmdbBytes},
+    traits::{AsLmdbBytes, CreateCursor, FromLmdbBytes},
     ConstTransaction,
     Cursor,
     CursorIter,
@@ -397,7 +397,7 @@ where
     Ok(result)
 }
 
-/// Fetches all the size of all key/values in the given DB. Returns the number of entries, the total size of all the
+/// Fetches the size of all key/values in the given DB. Returns the number of entries, the total size of all the
 /// keys and values in bytes.
 pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result<(u64, u64, u64), ChainStorageError> {
     let access = txn.access();
@@ -411,4 +411,41 @@ pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result
         total_value_size += value.len() as u64;
     }
     Ok((num_entries, total_key_size, total_value_size))
+}
+
+pub fn lmdb_delete_each_where<K, V, F>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    mut predicate: F,
+) -> Result<usize, ChainStorageError>
+where
+    K: FromLmdbBytes + ?Sized,
+    V: DeserializeOwned,
+    F: FnMut(&K, V) -> Option<bool>,
+{
+    let mut cursor = txn.cursor(db)?;
+    let mut access = txn.access();
+    let mut num_deleted = 0;
+    while let Some((k, v)) = cursor.next::<K, [u8]>(&access).to_opt()? {
+        match deserialize(v) {
+            Ok(v) => match predicate(k, v) {
+                Some(true) => {
+                    cursor.del(&mut access, del::Flags::empty())?;
+                    num_deleted += 1;
+                },
+                Some(false) => continue,
+                None => {
+                    break;
+                },
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not could not deserialize value from lmdb: {:?}", e
+                );
+                return Err(ChainStorageError::AccessError(e.to_string()));
+            },
+        }
+    }
+    Ok(num_deleted)
 }

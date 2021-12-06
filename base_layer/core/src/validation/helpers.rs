@@ -30,7 +30,7 @@ use crate::{
         ConsensusEncodingWrapper,
         ConsensusManager,
     },
-    crypto::commitment::HomomorphicCommitmentFactory,
+    crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::to_hex},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -527,6 +527,13 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             expected: mmr_roots.output_mmr_size,
             actual: header.output_mmr_size,
         }));
+    }
+    Ok(())
+}
+
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash.to_vec())? {
+        return Err(ValidationError::BadBlockFound { hash: to_hex(hash) });
     }
     Ok(())
 }
