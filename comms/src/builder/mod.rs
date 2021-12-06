@@ -205,7 +205,6 @@ impl CommsBuilder {
 
         match self.peer_storage.take() {
             Some(storage) => {
-                // TODO: Peer manager should be refactored to be backend agnostic
                 #[cfg(not(test))]
                 PeerManager::migrate_lmdb(&storage.inner())?;
 

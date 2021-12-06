@@ -38,7 +38,7 @@ serde_derive = "1.0.90"
 serde_repr = "0.1.5"
 thiserror = "1.0.26"
 tokio = { version = "1.14", features = ["rt", "macros"] }
-tower = { version= "0.4", features=["full"] }
+tower = { version = "0.4", features = ["full"] }
 ttl_cache = "0.5.1"
 
 # tower-filter dependencies
@@ -49,6 +49,8 @@ tari_test_utils = { version = "^0.21", path = "../../infrastructure/test_utils" 
 
 env_logger = "0.7.0"
 futures-test = { version = "0.3.5" }
+futures-util = "^0.3.1"
+lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 tempfile = "3.1.0"
 tokio-stream = { version = "0.1.7", features = ["sync"] }
@@ -57,9 +59,6 @@ clap = "2.33.0"
 
 # tower-filter dependencies
 tower-test = { version = "^0.4" }
-tokio-test = "^0.4.2"
-futures-util = "^0.3.1"
-lazy_static = "1.4.0"
 
 [build-dependencies]
 tari_common = { version = "^0.21", path = "../../common" }

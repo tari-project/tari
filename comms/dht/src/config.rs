@@ -76,6 +76,7 @@ pub struct DhtConfig {
     /// The interval to change the random pool peers.
     /// Default: 2 hours
     pub connectivity_random_pool_refresh: Duration,
+    pub connectivity_high_failure_rate_cooldown: Duration,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
@@ -144,6 +145,7 @@ impl Default for DhtConfig {
             discovery_request_timeout: Duration::from_secs(2 * 60),
             connectivity_update_interval: Duration::from_secs(2 * 60),
             connectivity_random_pool_refresh: Duration::from_secs(2 * 60 * 60),
+            connectivity_high_failure_rate_cooldown: Duration::from_secs(45),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),

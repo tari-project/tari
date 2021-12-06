@@ -494,6 +494,7 @@ impl CommandHandler {
                                 s.push(format!(
                                     "LAST_SEEN = {}",
                                     Utc::now()
+                                        .naive_utc()
                                         .signed_duration_since(dt)
                                         .to_std()
                                         .map(format_duration_basic)

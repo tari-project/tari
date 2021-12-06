@@ -51,8 +51,7 @@ use futures::{
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tower::Service;
-use tower_make::MakeService;
+use tower::{make::MakeService, Service};
 
 /// Allows service factories of different types to be composed into a single service that resolves a given `ProtocolId`
 pub struct Router<A, B> {

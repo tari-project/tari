@@ -30,7 +30,7 @@ use log::*;
 use std::convert::TryInto;
 use tari_comms::{
     connectivity::ConnectivityError,
-    peer_manager::{node_id::NodeDistance, NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
     validate_peer_addresses,
     PeerConnection,
 };

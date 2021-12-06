@@ -23,11 +23,12 @@
 use crate::{
     peer_manager::{
         migrations,
-        node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
         peer_storage::PeerStorage,
         wrapper::KeyValueWrapper,
+        NodeDistance,
+        NodeId,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -193,6 +194,10 @@ impl PeerManager {
             .read()
             .await
             .closest_peers(node_id, n, excluded_peers, features)
+    }
+
+    pub async fn mark_last_seen(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_storage.write().await.mark_last_seen(node_id)
     }
 
     /// Fetch n random peers

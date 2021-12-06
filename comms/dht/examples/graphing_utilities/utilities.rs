@@ -30,7 +30,7 @@ use petgraph::{
     stable_graph::{NodeIndex, StableGraph},
     visit::{Bfs, IntoNodeReferences},
 };
-use std::{collections::HashMap, convert::TryFrom, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
+use std::{collections::HashMap, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
 use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
 use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
 
@@ -100,9 +100,7 @@ pub async fn network_graph_snapshot(
             graph.add_edge(
                 node_index.to_owned(),
                 peer_node_index.to_owned(),
-                u128::try_from(distance)
-                    .expect("Couldn't convert XorDistance to U128")
-                    .to_string(),
+                distance.as_u128().to_string(),
             );
         }
         if let Some(n) = num_neighbours {
@@ -123,9 +121,7 @@ pub async fn network_graph_snapshot(
                 neighbour_graph.add_edge(
                     node_index.to_owned(),
                     peer_node_index.to_owned(),
-                    u128::try_from(distance)
-                        .expect("Couldn't convert XorDistance to U128")
-                        .to_string(),
+                    distance.as_u128().to_string(),
                 );
             }
         }

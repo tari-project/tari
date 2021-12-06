@@ -78,6 +78,9 @@ pub use error::PeerManagerError;
 pub mod node_id;
 pub use node_id::NodeId;
 
+mod node_distance;
+pub use node_distance::NodeDistance;
+
 mod node_identity;
 pub use node_identity::NodeIdentity;
 
@@ -88,7 +91,7 @@ mod peer_features;
 pub use peer_features::PeerFeatures;
 
 mod peer_id;
-pub use peer_id::PeerId;
+pub(crate) use peer_id::PeerId;
 
 mod manager;
 pub use manager::PeerManager;
