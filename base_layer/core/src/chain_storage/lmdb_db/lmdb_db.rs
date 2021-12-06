@@ -26,7 +26,7 @@
 
 use croaring::Bitmap;
 use fs2::FileExt;
-use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
