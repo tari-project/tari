@@ -184,6 +184,15 @@ impl DbTransaction {
         self
     }
 
+    /// Inserts a block hash into the bad block list
+    pub fn insert_bad_block(&mut self, block_hash: HashOutput, height: u64) -> &mut Self {
+        self.operations.push(WriteOperation::InsertBadBlock {
+            hash: block_hash,
+            height,
+        });
+        self
+    }
+
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
     /// with the calling function.
     /// The transaction will rollback and write will return an error if the orphan already exists.
@@ -294,6 +303,10 @@ pub enum WriteOperation {
         output_hash: HashOutput,
         witness_hash: HashOutput,
         mmr_position: u32,
+    },
+    InsertBadBlock {
+        hash: HashOutput,
+        height: u64,
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
@@ -414,6 +427,7 @@ impl fmt::Display for WriteOperation {
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
             DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
             DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
+            InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash.to_hex()),
             SetHorizonData { .. } => write!(f, "Set horizon data"),
         }
     }

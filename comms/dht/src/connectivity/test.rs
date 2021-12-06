@@ -164,7 +164,6 @@ async fn added_neighbours() {
 
 #[runtime::test]
 async fn replace_peer_when_peer_goes_offline() {
-    env_logger::init();
     let node_identity = make_node_identity();
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
