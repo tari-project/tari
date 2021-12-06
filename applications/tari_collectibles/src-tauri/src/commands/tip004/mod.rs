@@ -122,6 +122,7 @@ pub(crate) async fn tip004_list_tokens(
             id: Uuid::new_v4(),
             address_id: address.id,
             token_id: token_data.token_id,
+            token: token_data.token.clone(),
           };
 
           db.tip721_tokens().insert(&token_row, &tx);

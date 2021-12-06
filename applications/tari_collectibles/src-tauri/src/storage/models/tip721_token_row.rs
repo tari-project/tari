@@ -28,4 +28,5 @@ pub struct Tip721TokenRow {
   pub id: Uuid,
   pub address_id: Uuid,
   pub token_id: u64,
+  pub token: String,
 }

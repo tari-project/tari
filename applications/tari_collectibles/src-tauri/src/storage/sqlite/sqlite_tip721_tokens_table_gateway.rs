@@ -53,6 +53,7 @@ impl Tip721TokensTableGateway<SqliteTransaction> for SqliteTip721TokensTableGate
             address_id: Vec::from(row.address_id.as_bytes().as_slice()),
             token_id: row.token_id as i64,
             is_deleted: false,
+            token: row.token.clone(),
           })
           .execute(tx.connection())?;
       }

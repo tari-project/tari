@@ -38,6 +38,7 @@ class AccountDashboard extends React.Component {
             tip004: false,
             tip721: false,
             tip002Data: {},
+            tip721Data: {},
             assetPubKey: props.match.params.assetPubKey,
             balance: -1,
             receiveAddress: "",
@@ -58,23 +59,31 @@ class AccountDashboard extends React.Component {
             if (tip002) {
                 await this.refreshBalance();
                 let templateParams = assetInfo.features["template_parameters"];
-                let tip002Params = templateParams.filter((item) => { return item.template_id === 2})[0];
+                let tip002Params = templateParams.filter((item) => {
+                    return item.template_id === 2
+                })[0];
 
                 await protobuf.load("/proto/tip002.proto").then(function (root) {
                     let InitRequest = root.lookupType("tip002.InitRequest");
                     let message = InitRequest.decode(tip002Params["template_data"]);
-                    tip002Data = InitRequest.toObject(message, {
-
-                    });
+                    tip002Data = InitRequest.toObject(message, {});
                     console.log(tip002Data);
                 });
             }
             let tip721Data = {};
             if (tip004) {
                 let tokens = await binding.command_tip004_list_tokens(this.state.assetPubKey);
-                tip721Data.nfts = tokens;
+                console.log(tokens);
+                tip721Data.tokens = [];
+                await tokens.forEach((token) => {
+                    tip721Data.tokens.push({
+                        tokenId: token[0].token_id,
+                        address: token[1].public_key,
+                        token: token[0].token
+                    })
+                });
             }
-            this.setState({receiveAddress: receiveAddress.public_key, tip002, tip004, tip721, tip002Data});
+            this.setState({receiveAddress: receiveAddress.public_key, tip002, tip004, tip721, tip002Data, tip721Data});
         } catch (err) {
             console.error(err);
             this.setState({error: err.message});
@@ -149,9 +158,9 @@ class AccountDashboard extends React.Component {
                             </Stack>
                         </Container>
                     </Grid>
-                    <Grid item xs={3} hidden={ !this.state.tip002}>
+                    <Grid item xs={3} hidden={!this.state.tip002}>
                         <Paper>
-                            <Container sx={{pt:2}}>
+                            <Container sx={{pt: 2}}>
                                 <Stack spacing={2}>
                                     <Typography variant="h5">TIP002</Typography>
                                     <Typography>Balance: {this.state.balance / Math.pow(10, this.state.tip002Data.decimals)} {this.state.tip002Data.symbol}</Typography>
@@ -166,15 +175,22 @@ class AccountDashboard extends React.Component {
                             </Container>
                         </Paper>
                     </Grid>
-                    <Grid item xs={3} hidden={ !this.state.tip721 }>
-                        <Paper>
-                            <Container sx={{ pt: 2}}>
+                    {this.state.tip721 ? (<Grid item xs={12} hidden={!this.state.tip721}>
                                 <Stack spacing={2}>
                                     <Typography variant="h5">TIP721</Typography>
+                                    <Grid container spacing={2}>
+                                        {this.state.tip721Data.tokens.map((token) => {
+                                            return (<Grid item xs={2}>
+                                                <Paper>
+                                                    <Container> <Typography variant="h6">#{token.tokenId}: {token.token}</Typography></Container>
+                                                </Paper>
+
+                                            </Grid>)
+                                        })}
+                                    </Grid>
                                 </Stack>
-                            </Container>
-                        </Paper>
-                    </Grid>
+                    </Grid>) : ""}
+
                 </Grid>
             </Container>
 

@@ -28,4 +28,5 @@ pub struct Tip721Token {
   pub address_id: Vec<u8>,
   pub token_id: i64,
   pub is_deleted: bool,
+  pub token: String,
 }

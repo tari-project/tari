@@ -61,6 +61,7 @@ table! {
         address_id -> Binary,
         token_id -> BigInt,
         is_deleted -> Bool,
+        token -> Text,
     }
 }
 

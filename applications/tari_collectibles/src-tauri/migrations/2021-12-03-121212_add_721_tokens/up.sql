@@ -24,5 +24,6 @@ create table tip721_tokens (
     id blob not null primary key,
     address_id blob not null references addresses(id),
     token_id BigInt not null,
-    is_deleted boolean not null
+    is_deleted boolean not null,
+    token text not null
 )

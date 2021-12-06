@@ -41,4 +41,5 @@ message TokenOfOwnerByIndexRequest {
 
 message TokenOfOwnerByIndexResponse {
   uint64 token_id = 1;
+  string token = 2;
 }

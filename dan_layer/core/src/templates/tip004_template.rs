@@ -24,7 +24,10 @@ use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
 use digest::Digest;
 use log::*;
 use prost::Message;
-use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
+use tari_crypto::{
+    common::Blake256,
+    tari_utilities::{hex::Hex, ByteArray},
+};
 use tari_dan_common_types::proto::tips::tip004;
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
@@ -47,6 +50,7 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
     match method.to_lowercase().replace("_", "").as_str() {
         "balanceof" => balance_of(args, state_db),
+        "tokenofownerbyindex" => token_of_owner_by_index(args, state_db),
         _ => todo!(),
     }
 }
@@ -93,6 +97,7 @@ fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    // TODO: move this to the invoke_read_method method
     let request = tip004::BalanceOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
         source: e,
         message_type: "tip004::BalanceOfRequest".to_string(),
@@ -106,4 +111,39 @@ fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
     };
     let response_bytes = response.encode_to_vec();
     Ok(Some(response_bytes))
+}
+
+fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWork>(
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    // TODO: move this to the invoke_read_method method
+    let request =
+        tip004::TokenOfOwnerByIndexRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+            source: e,
+            message_type: "tip004::TokenOfOwnerByIndex".to_string(),
+        })?;
+
+    let owner = request.owner.clone();
+    let index = request.index;
+    let owner_records = state_db.find_keys_by_value("owners", &owner)?;
+    if let Some(token_id) = owner_records.into_iter().nth(index as usize) {
+        let token = state_db
+            .get_value("tokens", &token_id)?
+            .ok_or_else(|| DigitalAssetError::NotFound {
+                entity: "state_keys",
+                id: format!("tokens.{}", token_id.to_hex()),
+            })?;
+        let mut data2: [u8; 8] = [0; 8];
+        data2.copy_from_slice(&token_id);
+        let token_id = u64::from_le_bytes(data2);
+        let response = tip004::TokenOfOwnerByIndexResponse {
+            token_id,
+            token: String::from_utf8(token).expect("should fix this"),
+        };
+        let response_bytes = response.encode_to_vec();
+        Ok(Some(response_bytes))
+    } else {
+        Ok(None)
+    }
 }
