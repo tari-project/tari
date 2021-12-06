@@ -119,10 +119,12 @@ base_node_service_request_max_age = 180
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
 transport = "tor"
+# Spin up and use a built-in Tor instance. Set this to false if you want to specify your own Tor transport details.
+use_libtor = true
 # Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
-tor_control_auth = "none" # or "password=xxxxxx"
+#tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
@@ -169,10 +171,12 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
 transport = "tor"
+# Spin up and use a built-in Tor instance. Set this to false if you want to specify your own Tor transport details.
+use_libtor = true
 # Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
-tor_control_auth = "none" # or "password=xxxxxx"
+#tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded

@@ -91,9 +91,6 @@ grpc_base_node_address = "127.0.0.1:18142"
 # A path to the file that stores your node identity and secret key
 base_node_identity_file = "config/base_node_id.json"
 
-# A path to the file that stores your console wallet's node identity and secret key
-console_wallet_identity_file = "config/console_wallet_id.json"
-
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable.
@@ -109,10 +106,12 @@ console_wallet_identity_file = "config/console_wallet_id.json"
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
 transport = "tor"
+# Spin up and use a built-in Tor instance. Set this to false if you want to specify your own Tor transport details.
+use_libtor = true
 # Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
-tor_control_auth = "none" # or "password=xxxxxx"
+#tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
@@ -124,16 +123,13 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 #transport = "socks5"
 # The address of the SOCKS5 proxy
-#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
 # The address to which traffic will be forwarded
 #socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
 base_node_tor_identity_file = "config/base_node_tor.json"
-
-# A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
-console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
@@ -284,10 +280,12 @@ console_wallet_identity_file = "config/console_wallet_id.json"
 # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # onion v2, onion v3 and dns addresses.
 transport = "tor"
+# Spin up and use a built-in Tor instance. Set this to false if you want to specify your own Tor transport details.
+use_libtor = true
 # Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
-tor_control_auth = "none" # or "password=xxxxxx"
+#tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
@@ -306,9 +304,6 @@ tor_control_auth = "none" # or "password=xxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
 base_node_tor_identity_file = "config/base_node_tor.json"
-
-# A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
-console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:

@@ -235,6 +235,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "autotools"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b875eaceeddbbfb52c4d102af0e28872be06ba363b9b28c7551304beb3eac42"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "base58-monero"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1527,6 +1536,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs_extra"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2022715d62ab30faffd124d40b76f4134a550a87792276512b18d63272333394"
+
+[[package]]
 name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2278,6 +2293,41 @@ dependencies = [
  "openssl-sys",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "libtor"
+version = "46.6.1+0.4.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dab41a0ec51a14dd9c4bb7ed69db84b04dbda91293801ca4e4b235c18a31dfbf"
+dependencies = [
+ "libtor-derive",
+ "libtor-sys",
+ "log",
+]
+
+[[package]]
+name = "libtor-derive"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "177781b25e83853831c5af66320ceaf5e456e1b6d533426fcd9c7544b5543043"
+dependencies = [
+ "proc-macro2 1.0.32",
+ "quote 1.0.10",
+ "syn 1.0.81",
+]
+
+[[package]]
+name = "libtor-sys"
+version = "46.7.1+0.4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ded79576f3d5abfba65a7f245acd7e05becb5f080623089eab2fcd31de12157f"
+dependencies = [
+ "autotools",
+ "cc",
+ "fs_extra",
+ "libz-sys",
+ "openssl-sys",
 ]
 
 [[package]]
@@ -4625,19 +4675,25 @@ dependencies = [
  "dirs-next 1.0.2",
  "get_if_addrs",
  "git2",
+ "hex",
+ "libtor",
  "log",
  "log4rs 1.0.0",
  "multiaddr",
  "path-clean",
+ "pgp",
  "prost-build",
+ "rand 0.7.3",
  "serde 1.0.130",
  "serde_json",
  "sha2",
  "structopt",
+ "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
  "tempfile",
  "thiserror",
+ "tokio",
  "toml 0.5.8",
  "tracing",
 ]

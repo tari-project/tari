@@ -142,6 +142,8 @@ pub struct GlobalConfig {
     pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
     pub metrics: MetricsConfig,
+    pub base_node_use_libtor: bool,
+    pub console_wallet_use_libtor: bool,
 }
 
 impl GlobalConfig {
@@ -731,6 +733,10 @@ fn convert_node_config(
         .collect::<String>();
 
     let metrics = MetricsConfig::from_config(&cfg)?;
+    let key = config_string("base_node", net_str, "use_libtor");
+    let base_node_use_libtor = cfg.get_bool(&key).unwrap_or(true);
+    let key = config_string("wallet", net_str, "use_libtor");
+    let console_wallet_use_libtor = cfg.get_bool(&key).unwrap_or(true);
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -820,6 +826,8 @@ fn convert_node_config(
         mining_worker_name,
         base_node_bypass_range_proof_verification,
         metrics,
+        base_node_use_libtor,
+        console_wallet_use_libtor,
     })
 }
 
