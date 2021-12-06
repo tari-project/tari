@@ -70,6 +70,8 @@ pub enum HorizonSyncError {
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Validation error: {0}")]
+    ValidationError(#[from] ValidationError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

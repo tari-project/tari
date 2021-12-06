@@ -221,7 +221,7 @@ async fn build_node_context(
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),

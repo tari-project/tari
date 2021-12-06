@@ -43,6 +43,7 @@ use crate::{
         transaction_kernel::TransactionKernel,
         transaction_output::TransactionOutput,
     },
+    validation::helpers,
 };
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -374,6 +375,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
+        let mut constants = self
+            .shared
+            .consensus_rules
+            .consensus_constants(current_header.height())
+            .clone();
 
         while let Some(response) = output_stream.next().await {
             let res: SyncUtxosResponse = response?;
@@ -401,6 +407,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
+                    helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
                     output_mmr.push(output.hash())?;
@@ -535,6 +542,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         break;
                     } else {
                         current_header = db.fetch_chain_header(current_header.height() + 1).await?;
+                        constants = self
+                            .shared
+                            .consensus_rules
+                            .consensus_constants(current_header.height())
+                            .clone();
                         debug!(
                             target: LOG_TARGET,
                             "Expecting to receive the next UTXO set {}-{} for header #{}",

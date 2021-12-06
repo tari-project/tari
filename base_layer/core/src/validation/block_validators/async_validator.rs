@@ -324,6 +324,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
+                let max_script_size = self.rules.consensus_constants(height).get_max_script_byte_size();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
@@ -350,6 +351,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             // We should not count the coinbase tx here
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
+
+                        helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
 
                         output.verify_metadata_signature()?;
                         if !bypass_range_proof_verification {
