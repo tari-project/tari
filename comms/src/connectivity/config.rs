@@ -41,6 +41,10 @@ pub struct ConnectivityConfig {
     /// The length of time to wait before disconnecting a connection that failed tie breaking.
     /// Default: 1s
     pub connection_tie_break_linger: Duration,
+    /// If the peer has not been seen within this interval, it will be removed from the peer list on the
+    /// next connection attempt.
+    /// Default: 24 hours
+    pub expire_peer_last_seen_duration: Duration,
 }
 
 impl Default for ConnectivityConfig {
@@ -50,8 +54,9 @@ impl Default for ConnectivityConfig {
             connection_pool_refresh_interval: Duration::from_secs(60),
             reaper_min_inactive_age: Duration::from_secs(20 * 60),
             is_connection_reaping_enabled: true,
-            max_failures_mark_offline: 2,
+            max_failures_mark_offline: 1,
             connection_tie_break_linger: Duration::from_secs(2),
+            expire_peer_last_seen_duration: Duration::from_secs(24 * 60 * 60),
         }
     }
 }
