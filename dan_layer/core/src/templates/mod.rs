@@ -22,3 +22,4 @@
 
 pub mod tip002_template;
 pub mod tip004_template;
+pub mod tip721_template;

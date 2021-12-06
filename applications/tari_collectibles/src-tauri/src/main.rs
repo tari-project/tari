@@ -44,6 +44,7 @@ fn main() {
       commands::keys::next_asset_public_key,
       commands::tip004::tip004_mint_token,
       commands::tip004::tip004_list_tokens,
+      commands::tip721::tip721_transfer_from,
       commands::wallets::wallets_create,
       commands::wallets::wallets_list,
       commands::wallets::wallets_unlock,

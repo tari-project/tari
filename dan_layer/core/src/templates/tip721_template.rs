@@ -1,0 +1,69 @@
+//  Copyright 2021. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use crate::{storage::state::StateDbUnitOfWork, types::PublicKey, DigitalAssetError};
+use prost::Message;
+use tari_crypto::tari_utilities::ByteArray;
+use tari_dan_common_types::proto::tips::tip721;
+
+const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip721_template";
+
+pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: String,
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<(), DigitalAssetError> {
+    match method.to_lowercase().replace("_", "").as_str() {
+        "transferfrom" => transfer_from(args, state_db),
+        _ => todo!(),
+    }
+}
+
+fn transfer_from<TUnitOfWork: StateDbUnitOfWork>(
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<(), DigitalAssetError> {
+    let request = tip721::TransferFromRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+        source: e,
+        message_type: "tip721::TransferFromRequest".to_string(),
+    })?;
+
+    let from = request.from.clone();
+    let to = request.to.clone();
+    let token_id = request.token_id;
+
+    let owner = state_db
+        .get_value("owners", &token_id.to_le_bytes())?
+        .ok_or_else(|| DigitalAssetError::NotFound {
+            entity: "owner",
+            id: token_id.to_string(),
+        })?;
+    if owner != from {
+        return Err(DigitalAssetError::NotAuthorised(
+            "Not authorized to send this address".to_string(),
+        ));
+    }
+    // TODO: check signature
+
+    state_db.set_value("owners".to_string(), Vec::from(token_id.to_le_bytes()), to.to_vec())?;
+    Ok(())
+}

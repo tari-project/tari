@@ -28,7 +28,7 @@ use crate::{
     templates::tip002_template,
 };
 
-use crate::templates::tip004_template;
+use crate::templates::{tip004_template, tip721_template};
 use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
@@ -124,6 +124,9 @@ impl ConcreteAssetProcessor {
             },
             TemplateId::Tip004 => {
                 tip004_template::invoke_method(method, &args, state_db)?;
+            },
+            TemplateId::Tip721 => {
+                tip721_template::invoke_method(method, &args, state_db)?;
             },
             _ => {
                 todo!()

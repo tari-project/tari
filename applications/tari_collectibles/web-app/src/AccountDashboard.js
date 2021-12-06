@@ -22,7 +22,7 @@
 
 import React from "react";
 import {withRouter} from "react-router-dom";
-import {Alert, Button, Container, Grid, Paper, Stack, TextField, Typography} from "@mui/material";
+import {Alert, Button, Container, FormGroup, Grid, Paper, Stack, TextField, Typography} from "@mui/material";
 import binding from "./binding";
 import protobuf from "protobufjs";
 
@@ -42,7 +42,8 @@ class AccountDashboard extends React.Component {
             assetPubKey: props.match.params.assetPubKey,
             balance: -1,
             receiveAddress: "",
-            sendToAddress: ""
+            sendToAddress: "",
+            tip721SendDraftId: ""
         };
     }
 
@@ -72,16 +73,7 @@ class AccountDashboard extends React.Component {
             }
             let tip721Data = {};
             if (tip004) {
-                let tokens = await binding.command_tip004_list_tokens(this.state.assetPubKey);
-                console.log(tokens);
-                tip721Data.tokens = [];
-                await tokens.forEach((token) => {
-                    tip721Data.tokens.push({
-                        tokenId: token[0].token_id,
-                        address: token[1].public_key,
-                        token: token[0].token
-                    })
-                });
+               tip721Data = await this.refresh721();
             }
             this.setState({receiveAddress: receiveAddress.public_key, tip002, tip004, tip721, tip002Data, tip721Data});
         } catch (err) {
@@ -96,6 +88,22 @@ class AccountDashboard extends React.Component {
         console.log("balance", balance);
         this.setState({balance});
         return balance;
+    }
+
+    refresh721 = async() => {
+        let tip721Data = {};
+            let tokens = await binding.command_tip004_list_tokens(this.state.assetPubKey);
+            console.log(tokens);
+            tip721Data.tokens = [];
+            await tokens.forEach((token) => {
+                tip721Data.tokens.push({
+                    tokenId: token[0].token_id,
+                    address: token[1].public_key,
+                    addressId: token[1].id,
+                    token: token[0].token
+                })
+            });
+            return tip721Data;
     }
 
     onGenerateReceiveAddress = async () => {
@@ -126,6 +134,24 @@ class AccountDashboard extends React.Component {
             this.setState({
                 sendToAddress: "", sendToAmount: ""
             });
+            await this.refreshBalance();
+        } catch (err) {
+            console.error("Error sending:", err);
+            this.setState({error: err.message});
+        }
+    }
+    openTip721SendDraft = async(tokenId) => {
+       this.setState({
+           tip721SendDraftId: tokenId
+       })
+    }
+    on721Send = async(fromAddressId, tokenId) => {
+        try {
+            this.setState({error: ""});
+            let result = await binding.command_tip721_transfer_from(this.state.assetPubKey, fromAddressId, this.state.sendToAddress,  tokenId);
+            console.log(result);
+            let tip721Data = await this.refresh721();
+            this.setState({ tip721Data});
             await this.refreshBalance();
         } catch (err) {
             console.error("Error sending:", err);
@@ -182,7 +208,21 @@ class AccountDashboard extends React.Component {
                                         {this.state.tip721Data.tokens.map((token) => {
                                             return (<Grid item xs={2}>
                                                 <Paper>
-                                                    <Container> <Typography variant="h6">#{token.tokenId}: {token.token}</Typography></Container>
+                                                    <Container>
+                                                        <Stack spacing={2}><Typography variant="h6">#{token.tokenId}: {token.token}</Typography>
+                                                        <Button onClick={(e) => this.openTip721SendDraft(token.tokenId)}>Send</Button>
+                                                            { this.state.tip721SendDraftId === token.tokenId ? (
+                                                                <Paper elevation={2}>
+                                                                    <Container>
+                                                                        <Stack spacing={2}>
+                                                                            <TextField value={this.state.sendToAddress} onChange={this.onSendToChanged} label="To"></TextField>
+                                                                            <Button onClick={(e) => this.on721Send(token.addressId, token.tokenId)}>Submit</Button>
+                                                                        </Stack>
+                                                                    </Container>
+                                                                </Paper>
+                                                            ) : ""}
+                                                        </Stack>
+                                                    </Container>
                                                 </Paper>
 
                                             </Grid>)
