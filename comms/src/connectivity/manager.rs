@@ -92,7 +92,7 @@ impl ConnectivityManager {
             pool: ConnectionPool::new(),
             shutdown_signal: self.shutdown_signal,
             #[cfg(feature = "metrics")]
-            uptime: Instant::now(),
+            uptime: Some(Instant::now()),
         }
         .spawn()
     }
@@ -148,7 +148,7 @@ struct ConnectivityManagerActor {
     pool: ConnectionPool,
     shutdown_signal: ShutdownSignal,
     #[cfg(feature = "metrics")]
-    uptime: Instant,
+    uptime: Option<Instant>,
 }
 
 impl ConnectivityManagerActor {
@@ -194,6 +194,7 @@ impl ConnectivityManagerActor {
                 },
 
                 _ = ticker.tick() => {
+                    self.cleanup_connection_stats();
                     if let Err(err) = self.refresh_connection_pool().await {
                         error!(target: LOG_TARGET, "Error when refreshing connection pools: {:?}", err);
                     }
@@ -429,16 +430,32 @@ impl ConnectivityManagerActor {
                 node_id.short_str(),
                 num_failed
             );
-            if self.peer_manager.set_offline(node_id, true).await? {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer `{}` was marked as offline but was already offline.", node_id
-                );
-            } else {
-                // Only publish the `PeerOffline` event if we changed the offline state from online to offline
+            if !self.peer_manager.set_offline(node_id, true).await? {
+                // Only publish the `PeerOffline` event if we change from online to offline
                 self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
             }
-            self.connection_stats.remove(node_id);
+
+            if let Ok(peer) = self.peer_manager.find_by_node_id(node_id).await {
+                if !peer.is_banned() &&
+                    peer.last_seen_since()
+                        // Haven't seen them in expire_peer_last_seen_duration
+                        .map(|t| t > self.config.expire_peer_last_seen_duration)
+                        // Or don't delete if never seen
+                        .unwrap_or(false)
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer `{}` was marked as offline after {} attempts (last seen: {}). Removing peer from peer \
+                         list",
+                        node_id,
+                        num_failed,
+                        peer.last_seen_since()
+                            .map(|d| format!("{}s ago", d.as_secs()))
+                            .unwrap_or_else(|| "Never".to_string()),
+                    );
+                    self.peer_manager.delete_peer(node_id).await?;
+                }
+            }
         }
 
         Ok(())
@@ -515,10 +532,7 @@ impl ConnectivityManagerActor {
         }
 
         let (node_id, mut new_status, connection) = match event {
-            PeerDisconnected(node_id) => {
-                self.connection_stats.remove(node_id);
-                (&*node_id, ConnectionStatus::Disconnected, None)
-            },
+            PeerDisconnected(node_id) => (&*node_id, ConnectionStatus::Disconnected, None),
             PeerConnected(conn) => (conn.peer_node_id(), ConnectionStatus::Connected, Some(conn.clone())),
 
             PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
@@ -662,7 +676,12 @@ impl ConnectivityManagerActor {
 
         metrics::connections(ConnectionDirection::Inbound).set(num_inbound);
         metrics::connections(ConnectionDirection::Outbound).set(total - num_inbound);
-        metrics::uptime().set(i64::try_from(self.uptime.elapsed().as_secs()).unwrap_or(i64::MAX));
+
+        let uptime = self
+            .uptime
+            .map(|ts| i64::try_from(ts.elapsed().as_secs()).unwrap_or(i64::MAX))
+            .unwrap_or(0);
+        metrics::uptime().set(uptime);
     }
 
     fn transition(&mut self, next_status: ConnectivityStatus, required_num_peers: usize) {
@@ -681,6 +700,11 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Connectivity is ONLINE ({}/{} connections)", n, required_num_peers
                 );
+
+                #[cfg(feature = "metrics")]
+                if self.uptime.is_none() {
+                    self.uptime = Some(Instant::now());
+                }
                 self.publish_event(ConnectivityEvent::ConnectivityStateOnline(n));
             },
             (Degraded(m), Degraded(n)) => {
@@ -705,6 +729,10 @@ impl ConnectivityManagerActor {
                     target: LOG_TARGET,
                     "Connectivity is OFFLINE (0/{} connections)", required_num_peers
                 );
+                #[cfg(feature = "metrics")]
+                {
+                    self.uptime = None;
+                }
                 self.publish_event(ConnectivityEvent::ConnectivityStateOffline);
             },
             (status, next_status) => unreachable!("Unexpected status transition ({} to {})", status, next_status),
@@ -747,6 +775,22 @@ impl ConnectivityManagerActor {
             );
         }
         Ok(())
+    }
+
+    fn cleanup_connection_stats(&mut self) {
+        let mut to_remove = Vec::new();
+        for node_id in self.connection_stats.keys() {
+            let status = self.pool.get_connection_status(node_id);
+            if matches!(
+                status,
+                ConnectionStatus::NotConnected | ConnectionStatus::Failed | ConnectionStatus::Disconnected
+            ) {
+                to_remove.push(node_id.clone());
+            }
+        }
+        for node_id in to_remove {
+            self.connection_stats.remove(&node_id);
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use thiserror::Error;
 /// Enum to show failure information
 #[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
-    #[error("There is an error in the app configuration: {0}")]
+    #[error("There is an error in the configuration: {0}")]
     ConfigError(String),
     #[error("The application exited because an unknown error occurred: {0}. Check the logs for more details.")]
     UnknownError(String),

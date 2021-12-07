@@ -61,8 +61,7 @@ use tokio::{
     sync::{mpsc, Mutex, RwLock},
     task,
 };
-use tower::Service;
-use tower_make::MakeService;
+use tower::{make::MakeService, Service};
 
 pub struct RpcRequestMock {
     comms_provider: RpcCommsBackend,
