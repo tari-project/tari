@@ -435,7 +435,7 @@ impl ConnectivityManagerActor {
                 self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
             }
 
-            if let Ok(peer) = self.peer_manager.find_by_node_id(node_id).await {
+            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
                 if !peer.is_banned() &&
                     peer.last_seen_since()
                         // Haven't seen them in expire_peer_last_seen_duration
