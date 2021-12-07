@@ -38,6 +38,7 @@ pub use control_client::{
     PortMapping,
     PrivateKey,
     TorClientError,
+    TorControlEvent,
     TorControlPortClient,
 };
 

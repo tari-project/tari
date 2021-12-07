@@ -293,8 +293,14 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.wallet_connectivity.set_base_node(peer);
-
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+            self.comms
+                .connectivity()
+                .remove_peer_from_allow_list(current_node)
+                .await?;
+        }
+        self.wallet_connectivity.set_base_node(peer.clone());
+        self.comms.connectivity().add_peer_to_allow_list(peer.node_id).await?;
         Ok(())
     }
 

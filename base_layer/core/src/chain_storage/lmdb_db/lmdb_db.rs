@@ -50,6 +50,7 @@ use crate::{
             lmdb::{
                 fetch_db_entry_sizes,
                 lmdb_delete,
+                lmdb_delete_each_where,
                 lmdb_delete_key_value,
                 lmdb_delete_keys_starting_with,
                 lmdb_exists,
@@ -118,6 +119,7 @@ const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
 const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
 const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
+const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
@@ -131,7 +133,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         // NOLOCK - No lock required because we manage the DB locking using a RwLock
         .set_env_flags(open::NOLOCK)
         .set_env_config(config)
-        .set_max_number_of_databases(20)
+        .set_max_number_of_databases(40)
         .add_database(LMDB_DB_METADATA, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADERS, flags | db::INTEGERKEY)
         .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags | db::INTEGERKEY)
@@ -152,6 +154,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
+        .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -182,6 +185,7 @@ pub struct LMDBDatabase {
     orphan_header_accumulated_data_db: DatabaseRef,
     orphan_chain_tips_db: DatabaseRef,
     orphan_parent_map_index: DatabaseRef,
+    bad_blocks: DatabaseRef,
     _file_lock: Arc<File>,
 }
 
@@ -213,6 +217,7 @@ impl LMDBDatabase {
             monero_seed_height_db: get_database(&store, LMDB_DB_MONERO_SEED_HEIGHT)?,
             orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
             orphan_parent_map_index: get_database(&store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
+            bad_blocks: get_database(&store, LMDB_DB_BAD_BLOCK_LIST)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
@@ -399,6 +404,9 @@ impl LMDBDatabase {
                         MetadataValue::HorizonData(horizon_data.clone()),
                     )?;
                 },
+                InsertBadBlock { hash, height } => {
+                    self.insert_bad_block_and_cleanup(&write_txn, hash, *height)?;
+                },
             }
         }
         write_txn.commit()?;
@@ -406,7 +414,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 20] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 21] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -434,6 +442,7 @@ impl LMDBDatabase {
             ("monero_seed_height_db", &self.monero_seed_height_db),
             ("orphan_chain_tips_db", &self.orphan_chain_tips_db),
             ("orphan_parent_map_index", &self.orphan_parent_map_index),
+            ("bad_blocks", &self.bad_blocks),
         ]
     }
 
@@ -1274,6 +1283,31 @@ impl LMDBDatabase {
     fn fetch_last_header_in_txn(&self, txn: &ConstTransaction<'_>) -> Result<Option<BlockHeader>, ChainStorageError> {
         lmdb_last(txn, &self.headers_db)
     }
+
+    fn insert_bad_block_and_cleanup(
+        &self,
+        txn: &WriteTransaction<'_>,
+        hash: &HashOutput,
+        height: u64,
+    ) -> Result<(), ChainStorageError> {
+        const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 10000;
+
+        lmdb_replace(txn, &self.bad_blocks, hash, &height)?;
+        // Clean up bad blocks that are far from the tip
+        let metadata = fetch_metadata(&*txn, &self.metadata_db)?;
+        let deleted_before_height = metadata
+            .height_of_longest_chain()
+            .saturating_sub(CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT);
+        if deleted_before_height == 0 {
+            return Ok(());
+        }
+
+        let num_deleted =
+            lmdb_delete_each_where::<[u8], u64, _>(txn, &self.bad_blocks, |_, v| Some(v < deleted_before_height))?;
+        debug!(target: LOG_TARGET, "Cleaned out {} stale bad blocks", num_deleted);
+
+        Ok(())
+    }
 }
 
 pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
@@ -2051,6 +2085,37 @@ impl BlockchainBackend for LMDBDatabase {
                 })
             })
             .collect()
+    }
+
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_exists(&txn, &self.bad_blocks, &block_hash)
+    }
+
+    fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {
+        let txn = self.write_transaction()?;
+        let last_header = match self.fetch_last_header_in_txn(&txn)? {
+            Some(h) => h,
+            None => {
+                return Ok(0);
+            },
+        };
+        let metadata = fetch_metadata(&txn, &self.metadata_db)?;
+
+        if metadata.height_of_longest_chain() == last_header.height {
+            return Ok(0);
+        }
+
+        let start = metadata.height_of_longest_chain() + 1;
+        let end = last_header.height;
+
+        let mut num_deleted = 0;
+        for h in (start..=end).rev() {
+            self.delete_header(&txn, h)?;
+            num_deleted += 1;
+        }
+        txn.commit()?;
+        Ok(num_deleted)
     }
 }
 

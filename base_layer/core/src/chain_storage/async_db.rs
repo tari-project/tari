@@ -207,6 +207,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_last_header() -> BlockHeader, "fetch_last_header");
 
+    make_async_fn!(clear_all_pending_headers() -> usize, "clear_all_pending_headers");
+
     make_async_fn!(fetch_last_chain_header() -> ChainHeader, "fetch_last_chain_header");
 
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
@@ -221,6 +223,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 
     make_async_fn!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
+
+    make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
 
     make_async_fn!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 
@@ -369,6 +373,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 
     pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
         self.transaction.insert_block_body(block);
+        self
+    }
+
+    pub fn insert_bad_block(&mut self, hash: HashOutput, height: u64) -> &mut Self {
+        self.transaction.insert_bad_block(hash, height);
         self
     }
 

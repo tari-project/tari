@@ -67,6 +67,8 @@ pub struct ConsensusConstants {
     faucet_value: MicroTari,
     /// Transaction Weight params
     transaction_weight: TransactionWeight,
+    /// Maximum byte size of TariScript
+    max_script_byte_size: usize,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -167,6 +169,11 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
+    /// The maximum serialized byte size of TariScript
+    pub fn get_max_script_byte_size(&self) -> usize {
+        self.max_script_byte_size
+    }
+
     /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
@@ -226,6 +233,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -260,6 +268,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -321,6 +330,7 @@ impl ConsensusConstants {
                 proof_of_work: algos,
                 faucet_value: (5000 * 4000) * T,
                 transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
             },
             ConsensusConstants {
                 effective_from_height: 1400,
@@ -337,6 +347,7 @@ impl ConsensusConstants {
                 proof_of_work: algos2,
                 faucet_value: (5000 * 4000) * T,
                 transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
             },
         ]
     }
@@ -371,6 +382,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -407,6 +419,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -441,6 +454,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 }
@@ -475,6 +489,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
         self.consensus.coinbase_lock_height = height;
+        self
+    }
+
+    pub fn with_max_script_byte_size(mut self, byte_size: usize) -> Self {
+        self.consensus.max_script_byte_size = byte_size;
         self
     }
 

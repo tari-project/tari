@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::CommsPublicKey;
+use crate::{peer_manager::node_distance::NodeDistance, types::CommsPublicKey};
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
@@ -33,6 +33,7 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    ops::BitXor,
 };
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
@@ -41,202 +42,37 @@ use tari_crypto::tari_utilities::{
 };
 use thiserror::Error;
 
-type NodeIdArray = [u8; NodeId::BYTE_SIZE];
-
-pub type NodeDistance = XorDistance; // or HammingDistance
+pub(super) type NodeIdArray = [u8; NodeId::byte_size()];
 
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
-    #[error("Incorrect byte count (expected {} bytes)", NodeId::BYTE_SIZE)]
+    #[error("Incorrect byte count (expected {} bytes)", NodeId::byte_size())]
     IncorrectByteCount,
     #[error("Invalid digest output size")]
     InvalidDigestOutputSize,
 }
-
-//------------------------------------- XOR Metric -----------------------------------------------//
-const NODE_XOR_DISTANCE_ARRAY_SIZE: usize = NodeId::BYTE_SIZE;
-type NodeXorDistanceArray = [u8; NODE_XOR_DISTANCE_ARRAY_SIZE];
-
-#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
-pub struct XorDistance(NodeXorDistanceArray);
-
-impl XorDistance {
-    /// Construct a new zero distance
-    pub fn new() -> Self {
-        Self([0; NODE_XOR_DISTANCE_ARRAY_SIZE])
-    }
-
-    /// Calculate the distance between two node ids using the Hamming distance.
-    pub fn from_node_ids(x: &NodeId, y: &NodeId) -> Self {
-        Self(xor(&x.0, &y.0))
-    }
-
-    /// Returns the maximum distance.
-    pub const fn max_distance() -> Self {
-        Self([255; NODE_XOR_DISTANCE_ARRAY_SIZE])
-    }
-
-    /// Returns a zero distance.
-    pub const fn zero() -> Self {
-        Self([0; NODE_XOR_DISTANCE_ARRAY_SIZE])
-    }
-
-    /// Returns the number of bytes required to represent the `XorDistance`
-    pub const fn byte_length() -> usize {
-        NODE_XOR_DISTANCE_ARRAY_SIZE
-    }
-}
-
-impl PartialEq for XorDistance {
-    fn eq(&self, nd: &XorDistance) -> bool {
-        self.0 == nd.0
-    }
-}
-
-impl TryFrom<&[u8]> for XorDistance {
-    type Error = NodeIdError;
-
-    /// Construct a node distance from a set of bytes
-    fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= NODE_XOR_DISTANCE_ARRAY_SIZE {
-            let mut bytes = [0; NODE_XOR_DISTANCE_ARRAY_SIZE];
-            bytes.copy_from_slice(&elements[0..NODE_XOR_DISTANCE_ARRAY_SIZE]);
-            Ok(XorDistance(bytes))
-        } else {
-            Err(NodeIdError::IncorrectByteCount)
-        }
-    }
-}
-
-impl TryFrom<XorDistance> for u128 {
-    type Error = String;
-
-    fn try_from(value: XorDistance) -> Result<Self, Self::Error> {
-        if XorDistance::byte_length() > 16 {
-            return Err("XorDistance has too many bytes to be converted to U128".to_string());
-        }
-        let slice = value.as_bytes();
-        let mut bytes: [u8; 16] = [0u8; 16];
-        bytes[..XorDistance::byte_length()].copy_from_slice(&slice[..XorDistance::byte_length()]);
-        Ok(u128::from_be_bytes(bytes))
-    }
-}
-
-//---------------------------------- Hamming Distance --------------------------------------------//
-const NODE_HAMMING_DISTANCE_ARRAY_SIZE: usize = 1;
-type NodeHammingDistanceArray = [u8; NODE_HAMMING_DISTANCE_ARRAY_SIZE];
-
-/// Hold the distance calculated between two NodeId's. This is used for DHT-style routing.
-#[derive(Clone, Debug, Eq, PartialOrd, Ord, Default)]
-pub struct HammingDistance(NodeHammingDistanceArray);
-
-impl HammingDistance {
-    /// Construct a new zero distance
-    pub fn new() -> Self {
-        Self([0; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
-    }
-
-    /// Calculate the distance between two node ids using the Hamming distance.
-    pub fn from_node_ids(x: &NodeId, y: &NodeId) -> Self {
-        let xor_bytes = xor(&x.0, &y.0);
-        Self([hamming_distance(xor_bytes)])
-    }
-
-    /// Returns the maximum distance.
-    pub const fn max_distance() -> Self {
-        Self([NodeId::BYTE_SIZE as u8 * 8; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
-    }
-}
-
-impl TryFrom<&[u8]> for HammingDistance {
-    type Error = NodeIdError;
-
-    /// Construct a node distance from a set of bytes
-    fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= NODE_HAMMING_DISTANCE_ARRAY_SIZE {
-            let mut bytes = [0; NODE_HAMMING_DISTANCE_ARRAY_SIZE];
-            bytes.copy_from_slice(&elements[0..NODE_HAMMING_DISTANCE_ARRAY_SIZE]);
-            Ok(HammingDistance(bytes))
-        } else {
-            Err(NodeIdError::IncorrectByteCount)
-        }
-    }
-}
-
-impl PartialEq for HammingDistance {
-    fn eq(&self, nd: &HammingDistance) -> bool {
-        self.0 == nd.0
-    }
-}
-
-/// Calculate the Exclusive OR between the node_id x and y.
-fn xor(x: &NodeIdArray, y: &NodeIdArray) -> NodeIdArray {
-    let mut nd = [0u8; NodeId::BYTE_SIZE];
-    for i in 0..nd.len() {
-        nd[i] = x[i] ^ y[i];
-    }
-    nd
-}
-
-/// Calculate the hamming distance (the number of set (1) bits of the XOR metric)
-fn hamming_distance(nd: NodeIdArray) -> u8 {
-    let xor_bytes = &nd;
-    let mut set_bit_count = 0u8;
-    for b in xor_bytes {
-        let mut mask = 0b1u8;
-        for _ in 0..8 {
-            if b & mask > 0 {
-                set_bit_count += 1;
-            }
-            mask <<= 1;
-        }
-    }
-
-    set_bit_count
-}
-
-impl ByteArray for NodeDistance {
-    /// Try and convert the given byte array to a NodeDistance. Any failures (incorrect array length,
-    /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        bytes
-            .try_into()
-            .map_err(|err| ByteArrayError::ConversionError(format!("{:?}", err)))
-    }
-
-    /// Return the NodeDistance as a byte array
-    fn as_bytes(&self) -> &[u8] {
-        self.0.as_ref()
-    }
-}
-
-impl fmt::Display for NodeDistance {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", to_hex(&self.0))
-    }
-}
-
-//--------------------------------------- NodeId -------------------------------------------------//
 
 /// A Node Identity is used as a unique identifier for a node in the Tari communications network.
 #[derive(Clone, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
 
 impl NodeId {
-    /// 104-bit/13 byte as per RFC-0151
-    pub const BYTE_SIZE: usize = 13;
-
     /// Construct a new node id on the origin
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// 104-bit/13 byte as per RFC-0151
+    pub const fn byte_size() -> usize {
+        13
+    }
+
     /// Derive a node id from a public key: node_id=hash(public_key)
     pub fn from_key<K: ByteArray>(key: &K) -> Self {
         let bytes = key.as_bytes();
-        let mut buf = [0u8; NodeId::BYTE_SIZE];
-        VarBlake2b::new(NodeId::BYTE_SIZE)
-            .expect("NodeId::NODE_ID_ARRAY_SIZE is invalid")
+        let mut buf = [0u8; NodeId::byte_size()];
+        VarBlake2b::new(NodeId::byte_size())
+            .expect("NodeId::byte_size() is invalid")
             .chain(bytes)
             .finalize_variable(|hash| {
                 // Safety: output size and buf size are equal
@@ -344,18 +180,31 @@ impl Ord for NodeId {
     }
 }
 
+impl BitXor for &NodeId {
+    type Output = NodeIdArray;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let mut xor = [0u8; NodeId::byte_size()];
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..NodeId::byte_size() {
+            xor[i] = self.0[i] ^ rhs.0[i];
+        }
+        xor
+    }
+}
+
 impl TryFrom<&[u8]> for NodeId {
     type Error = NodeIdError;
 
     /// Construct a node id from 32 bytes
-    fn try_from(elements: &[u8]) -> Result<Self, Self::Error> {
-        if elements.len() >= NodeId::BYTE_SIZE {
-            let mut bytes = [0; NodeId::BYTE_SIZE];
-            bytes.copy_from_slice(&elements[0..NodeId::BYTE_SIZE]);
-            Ok(NodeId(bytes))
-        } else {
-            Err(NodeIdError::IncorrectByteCount)
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() != NodeId::byte_size() {
+            return Err(NodeIdError::IncorrectByteCount);
         }
+
+        let mut buf = [0; NodeId::byte_size()];
+        buf.copy_from_slice(bytes);
+        Ok(NodeId(buf))
     }
 }
 
@@ -422,8 +271,7 @@ mod test {
 
     #[test]
     fn display() {
-        let node_id =
-            NodeId::try_from(&[144u8, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53][..]).unwrap();
+        let node_id = NodeId::try_from(&[144u8, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap();
 
         let result = format!("{}", node_id);
         assert_eq!("901c6a70dcc5d87709d92a4d9f", result);
@@ -444,64 +292,21 @@ mod test {
 
     #[test]
     fn test_distance_and_ordering() {
-        let node_id1 = NodeId::try_from(
-            [
-                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
-                195, 240, 48, 146, 168, 119, 15, 241, 54,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let node_id2 = NodeId::try_from(
-            [
-                186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83, 83, 45, 185, 219, 206, 226, 128, 5, 26, 20, 0,
-                192, 121, 216, 178, 134, 212, 51, 131,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let node_id3 = NodeId::try_from(
-            [
-                60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31, 46, 66, 203, 27, 51, 240, 177, 230, 22, 118,
-                102, 201, 55, 211, 147, 229, 26, 116, 103,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
+        let node_id1 = NodeId::try_from(&[144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159][..]).unwrap();
+        let node_id2 = NodeId::try_from(&[186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83][..]).unwrap();
+        let node_id3 = NodeId::try_from(&[60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31][..]).unwrap();
         assert!(node_id1.0 < node_id2.0);
         assert!(node_id1.0 > node_id3.0);
         // XOR metric
-        let desired_n1_to_n2_dist = NodeDistance::try_from(
-            [
-                42, 55, 84, 126, 224, 19, 209, 195, 152, 163, 29, 237, 204, 128, 24, 118, 219, 83, 231, 183, 238, 237,
-                180, 195, 48, 73, 74, 26, 241, 219, 194, 181,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let desired_n1_to_n3_dist = NodeDistance::try_from(
-            [
-                172, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128, 253, 119, 4, 27, 174, 245, 134, 13, 225, 214,
-                165, 57, 7, 65, 59, 146, 21, 133, 81,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        // Hamming distance
-        // let desired_n1_to_n2_dist_bytes: &[u8] = &vec![52u8];
-        // let desired_n1_to_n2_dist = NodeDistance::try_from(desired_n1_to_n2_dist_bytes).unwrap();
-        // let desired_n1_to_n3_dist = NodeDistance::try_from(
-        // [
-        // 46, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128, 253, 119, 4, 27, 174, 245, 134, 13, 225, 214,
-        // 165, 57, 7, 65, 59, 146, 21, 133, 81,
-        // ]
-        // .as_bytes(),
-        // )
-        // .unwrap(); // Unused bytes will be discarded
+        let desired_n1_to_n2_dist =
+            NodeDistance::try_from(&[42, 55, 84, 126, 224, 19, 209, 195, 152, 163, 29, 237, 204][..]).unwrap();
+        let desired_n1_to_n3_dist =
+            NodeDistance::try_from(&[172, 60, 156, 87, 176, 12, 14, 44, 23, 63, 41, 51, 128][..]).unwrap();
+
         let n1_to_n2_dist = node_id1.distance(&node_id2);
         let n1_to_n3_dist = node_id1.distance(&node_id3);
-        assert!(n1_to_n2_dist < n1_to_n3_dist); // XOR metric
-                                                // assert!(n1_to_n2_dist > n1_to_n3_dist); // Hamming Distance
+        // Big-endian ordering
+        assert!(n1_to_n2_dist < n1_to_n3_dist);
         assert_eq!(n1_to_n2_dist, desired_n1_to_n2_dist);
         assert_eq!(n1_to_n3_dist, desired_n1_to_n3_dist);
 
@@ -541,26 +346,13 @@ mod test {
         assert_eq!(knn_node_ids[2].0, [
             143, 189, 32, 210, 30, 231, 82, 5, 86, 85, 28, 82, 154
         ]);
-        // Hamming distance nearest neighbours
-        // assert_eq!(knn_node_ids[0].0, [
-        // 75, 146, 162, 130, 22, 63, 247, 182, 156, 103, 174, 32, 134
-        // ]);
-        // assert_eq!(knn_node_ids[1].0, [
-        // 134, 116, 78, 53, 246, 206, 200, 147, 126, 96, 54, 113, 67
-        // ]);
-        // assert_eq!(knn_node_ids[2].0, [
-        // 144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159
-        // ]);
+
         assert_eq!(node_id.closest(&node_ids, node_ids.len() + 1).len(), node_ids.len());
     }
 
     #[test]
     fn partial_eq() {
-        let bytes = [
-            173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242, 24, 95, 60, 208, 53, 97, 51, 43, 71, 149, 89,
-            123, 150, 162, 67, 240, 208, 67, 56,
-        ]
-        .as_bytes();
+        let bytes = &[173, 218, 34, 188, 211, 173, 235, 82, 18, 159, 55, 47, 242][..];
         let nid1 = NodeId::try_from(bytes).unwrap();
         let nid2 = NodeId::try_from(bytes).unwrap();
 
@@ -568,63 +360,16 @@ mod test {
     }
 
     #[test]
-    fn hamming_distance() {
-        let mut node_id1 = NodeId::default().into_inner().to_vec();
-        let mut node_id2 = NodeId::default().into_inner().to_vec();
-        // Same bits
-        node_id1[0] = 0b00010100;
-        node_id2[0] = 0b00010100;
-        // Different bits
-        node_id1[1] = 0b11010100;
-        node_id1[12] = 0b01000011;
-        node_id2[10] = 0b01000011;
-        node_id2[9] = 0b11111111;
-        let node_id1 = NodeId::from_bytes(node_id1.as_slice()).unwrap();
-        let node_id2 = NodeId::from_bytes(node_id2.as_slice()).unwrap();
-
-        let hamming_dist = HammingDistance::from_node_ids(&node_id1, &node_id2);
-        assert_eq!(hamming_dist, HammingDistance([18]));
-
-        let node_max = NodeId::from_bytes(&[255; NodeId::BYTE_SIZE]).unwrap();
-        let node_min = NodeId::default();
-
-        let hamming_dist = HammingDistance::from_node_ids(&node_max, &node_min);
-        assert_eq!(hamming_dist, HammingDistance::max_distance());
-    }
-
-    #[test]
     fn convert_xor_distance_to_u128() {
-        let node_id1 = NodeId::try_from(
-            [
-                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
-                195, 240, 48, 146, 168, 119, 15, 241, 54,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let node_id2 = NodeId::try_from(
-            [
-                186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83, 83, 45, 185, 219, 206, 226, 128, 5, 26, 20, 0,
-                192, 121, 216, 178, 134, 212, 51, 131,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let node_id3 = NodeId::try_from(
-            [
-                60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31, 46, 66, 203, 27, 51, 240, 177, 230, 22, 118,
-                102, 201, 55, 211, 147, 229, 26, 116, 103,
-            ]
-            .as_bytes(),
-        )
-        .unwrap();
-        let n1_to_n2_dist = node_id1.distance(&node_id2);
-        let n1_to_n3_dist = node_id1.distance(&node_id3);
-        assert!(n1_to_n2_dist < n1_to_n3_dist);
-        let n12_distance = u128::try_from(n1_to_n2_dist).unwrap();
-        let n13_distance = u128::try_from(n1_to_n3_dist).unwrap();
+        let node_id1 = NodeId::try_from(&[128, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 55][..]).unwrap();
+        let node_id2 = NodeId::try_from(&[160, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 54][..]).unwrap();
+        let node_id3 = NodeId::try_from(&[64, 28, 106, 112, 220, 197, 216, 119, 9, 128, 42, 77, 54][..]).unwrap();
+        let n12_distance = node_id1.distance(&node_id2);
+        let n13_distance = node_id1.distance(&node_id3);
+        assert_eq!(n12_distance.to_bytes()[..4], [0, 0, 0, 32]);
+        assert_eq!(n13_distance.to_bytes()[..4], [0, 0, 0, 192]);
         assert!(n12_distance < n13_distance);
-        assert_eq!(n12_distance, 56114865924689668092413877285545836544);
-        assert_eq!(n13_distance, 228941924089749863963604860508980641792);
+        assert_eq!(n12_distance.as_u128(), ((128 ^ 160) << (12 * 8)) + 1);
+        assert_eq!(n13_distance.as_u128(), ((128 ^ 64) << (12 * 8)) + 1);
     }
 }
