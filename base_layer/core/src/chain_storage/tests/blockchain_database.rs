@@ -364,7 +364,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-
     use super::*;
 
     #[test]
@@ -396,10 +395,13 @@ mod add_block {
         }]);
 
         let (block, _) = create_next_block(&prev_block, txns);
-        let err = db.add_block(block).unwrap_err();
+        let err = db.add_block(block.clone()).unwrap_err();
         unpack_enum!(ChainStorageError::KeyExists { key, table_name } = err);
         assert_eq!(table_name, "utxo_commitment_index");
         assert_eq!(key, prev_output.commitment.to_hex());
+        // Check rollback
+        let header = db.fetch_header(block.header.height).unwrap();
+        assert!(header.is_none());
 
         let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![prev_utxo.clone()], to: vec![50 * T])]);
         let (block, _) = create_next_block(&prev_block, txns);

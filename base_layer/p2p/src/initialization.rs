@@ -30,6 +30,7 @@ use crate::{
 };
 use fs2::FileExt;
 use futures::future;
+use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
@@ -174,6 +175,7 @@ pub async fn initialize_local_test_comms(
     std::fs::create_dir_all(data_path).unwrap();
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&peer_database_name, lmdb_zero::db::CREATE)
@@ -326,6 +328,7 @@ async fn configure_comms_and_dht(
 
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
