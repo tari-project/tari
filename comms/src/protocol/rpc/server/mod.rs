@@ -78,8 +78,7 @@ use std::{
 };
 use tokio::{sync::mpsc, time};
 use tokio_stream::Stream;
-use tower::Service;
-use tower_make::MakeService;
+use tower::{make::MakeService, Service};
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc";

@@ -26,7 +26,6 @@ use crate::{
         connection_stats::PeerConnectionStats,
         migrations::MIGRATION_VERSION_KEY,
         node_id::deserialize_node_id_from_hex,
-        IdentitySignature,
         NodeId,
         PeerFeatures,
         PeerFlags,
@@ -79,13 +78,13 @@ pub struct PeerV4 {
     pub banned_until: Option<NaiveDateTime>,
     pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
+    pub last_seen: Option<NaiveDateTime>,
     pub features: PeerFeatures,
     pub connection_stats: PeerConnectionStats,
     pub supported_protocols: Vec<ProtocolId>,
     pub added_at: NaiveDateTime,
     pub user_agent: String,
     pub metadata: HashMap<u8, Vec<u8>>,
-    pub identity_signature: Option<IdentitySignature>,
 }
 
 pub struct Migration;
@@ -98,7 +97,7 @@ impl super::Migration<LMDBDatabase> for Migration {
     }
 
     fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
-        db.for_each::<PeerId, PeerV3, _>(|old_peer| {
+        let result = db.for_each::<PeerId, PeerV3, _>(|old_peer| {
             let result = old_peer.and_then(|(key, peer)| {
                 if key == MIGRATION_VERSION_KEY {
                     return Ok(());
@@ -109,6 +108,7 @@ impl super::Migration<LMDBDatabase> for Migration {
                     id: peer.id,
                     public_key: peer.public_key,
                     node_id: peer.node_id,
+                    last_seen: peer.addresses.last_seen().map(|ts| ts.naive_utc()),
                     addresses: peer.addresses,
                     flags: peer.flags,
                     banned_until: peer.banned_until,
@@ -120,7 +120,6 @@ impl super::Migration<LMDBDatabase> for Migration {
                     added_at: peer.added_at,
                     user_agent: peer.user_agent,
                     metadata: peer.metadata,
-                    identity_signature: None,
                 })
                 .map_err(Into::into)
             });
@@ -132,7 +131,14 @@ impl super::Migration<LMDBDatabase> for Migration {
                 );
             }
             IterationResult::Continue
-        })?;
+        });
+
+        if let Err(err) = result {
+            error!(
+                target: LOG_TARGET,
+                "Error reading peer pd: {} ** Database may be corrupt **", err
+            );
+        }
 
         Ok(())
     }

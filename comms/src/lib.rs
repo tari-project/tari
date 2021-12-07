@@ -72,4 +72,4 @@ pub mod multiaddr {
 pub use async_trait::async_trait;
 pub use bytes::{Bytes, BytesMut};
 #[cfg(feature = "rpc")]
-pub use tower_make::MakeService;
+pub use tower::make::MakeService;

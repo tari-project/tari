@@ -32,13 +32,15 @@ pub(super) const MIGRATION_VERSION_KEY: u64 = u64::MAX;
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
     // Add migrations here in version order
     let migrations = vec![v4::Migration.boxed()];
-
+    if migrations.is_empty() {
+        return Ok(());
+    }
     let latest_version = migrations.last().unwrap().get_version();
 
     // If the database is empty there is nothing to migrate, so set it to the latest version
     if database.len()? == 0 {
         debug!(target: LOG_TARGET, "New database does not require migration");
-        if let Err(err) = database.insert(&MIGRATION_VERSION_KEY, &(migrations.len() as u32)) {
+        if let Err(err) = database.insert(&MIGRATION_VERSION_KEY, &latest_version) {
             error!(
                 target: LOG_TARGET,
                 "Failed to update migration counter: {}. ** Database may be corrupt **", err
@@ -77,7 +79,13 @@ pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
 
                 debug!(target: LOG_TARGET, "Migration {} complete", version);
             },
-            None => break Ok(()),
+            None => {
+                error!(
+                    target: LOG_TARGET,
+                    "Migration {} not found. Unable to migrate peer db", version
+                );
+                return Ok(());
+            },
         }
     }
 }

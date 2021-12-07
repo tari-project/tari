@@ -514,7 +514,7 @@ async fn local_get_new_block_with_zero_conf() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::default(),
+            BodyOnlyValidator::new(rules.clone()),
             HeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
@@ -593,7 +593,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::default(),
+            BodyOnlyValidator::new(rules.clone()),
             HeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
