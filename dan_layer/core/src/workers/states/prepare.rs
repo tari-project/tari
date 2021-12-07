@@ -139,13 +139,9 @@ where
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
-        let mut next_event_result = ConsensusWorkerStateEvent::Errored {
-            reason: "loop ended without setting this event".to_string(),
-        };
-
         let started = Instant::now();
         let mut chain_tx = chain_tx;
-
+        let next_event_result;
         loop {
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {

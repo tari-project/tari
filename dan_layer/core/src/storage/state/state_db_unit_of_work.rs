@@ -74,7 +74,7 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
         let mut inner = self.inner.write().unwrap();
         for v in &inner.updates {
             let inner_v = v.get();
-            if &inner_v.schema == schema && &inner_v.key == key {
+            if inner_v.schema == schema && inner_v.key == key {
                 return Ok(Some(inner_v.value.clone()));
             }
         }

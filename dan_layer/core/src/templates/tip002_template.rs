@@ -127,15 +127,14 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
                 Some(d) => {
                     let mut data2: [u8; 8] = [0; 8];
                     data2.copy_from_slice(&d);
-                    let balance = u64::from_le_bytes(data2);
-                    balance
+                    
+                    u64::from_le_bytes(data2)
                 },
                 None => 0,
             };
             dbg!(receiver_balance);
             receiver_balance = receiver_balance
-                .checked_add(request.amount)
-                .ok_or_else(|| DigitalAssetError::Overflow)?;
+                .checked_add(request.amount).ok_or(DigitalAssetError::Overflow)?;
             dbg!(receiver_balance);
             state_db.set_value(
                 "owners".to_string(),

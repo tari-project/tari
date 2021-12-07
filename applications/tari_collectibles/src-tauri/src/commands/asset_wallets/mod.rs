@@ -135,12 +135,9 @@ pub(crate) async fn asset_wallets_get_balance(
       .await?;
 
     dbg!(&resp);
-    match resp {
-      Some(resp) => {
-        let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
-        total += proto_resp.balance;
-      }
-      None => (),
+    if let Some(resp) = resp {
+      let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
+      total += proto_resp.balance;
     }
   }
   Ok(total)
@@ -194,7 +191,7 @@ pub(crate) async fn asset_wallets_create_address(
     asset_wallet_id: asset_wallet_row.id,
     name: None,
     public_key: address_public_key,
-    key_manager_path: key_manager_path.clone(),
+    key_manager_path,
   };
   dbg!(&address);
   db.addresses().insert(&address, &transaction)?;

@@ -24,10 +24,7 @@ use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
 use digest::Digest;
 use log::*;
 use prost::Message;
-use tari_crypto::{
-    common::Blake256,
-    tari_utilities::{hex::Hex, ByteArray},
-};
+use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 use tari_dan_common_types::proto::tips::tip004;
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
@@ -62,27 +59,27 @@ fn mint<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork)
     })?;
 
     let token: String = request.token.clone();
-    let owner: Vec<u8> = request.owner.clone();
+    let owner: Vec<u8> = request.owner;
 
     let hash = hash_of(&token);
 
     match state_db.get_u64("id_of", &hash)? {
-        Some(id) => {
+        Some(_id) => {
             // unimplemented!("Token has already been minted");
             error!(target: LOG_TARGET, "Token has already been minted");
         },
         None => {
             let total_supply = state_db.get_u64("info", "total_supply".as_bytes())?.unwrap_or_default();
-            state_db.set_u64("id_of", &hash, total_supply);
-            state_db.set_u64("info", "total_supply".as_bytes(), total_supply + 1);
+            state_db.set_u64("id_of", &hash, total_supply)?;
+            state_db.set_u64("info", "total_supply".as_bytes(), total_supply + 1)?;
 
-            state_db.set_value("owners".to_string(), total_supply.to_le_bytes().to_vec(), owner.clone());
+            state_db.set_value("owners".to_string(), total_supply.to_le_bytes().to_vec(), owner)?;
             // TODO: this might be too specific
             state_db.set_value(
                 "tokens".to_string(),
                 total_supply.to_le_bytes().to_vec(),
                 Vec::from(token.as_bytes()),
-            );
+            )?;
         },
     }
 

@@ -24,7 +24,7 @@ use crate::{
   schema::*,
   storage::{
     models::tip721_token_row::Tip721TokenRow,
-    sqlite::{models, models::Tip721Token, SqliteTransaction},
+    sqlite::{models, SqliteTransaction},
     StorageError, Tip721TokensTableGateway,
   },
 };

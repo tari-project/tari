@@ -83,13 +83,10 @@ where
         unit_of_work: TUnitOfWork,
         payload_processor: &mut TPayloadProcessor,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        let mut next_event_result = ConsensusWorkerStateEvent::Errored {
-            reason: "loop ended without setting this event".to_string(),
-        };
-
         self.received_new_view_messages.clear();
         let started = Instant::now();
         let mut unit_of_work = unit_of_work;
+        let next_event_result;
         loop {
             tokio::select! {
                            (from, message) = self.wait_for_message(inbound_services) => {

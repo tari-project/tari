@@ -20,7 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{storage::state::StateDbUnitOfWork, types::PublicKey, DigitalAssetError};
+use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
+use log::*;
 use prost::Message;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_common_types::proto::tips::tip721;
@@ -47,6 +48,7 @@ fn transfer_from<TUnitOfWork: StateDbUnitOfWork>(
         message_type: "tip721::TransferFromRequest".to_string(),
     })?;
 
+    debug!(target: LOG_TARGET, "transfer_from called");
     let from = request.from.clone();
     let to = request.to.clone();
     let token_id = request.token_id;

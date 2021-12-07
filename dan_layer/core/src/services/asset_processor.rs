@@ -56,6 +56,7 @@ pub trait AssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
+#[derive(Default)]
 pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
 }
@@ -105,12 +106,6 @@ impl AssetProcessor for ConcreteAssetProcessor {
 }
 
 impl ConcreteAssetProcessor {
-    pub fn new() -> Self {
-        Self {
-            template_factory: TemplateFactory {},
-        }
-    }
-
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_id: TemplateId,
@@ -142,6 +137,7 @@ impl ConcreteAssetProcessor {
     }
 }
 
+#[derive(Default)]
 pub struct TemplateFactory {}
 
 impl TemplateFactory {

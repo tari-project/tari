@@ -24,9 +24,7 @@ use crate::{
   app_state::ConcurrentAppState,
   status::Status,
   storage::{
-    models::{
-      address_row::AddressRow, asset_wallet_row::AssetWalletRow, tip721_token_row::Tip721TokenRow,
-    },
+    models::{address_row::AddressRow, tip721_token_row::Tip721TokenRow},
     AddressesTableGateway, AssetsTableGateway, CollectiblesStorage, StorageTransaction,
     Tip721TokensTableGateway,
   },
@@ -43,7 +41,7 @@ pub(crate) async fn tip004_mint_token(
   token: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
-  let wallet_id = state
+  let _wallet_id = state
     .current_wallet_id()
     .await
     .ok_or_else(Status::unauthorized)?;
@@ -51,7 +49,7 @@ pub(crate) async fn tip004_mint_token(
   let mut client = state.connect_validator_node_client().await?;
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let asset = db.assets().find_by_public_key(&asset_public_key, &tx)?;
+  let _asset = db.assets().find_by_public_key(&asset_public_key, &tx)?;
   drop(tx);
 
   // TODO: get signature
@@ -125,7 +123,7 @@ pub(crate) async fn tip004_list_tokens(
             token: token_data.token.clone(),
           };
 
-          db.tip721_tokens().insert(&token_row, &tx);
+          db.tip721_tokens().insert(&token_row, &tx)?;
           token_ids.push((token_row, address.clone()));
         }
       }
