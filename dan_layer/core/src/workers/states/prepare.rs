@@ -390,13 +390,14 @@ where
 mod test {
 
     use super::*;
-    use crate::dan_layer::{
+    use crate::{
         models::ViewId,
         services::{
             infrastructure_services::mocks::mock_outbound,
             mocks::{mock_payload_processor, mock_payload_provider, mock_signing_service},
         },
     };
+    use std::sync::Arc;
     use tokio::time::Duration;
 
     #[tokio::test(flavor = "multi_thread")]

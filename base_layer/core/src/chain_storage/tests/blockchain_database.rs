@@ -48,7 +48,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, PublicKey},
+    keys::PublicKey as PublicKeyTrait,
     ristretto::RistrettoPublicKey,
 };
 use tari_test_utils::unpack_enum;

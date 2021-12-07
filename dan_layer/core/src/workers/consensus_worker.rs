@@ -405,21 +405,21 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::dan_layer::services::mocks::MockCommitteeManager;
-
-    use crate::dan_layer::services::{
-        infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
-        mocks::{
-            mock_base_node_client,
-            mock_events_publisher,
-            mock_payload_processor,
-            mock_signing_service,
-            mock_static_payload_provider,
-            MockEventsPublisher,
+    use crate::{
+        models::{Committee, ConsensusWorkerState::*},
+        services::{
+            infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
+            mocks::{
+                mock_base_node_client,
+                mock_events_publisher,
+                mock_payload_processor,
+                mock_signing_service,
+                mock_static_payload_provider,
+                MockCommitteeManager,
+                MockEventsPublisher,
+            },
         },
     };
-
-    use crate::dan_layer::models::Committee;
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 
@@ -507,7 +507,7 @@ mod test {
         task_b.await.unwrap();
         // task_c.await.unwrap();
         // task_d.await.unwrap();
-        use crate::dan_layer::models::ConsensusWorkerState::*;
+
         // assert_eq!(events[0].to_vec(), vec![ConsensusWorkerDomainEvent::StateChanged {
         //     old: Starting,
         // new: Prepare

@@ -25,7 +25,7 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::{transaction::TxId, types::PrivateKey};
+use tari_common_types::transaction::TxId;
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::output_manager_service::{

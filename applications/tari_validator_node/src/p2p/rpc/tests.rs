@@ -22,11 +22,12 @@
 
 use super::ValidatorNodeRpcService;
 use crate::{
-    dan_layer::services::mocks::{create_mempool_mock, MockMempoolService},
     p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcServiceImpl},
+    services::mocks::{create_mempool_mock, MockMempoolService},
 };
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::test_helpers::create_peer_manager;
+use tari_dan_core::services::mocks::{create_mempool_mock, MockMempoolService};
 use tari_test_utils::paths::temp_tari_path;
 
 fn setup() -> (ValidatorNodeRpcServiceImpl<MockMempoolService>, RpcRequestMock) {
