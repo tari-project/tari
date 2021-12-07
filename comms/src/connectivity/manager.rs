@@ -93,6 +93,7 @@ impl ConnectivityManager {
             shutdown_signal: self.shutdown_signal,
             #[cfg(feature = "metrics")]
             uptime: Some(Instant::now()),
+            allow_list: vec![],
         }
         .spawn()
     }
@@ -149,6 +150,7 @@ struct ConnectivityManagerActor {
     shutdown_signal: ShutdownSignal,
     #[cfg(feature = "metrics")]
     uptime: Option<Instant>,
+    allow_list: Vec<NodeId>,
 }
 
 impl ConnectivityManagerActor {
@@ -271,8 +273,25 @@ impl ConnectivityManagerActor {
                 let _ = reply.send(states);
             },
             BanPeer(node_id, duration, reason) => {
-                if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
-                    error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
+                if !self.allow_list.contains(&node_id) {
+                    if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
+                        error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
+                    }
+                } else {
+                    info!(
+                        target: LOG_TARGET,
+                        "Peer is excluded from being banned as it was found in the AllowList, NodeId: {:?}", node_id
+                    );
+                }
+            },
+            AddPeerToAllowList(node_id) => {
+                if !self.allow_list.contains(&node_id) {
+                    self.allow_list.push(node_id)
+                }
+            },
+            RemovePeerFromAllowList(node_id) => {
+                if let Some(index) = self.allow_list.iter().position(|x| *x == node_id) {
+                    self.allow_list.remove(index);
                 }
             },
             GetActiveConnections(reply) => {
