@@ -63,6 +63,8 @@ impl Tor {
     /// The data directory, passphrase, and log destination are temporary and randomized.
     /// Two available adjacent TCP ports will be selected in the given
     /// port range. These are scanned sequentially from start to end.
+    /// These ports are only for the control and socks ports, the onion address and port info are still loaded from the
+    /// node identity file.
     pub fn randomize(port_range: Range<u16>) -> Result<Tor, ExitCodes> {
         let mut instance = Tor::default();
 
@@ -95,7 +97,7 @@ impl Tor {
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
-    pub fn updated_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitCodes> {
+    pub fn update_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitCodes> {
         if let CommsTransport::TorHiddenService {
             socks_address_override,
             forward_address,
@@ -157,14 +159,7 @@ impl Tor {
 
         tor.start_background();
 
-        loop {
-            tokio::select! {
-                _ = shutdown_signal.wait() => {
-                    info!(target: LOG_TARGET, "Shutdown signal received, dropping Tor");
-                    break;
-                }
-            }
-        }
+        shutdown_signal.wait().await;
 
         Ok(())
     }

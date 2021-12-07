@@ -119,7 +119,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. })
     {
         let tor = Tor::randomize(19_050..20_000)?;
-        global_config.comms_transport = tor.updated_comms_transport(global_config.comms_transport)?;
+        global_config.comms_transport = tor.update_comms_transport(global_config.comms_transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,

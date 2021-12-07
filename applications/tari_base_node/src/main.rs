@@ -193,7 +193,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Run our own Tor instance, if configured
     if config.base_node_use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
         let tor = Tor::randomize(19_050..20_000)?;
-        config.comms_transport = tor.updated_comms_transport(config.comms_transport)?;
+        config.comms_transport = tor.update_comms_transport(config.comms_transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
