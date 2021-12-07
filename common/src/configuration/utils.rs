@@ -170,7 +170,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.weatherwax.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 1000)
+    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 10000)
         .unwrap();
     cfg.set_default("base_node.weatherwax.peer_seeds", Vec::<String>::new())
         .unwrap();
@@ -215,7 +215,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 1000).unwrap();
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 10000)
+        .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
