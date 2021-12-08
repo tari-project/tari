@@ -20,6 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, sync::Arc};
+
+use futures::{Stream, StreamExt};
+use log::*;
+use tari_comms_dht::Dht;
+use tari_p2p::{
+    comms_connector::{PeerMessage, SubscriptionFactory},
+    domain_message::DomainMessage,
+    services::utils::{map_decode, ok_or_skip_result},
+    tari_message::TariMessageType,
+};
+use tari_service_framework::{
+    async_trait,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+};
+use tokio::sync::{broadcast, mpsc};
+
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
@@ -37,24 +57,6 @@ use crate::{
     proto,
     transactions::transaction::Transaction,
 };
-use futures::{Stream, StreamExt};
-use log::*;
-use std::{convert::TryFrom, sync::Arc};
-use tari_comms_dht::Dht;
-use tari_p2p::{
-    comms_connector::{PeerMessage, SubscriptionFactory},
-    domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
-    tari_message::TariMessageType,
-};
-use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
-};
-use tokio::sync::{broadcast, mpsc};
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";

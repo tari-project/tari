@@ -20,10 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use lmdb_zero::ConstAccessor;
-use patricia_tree::{node::Node, PatriciaMap};
 use std::path::Path;
 
+use bytecodec::{
+    bincode_codec::{BincodeDecoder, BincodeEncoder},
+    DecodeExt,
+    EncodeExt,
+};
+use lmdb_zero::ConstAccessor;
+use patricia_tree::{
+    node::{Node, NodeDecoder, NodeEncoder},
+    PatriciaMap,
+};
 use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{
@@ -35,12 +43,6 @@ use crate::{
         StorageError,
     },
 };
-use bytecodec::{
-    bincode_codec::{BincodeDecoder, BincodeEncoder},
-    DecodeExt,
-    EncodeExt,
-};
-use patricia_tree::node::{NodeDecoder, NodeEncoder};
 
 pub struct LmdbAssetStore {
     db: LmdbAssetBackend,

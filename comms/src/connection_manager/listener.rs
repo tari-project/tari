@@ -20,6 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryInto,
+    future::Future,
+    io::{Error, ErrorKind},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
+use futures::{future, FutureExt};
+use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{span, Instrument, Level};
+
 use super::{
     common,
     error::ConnectionManagerError,
@@ -45,27 +68,6 @@ use crate::{
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
-use futures::{future, FutureExt};
-use log::*;
-use std::{
-    convert::TryInto,
-    future::Future,
-    io::{Error, ErrorKind},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 

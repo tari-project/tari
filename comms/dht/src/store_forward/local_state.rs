@@ -24,6 +24,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     time::{Duration, Instant},
 };
+
 use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug, Clone, Default)]

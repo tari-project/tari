@@ -33,7 +33,6 @@ use tari_wallet::{
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";

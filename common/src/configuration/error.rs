@@ -1,4 +1,5 @@
 use std::fmt;
+
 use structopt::clap::Error as ClapError;
 
 #[derive(Debug)]

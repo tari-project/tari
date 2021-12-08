@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::{Debug, Formatter},
+    ops::DerefMut,
+    sync::{Arc, RwLock},
+};
+
 use crate::{
     models::{Instruction, QuorumCertificate, TreeNodeHash},
     storage::{
@@ -27,11 +33,6 @@ use crate::{
         unit_of_work_tracker::UnitOfWorkTracker,
         StorageError,
     },
-};
-use std::{
-    fmt::{Debug, Formatter},
-    ops::DerefMut,
-    sync::{Arc, RwLock},
 };
 
 pub trait ChainDbUnitOfWork: Clone + Send + Sync {

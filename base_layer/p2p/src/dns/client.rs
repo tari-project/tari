@@ -20,12 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(test)]
-use crate::dns::mock::{DefaultOnSend, MockClientHandle};
-
-use super::DnsClientError;
-use futures::{future, FutureExt};
 use std::{net::SocketAddr, sync::Arc};
+
+use futures::{future, FutureExt};
 use tari_shutdown::Shutdown;
 use tokio::{net::UdpSocket, task};
 use trust_dns_client::{
@@ -35,6 +32,10 @@ use trust_dns_client::{
     rr::{DNSClass, IntoName, RecordType},
     serialize::binary::BinEncoder,
 };
+
+use super::DnsClientError;
+#[cfg(test)]
+use crate::dns::mock::{DefaultOnSend, MockClientHandle};
 
 #[derive(Clone)]
 pub enum DnsClient {
@@ -154,11 +155,13 @@ where C: DnsHandle<Error = ProtoError>
 
 #[cfg(test)]
 mod mock {
-    use super::*;
-    use crate::dns::mock::{DefaultOnSend, MockClientHandle};
     use std::sync::Arc;
+
     use tari_shutdown::Shutdown;
     use trust_dns_client::proto::error::ProtoError;
+
+    use super::*;
+    use crate::dns::mock::{DefaultOnSend, MockClientHandle};
 
     impl Client<MockClientHandle<DefaultOnSend, ProtoError>> {
         pub async fn connect_mock(messages: Vec<Result<DnsResponse, ProtoError>>) -> Result<Self, ProtoError> {

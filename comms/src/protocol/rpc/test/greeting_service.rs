@@ -20,15 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    async_trait,
-    protocol::{
-        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
-        ProtocolId,
-    },
-    utils,
-    Substream,
-};
 use core::iter;
 use std::{
     cmp,
@@ -38,11 +29,22 @@ use std::{
     },
     time::Duration,
 };
+
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
     time,
+};
+
+use crate::{
+    async_trait,
+    protocol::{
+        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
+        ProtocolId,
+    },
+    utils,
+    Substream,
 };
 
 #[async_trait]

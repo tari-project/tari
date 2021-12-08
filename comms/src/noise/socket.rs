@@ -26,10 +26,6 @@
 
 //! Noise Socket
 
-use crate::types::CommsPublicKey;
-use futures::ready;
-use log::*;
-use snow::{error::StateProblem, HandshakeState, TransportState};
 use std::{
     cmp,
     convert::TryInto,
@@ -37,8 +33,14 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::ready;
+use log::*;
+use snow::{error::StateProblem, HandshakeState, TransportState};
 use tari_crypto::tari_utilities::ByteArray;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+
+use crate::types::CommsPublicKey;
 
 const LOG_TARGET: &str = "comms::noise::socket";
 
@@ -647,11 +649,13 @@ impl From<TransportState> for NoiseState {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER, runtime};
+    use std::io;
+
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
-    use std::io;
+
+    use super::*;
+    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER, runtime};
 
     async fn build_test_connection(
     ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {

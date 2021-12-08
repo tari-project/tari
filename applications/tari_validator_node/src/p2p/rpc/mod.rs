@@ -24,10 +24,11 @@ mod service_impl;
 pub use service_impl::ValidatorNodeRpcServiceImpl;
 #[cfg(test)]
 mod tests;
-use super::proto::validator_node as proto;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_dan_core::services::MempoolService;
+
+use super::proto::validator_node as proto;
 
 #[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
 pub trait ValidatorNodeRpcService: Send + Sync + 'static {

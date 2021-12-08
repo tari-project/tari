@@ -24,12 +24,14 @@
 //!
 //! See https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c
 
-use crate::proof_of_work::monero_rx::error::MergeMineError;
+use std::io;
+
 use monero::{
     consensus::{encode, Decodable, Encodable},
     Hash,
 };
-use std::io;
+
+use crate::proof_of_work::monero_rx::error::MergeMineError;
 
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {
@@ -267,15 +269,17 @@ pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> 
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::proof_of_work::randomx_factory::RandomXFactory;
+    use std::{iter, str::FromStr};
+
     use monero::{
         blockdata::block::BlockHeader,
         consensus::encode::{serialize, VarInt},
     };
-    use std::{iter, str::FromStr};
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
+
+    use super::*;
+    use crate::proof_of_work::randomx_factory::RandomXFactory;
 
     mod tree_hash {
         use super::*;
@@ -447,8 +451,9 @@ mod test {
     }
 
     mod create_merkle_proof {
-        use super::*;
         use rand::RngCore;
+
+        use super::*;
 
         #[test]
         fn empty_hashset_has_no_proof() {

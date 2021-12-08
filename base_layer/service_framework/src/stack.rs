@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::future;
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     context::{create_context_notifier_pair, ServiceHandles},
     initializer::{InitializerFn, ServiceInitializationError, ServiceInitializer},
     ServiceInitializerContext,
 };
-use futures::future;
-use tari_shutdown::ShutdownSignal;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
 /// `finish` is an async function which resolves once all the services are initialized, or returns
@@ -92,16 +93,18 @@ impl StackBuilder {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{initializer::ServiceInitializer, ServiceInitializerContext};
-    use async_trait::async_trait;
-    use futures::{executor::block_on, future};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     };
+
+    use async_trait::async_trait;
+    use futures::{executor::block_on, future};
     use tari_shutdown::Shutdown;
     use tower::service_fn;
+
+    use super::*;
+    use crate::{initializer::ServiceInitializer, ServiceInitializerContext};
 
     #[tokio::test]
     async fn service_defn_simple() {

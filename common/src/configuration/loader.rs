@@ -55,12 +55,14 @@
 //! assert_eq!(my_config.welcome_message, "nice to see you at unseen");
 //! ```
 
-use crate::configuration::Network;
-use config::Config;
 use std::{
     error::Error,
     fmt::{Display, Formatter},
 };
+
+use config::Config;
+
+use crate::configuration::Network;
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
@@ -319,8 +321,9 @@ mod test {
         assert_eq!(e.to_string(), "Invalid value for test: is a string");
     }
 
-    use super::*;
     use serde::{Deserialize, Serialize};
+
+    use super::*;
 
     // test NetworkConfigPath both with Default and withou Default
     #[derive(Serialize, Deserialize)]

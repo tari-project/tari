@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::services::liveness::state::Metadata;
+use rand::{rngs::OsRng, RngCore};
 
 pub use crate::proto::liveness::{PingPong, PingPongMessage};
-use rand::{rngs::OsRng, RngCore};
+use crate::services::liveness::state::Metadata;
 
 impl PingPongMessage {
     pub fn new(ping_pong: PingPong, nonce: u64, metadata: Metadata) -> Self {

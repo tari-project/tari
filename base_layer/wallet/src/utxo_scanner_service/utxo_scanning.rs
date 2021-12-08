@@ -20,22 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    error::WalletError,
-    output_manager_service::handle::OutputManagerHandle,
-    storage::{
-        database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
-    },
-    transaction_service::handle::TransactionServiceHandle,
-    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
-    WalletSqlite,
-};
-use chrono::Utc;
-use futures::StreamExt;
-use log::*;
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     sync::{
@@ -44,6 +28,11 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use chrono::Utc;
+use futures::StreamExt;
+use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_types::{transaction::TxId, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -71,6 +60,19 @@ use tokio::{
     task,
     time,
     time::MissedTickBehavior,
+};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    error::WalletError,
+    output_manager_service::handle::OutputManagerHandle,
+    storage::{
+        database::{WalletBackend, WalletDatabase},
+        sqlite_db::WalletSqliteDatabase,
+    },
+    transaction_service::handle::TransactionServiceHandle,
+    utxo_scanner_service::{error::UtxoScannerError, handle::UtxoScannerEvent},
+    WalletSqlite,
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";

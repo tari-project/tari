@@ -21,7 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod stored_message;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use diesel::{dsl, result::DatabaseErrorKind, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 pub use stored_message::{NewStoredMessage, StoredMessage};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_utilities::hex::Hex;
 
 use crate::{
     envelope::DhtMessageType,
@@ -29,10 +33,6 @@ use crate::{
     storage::{DbConnection, StorageError},
     store_forward::message::StoredMessagePriority,
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{dsl, result::DatabaseErrorKind, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_utilities::hex::Hex;
 
 pub struct StoreAndForwardDatabase {
     connection: DbConnection,
@@ -254,9 +254,10 @@ impl StoreAndForwardDatabase {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_comms::runtime;
     use tari_test_utils::random;
+
+    use super::*;
 
     #[runtime::test]
     async fn insert_messages() {

@@ -1,13 +1,15 @@
+use std::fmt::Display;
+
+use console_error_panic_hook;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
+use wasm_bindgen::prelude::*;
+
 use crate::{
     cipher_seed::CipherSeed,
     key_manager::{DerivedKey, KeyManager as GenericKeyManager},
 };
-use console_error_panic_hook;
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
-use wasm_bindgen::prelude::*;
 
 type KeyDigest = Blake256;
 
@@ -135,9 +137,10 @@ where T: for<'a> Deserialize<'a> {
 }
 
 mod test {
-    use super::*;
     use tari_crypto::tari_utilities::hex::Hex;
     use wasm_bindgen_test::*;
+
+    use super::*;
 
     #[wasm_bindgen_test]
     fn it_creates_new_key_manager() {

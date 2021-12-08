@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::CommandError;
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
-use chrono::{DateTime, Utc};
-use futures::FutureExt;
-use log::*;
 use std::{
     convert::TryFrom,
     fs::File,
@@ -35,6 +27,10 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
+
+use chrono::{DateTime, Utc};
+use futures::FutureExt;
+use log::*;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
 use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
@@ -58,6 +54,12 @@ use tari_wallet::{
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
+};
+
+use super::error::CommandError;
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";

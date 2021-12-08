@@ -20,6 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryFrom,
+    future::Future,
+    net::SocketAddr,
+    pin::Pin,
+    task::{Context, Poll},
+    time::Instant,
+};
+
+use bytes::Bytes;
+use hyper::{service::Service, Body, Method, Request, Response, StatusCode};
+use json::json;
+use jsonrpc::error::StandardError;
+use serde_json as json;
+use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
+use tari_common::{configuration::Network, GlobalConfig};
+use tari_core::blocks::{Block, NewBlockTemplate};
+use tari_utilities::{hex::Hex, message_format::MessageFormat};
+use tracing::{debug, error};
+
 use crate::{
     common::{
         json_rpc,
@@ -29,24 +49,6 @@ use crate::{
     },
     error::StratumTranscoderProxyError,
 };
-use bytes::Bytes;
-use hyper::{service::Service, Body, Method, Request, Response, StatusCode};
-use json::json;
-use jsonrpc::error::StandardError;
-use serde_json as json;
-use std::{
-    convert::TryFrom,
-    future::Future,
-    net::SocketAddr,
-    pin::Pin,
-    task::{Context, Poll},
-    time::Instant,
-};
-use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_core::blocks::{Block, NewBlockTemplate};
-use tari_utilities::{hex::Hex, message_format::MessageFormat};
-use tracing::{debug, error};
 
 const LOG_TARGET: &str = "tari_stratum_transcoder::transcoder";
 

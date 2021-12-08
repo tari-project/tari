@@ -47,7 +47,6 @@ pub use instruction_set::InstructionSet;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_metadata::SidechainMetadata;
 pub use state_root::StateRoot;
-
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
 pub use view::View;
 pub use view_id::ViewId;

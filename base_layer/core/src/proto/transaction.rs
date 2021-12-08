@@ -22,6 +22,15 @@
 
 //! Impls for transaction proto
 
+use std::convert::{TryFrom, TryInto};
+
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{ByteArray, ByteArrayError},
+};
+use tari_utilities::convert::try_convert_all;
+
 use crate::{
     proto,
     transactions::{
@@ -42,13 +51,6 @@ use crate::{
         },
     },
 };
-use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
-};
-use tari_utilities::convert::try_convert_all;
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 

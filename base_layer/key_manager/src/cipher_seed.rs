@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::KeyManagerError,
-    mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
-};
+use std::mem::size_of;
+
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use arrayvec::ArrayVec;
 use blake2::{digest::VariableOutput, VarBlake2b};
@@ -37,8 +35,12 @@ use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
-use std::mem::size_of;
 use tari_crypto::tari_utilities::ByteArray;
+
+use crate::{
+    error::KeyManagerError,
+    mnemonic::{from_bytes, to_bytes, to_bytes_with_language, Mnemonic, MnemonicLanguage},
+};
 
 const CIPHER_SEED_VERSION: u8 = 0u8;
 pub const DEFAULT_CIPHER_SEED_PASSPHRASE: &str = "TARI_CIPHER_SEED";

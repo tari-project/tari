@@ -2,6 +2,7 @@ binop_separator = "Back"
 use_small_heuristics = "default"
 comment_width = 120
 format_strings = true
+group_imports = "StdExternalCrate"
 hard_tabs = false
 imports_layout = "HorizontalVertical"
 imports_granularity  = "Crate"

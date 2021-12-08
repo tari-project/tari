@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainStorageError;
 use lmdb_zero::error;
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::chain_storage::ChainStorageError;
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 

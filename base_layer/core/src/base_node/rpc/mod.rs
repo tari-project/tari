@@ -23,15 +23,17 @@
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms_rpc_macros::tari_rpc;
+
+#[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
 #[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
 };
-#[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
-
 use crate::{
     proto,
     proto::{
@@ -51,8 +53,6 @@ use crate::{
         types::{Signature, Transaction},
     },
 };
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {

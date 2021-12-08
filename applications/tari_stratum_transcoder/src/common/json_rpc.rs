@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::StratumTranscoderProxyError;
 use json::json;
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_utilities::hex::Hex;
+
+use crate::error::StratumTranscoderProxyError;
 
 /// Create a standard JSON RPC error response
 /// More info: https://www.jsonrpc.org/specification#error_object

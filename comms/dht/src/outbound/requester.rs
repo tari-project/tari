@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
+use tokio::sync::{mpsc, oneshot};
+
 use super::message::DhtOutboundRequest;
 use crate::{
     domain_message::OutboundDomainMessage,
@@ -32,9 +36,6 @@ use crate::{
         MessageSendStates,
     },
 };
-use log::*;
-use tari_comms::{message::MessageExt, peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body};
-use tokio::sync::{mpsc, oneshot};
 
 const LOG_TARGET: &str = "comms::dht::requests::outbound";
 

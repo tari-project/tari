@@ -1,12 +1,13 @@
-use chrono::{DateTime, Utc};
-use multiaddr::Multiaddr;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
     fmt,
     hash::{Hash, Hasher},
     time::Duration,
 };
+
+use chrono::{DateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 
@@ -186,8 +187,9 @@ impl fmt::Display for MutliaddrWithStats {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::{thread, time::Duration};
+
+    use super::*;
 
     #[test]
     fn test_update_latency() {

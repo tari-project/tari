@@ -20,19 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    digital_assets_error::DigitalAssetError,
-    models::{Payload, StateRoot, TariDanPayload},
-    services::AssetProcessor,
-    storage::state::StateDbUnitOfWork,
-};
 use async_trait::async_trait;
+use tari_core::transactions::transaction::TemplateParameter;
 
 use crate::{
-    models::{AssetDefinition, TreeNodeHash},
-    services::MempoolService,
+    digital_assets_error::DigitalAssetError,
+    models::{AssetDefinition, Payload, StateRoot, TariDanPayload, TreeNodeHash},
+    services::{AssetProcessor, MempoolService},
+    storage::state::StateDbUnitOfWork,
 };
-use tari_core::transactions::transaction::TemplateParameter;
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {

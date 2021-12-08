@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
 use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
 use tari_utilities::ByteArray;
+
+use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
 
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {

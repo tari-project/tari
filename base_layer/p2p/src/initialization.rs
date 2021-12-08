@@ -21,17 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(dead_code)]
 
-use crate::{
-    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
-    peer_seeds::{DnsSeedResolver, SeedPeer},
-    transport::{TorConfig, TransportType},
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
-};
-use fs2::FileExt;
-use futures::future;
-use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     fs::File,
     iter,
@@ -41,6 +30,11 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use fs2::FileExt;
+use futures::future;
+use log::*;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
@@ -72,6 +66,14 @@ use tari_storage::{
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
+
+use crate::{
+    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
+    peer_seeds::{DnsSeedResolver, SeedPeer},
+    transport::{TorConfig, TransportType},
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
+};
 
 const LOG_TARGET: &str = "p2p::initialization";
 

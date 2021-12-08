@@ -20,28 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    transaction_service::{
-        config::TransactionRoutingMechanism,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionServiceResponse},
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionBackend,
-            models::{CompletedTransaction, OutboundTransaction},
-        },
-        tasks::{
-            send_finalized_transaction::send_finalized_transaction_message,
-            send_transaction_cancelled::send_transaction_cancelled_message,
-            wait_on_dial::wait_on_dial,
-        },
-    },
-};
+use std::sync::Arc;
+
 use chrono::Utc;
 use futures::FutureExt;
 use log::*;
-use std::sync::Arc;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -63,6 +46,25 @@ use tari_p2p::tari_message::TariMessageType;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,
+};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        config::TransactionRoutingMechanism,
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::{TransactionEvent, TransactionServiceResponse},
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, OutboundTransaction},
+        },
+        tasks::{
+            send_finalized_transaction::send_finalized_transaction_message,
+            send_transaction_cancelled::send_transaction_cancelled_message,
+            wait_on_dial::wait_on_dial,
+        },
+    },
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";

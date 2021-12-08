@@ -20,6 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::NaiveDateTime;
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::hex::serialize_to_hex;
+use tari_storage::{
+    lmdb_store::{LMDBDatabase, LMDBError},
+    IterationResult,
+};
+
 use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
@@ -33,14 +42,6 @@ use crate::{
     },
     protocol::ProtocolId,
     types::CommsPublicKey,
-};
-use chrono::NaiveDateTime;
-use log::*;
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::serialize_to_hex;
-use tari_storage::{
-    lmdb_store::{LMDBDatabase, LMDBError},
-    IterationResult,
 };
 
 const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";

@@ -42,7 +42,6 @@ pub use pow_data::MoneroPowData;
 
 mod merkle_tree;
 pub use merkle_tree::{create_merkle_proof, tree_hash};
-
 // Re-exports
 pub use monero::{
     consensus::{deserialize, serialize},

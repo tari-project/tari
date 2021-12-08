@@ -19,6 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{cmp, cmp::Ordering, thread, time::Instant};
+
+use async_trait::async_trait;
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::*;
+use tari_common_types::types::{Commitment, HashOutput, PublicKey};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_utilities::Hashable;
+use tokio::task;
+
 use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
@@ -44,14 +54,6 @@ use crate::{
         ValidationError,
     },
 };
-use async_trait::async_trait;
-use futures::{stream::FuturesUnordered, StreamExt};
-use log::*;
-use std::{cmp, cmp::Ordering, thread, time::Instant};
-use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_utilities::Hashable;
-use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.
 /// It implements two validators: one for the `BlockHeader` and one for `Block`. The `Block` validator ONLY validates

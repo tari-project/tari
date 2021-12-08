@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
+
+use futures::{future, stream::FuturesUnordered, Stream};
+use log::*;
+use tokio::{
+    sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
+    time,
+};
+use tracing;
+
 use super::{
     connection_pool::PeerConnectionState,
     error::ConnectivityError,
@@ -31,17 +44,6 @@ use crate::{
     peer_manager::NodeId,
     PeerConnection,
 };
-use futures::{future, stream::FuturesUnordered, Stream};
-use log::*;
-use std::{
-    fmt,
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
-    time,
-};
-use tracing;
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 

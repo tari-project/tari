@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{script::StackItem, tari_utilities::Hashable};
-
 use tari_common::configuration::Network;
 use tari_common_types::types::{BlockHash, PublicKey};
 use tari_core::{
@@ -44,6 +42,7 @@ use tari_core::{
         create_store_with_consensus_and_validators,
         create_test_blockchain_db,
         create_test_db,
+        TempDatabase,
     },
     transactions::{
         tari_amount::{uT, MicroTari, T},
@@ -55,7 +54,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -76,7 +75,6 @@ use crate::helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
     test_blockchain::TestBlockchain,
 };
-use tari_core::test_helpers::blockchain::TempDatabase;
 
 #[test]
 fn fetch_nonexistent_header() {

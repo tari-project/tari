@@ -33,7 +33,20 @@ use handle::RpcServerRequest;
 pub mod mock;
 
 mod router;
+use std::{
+    borrow::Cow,
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::{stream, SinkExt, StreamExt};
+use prost::Message;
 use router::Router;
+use tokio::{sync::mpsc, time};
+use tower::Service;
+use tower_make::MakeService;
+use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 use super::{
     body::Body,
@@ -63,18 +76,6 @@ use crate::{
     Bytes,
     Substream,
 };
-use futures::{stream, SinkExt, StreamExt};
-use prost::Message;
-use std::{
-    borrow::Cow,
-    future::Future,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::{sync::mpsc, time};
-use tower::Service;
-use tower_make::MakeService;
-use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc";
 

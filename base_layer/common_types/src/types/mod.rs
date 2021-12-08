@@ -22,6 +22,7 @@
 
 mod bullet_rangeproofs;
 
+pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -33,8 +34,6 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
-
-pub use bullet_rangeproofs::BulletRangeProof;
 
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;

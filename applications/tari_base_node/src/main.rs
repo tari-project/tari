@@ -94,12 +94,6 @@ mod recovery;
 mod status_line;
 mod utils;
 
-use crate::command_handler::{CommandHandler, StatusOutput};
-use futures::{pin_mut, FutureExt};
-use log::*;
-use opentelemetry::{self, global, KeyValue};
-use parser::Parser;
-use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
     env,
     net::SocketAddr,
@@ -107,6 +101,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use futures::{pin_mut, FutureExt};
+use log::*;
+use opentelemetry::{self, global, KeyValue};
+use parser::Parser;
+use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -124,6 +124,8 @@ use tokio::{
 };
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
+
+use crate::command_handler::{CommandHandler, StatusOutput};
 
 const LOG_TARGET: &str = "base_node::app";
 /// Application entry point

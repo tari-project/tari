@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletStorageError,
-    output_manager_service::error::OutputManagerError,
-    transaction_service::storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
-};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -38,6 +33,12 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::error::RecvError;
+
+use crate::{
+    error::WalletStorageError,
+    output_manager_service::error::OutputManagerError,
+    transaction_service::storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
+};
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {

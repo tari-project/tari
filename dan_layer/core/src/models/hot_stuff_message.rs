@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use digest::Digest;
+use tari_crypto::common::Blake256;
+
 use crate::models::{
     HotStuffMessageType,
     HotStuffTreeNode,
@@ -29,9 +32,6 @@ use crate::models::{
     TreeNodeHash,
     ViewId,
 };
-use digest::Digest;
-
-use tari_crypto::common::Blake256;
 
 #[derive(Debug, Clone)]
 pub struct HotStuffMessage<TPayload: Payload> {

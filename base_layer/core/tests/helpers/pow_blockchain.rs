@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::block_builders::chain_block;
 use monero::{
     consensus,
     consensus::deserialize,
@@ -42,6 +41,8 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
 };
 use tari_utilities::hex::Hex;
+
+use super::block_builders::chain_block;
 
 #[allow(dead_code)]
 pub fn create_test_pow_blockchain<T: BlockchainBackend>(

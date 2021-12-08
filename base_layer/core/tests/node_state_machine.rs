@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::{random_peer_metadata, MockChainMetadata},
     nodes::{create_network_with_2_base_nodes_with_config, wait_until_online, BaseNodeBuilder},
 };
-use std::time::Duration;
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{

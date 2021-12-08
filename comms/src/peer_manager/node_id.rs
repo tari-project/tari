@@ -20,12 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::CommsPublicKey;
-use blake2::{
-    digest::{Update, VariableOutput},
-    VarBlake2b,
-};
-use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     cmp,
     cmp::Ordering,
@@ -34,12 +28,20 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
+
+use blake2::{
+    digest::{Update, VariableOutput},
+    VarBlake2b,
+};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,
 };
 use thiserror::Error;
+
+use crate::types::CommsPublicKey;
 
 type NodeIdArray = [u8; NodeId::BYTE_SIZE];
 
@@ -413,12 +415,13 @@ where D: Deserializer<'de> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::types::{CommsPublicKey, CommsSecretKey};
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         tari_utilities::byte_array::ByteArray,
     };
+
+    use super::*;
+    use crate::types::{CommsPublicKey, CommsSecretKey};
 
     #[test]
     fn display() {

@@ -19,17 +19,21 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::p2p::proto;
-use tari_dan_core::models::{HotStuffMessage, Payload, TariDanPayload};
+use std::{convert::TryInto, sync::Arc};
 
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
-use std::{convert::TryInto, sync::Arc};
 use tari_comms::types::CommsPublicKey;
-use tari_dan_core::{services::infrastructure_services::InboundConnectionService, DigitalAssetError};
+use tari_dan_core::{
+    models::{HotStuffMessage, Payload, TariDanPayload},
+    services::infrastructure_services::InboundConnectionService,
+    DigitalAssetError,
+};
 use tari_p2p::comms_connector::PeerMessage;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
+
+use crate::p2p::proto;
 
 pub struct TariCommsInboundConnectionService {
     // TODO: remove option

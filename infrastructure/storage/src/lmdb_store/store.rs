@@ -1,9 +1,12 @@
 //! An ergonomic, multithreaded API for an LMDB datastore
 
-use crate::{
-    key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
-    lmdb_store::error::LMDBError,
+use std::{
+    cmp::max,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
+
 use lmdb_zero::{
     db,
     error,
@@ -27,11 +30,10 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    cmp::max,
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::Arc,
+
+use crate::{
+    key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
+    lmdb_store::error::LMDBError,
 };
 
 const LOG_TARGET: &str = "lmdb";
@@ -756,9 +758,11 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
 #[cfg(test)]
 mod test {
-    use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use lmdb_zero::db;
     use std::env;
+
+    use lmdb_zero::db;
+
+    use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
 
     #[test]
     fn test_lmdb_builder() {

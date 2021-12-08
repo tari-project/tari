@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::stratum::stratum_miner::solution::Solution;
 use std::sync::{Arc, RwLock};
+
 use tari_core::blocks::BlockHeader;
+
+use crate::stratum::stratum_miner::solution::Solution;
 
 pub type JobSharedDataType = Arc<RwLock<JobSharedData>>;
 

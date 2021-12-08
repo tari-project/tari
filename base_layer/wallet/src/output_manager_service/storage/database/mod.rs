@@ -20,17 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{
-    error::OutputManagerStorageError,
-    service::Balance,
-    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
-};
-use aes_gcm::Aes256Gcm;
-use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use aes_gcm::Aes256Gcm;
+use log::*;
 use tari_common_types::{
     transaction::TxId,
     types::{BlindingFactor, Commitment, HashOutput, PublicKey},
@@ -38,6 +34,11 @@ use tari_common_types::{
 use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 use super::OutputStatus;
+use crate::output_manager_service::{
+    error::OutputManagerStorageError,
+    service::Balance,
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+};
 
 mod backend;
 pub use backend::OutputManagerBackend;

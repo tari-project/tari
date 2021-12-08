@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::state_machine_service::states::{StateEvent, StatusInfo};
 use std::sync::Arc;
+
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
+
+use crate::base_node::state_machine_service::states::{StateEvent, StatusInfo};
 
 #[derive(Clone)]
 pub struct StateMachineHandle {

@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common_types::types::Signature;
+
 use crate::{
     blocks::Block,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
     transactions::transaction::Transaction,
 };
-use std::sync::Arc;
-use tari_common_types::types::Signature;
 
 macro_rules! make_async {
     ($fn:ident($($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty),+) -> $rtype:ty) => {

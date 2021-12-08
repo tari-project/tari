@@ -20,28 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{
-        comms_interface::{
-            Broadcast,
-            CommsInterfaceError,
-            InboundNodeCommsHandlers,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
-        service::error::BaseNodeServiceError,
-        state_machine_service::states::StateInfo,
-        StateMachineHandle,
-    },
-    blocks::{Block, NewBlock},
-    chain_storage::BlockchainBackend,
-    proto as shared_protos,
-    proto::base_node as proto,
-};
+use std::{convert::TryInto, sync::Arc, time::Duration};
+
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
-use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_common_types::{
     types::BlockHash,
     waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
@@ -62,6 +45,25 @@ use tokio::{
         oneshot::Sender as OneshotSender,
     },
     task,
+};
+
+use crate::{
+    base_node::{
+        comms_interface::{
+            Broadcast,
+            CommsInterfaceError,
+            InboundNodeCommsHandlers,
+            NodeCommsRequest,
+            NodeCommsResponse,
+        },
+        service::error::BaseNodeServiceError,
+        state_machine_service::states::StateInfo,
+        StateMachineHandle,
+    },
+    blocks::{Block, NewBlock},
+    chain_storage::BlockchainBackend,
+    proto as shared_protos,
+    proto::base_node as proto,
 };
 
 const LOG_TARGET: &str = "c::bn::base_node_service::service";

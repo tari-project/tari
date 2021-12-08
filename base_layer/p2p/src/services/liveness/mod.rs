@@ -59,6 +59,21 @@ pub use state::Metadata;
 #[cfg(feature = "test-mocks")]
 pub mod mock;
 
+use std::sync::Arc;
+
+use futures::{Stream, StreamExt};
+use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms_dht::Dht;
+use tari_service_framework::{
+    async_trait,
+    reply_channel,
+    ServiceInitializationError,
+    ServiceInitializer,
+    ServiceInitializerContext,
+};
+use tokio::sync::broadcast;
+
 use self::{message::PingPongMessage, service::LivenessService};
 pub use crate::proto::liveness::MetadataKey;
 use crate::{
@@ -70,19 +85,6 @@ use crate::{
     },
     tari_message::TariMessageType,
 };
-use futures::{Stream, StreamExt};
-use log::*;
-use std::sync::Arc;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_comms_dht::Dht;
-use tari_service_framework::{
-    async_trait,
-    reply_channel,
-    ServiceInitializationError,
-    ServiceInitializer,
-    ServiceInitializerContext,
-};
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "p2p::services::liveness";
 

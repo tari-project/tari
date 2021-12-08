@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoredMessage};
-use chrono::Utc;
-use digest::Digest;
-use log::*;
-use rand::{rngs::OsRng, RngCore};
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -32,12 +27,19 @@ use std::{
     },
     time::Duration,
 };
+
+use chrono::Utc;
+use digest::Digest;
+use log::*;
+use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::Challenge;
 use tari_utilities::hex;
 use tokio::{
     runtime,
     sync::{mpsc, RwLock},
 };
+
+use crate::store_forward::{StoreAndForwardRequest, StoreAndForwardRequester, StoredMessage};
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
 

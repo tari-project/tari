@@ -20,20 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper},
-    transactions::{
-        aggregated_body::AggregateBody,
-        crypto_factories::CryptoFactories,
-        tari_amount::{uT, MicroTari},
-        transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
-        weight::TransactionWeight,
-    },
-};
-use blake2::Digest;
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min, Ordering},
     fmt,
@@ -43,6 +29,11 @@ use std::{
     io::{Read, Write},
     ops::{Add, Shl},
 };
+
+use blake2::Digest;
+use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
     Challenge,
@@ -73,6 +64,17 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
+
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    transactions::{
+        aggregated_body::AggregateBody,
+        crypto_factories::CryptoFactories,
+        tari_amount::{uT, MicroTari},
+        transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
+        weight::TransactionWeight,
+    },
+};
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -1657,15 +1659,6 @@ impl Default for TransactionBuilder {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        transactions::{
-            tari_amount::T,
-            test_helpers,
-            test_helpers::{TestParams, UtxoTestParams},
-            transaction::OutputFeatures,
-        },
-        txn_schema,
-    };
     use rand::{self, rngs::OsRng};
     use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
     use tari_crypto::{
@@ -1676,6 +1669,15 @@ mod test {
     };
 
     use super::*;
+    use crate::{
+        transactions::{
+            tari_amount::T,
+            test_helpers,
+            test_helpers::{TestParams, UtxoTestParams},
+            transaction::OutputFeatures,
+        },
+        txn_schema,
+    };
 
     #[test]
     fn input_and_output_hash_match() {

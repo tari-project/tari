@@ -83,8 +83,7 @@ pub mod reply_channel;
 pub mod tower;
 
 mod utilities;
-pub use utilities::RegisterHandle;
-
 // Re-export
 pub use async_trait::async_trait;
 pub use tower_service::Service;
+pub use utilities::RegisterHandle;

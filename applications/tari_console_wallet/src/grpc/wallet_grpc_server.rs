@@ -1,6 +1,7 @@
+use std::convert::{TryFrom, TryInto};
+
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
-use std::convert::{TryFrom, TryInto};
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{

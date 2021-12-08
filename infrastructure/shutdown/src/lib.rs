@@ -29,13 +29,15 @@
 
 pub mod oneshot_trigger;
 
-use crate::oneshot_trigger::OneshotSignal;
-use futures::future::FusedFuture;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::future::FusedFuture;
+
+use crate::oneshot_trigger::OneshotSignal;
 
 /// Trigger for shutdowns.
 ///
@@ -167,8 +169,9 @@ impl FusedFuture for OptionalShutdownSignal {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tokio::task;
+
+    use super::*;
 
     #[tokio::test]
     async fn trigger() {

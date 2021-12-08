@@ -20,6 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
+
+use log::*;
+use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
+use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
+use tari_core::{
+    base_node::{
+        proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
+        rpc::BaseNodeWalletRpcClient,
+    },
+    blocks::BlockHeader,
+    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
+};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -34,23 +53,6 @@ use crate::{
     },
     OperationId,
 };
-use log::*;
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
-use tari_common_types::{transaction::TransactionStatus, types::BlockHash};
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
-use tari_core::{
-    base_node::{
-        proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
-        rpc::BaseNodeWalletRpcClient,
-    },
-    blocks::BlockHeader,
-    proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
-};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 

@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryFrom;
+
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 
 impl TryFrom<grpc::Signature> for Signature {
     type Error = String;

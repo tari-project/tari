@@ -20,12 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::DhtRpcService,
-};
-use log::*;
 use std::{cmp, sync::Arc};
+
+use log::*;
 use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerQuery},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
@@ -34,6 +31,11 @@ use tari_comms::{
 };
 use tari_utilities::ByteArray;
 use tokio::{sync::mpsc, task};
+
+use crate::{
+    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
+    rpc::DhtRpcService,
+};
 
 const LOG_TARGET: &str = "comms::dht::rpc";
 

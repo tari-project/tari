@@ -28,10 +28,10 @@ mod greeting_service;
 use greeting_service::{GreetingClient, GreetingServer, GreetingService, StreamLargeItemsRequest};
 
 mod helpers;
-use helpers::create_comms;
+use std::{future::Future, time::Duration};
 
 use futures::{future, StreamExt};
-use std::{future::Future, time::Duration};
+use helpers::create_comms;
 use tari_comms::{
     protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,

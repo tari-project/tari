@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::WalletStorageError;
-use aes_gcm::Aes256Gcm;
-use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use aes_gcm::Aes256Gcm;
+use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_key_manager::cipher_seed::CipherSeed;
+
+use crate::error::WalletStorageError;
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -357,15 +359,16 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageErro
 
 #[cfg(test)]
 mod test {
+    use tari_key_manager::cipher_seed::CipherSeed;
+    use tari_test_utils::random::string;
+    use tempfile::tempdir;
+    use tokio::runtime::Runtime;
+
     use crate::storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-    use tari_key_manager::cipher_seed::CipherSeed;
-    use tari_test_utils::random::string;
-    use tempfile::tempdir;
-    use tokio::runtime::Runtime;
 
     #[test]
     fn test_database_crud() {

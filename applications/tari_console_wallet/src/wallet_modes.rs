@@ -19,6 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
+
+use log::*;
+use rand::{rngs::OsRng, seq::SliceRandom};
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_comms::peer_manager::Peer;
+use tari_wallet::WalletSqlite;
+use tokio::runtime::Handle;
+use tonic::transport::Server;
+use tui::backend::CrosstermBackend;
+
 use crate::{
     automation::{command_parser::parse_command, commands::command_runner},
     grpc::WalletGrpcServer,
@@ -28,15 +39,6 @@ use crate::{
     ui::App,
     utils::db::get_custom_base_node_peer_from_db,
 };
-use log::*;
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
-use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_comms::peer_manager::Peer;
-use tari_wallet::WalletSqlite;
-use tokio::runtime::Handle;
-use tonic::transport::Server;
-use tui::backend::CrosstermBackend;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 

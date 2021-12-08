@@ -29,10 +29,10 @@ mod test;
 
 mod service;
 pub use service::DhtRpcServiceImpl;
-
-use crate::proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse};
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
+
+use crate::proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse};
 
 #[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {

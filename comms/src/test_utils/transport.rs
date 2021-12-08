@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::{future, StreamExt};
+
 use crate::{
     connection_manager::ConnectionDirection,
     memsocket::MemorySocket,
@@ -27,7 +29,6 @@ use crate::{
     multiplexing::Yamux,
     transports::{MemoryTransport, Transport},
 };
-use futures::{future, StreamExt};
 
 pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket) {
     let (mut listener, addr) = MemoryTransport.listen("/memory/0".parse().unwrap()).await.unwrap();

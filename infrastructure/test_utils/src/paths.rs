@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::random;
 use std::{
     env::temp_dir,
     fs,
     path::{Path, PathBuf},
 };
+
 use tempfile::Builder;
+
+use crate::random;
 
 pub const RELATIVE_TARI_PATH: &str = "tari-tests/";
 

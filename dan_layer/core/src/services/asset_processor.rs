@@ -20,16 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_core::transactions::transaction::TemplateParameter;
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{AssetDefinition, Instruction, TemplateId},
     storage::state::StateDbUnitOfWork,
     template_command::ExecutionResult,
-    templates::tip002_template,
+    templates::{tip002_template, tip004_template, tip721_template},
 };
-
-use crate::templates::{tip004_template, tip721_template};
-use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(

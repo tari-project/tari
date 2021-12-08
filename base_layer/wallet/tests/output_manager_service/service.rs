@@ -19,13 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::support::{
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    data::get_temp_sqlite_database_connection,
-    utils::{make_input, make_input_with_features, TestParams},
-};
-use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
@@ -86,6 +82,12 @@ use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
     time::sleep,
+};
+
+use crate::support::{
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    data::get_temp_sqlite_database_connection,
+    utils::{make_input, make_input_with_features, TestParams},
 };
 
 fn default_metadata_byte_size() -> usize {

@@ -20,6 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use log::*;
+use strum_macros::Display;
+use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_comms::peer_manager::NodeId;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::ByteArray;
+use tokio::sync::Semaphore;
+
 use crate::{
     base_node::comms_interface::{
         error::CommsInterfaceError,
@@ -35,17 +48,6 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction::TransactionKernel,
 };
-use log::*;
-use std::{
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
-use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tari_utilities::ByteArray;
-use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;

@@ -24,6 +24,37 @@
 // let's ignore this clippy error in this module
 #![allow(clippy::ptr_arg)]
 
+use std::{
+    convert::TryFrom,
+    fmt,
+    fmt::Formatter,
+    fs,
+    fs::File,
+    mem,
+    ops::{Deref, Range},
+    path::Path,
+    sync::Arc,
+    time::Instant,
+};
+
+use blake2::Digest;
+use croaring::Bitmap;
+use fs2::FileExt;
+use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
+};
+use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
+use tari_storage::lmdb_store::{db, DatabaseRef, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_utilities::{
+    hash::Hashable,
+    hex::{to_hex, Hex},
+    ByteArray,
+};
+
 use crate::{
     blocks::{
         Block,
@@ -73,35 +104,6 @@ use crate::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     },
-};
-use blake2::Digest;
-use croaring::Bitmap;
-use fs2::FileExt;
-use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    fmt,
-    fmt::Formatter,
-    fs,
-    fs::File,
-    mem,
-    ops::{Deref, Range},
-    path::Path,
-    sync::Arc,
-    time::Instant,
-};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
-};
-use tari_mmr::{pruned_hashset::PrunedHashSet, Hash, MerkleMountainRange, MutableMmr};
-use tari_storage::lmdb_store::{db, DatabaseRef, LMDBBuilder, LMDBConfig, LMDBStore};
-use tari_utilities::{
-    hash::Hashable,
-    hex::{to_hex, Hex},
-    ByteArray,
 };
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_db";

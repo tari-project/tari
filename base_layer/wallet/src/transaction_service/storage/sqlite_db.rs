@@ -20,31 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    schema::{completed_transactions, inbound_transactions, outbound_transactions},
-    storage::sqlite_utilities::WalletDbConnection,
-    transaction_service::{
-        error::{TransactionKeyError, TransactionStorageError},
-        storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-        },
-    },
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
-};
-use aes_gcm::{self, Aes256Gcm};
-use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use log::*;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     str::from_utf8,
     sync::{Arc, MutexGuard, RwLock},
 };
+
+use aes_gcm::{self, Aes256Gcm};
+use chrono::{NaiveDateTime, Utc};
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use log::*;
 use tari_common_types::{
     transaction::{
         TransactionConversionError,
@@ -63,6 +49,22 @@ use tari_crypto::tari_utilities::{
 };
 use thiserror::Error;
 use tokio::time::Instant;
+
+use crate::{
+    schema::{completed_transactions, inbound_transactions, outbound_transactions},
+    storage::sqlite_utilities::WalletDbConnection,
+    transaction_service::{
+        error::{TransactionKeyError, TransactionStorageError},
+        storage::{
+            database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        },
+    },
+    util::{
+        diesel_ext::ExpectedRowsExtension,
+        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
 
@@ -1840,15 +1842,8 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        script,
-        script::{ExecutionStack, TariScript},
-    };
-    use tempfile::tempdir;
-
     use tari_common_types::{
-        transaction::{TransactionDirection, TransactionStatus},
+        transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{HashDigest, PrivateKey, PublicKey},
     };
     use tari_core::transactions::{
@@ -1860,7 +1855,13 @@ mod test {
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        script,
+        script::{ExecutionStack, TariScript},
+    };
     use tari_test_utils::random::string;
+    use tempfile::tempdir;
 
     use crate::{
         storage::sqlite_utilities::WalletDbConnection,
@@ -1878,7 +1879,6 @@ mod test {
         },
         util::encryption::Encryptable,
     };
-    use tari_common_types::transaction::TxId;
 
     #[test]
     fn test_crud() {

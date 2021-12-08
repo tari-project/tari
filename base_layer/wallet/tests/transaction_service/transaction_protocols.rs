@@ -20,14 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_input,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
 use chrono::Utc;
 use futures::StreamExt;
 use rand::rngs::OsRng;
-use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_comms::{
     peer_manager::PeerFeatures,
@@ -88,6 +85,11 @@ use tari_wallet::{
 };
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
+
+use crate::support::{
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::make_input,
+};
 
 // Just in case other options become apparent in later testing
 #[derive(PartialEq)]

@@ -20,13 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    auto_update,
-    auto_update::{AutoUpdateConfig, SoftwareUpdate, Version},
-};
+use std::{env::consts, time::Duration};
+
 use futures::{future::Either, stream, StreamExt};
 use log::*;
-use std::{env::consts, time::Duration};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::{
@@ -35,6 +32,11 @@ use tokio::{
     time::MissedTickBehavior,
 };
 use tokio_stream::wrappers;
+
+use crate::{
+    auto_update,
+    auto_update::{AutoUpdateConfig, SoftwareUpdate, Version},
+};
 
 const LOG_TARGET: &str = "p2p::auto_update";
 

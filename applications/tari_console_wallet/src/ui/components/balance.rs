@@ -1,4 +1,3 @@
-use crate::ui::{components::Component, state::AppState};
 use tari_core::transactions::tari_amount::MicroTari;
 use tui::{
     backend::Backend,
@@ -8,6 +7,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct Balance {}
 

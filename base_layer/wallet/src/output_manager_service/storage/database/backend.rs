@@ -1,3 +1,10 @@
+use aes_gcm::Aes256Gcm;
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PublicKey},
+};
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
+
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
@@ -6,12 +13,6 @@ use crate::output_manager_service::{
         models::DbUnblindedOutput,
     },
 };
-use aes_gcm::Aes256Gcm;
-use tari_common_types::{
-    transaction::TxId,
-    types::{Commitment, PublicKey},
-};
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are

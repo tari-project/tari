@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
+
+use log::*;
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::time::{sleep, Duration};
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
@@ -30,10 +36,6 @@ use crate::{
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
 };
-use log::*;
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 

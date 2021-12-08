@@ -20,20 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
+};
+
+use diesel::{Connection, SqliteConnection};
+use fs2::FileExt;
+use log::*;
+
 use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
-};
-use diesel::{Connection, SqliteConnection};
-use fs2::FileExt;
-use log::*;
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
 };
 
 const LOG_TARGET: &str = "wallet::storage:sqlite_utilities";

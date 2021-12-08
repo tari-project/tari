@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::identity_management::load_from_json;
+use std::sync::Arc;
+
 use futures::future::Either;
 use log::*;
-use std::sync::Arc;
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_common_types::emoji::EmojiId;
 use tari_comms::{
@@ -38,6 +38,8 @@ use tari_comms::{
 use tari_p2p::transport::{TorConfig, TransportType};
 use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
+
+use crate::identity_management::load_from_json;
 
 pub const LOG_TARGET: &str = "tari::application";
 

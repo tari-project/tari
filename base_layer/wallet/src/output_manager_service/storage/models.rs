@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 use std::cmp::Ordering;
+
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories};
 use tari_crypto::script::{ExecutionStack, TariScript};
 use tari_utilities::hash::Hashable;
+
+use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {

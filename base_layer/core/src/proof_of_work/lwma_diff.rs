@@ -6,13 +6,15 @@
 // https://github.com/zawy12/difficulty-algorithms/issues/3#issuecomment-442129791
 // https://github.com/zcash/zcash/issues/4021
 
+use std::{cmp, collections::VecDeque};
+
+use log::*;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+
 use crate::proof_of_work::{
     difficulty::{Difficulty, DifficultyAdjustment},
     error::DifficultyAdjustmentError,
 };
-use log::*;
-use std::{cmp, collections::VecDeque};
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 

@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{components::Component, state::AppState};
 use tari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
 use tui::{
     backend::Backend,
@@ -30,6 +29,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct BaseNode {}
 

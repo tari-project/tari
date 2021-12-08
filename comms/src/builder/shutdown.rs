@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, future::JoinAll, FutureExt};
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::{future, future::JoinAll, FutureExt};
 use tari_shutdown::ShutdownSignal;
 
 /// Future which resolves once comms has shut down

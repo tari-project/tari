@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
+
 use tari_core::{blocks::HistoricalBlock, chain_storage::ChainStorageError};
+
+use crate::tari_rpc as grpc;
 
 impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
     type Error = ChainStorageError;

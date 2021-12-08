@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
 use lmdb_zero::error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
+
+use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
 
 #[derive(Debug, Error)]
 pub enum ChainStorageError {

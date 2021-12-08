@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::net::SocketAddr;
+
 use super::error::DnsResolverError;
 use crate::multiaddr::{Multiaddr, Protocol};
-use std::net::SocketAddr;
 
 pub fn is_dns4_addr(addr: &Multiaddr) -> bool {
     let proto = addr.iter().next();

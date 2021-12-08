@@ -22,6 +22,7 @@
 //
 
 use rand::rngs::OsRng;
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     inputs,
@@ -51,7 +52,6 @@ use crate::{
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     },
 };
-use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -244,6 +244,11 @@ impl CoinbaseBuilder {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
+    use tari_common_types::types::{BlindingFactor, PrivateKey};
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
@@ -256,10 +261,6 @@ mod test {
             CoinbaseBuilder,
         },
     };
-    use rand::rngs::OsRng;
-    use tari_common::configuration::Network;
-    use tari_common_types::types::{BlindingFactor, PrivateKey};
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;

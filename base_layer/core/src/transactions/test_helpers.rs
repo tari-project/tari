@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use rand::rngs::OsRng;
+use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
+    script,
+    script::{ExecutionStack, TariScript},
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
     transactions::{
@@ -40,19 +55,6 @@ use crate::{
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
-};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
 };
 
 pub fn create_test_input(

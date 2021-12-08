@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fmt::Display};
+
+use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
+
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
 };
-use std::{fmt, fmt::Display};
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 
 /// Configuration for outbound messages.
 ///

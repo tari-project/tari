@@ -19,6 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::iter;
+
+use log::*;
+use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
+use tari_utilities::hex::HexError;
+
 use super::{
     error::MergeMineError,
     fixed_array::FixedByteArray,
@@ -33,10 +39,6 @@ use crate::{
         Difficulty,
     },
 };
-use log::*;
-use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
-use std::iter;
-use tari_utilities::hex::HexError;
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not
@@ -174,8 +176,6 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
     use monero::{
         blockdata::transaction::{ExtraField, TxOutTarget},
         consensus::deserialize,
@@ -193,6 +193,9 @@ mod test {
         hex::{from_hex, Hex},
         ByteArray,
     };
+
+    use super::*;
+    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]

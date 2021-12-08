@@ -20,13 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
-    util::watch::Watch,
-};
-use log::*;
 use std::{mem, time::Duration};
+
+use log::*;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer},
@@ -38,6 +34,12 @@ use tokio::{
     sync::{mpsc, oneshot, watch},
     time,
     time::MissedTickBehavior,
+};
+
+use crate::{
+    base_node_service::config::BaseNodeServiceConfig,
+    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
+    util::watch::Watch,
 };
 
 const LOG_TARGET: &str = "wallet::connectivity";

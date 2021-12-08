@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
+
 use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroTari;
 use tokio::sync::broadcast;

@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::errors::{err_empty, MinerError};
 use sha3::{Digest, Sha3_256};
 use tari_app_grpc::tari_rpc::BlockHeader;
 use tari_core::large_ints::U256;
 use tari_utilities::ByteArray;
+
+use crate::errors::{err_empty, MinerError};
 
 pub type Difficulty = u64;
 
@@ -40,6 +41,7 @@ pub struct BlockHeaderSha3 {
 impl BlockHeaderSha3 {
     pub fn new(header: BlockHeader) -> Result<Self, MinerError> {
         use std::convert::TryFrom;
+
         use tari_core::proof_of_work::ProofOfWork; // this is only dep left on tari_code
 
         // Not stressing about efficiency here as it will change soon
@@ -132,9 +134,10 @@ fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
     use chrono::{DateTime, NaiveDate, Utc};
     use tari_core::{blocks::BlockHeader as CoreBlockHeader, proof_of_work::sha3_difficulty as core_sha3_difficulty};
+
+    use super::*;
 
     pub fn get_header() -> (BlockHeader, CoreBlockHeader) {
         let mut header = CoreBlockHeader::new(0);

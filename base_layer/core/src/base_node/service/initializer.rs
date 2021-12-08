@@ -20,22 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{
-        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
-        StateMachineHandle,
-    },
-    blocks::NewBlock,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    consensus::ConsensusManager,
-    mempool::Mempool,
-    proto as shared_protos,
-    proto::base_node as proto,
-};
+use std::{convert::TryFrom, sync::Arc};
+
 use futures::{future, Stream, StreamExt};
 use log::*;
-use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -51,6 +39,20 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tokio::sync::{broadcast, mpsc};
+
+use crate::{
+    base_node::{
+        comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
+        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        StateMachineHandle,
+    },
+    blocks::NewBlock,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    consensus::ConsensusManager,
+    mempool::Mempool,
+    proto as shared_protos,
+    proto::base_node as proto,
+};
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Base Node";

@@ -20,17 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletError,
-    output_manager_service::storage::database::{OutputManagerBackend, OutputManagerDatabase},
-};
+use log::*;
 use tari_core::transactions::transaction::OutputFlags;
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, storage::models::DbUnblindedOutput},
+    error::WalletError,
+    output_manager_service::{
+        handle::OutputManagerHandle,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
+    },
     tokens::Token,
 };
-use log::*;
 
 const LOG_TARGET: &str = "wallet::tokens::token_manager";
 

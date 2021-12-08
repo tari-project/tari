@@ -25,8 +25,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::tari_utilities::Hashable;
-
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
@@ -35,6 +33,7 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{transaction::UnblindedOutput, CryptoFactories},
 };
+use tari_crypto::tari_utilities::Hashable;
 
 use crate::helpers::{
     block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},

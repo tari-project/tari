@@ -20,6 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    sync::{Arc, Condvar, Mutex, RwLock},
+    time::Duration,
+};
+
+use bytes::Bytes;
+use log::*;
+use tari_comms::{
+    message::{MessageTag, MessagingReplyTx},
+    protocol::messaging::SendFailReason,
+};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::sleep,
+};
+
 use crate::{
     broadcast_strategy::BroadcastStrategy,
     outbound::{
@@ -29,20 +45,6 @@ use crate::{
         DhtOutboundRequest,
         OutboundMessageRequester,
     },
-};
-use bytes::Bytes;
-use log::*;
-use std::{
-    sync::{Arc, Condvar, Mutex, RwLock},
-    time::Duration,
-};
-use tari_comms::{
-    message::{MessageTag, MessagingReplyTx},
-    protocol::messaging::SendFailReason,
-};
-use tokio::{
-    sync::{mpsc, oneshot},
-    time::sleep,
 };
 
 const LOG_TARGET: &str = "mock::outbound_requester";

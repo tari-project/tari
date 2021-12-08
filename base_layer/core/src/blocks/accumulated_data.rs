@@ -19,11 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::aggregated_body::AggregateBody,
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    sync::Arc,
 };
+
 use croaring::Bitmap;
 use log::*;
 use num_format::{Locale, ToFormattedString};
@@ -36,15 +37,16 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-    sync::Arc,
-};
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_utilities::Hashable;
+
+use crate::{
+    blocks::{error::BlockError, Block, BlockHeader},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    transactions::aggregated_body::AggregateBody,
+};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 

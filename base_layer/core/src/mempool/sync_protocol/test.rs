@@ -20,19 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    consensus::ConsensusManager,
-    mempool::{
-        async_mempool,
-        proto,
-        sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
-        Mempool,
-    },
-    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
-    validation::mocks::MockValidator,
-};
-use futures::{Sink, SinkExt, Stream, StreamExt};
 use std::{fmt, io, iter::repeat_with, sync::Arc};
+
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventTx},
@@ -49,6 +39,18 @@ use tari_crypto::tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},
     task,
+};
+
+use crate::{
+    consensus::ConsensusManager,
+    mempool::{
+        async_mempool,
+        proto,
+        sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
+        Mempool,
+    },
+    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
+    validation::mocks::MockValidator,
 };
 
 pub fn create_transactions(n: usize) -> Vec<Transaction> {

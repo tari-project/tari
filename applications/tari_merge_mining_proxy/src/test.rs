@@ -21,11 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod add_aux_data {
+    use serde_json::json;
+
     use crate::{
         common::json_rpc,
         proxy::{add_aux_data, MMPROXY_AUX_KEY_NAME},
     };
-    use serde_json::json;
 
     #[test]
     fn it_adds_aux_data() {
@@ -53,11 +54,12 @@ mod add_aux_data {
 }
 
 mod append_aux_chain_data {
+    use serde_json::json;
+
     use crate::{
         common::json_rpc,
         proxy::{append_aux_chain_data, MMPROXY_AUX_KEY_NAME},
     };
-    use serde_json::json;
 
     #[test]
     fn it_adds_a_chain_object() {

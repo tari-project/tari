@@ -20,15 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    transaction_service::{
-        error::TransactionServiceError,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-    },
-    OperationId,
-};
-use aes_gcm::Aes256Gcm;
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
+
+use aes_gcm::Aes256Gcm;
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
@@ -36,6 +30,14 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
+
+use crate::{
+    transaction_service::{
+        error::TransactionServiceError,
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+    },
+    OperationId,
+};
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]

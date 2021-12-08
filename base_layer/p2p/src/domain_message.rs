@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::{From, TryFrom};
+
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tari_comms_dht::envelope::DhtMessageHeader;
 

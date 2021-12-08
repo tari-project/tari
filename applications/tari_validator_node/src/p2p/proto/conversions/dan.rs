@@ -20,8 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::p2p::proto::dan as dan_proto;
 use std::convert::{TryFrom, TryInto};
+
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{
@@ -39,6 +39,8 @@ use tari_dan_core::{
     },
     types::PublicKey,
 };
+
+use crate::p2p::proto::dan as dan_proto;
 
 impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
     fn from(source: HotStuffMessage<TariDanPayload>) -> Self {
