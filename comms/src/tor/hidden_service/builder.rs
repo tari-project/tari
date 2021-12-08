@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use bitflags::bitflags;
+use log::*;
+use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
+use thiserror::Error;
+
 use super::controller::HiddenServiceControllerError;
 use crate::{
     multiaddr::Multiaddr,
@@ -31,11 +38,6 @@ use crate::{
         TorIdentity,
     },
 };
-use bitflags::bitflags;
-use log::*;
-use std::sync::Arc;
-use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
-use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::tor::hidden_service";
 

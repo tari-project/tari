@@ -26,6 +26,9 @@ pub use service::MempoolRpcService;
 #[cfg(test)]
 mod test;
 
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms_rpc_macros::tari_rpc;
+
 use crate::{
     mempool::service::MempoolHandle,
     proto::{
@@ -33,8 +36,6 @@ use crate::{
         types::{Signature, Transaction},
     },
 };
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
 
 #[tari_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
 pub trait MempoolService: Send + Sync + 'static {

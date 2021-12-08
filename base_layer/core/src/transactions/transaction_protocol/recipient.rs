@@ -23,7 +23,6 @@
 use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
-
 use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
 
 use crate::transactions::{
@@ -208,12 +207,11 @@ impl ReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
     };
-
-    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 
     use crate::{
         crypto::script::TariScript,

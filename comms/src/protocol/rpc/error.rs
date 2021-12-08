@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
+use prost::DecodeError;
+use thiserror::Error;
+
 use super::{handshake::RpcHandshakeError, server::RpcServerError, RpcStatus};
 use crate::{
     connectivity::ConnectivityError,
@@ -27,9 +32,6 @@ use crate::{
     proto::rpc as rpc_proto,
     PeerConnectionError,
 };
-use prost::DecodeError;
-use std::io;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RpcError {

@@ -20,6 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, str::FromStr, sync::Arc};
+
+use log::*;
+use tari_comms::{
+    message::MessageExt,
+    multiaddr::Multiaddr,
+    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
+    pipeline::PipelineError,
+    types::CommsPublicKey,
+    OrNotFound,
+};
+use tari_utilities::{hex::Hex, ByteArray};
+use tower::{Service, ServiceExt};
+
 use crate::{
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
@@ -32,18 +46,6 @@ use crate::{
     },
     DhtConfig,
 };
-use log::*;
-use std::{convert::TryFrom, str::FromStr, sync::Arc};
-use tari_comms::{
-    message::MessageExt,
-    multiaddr::Multiaddr,
-    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
-    pipeline::PipelineError,
-    types::CommsPublicKey,
-    OrNotFound,
-};
-use tari_utilities::{hex::Hex, ByteArray};
-use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
 

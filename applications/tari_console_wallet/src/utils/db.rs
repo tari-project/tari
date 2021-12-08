@@ -26,7 +26,6 @@ use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
 };
-
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_wallet::WalletSqlite;
 

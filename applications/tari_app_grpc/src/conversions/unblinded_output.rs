@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::{
     crypto::{
@@ -30,6 +30,8 @@ use tari_core::{
     },
     transactions::{tari_amount::MicroTari, transaction_entities::UnblindedOutput},
 };
+
+use crate::tari_rpc as grpc;
 
 impl From<UnblindedOutput> for grpc::UnblindedOutput {
     fn from(output: UnblindedOutput) -> Self {

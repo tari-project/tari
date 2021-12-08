@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::network_discovery::DhtNetworkDiscoveryRoundInfo;
 use std::sync::Arc;
+
 use tokio::sync::broadcast;
+
+use crate::network_discovery::DhtNetworkDiscoveryRoundInfo;
 
 pub type DhtEventSender = broadcast::Sender<Arc<DhtEvent>>;
 pub type DhtEventReceiver = broadcast::Receiver<Arc<DhtEvent>>;

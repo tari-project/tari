@@ -27,23 +27,23 @@ mod service;
 pub use service::{SoftwareUpdaterHandle, SoftwareUpdaterService};
 
 mod error;
-pub use error::AutoUpdateError;
-
-// Re-exports of foreign types used in public interface
-pub use semver::Version;
-pub use trust_dns_client::rr::dnssec::TrustAnchor;
-
-use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
-use futures::future;
-use pgp::Deserializable;
-use reqwest::IntoUrl;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
 };
+
+pub use error::AutoUpdateError;
+use futures::future;
+use pgp::Deserializable;
+use reqwest::IntoUrl;
+// Re-exports of foreign types used in public interface
+pub use semver::Version;
 use tari_common::{configuration::bootstrap::ApplicationType, DnsNameServer};
 use tari_utilities::hex::Hex;
+pub use trust_dns_client::rr::dnssec::TrustAnchor;
+
+use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
 
 const LOG_TARGET: &str = "p2p::auto_update";
 

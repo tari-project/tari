@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Instant};
+
+use log::*;
+use tari_comms::{protocol::rpc::RpcStatus, utils};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tokio::{sync::mpsc, task};
+
 use crate::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},
 };
-use log::*;
-use std::{sync::Arc, time::Instant};
-use tari_comms::{protocol::rpc::RpcStatus, utils};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tokio::{sync::mpsc, task};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 

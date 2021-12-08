@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::dht::JoinMessage;
-use chrono::NaiveDateTime;
-use rand::{rngs::OsRng, RngCore};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
 };
+
+use chrono::NaiveDateTime;
+use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags},
@@ -34,6 +34,8 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_utilities::{hex::Hex, ByteArray};
+
+use crate::proto::dht::JoinMessage;
 
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");

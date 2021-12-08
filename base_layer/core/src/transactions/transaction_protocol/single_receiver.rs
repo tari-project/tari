@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
     tari_utilities::byte_array::ByteArray,
 };
-
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
@@ -137,13 +136,12 @@ impl SingleReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
         script::TariScript,
     };
-
-    use tari_common_types::types::{PrivateKey, PublicKey};
 
     use crate::transactions::{
         crypto_factories::CryptoFactories,

@@ -23,9 +23,8 @@
 use std::convert::TryFrom;
 
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use tari_crypto::tari_utilities::ByteArray;
-
 use tari_common_types::types::PublicKey;
+use tari_crypto::tari_utilities::ByteArray;
 
 use crate::{
     contacts_service::{
@@ -188,12 +187,11 @@ mod test {
 
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         tari_utilities::ByteArray,
     };
-
-    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_test_utils::{paths::with_temp_dir, random::string};
 
     use crate::contacts_service::storage::{

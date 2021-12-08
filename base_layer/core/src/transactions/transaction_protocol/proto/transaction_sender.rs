@@ -20,17 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::protocol as proto;
-use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
-
-use super::protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage;
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::ByteArray;
 
 // The generated _oneof_ enum
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::types::PublicKey;
-use tari_crypto::script::TariScript;
+use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+
+use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
+use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {

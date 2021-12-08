@@ -20,20 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{
-    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
-    NetworkDiscoveryError,
-};
-use crate::{peer_validator::PeerValidator, proto::rpc::GetPeersRequest, rpc, DhtConfig};
+use std::convert::TryInto;
+
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
-use std::convert::TryInto;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
     PeerConnection,
     PeerManager,
 };
+
+use super::{
+    state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
+    NetworkDiscoveryError,
+};
+use crate::{peer_validator::PeerValidator, proto::rpc::GetPeersRequest, rpc, DhtConfig};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 

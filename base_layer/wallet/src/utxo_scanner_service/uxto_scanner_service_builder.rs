@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
+use tari_core::transactions::CryptoFactories;
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::{broadcast, watch};
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::WalletConnectivityInterface,
@@ -35,11 +42,6 @@ use crate::{
     },
     WalletSqlite,
 };
-use std::sync::Arc;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
-use tari_core::transactions::CryptoFactories;
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UtxoScannerMode {

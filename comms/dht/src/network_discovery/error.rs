@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_validator::PeerValidatorError;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError, protocol::rpc::RpcError};
+
+use crate::peer_validator::PeerValidatorError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkDiscoveryError {

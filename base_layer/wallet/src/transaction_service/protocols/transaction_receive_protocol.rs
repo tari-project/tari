@@ -20,33 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::TransactionEvent,
-    service::TransactionServiceResources,
-    storage::{
-        database::TransactionBackend,
-        models::{CompletedTransaction, InboundTransaction},
-    },
-    tasks::send_transaction_reply::send_transaction_reply,
-    utc::utc_duration_since,
-};
+use std::sync::Arc;
+
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
-use std::sync::Arc;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
+};
 use tari_comms::types::CommsPublicKey;
-use tokio::sync::{mpsc, oneshot};
-
-use crate::{connectivity_service::WalletConnectivityInterface, transaction_service::protocols::TxRejection};
-use tari_common_types::types::HashOutput;
 use tari_core::transactions::{
     transaction_entities::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
-use tokio::time::sleep;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::sleep,
+};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        protocols::TxRejection,
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, InboundTransaction},
+        },
+        tasks::send_transaction_reply::send_transaction_reply,
+        utc::utc_duration_since,
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
 

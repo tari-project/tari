@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
+};
+
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -28,29 +36,6 @@ use futures::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
-};
-use tempfile::tempdir;
-use tokio::{
-    runtime,
-    runtime::{Builder, Runtime},
-    sync::{broadcast, broadcast::channel},
-    time::sleep,
-};
-
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus},
@@ -97,6 +82,14 @@ use tari_core::{
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey as SK},
+    script,
+    script::{ExecutionStack, TariScript},
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
@@ -147,6 +140,13 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
     types::HashDigest,
+};
+use tempfile::tempdir;
+use tokio::{
+    runtime,
+    runtime::{Builder, Runtime},
+    sync::{broadcast, broadcast::channel},
+    time::sleep,
 };
 
 use crate::support::{

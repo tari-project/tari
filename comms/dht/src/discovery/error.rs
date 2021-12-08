@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::outbound::{message::SendFailure, DhtOutboundError};
 use tari_comms::peer_manager::PeerManagerError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
+
+use crate::outbound::{message::SendFailure, DhtOutboundError};
 
 #[derive(Debug, Error)]
 pub enum DhtDiscoveryError {

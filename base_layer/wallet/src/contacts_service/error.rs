@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{contacts_service::storage::database::DbKey, error::WalletStorageError};
 use diesel::result::Error as DieselError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+
+use crate::{contacts_service::storage::database::DbKey, error::WalletStorageError};
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]

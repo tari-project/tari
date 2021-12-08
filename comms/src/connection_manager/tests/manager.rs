@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
+use futures::future;
+use tari_shutdown::Shutdown;
+use tari_test_utils::{collect_try_recv, unpack_enum};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    runtime::Handle,
+    sync::{broadcast, mpsc, oneshot},
+};
+
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{
@@ -40,15 +51,6 @@ use crate::{
         test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
     },
     transports::{MemoryTransport, TcpTransport},
-};
-use futures::future;
-use std::time::Duration;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_try_recv, unpack_enum};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    runtime::Handle,
-    sync::{broadcast, mpsc, oneshot},
 };
 
 #[runtime::test]

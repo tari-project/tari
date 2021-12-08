@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use sha3::{Digest, Sha3_256};
+use tari_crypto::tari_utilities::ByteArray;
+
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
 };
-use sha3::{Digest, Sha3_256};
-use tari_crypto::tari_utilities::ByteArray;
 
 /// A simple sha3 proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.
@@ -65,11 +66,12 @@ fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
 
 #[cfg(test)]
 pub mod test {
+    use chrono::{DateTime, NaiveDate, Utc};
+
     use crate::{
         blocks::BlockHeader,
         proof_of_work::{sha3_pow::sha3_difficulty, Difficulty, PowAlgorithm},
     };
-    use chrono::{DateTime, NaiveDate, Utc};
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
     /// target block

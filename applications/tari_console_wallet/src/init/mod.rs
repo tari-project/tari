@@ -25,8 +25,6 @@ use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-use tari_crypto::keys::PublicKey;
-
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
@@ -37,6 +35,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
+use tari_crypto::keys::PublicKey;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,

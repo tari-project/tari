@@ -1,6 +1,6 @@
-use crate::ui::{components::Component, state::AppState};
-use regex::Regex;
 use std::fs;
+
+use regex::Regex;
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
@@ -9,6 +9,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct LogTab {
     scroll: u16,

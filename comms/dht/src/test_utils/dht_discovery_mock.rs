@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
-    test_utils::make_peer,
-};
-use log::*;
 use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -33,8 +28,15 @@ use std::{
     },
     time::Duration,
 };
+
+use log::*;
 use tari_comms::peer_manager::Peer;
 use tokio::sync::mpsc;
+
+use crate::{
+    discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
+    test_utils::make_peer,
+};
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
 

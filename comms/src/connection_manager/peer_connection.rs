@@ -20,6 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt,
+    future::Future,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
+
+use log::*;
+use multiaddr::Multiaddr;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{self, span, Instrument, Level};
+
+use super::{
+    error::{ConnectionManagerError, PeerConnectionError},
+    manager::ConnectionManagerEvent,
+    types::ConnectionDirection,
+};
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
     pool::RpcClientPool,
@@ -30,12 +54,6 @@ use crate::protocol::rpc::{
     RpcError,
     RPC_MAX_FRAME_SIZE,
 };
-
-use super::{
-    error::{ConnectionManagerError, PeerConnectionError},
-    manager::ConnectionManagerEvent,
-    types::ConnectionDirection,
-};
 use crate::{
     framing,
     framing::CanonicalFraming,
@@ -45,23 +63,6 @@ use crate::{
     runtime,
     utils::atomic_ref_counter::AtomicRefCounter,
 };
-use log::*;
-use multiaddr::Multiaddr;
-use std::{
-    fmt,
-    future::Future,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{mpsc, oneshot},
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 

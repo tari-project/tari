@@ -1,12 +1,12 @@
-use super::multiaddr_with_stats::MutliaddrWithStats;
-use chrono::{DateTime, Utc};
-use multiaddr::Multiaddr;
-use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
     ops::Index,
     time::Duration,
 };
+
+use chrono::{DateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
@@ -255,8 +255,9 @@ impl Display for MultiaddressesWithStats {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use multiaddr::Multiaddr;
+
+    use super::*;
 
     #[test]
     fn test_index_impl() {

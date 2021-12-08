@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::comms_interface::CommsInterfaceError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use thiserror::Error;
+
+use crate::base_node::comms_interface::CommsInterfaceError;
 
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {

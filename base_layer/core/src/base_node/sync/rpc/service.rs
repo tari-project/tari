@@ -20,6 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    cmp,
+    sync::{Arc, Weak},
+};
+
+use log::*;
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
+};
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
+use tracing::{instrument, span, Instrument, Level};
+
 use crate::{
     base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
@@ -36,22 +54,6 @@ use crate::{
     },
     tari_utilities::Hashable,
 };
-use log::*;
-use std::{
-    cmp,
-    sync::{Arc, Weak},
-};
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::{Request, Response, RpcStatus, Streaming},
-    utils,
-};
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{
-    sync::{mpsc, RwLock},
-    task,
-};
-use tracing::{instrument, span, Instrument, Level};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 

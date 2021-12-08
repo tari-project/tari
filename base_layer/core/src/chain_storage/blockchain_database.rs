@@ -1,24 +1,3 @@
-use std::{
-    cmp,
-    cmp::Ordering,
-    collections::VecDeque,
-    convert::TryFrom,
-    mem,
-    ops::{Bound, RangeBounds},
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-    time::Instant,
-};
-
-use croaring::Bitmap;
-use log::*;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
-
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
-};
-use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
-
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -40,6 +19,27 @@ use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    cmp,
+    cmp::Ordering,
+    collections::VecDeque,
+    convert::TryFrom,
+    mem,
+    ops::{Bound, RangeBounds},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    time::Instant,
+};
+
+use croaring::Bitmap;
+use log::*;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
+use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+
 use crate::{
     blocks::{
         Block,
@@ -2205,6 +2205,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
 
+    use super::*;
     use crate::{
         block_specs,
         consensus::{
@@ -2226,8 +2227,6 @@ mod test {
         },
         validation::{header_validator::HeaderValidator, mocks::MockValidator},
     };
-
-    use super::*;
 
     #[test]
     fn lmdb_fetch_monero_seeds() {

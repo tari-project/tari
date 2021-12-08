@@ -23,6 +23,7 @@
 use tari_crypto::{
     common::Blake256,
     ristretto::{
+        dalek_range_proof::DalekRangeProofService,
         pedersen::{PedersenCommitment, PedersenCommitmentFactory},
         RistrettoComSig,
         RistrettoPublicKey,
@@ -30,8 +31,6 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
-
-use tari_crypto::ristretto::dalek_range_proof::DalekRangeProofService;
 
 mod bullet_rangeproofs;
 

@@ -20,6 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
+use futures::StreamExt;
+use tari_service_framework::reply_channel;
+use tokio::{sync::Mutex, task};
+
 use crate::mempool::{
     service::{MempoolHandle, MempoolRequest, MempoolResponse},
     MempoolServiceError,
@@ -27,13 +36,6 @@ use crate::mempool::{
     StatsResponse,
     TxStorageResponse,
 };
-use futures::StreamExt;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-use tari_service_framework::reply_channel;
-use tokio::{sync::Mutex, task};
 
 pub fn create_mempool_service_mock() -> (MempoolHandle, MempoolMockState) {
     let (tx, rx) = reply_channel::unbounded();

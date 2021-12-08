@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
+
 use tari_key_manager::mnemonic::MnemonicLanguage;
 
 #[derive(Clone, Debug)]

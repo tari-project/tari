@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{message::MessageTag, peer_manager::NodeId, protocol::messaging::SendFailReason};
-use bytes::Bytes;
 use std::{
     fmt,
     fmt::{Error, Formatter},
 };
+
+use bytes::Bytes;
 use tokio::sync::oneshot;
+
+use crate::{message::MessageTag, peer_manager::NodeId, protocol::messaging::SendFailReason};
 
 pub type MessagingReplyResult = Result<(), SendFailReason>;
 pub type MessagingReplyRx = oneshot::Receiver<MessagingReplyResult>;

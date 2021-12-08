@@ -1,5 +1,6 @@
-use super::Filter;
 use tower::layer::Layer;
+
+use super::Filter;
 
 /// Conditionally dispatch requests to the inner service based on a predicate.
 #[derive(Debug)]

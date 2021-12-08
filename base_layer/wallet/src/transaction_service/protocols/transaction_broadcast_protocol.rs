@@ -28,9 +28,6 @@ use std::{
 
 use futures::FutureExt;
 use log::*;
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{sync::watch, time::sleep};
-
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::Signature,
@@ -42,6 +39,8 @@ use tari_core::{
     },
     transactions::transaction_entities::Transaction,
 };
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::{sync::watch, time::sleep};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,

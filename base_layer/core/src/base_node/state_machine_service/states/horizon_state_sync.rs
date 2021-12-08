@@ -33,6 +33,7 @@ pub use error::HorizonSyncError;
 
 mod horizon_state_synchronization;
 use horizon_state_synchronization::HorizonStateSynchronization;
+use log::*;
 
 use super::{
     events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
@@ -44,7 +45,6 @@ use crate::{
     chain_storage::BlockchainBackend,
     transactions::CryptoFactories,
 };
-use log::*;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 

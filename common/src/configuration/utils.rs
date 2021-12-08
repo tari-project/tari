@@ -1,3 +1,9 @@
+use std::{fs, fs::File, io::Write, path::Path};
+
+use config::Config;
+use log::{debug, info};
+use multiaddr::{Multiaddr, Protocol};
+
 use crate::{
     configuration::bootstrap::ApplicationType,
     dir_utils::default_subdir,
@@ -5,10 +11,6 @@ use crate::{
     ConfigError,
     LOG_TARGET,
 };
-use config::Config;
-use log::{debug, info};
-use multiaddr::{Multiaddr, Protocol};
-use std::{fs, fs::File, io::Write, path::Path};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 

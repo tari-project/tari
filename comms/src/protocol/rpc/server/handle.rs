@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::RpcServerError;
 use tokio::sync::{mpsc, oneshot};
+
+use super::RpcServerError;
 
 #[derive(Debug)]
 pub enum RpcServerRequest {

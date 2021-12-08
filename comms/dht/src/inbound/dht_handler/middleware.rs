@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, task::Poll};
+
+use futures::{future::BoxFuture, task::Context};
+use tari_comms::{
+    peer_manager::{NodeIdentity, PeerManager},
+    pipeline::PipelineError,
+};
+use tower::Service;
+
 use super::task::ProcessDhtMessage;
 use crate::{
     discovery::DhtDiscoveryRequester,
@@ -27,13 +36,6 @@ use crate::{
     outbound::OutboundMessageRequester,
     DhtConfig,
 };
-use futures::{future::BoxFuture, task::Context};
-use std::{sync::Arc, task::Poll};
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerManager},
-    pipeline::PipelineError,
-};
-use tower::Service;
 
 #[derive(Clone)]
 pub struct DhtHandlerMiddleware<S> {

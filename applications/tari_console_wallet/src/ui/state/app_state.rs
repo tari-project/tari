@@ -30,13 +30,6 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tokio::{
-    sync::{watch, RwLock},
-    task,
-};
-
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_common_types::{
     emoji::EmojiId,
@@ -54,6 +47,8 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     weight::TransactionWeight,
 };
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
@@ -62,6 +57,10 @@ use tari_wallet::{
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
+};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
 };
 
 use crate::{

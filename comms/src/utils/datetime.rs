@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::{DateTime, NaiveTime, Utc};
 use std::time::Duration;
+
+use chrono::{DateTime, NaiveTime, Utc};
 
 pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
     let old_duration = chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::max_value());

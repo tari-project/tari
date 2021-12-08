@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{discovery::DhtDiscoveryError, envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
 use std::{
     fmt::{Display, Error, Formatter},
     time::Duration,
 };
+
 use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
 use tokio::{
     sync::{mpsc, oneshot},
     time,
 };
+
+use crate::{discovery::DhtDiscoveryError, envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
 
 #[derive(Debug)]
 pub enum DhtDiscoveryRequest {

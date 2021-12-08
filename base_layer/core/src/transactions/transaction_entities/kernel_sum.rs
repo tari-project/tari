@@ -23,8 +23,9 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::transactions::tari_amount::MicroTari;
 use tari_common_types::types::Commitment;
+
+use crate::transactions::tari_amount::MicroTari;
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees

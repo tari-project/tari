@@ -22,11 +22,6 @@
 //
 //! # Global configuration of tari base layer system
 
-use crate::{
-    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, Network},
-    ConfigurationError,
-};
-use config::{Config, ConfigError, Environment};
 use std::{
     convert::TryInto,
     fmt,
@@ -39,9 +34,14 @@ use std::{
     time::Duration,
 };
 
+use config::{Config, ConfigError, Environment};
 use multiaddr::{Error, Multiaddr, Protocol};
-
 use tari_storage::lmdb_store::LMDBConfig;
+
+use crate::{
+    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, Network},
+    ConfigurationError,
+};
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
 const DB_GROW_SIZE_DEFAULT_MB: usize = 500;

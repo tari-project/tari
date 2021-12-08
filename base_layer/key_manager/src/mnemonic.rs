@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{cmp::Ordering, slice::Iter};
+
+use strum_macros::{Display, EnumString};
+use tari_crypto::tari_utilities::bit::*;
+
 use crate::{
     diacritics::*,
     error::{KeyManagerError, MnemonicError},
     mnemonic_wordlists::*,
 };
-use std::{cmp::Ordering, slice::Iter};
-use strum_macros::{Display, EnumString};
-use tari_crypto::tari_utilities::bit::*;
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
@@ -244,11 +246,13 @@ pub trait Mnemonic<T> {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use rand::{self, rngs::OsRng};
+    use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
+
     use super::*;
     use crate::mnemonic;
-    use rand::{self, rngs::OsRng};
-    use std::str::FromStr;
-    use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey, tari_utilities::byte_array::ByteArray};
 
     #[test]
     fn test_check_wordlists_sorted() {

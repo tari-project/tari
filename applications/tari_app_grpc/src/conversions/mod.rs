@@ -39,6 +39,9 @@ mod transaction_kernel;
 mod transaction_output;
 mod unblinded_output;
 
+use prost_types::Timestamp;
+use tari_core::crypto::tari_utilities::epoch_time::EpochTime;
+
 pub use self::{
     aggregate_body::*,
     base_node_state::*,
@@ -58,10 +61,7 @@ pub use self::{
     transaction_kernel::*,
     transaction_output::*,
 };
-
 use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
-use prost_types::Timestamp;
-use tari_core::crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Utility function that converts a `EpochTime` to a `prost::Timestamp`
 pub fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {

@@ -20,6 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
+use prost::Message;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
+
 use crate::{
     message::MessageExt,
     multiaddr::Multiaddr,
@@ -27,13 +36,6 @@ use crate::{
     proto,
     types::{Challenge, CommsPublicKey, CommsSecretKey, Signature},
 };
-use chrono::{NaiveDateTime, Utc};
-use digest::Digest;
-use prost::Message;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
 
 /// Signature that secures the peer identity
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,10 +168,12 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use tari_crypto::keys::PublicKey;
+
     use super::*;
     use crate::peer_manager::{NodeId, PeerFlags};
-    use std::str::FromStr;
-    use tari_crypto::keys::PublicKey;
 
     mod is_valid_for_peer {
         use super::*;

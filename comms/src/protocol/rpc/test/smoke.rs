@@ -20,6 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use futures::StreamExt;
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_shutdown::Shutdown;
+use tari_test_utils::unpack_enum;
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+    time,
+};
+
 use crate::{
     framing,
     multiplexing::Yamux,
@@ -53,16 +65,6 @@ use crate::{
     test_utils::{node_identity::build_node_identity, transport::build_multiplexed_connections},
     NodeIdentity,
     Substream,
-};
-use futures::StreamExt;
-use std::{sync::Arc, time::Duration};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
-use tokio::{
-    sync::{mpsc, RwLock},
-    task,
-    time,
 };
 
 pub(super) async fn setup_service<T: GreetingRpc>(

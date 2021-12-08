@@ -23,12 +23,6 @@
 use std::{fmt, io, iter::repeat_with, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use tari_crypto::tari_utilities::ByteArray;
-use tokio::{
-    sync::{broadcast, mpsc},
-    task,
-};
-
 use tari_common::configuration::Network;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventTx},
@@ -40,6 +34,11 @@ use tari_comms::{
     test_utils::{mocks::create_peer_connection_mock_pair, node_identity::build_node_identity},
     Bytes,
     BytesMut,
+};
+use tari_crypto::tari_utilities::ByteArray;
+use tokio::{
+    sync::{broadcast, mpsc},
+    task,
 };
 
 use crate::{

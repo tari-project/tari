@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::CommandError;
-use chrono::Utc;
-use digest::Digest;
-use log::*;
-use sha2::Sha256;
 use std::{
     convert::TryFrom,
     fs::File,
@@ -32,16 +27,13 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
+use chrono::Utc;
+use digest::Digest;
 use futures::FutureExt;
+use log::*;
+use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
-
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
 use tari_common::GlobalConfig;
 use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
@@ -57,6 +49,10 @@ use tari_core::{
         transaction_entities::{TransactionOutput, UnblindedOutput},
     },
 };
+use tari_crypto::{
+    ristretto::pedersen::PedersenCommitmentFactory,
+    tari_utilities::{ByteArray, Hashable},
+};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -65,6 +61,12 @@ use tari_wallet::{
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
+};
+
+use super::error::CommandError;
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";

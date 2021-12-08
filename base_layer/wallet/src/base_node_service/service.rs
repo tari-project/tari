@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use chrono::NaiveDateTime;
+use futures::{future, StreamExt};
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_service_framework::reply_channel::Receiver;
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::RwLock;
+
 use super::{
     config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
@@ -30,14 +40,6 @@ use crate::{
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
 };
-use chrono::NaiveDateTime;
-use futures::{future, StreamExt};
-use log::*;
-use std::{sync::Arc, time::Duration};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";
 

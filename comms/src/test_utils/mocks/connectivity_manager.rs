@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use futures::lock::Mutex;
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    time,
+};
+
 use crate::{
     connection_manager::{ConnectionManagerError, PeerConnection},
     connectivity::{
@@ -31,12 +39,6 @@ use crate::{
     },
     peer_manager::NodeId,
     runtime::task,
-};
-use futures::lock::Mutex;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::{
-    sync::{broadcast, mpsc, oneshot},
-    time,
 };
 
 pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManagerMock) {

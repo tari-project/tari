@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::cmp;
+
 use tari_core::{base_node::LocalNodeCommsInterface, blocks::HistoricalBlock};
 use tonic::Status;
 

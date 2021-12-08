@@ -27,15 +27,16 @@ mod controller;
 pub use controller::{HiddenServiceController, HiddenServiceControllerError};
 
 mod proxy_opts;
+use std::fmt;
+
 pub use proxy_opts::TorProxyOpts;
+use serde_derive::{Deserialize, Serialize};
+use tari_shutdown::OptionalShutdownSignal;
 
 use crate::{
     multiaddr::Multiaddr,
     tor::{PrivateKey, TorClientError},
 };
-use serde_derive::{Deserialize, Serialize};
-use std::fmt;
-use tari_shutdown::OptionalShutdownSignal;
 
 /// Handle for a Tor Hidden Service. This handle keeps the session to the Tor control port alive.
 /// Once this is dropped, the hidden service will cease to be accessible.

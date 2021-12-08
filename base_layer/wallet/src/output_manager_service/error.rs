@@ -21,9 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
-use thiserror::Error;
-
 use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
@@ -32,8 +29,10 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
+use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
 use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 

@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
-use rand::rngs::OsRng;
 use std::{convert, net::Ipv4Addr, path::Path, sync::Arc, time::Duration};
+
+use rand::rngs::OsRng;
 use tari_comms::{
     backoff::ConstantBackoff,
     message::{InboundMessage, OutboundMessage},
@@ -44,6 +44,8 @@ use tari_storage::{
     LMDBWrapper,
 };
 use tokio::sync::{broadcast, mpsc};
+
+use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,

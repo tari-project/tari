@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use hex::FromHexError;
 use std::io;
+
+use hex::FromHexError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::transactions::CoinbaseBuildError;
 use thiserror::Error;

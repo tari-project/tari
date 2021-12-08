@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::mpsc;
+
 use crate::{
     dht::DhtInitializationError,
     outbound::DhtOutboundRequest,
@@ -28,10 +34,6 @@ use crate::{
     Dht,
     DhtConfig,
 };
-use std::{sync::Arc, time::Duration};
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Default)]
 pub struct DhtBuilder {

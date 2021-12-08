@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::context::LazyService;
-use futures::{future, future::Either, Future, FutureExt};
 use std::{
     any,
     any::{Any, TypeId},
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+
+use futures::{future, future::Either, Future, FutureExt};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
+
+use crate::context::LazyService;
 
 /// Create a Notifier, ServiceInitializerContext pair.
 ///
@@ -206,8 +208,9 @@ impl ServiceHandles {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_shutdown::Shutdown;
+
+    use super::*;
 
     #[test]
     fn service_handles_insert_get() {

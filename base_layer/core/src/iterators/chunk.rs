@@ -158,8 +158,9 @@ non_overlapping_iter_impl!(usize);
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rand::{rngs::OsRng, Rng};
+
+    use super::*;
     #[test]
     fn zero_size() {
         let mut iter = NonOverlappingIntegerPairIter::new(10u32, 10, 0);

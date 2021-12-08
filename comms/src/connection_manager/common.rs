@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, net::Ipv6Addr};
+
+use futures::StreamExt;
+use log::*;
+
 use super::types::ConnectionDirection;
 use crate::{
     connection_manager::error::ConnectionManagerError,
@@ -33,9 +38,6 @@ use crate::{
     types::CommsPublicKey,
     PeerManager,
 };
-use futures::StreamExt;
-use log::*;
-use std::{convert::TryFrom, net::Ipv6Addr};
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 
@@ -299,8 +301,9 @@ fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), ConnectionManagerErro
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use multiaddr::multiaddr;
+
+    use super::*;
 
     #[test]
     fn validate_address_strict() {

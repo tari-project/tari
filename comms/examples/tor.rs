@@ -1,8 +1,9 @@
+use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
+
 use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
 use rand::{rngs::OsRng, thread_rng, RngCore};
-use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,

@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::{error::ChainStorageError, OrNotFound};
+use std::fmt::Debug;
+
 use lmdb_zero::{
     del,
     error::{self, LmdbResultExt},
@@ -36,8 +37,9 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::fmt::Debug;
 use tari_crypto::tari_utilities::hex::to_hex;
+
+use crate::chain_storage::{error::ChainStorageError, OrNotFound};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 

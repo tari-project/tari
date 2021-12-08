@@ -1,4 +1,3 @@
-use crate::ui::{components::Component, state::AppState};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -7,6 +6,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct ReceiveTab {}
 

@@ -20,15 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
+use log::*;
+use tari_app_grpc::tari_rpc as grpc;
+use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
+
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
     common::merge_mining,
     error::MmProxyError,
 };
-use log::*;
-use std::cmp;
-use tari_app_grpc::tari_rpc as grpc;
-use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 

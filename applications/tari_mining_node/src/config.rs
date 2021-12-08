@@ -36,8 +36,9 @@
 //! All miner options configured under `[mining_node]` section of
 //! Tari's `config.toml`.
 
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::{GlobalConfig, NetworkConfigPath};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;

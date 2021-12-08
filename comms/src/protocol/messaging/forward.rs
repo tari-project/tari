@@ -22,6 +22,8 @@
 
 // Copied from futures rs
 
+use std::pin::Pin;
+
 use futures::{
     future::{FusedFuture, Future},
     ready,
@@ -32,7 +34,6 @@ use futures::{
     TryStream,
 };
 use pin_project::pin_project;
-use std::pin::Pin;
 
 /// Future for the [`forward`](super::StreamExt::forward) method.
 #[pin_project(project = ForwardProj)]

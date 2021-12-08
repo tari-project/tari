@@ -20,11 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
-use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Display, sync::Arc};
+
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
 /// block but contains some extra metadata that clients such as Block Explorers will find interesting.

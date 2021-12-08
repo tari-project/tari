@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tokio::sync::mpsc;
+use tower::layer::Layer;
+
 use super::middleware::MessageHandlerMiddleware;
 use crate::{
     actor::DhtRequester,
     outbound::OutboundMessageRequester,
     store_forward::{SafConfig, StoreAndForwardRequester},
 };
-use std::sync::Arc;
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
-use tokio::sync::mpsc;
-use tower::layer::Layer;
 
 pub struct MessageHandlerLayer {
     config: SafConfig,

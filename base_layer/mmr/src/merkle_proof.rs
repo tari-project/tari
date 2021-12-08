@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{self, Display, Formatter};
+
+use digest::Digest;
+use log::error;
+use serde::{Deserialize, Serialize};
+use tari_utilities::hex::Hex;
+use thiserror::Error;
+
 use crate::{
     backend::ArrayLike,
     common::{family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
@@ -29,12 +37,6 @@ use crate::{
     HashSlice,
     MerkleMountainRange,
 };
-use digest::Digest;
-use log::error;
-use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
-use tari_utilities::hex::Hex;
-use thiserror::Error;
 
 /// Merkle proof errors.
 #[derive(Clone, Debug, PartialEq, Error)]

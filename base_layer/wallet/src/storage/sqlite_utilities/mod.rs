@@ -20,6 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
+use diesel::{ExpressionMethods, QueryDsl, SqliteConnection};
+use fs2::FileExt;
+use log::*;
+use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+pub use wallet_db_connection::WalletDbConnection;
+
 use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
@@ -27,16 +39,6 @@ use crate::{
     storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
-use diesel::{ExpressionMethods, QueryDsl, SqliteConnection};
-use fs2::FileExt;
-use log::*;
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    time::Duration,
-};
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-pub use wallet_db_connection::WalletDbConnection;
 
 pub(crate) mod wallet_db_connection;
 

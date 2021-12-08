@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::errors::{err_empty, MinerError};
 use tari_app_grpc::tari_rpc::{
     GetCoinbaseRequest,
     GetCoinbaseResponse,
@@ -28,6 +27,8 @@ use tari_app_grpc::tari_rpc::{
     TransactionKernel,
     TransactionOutput,
 };
+
+use crate::errors::{err_empty, MinerError};
 
 /// Convert NewBlockTemplateResponse to GetCoinbaseRequest
 pub fn coinbase_request(template_response: &NewBlockTemplateResponse) -> Result<GetCoinbaseRequest, MinerError> {

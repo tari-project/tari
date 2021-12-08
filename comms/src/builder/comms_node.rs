@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{iter, sync::Arc};
+
+use log::*;
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+
 use super::{CommsBuilderError, CommsShutdown};
 use crate::{
     connection_manager::{
@@ -45,13 +54,6 @@ use crate::{
     transports::Transport,
     CommsBuilder,
     Substream,
-};
-use log::*;
-use std::{iter, sync::Arc};
-use tari_shutdown::ShutdownSignal;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
 };
 
 const LOG_TARGET: &str = "comms::node";

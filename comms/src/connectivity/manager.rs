@@ -19,6 +19,19 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    collections::HashMap,
+    fmt,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use log::*;
+use nom::lib::std::collections::hash_map::Entry;
+use tari_shutdown::ShutdownSignal;
+use tokio::{sync::mpsc, task::JoinHandle, time, time::MissedTickBehavior};
+use tracing::{span, Instrument, Level};
+
 use super::{
     config::ConnectivityConfig,
     connection_pool::{ConnectionPool, ConnectionStatus},
@@ -42,17 +55,6 @@ use crate::{
     PeerConnection,
     PeerManager,
 };
-use log::*;
-use nom::lib::std::collections::hash_map::Entry;
-use std::{
-    collections::HashMap,
-    fmt,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_shutdown::ShutdownSignal;
-use tokio::{sync::mpsc, task::JoinHandle, time, time::MissedTickBehavior};
-use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
 
@@ -687,8 +689,9 @@ impl ConnectivityManagerActor {
 
     #[cfg(feature = "metrics")]
     fn update_connectivity_metrics(&mut self) {
-        use super::metrics;
         use std::convert::TryFrom;
+
+        use super::metrics;
 
         let total = self.pool.count_connected() as i64;
         let num_inbound = self.pool.count_filtered(|state| match state.connection() {

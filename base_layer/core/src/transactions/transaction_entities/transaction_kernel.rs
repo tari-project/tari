@@ -23,6 +23,15 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{
+    cmp::Ordering,
+    fmt::{Display, Formatter},
+};
+
+use blake2::Digest;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{Commitment, HashDigest, Signature};
+
 use crate::{
     crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
     transactions::{
@@ -31,13 +40,6 @@ use crate::{
         transaction_protocol::{build_challenge, TransactionMetadata},
     },
 };
-use blake2::Digest;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fmt::{Display, Formatter},
-};
-use tari_common_types::types::{Commitment, HashDigest, Signature};
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the

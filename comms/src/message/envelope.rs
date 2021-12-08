@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::MessageError;
-
-// Re-export protos
-pub use crate::proto::envelope::*;
 use std::{
     fmt,
     fmt::{Display, Formatter},
 };
+
+use super::MessageError;
+// Re-export protos
+pub use crate::proto::envelope::*;
 
 /// Wraps a number of `prost::Message`s in a EnvelopeBody
 #[macro_export]

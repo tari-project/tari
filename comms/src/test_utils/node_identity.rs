@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use rand::rngs::OsRng;
+
 use crate::{
     peer_manager::{NodeId, NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
 };
-use rand::rngs::OsRng;
-use std::sync::Arc;
 
 pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())

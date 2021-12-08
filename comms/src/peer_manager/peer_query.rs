@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 use std::cmp::{min, Ordering};
+
 use tari_storage::{IterationResult, KeyValueStore};
+
+use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 
 type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
@@ -207,6 +209,13 @@ fn last_seen_compare_desc(a: &Peer, b: &Peer) -> Ordering {
 
 #[cfg(test)]
 mod test {
+    use std::{iter::repeat_with, time::Duration};
+
+    use multiaddr::Multiaddr;
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::HashmapDatabase;
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
@@ -216,11 +225,6 @@ mod test {
             PeerFeatures,
         },
     };
-    use multiaddr::Multiaddr;
-    use rand::rngs::OsRng;
-    use std::{iter::repeat_with, time::Duration};
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
 
     fn create_test_peer(ban_flag: bool) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);

@@ -19,17 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    connection_manager::ConnectionDirection,
-    message::MessageExt,
-    peer_manager::NodeIdentity,
-    proto::identity::PeerIdentityMsg,
-    protocol::{NodeNetworkInfo, ProtocolError, ProtocolId, ProtocolNegotiation},
-};
+use std::{io, time::Duration};
+
 use futures::{SinkExt, StreamExt};
 use log::*;
 use prost::Message;
-use std::{io, time::Duration};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -37,6 +31,14 @@ use tokio::{
 };
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use tracing;
+
+use crate::{
+    connection_manager::ConnectionDirection,
+    message::MessageExt,
+    peer_manager::NodeIdentity,
+    proto::identity::PeerIdentityMsg,
+    protocol::{NodeNetworkInfo, ProtocolError, ProtocolId, ProtocolNegotiation},
+};
 
 pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"t/identity/1.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
@@ -165,6 +167,8 @@ impl From<prost::DecodeError> for IdentityProtocolError {
 
 #[cfg(test)]
 mod test {
+    use futures::{future, StreamExt};
+
     use crate::{
         connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
@@ -173,7 +177,6 @@ mod test {
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
-    use futures::{future, StreamExt};
 
     #[runtime::test]
     async fn identity_exchange() {

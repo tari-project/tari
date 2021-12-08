@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tokio::sync::{broadcast, mpsc, oneshot};
+
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
 use crate::{
     connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
     peer_manager::NodeId,
 };
-use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]

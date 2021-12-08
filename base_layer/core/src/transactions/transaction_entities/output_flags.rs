@@ -23,9 +23,11 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-use serde::{Deserialize, Serialize};
 use std::{io, io::Read};
+
+use serde::{Deserialize, Serialize};
+
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 bitflags! {
     #[derive(Deserialize, Serialize)]

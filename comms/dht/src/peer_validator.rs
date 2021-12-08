@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::DhtConfig;
 use log::*;
 use tari_comms::{
     peer_manager::{NodeId, Peer, PeerManagerError},
@@ -28,6 +27,8 @@ use tari_comms::{
     validate_peer_addresses,
     PeerManager,
 };
+
+use crate::DhtConfig;
 
 const LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 

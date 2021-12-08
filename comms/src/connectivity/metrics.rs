@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId};
 use once_cell::sync::Lazy;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+
+use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId};
 
 pub fn connections(direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {

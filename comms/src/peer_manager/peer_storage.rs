@@ -20,6 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, time::Duration};
+
+use chrono::Utc;
+use log::*;
+use multiaddr::Multiaddr;
+use rand::{rngs::OsRng, seq::SliceRandom};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_storage::{IterationResult, KeyValueStore};
+
 use crate::{
     peer_manager::{
         peer::{Peer, PeerFlags},
@@ -34,13 +43,6 @@ use crate::{
     protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
-use chrono::Utc;
-use log::*;
-use multiaddr::Multiaddr;
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{collections::HashMap, time::Duration};
-use tari_crypto::tari_utilities::ByteArray;
-use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// The maximum number of peers to return from the flood_identities method in peer manager
@@ -578,14 +580,16 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 
 #[cfg(test)]
 mod test {
+    use std::iter::repeat_with;
+
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::HashmapDatabase;
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
-    use std::iter::repeat_with;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
 
     #[test]
     fn test_restore() {

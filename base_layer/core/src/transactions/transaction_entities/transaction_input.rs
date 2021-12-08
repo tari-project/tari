@@ -23,6 +23,16 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{
+    cmp::Ordering,
+    fmt::{Display, Formatter},
+};
+
+use blake2::Digest;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{Challenge, ComSignature, Commitment, CommitmentFactory, HashDigest, PublicKey};
+use tari_crypto::script::ScriptContext;
+
 use crate::{
     crypto::{
         commitment::HomomorphicCommitmentFactory,
@@ -39,14 +49,6 @@ use crate::{
         },
     },
 };
-use blake2::Digest;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fmt::{Display, Formatter},
-};
-use tari_common_types::types::{Challenge, ComSignature, Commitment, CommitmentFactory, HashDigest, PublicKey};
-use tari_crypto::script::ScriptContext;
 
 /// A transaction input.
 ///

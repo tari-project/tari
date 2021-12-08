@@ -25,5 +25,4 @@ mod requester;
 mod service;
 
 pub(crate) use self::requester::DhtDiscoveryRequest;
-
 pub use self::{error::DhtDiscoveryError, requester::DhtDiscoveryRequester, service::DhtDiscoveryService};

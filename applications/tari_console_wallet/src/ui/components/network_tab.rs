@@ -1,14 +1,5 @@
 use std::collections::HashMap;
 
-use crate::{
-    ui::{
-        components::{balance::Balance, Component, KeyHandled},
-        state::AppState,
-        widgets::{draw_dialog, MultiColumnList, WindowedListState},
-        MAX_WIDTH,
-    },
-    utils::formatting::display_address,
-};
 use log::*;
 use tari_comms::peer_manager::Peer;
 use tari_crypto::tari_utilities::hex::Hex;
@@ -20,6 +11,16 @@ use tui::{
     text::{Span, Spans},
     widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
     Frame,
+};
+
+use crate::{
+    ui::{
+        components::{balance::Balance, Component, KeyHandled},
+        state::AppState,
+        widgets::{draw_dialog, MultiColumnList, WindowedListState},
+        MAX_WIDTH,
+    },
+    utils::formatting::display_address,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::network_tab";
