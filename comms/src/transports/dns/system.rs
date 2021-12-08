@@ -20,17 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::Display,
+    net::{SocketAddr, ToSocketAddrs},
+};
+
+use futures::{future, future::BoxFuture, FutureExt};
+use log::*;
+
 use super::{DnsResolver, DnsResolverError};
 use crate::{
     multiaddr::{Multiaddr, Protocol},
     runtime::task::spawn_blocking,
     transports::dns::common,
-};
-use futures::{future, future::BoxFuture, FutureExt};
-use log::*;
-use std::{
-    fmt::Display,
-    net::{SocketAddr, ToSocketAddrs},
 };
 
 const LOG_TARGET: &str = "comms::dns::system_resolver";

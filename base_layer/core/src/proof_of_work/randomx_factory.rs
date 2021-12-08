@@ -1,11 +1,13 @@
-use crate::proof_of_work::monero_rx::MergeMineError;
-use log::*;
-use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, RwLock},
     time::Instant,
 };
+
+use log::*;
+use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
+
+use crate::proof_of_work::monero_rx::MergeMineError;
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
 

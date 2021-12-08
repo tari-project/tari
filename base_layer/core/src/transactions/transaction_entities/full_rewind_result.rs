@@ -23,11 +23,12 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use tari_common_types::types::BlindingFactor;
+
 use crate::{
     crypto::range_proof::{FullRewindResult as CryptoFullRewindResult, REWIND_USER_MESSAGE_LENGTH},
     transactions::tari_amount::MicroTari,
 };
-use tari_common_types::types::BlindingFactor;
 
 /// A wrapper struct to hold the result of a successful range proof full rewinding to reveal the committed value, proof
 /// message and blinding factor

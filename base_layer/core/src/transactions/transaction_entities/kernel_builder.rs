@@ -23,11 +23,12 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use tari_common_types::types::{Commitment, Signature};
+
 use crate::transactions::{
     tari_amount::MicroTari,
     transaction_entities::{KernelFeatures, TransactionError, TransactionKernel},
 };
-use tari_common_types::types::{Commitment, Signature};
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
 pub struct KernelBuilder {

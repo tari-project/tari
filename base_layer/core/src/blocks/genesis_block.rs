@@ -23,13 +23,12 @@
 use std::sync::Arc;
 
 use chrono::DateTime;
+use tari_common::configuration::Network;
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
 };
-
-use tari_common::configuration::Network;
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
 
 // This file is used to store the genesis block
 use crate::{
@@ -474,9 +473,8 @@ pub fn get_igor_genesis_block_raw() -> Block {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::CryptoFactories;
-
     use super::*;
+    use crate::transactions::CryptoFactories;
 
     #[test]
     fn weatherwax_genesis_sanity_check() {

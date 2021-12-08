@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::MmrTree, proto::base_node as proto};
 use std::convert::TryFrom;
+
+use crate::{chain_storage::MmrTree, proto::base_node as proto};
 
 impl TryFrom<proto::MmrTree> for MmrTree {
     type Error = String;

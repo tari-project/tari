@@ -36,15 +36,14 @@ use argon2::{
 };
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     message_format::MessageFormat,
 };
-use tokio::time::Instant;
-
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_key_manager::cipher_seed::CipherSeed;
+use tokio::time::Instant;
 
 use crate::{
     error::WalletStorageError,
@@ -731,10 +730,9 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 #[cfg(test)]
 mod test {
     use tari_crypto::tari_utilities::hex::Hex;
-    use tempfile::tempdir;
-
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random::string;
+    use tempfile::tempdir;
 
     use crate::storage::{
         database::{DbKey, DbValue, WalletBackend},

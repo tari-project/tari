@@ -20,6 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, sync::Arc};
+
+use log::*;
+use num_format::{Locale, ToFormattedString};
+use prost::Message;
+use tari_common::log_if_error;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    message::MessageExt,
+};
+use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
+use tokio::sync::broadcast;
+
 use super::{error::ChainMetadataSyncError, LOG_TARGET};
 use crate::{
     base_node::{
@@ -29,18 +43,6 @@ use crate::{
     chain_storage::BlockAddResult,
     proto::base_node as proto,
 };
-use log::*;
-use num_format::{Locale, ToFormattedString};
-use prost::Message;
-use std::{convert::TryFrom, sync::Arc};
-use tari_common::log_if_error;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
-    message::MessageExt,
-};
-use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
-use tokio::sync::broadcast;
 
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 
@@ -269,10 +271,9 @@ impl ChainMetadataService {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
-    use futures::StreamExt;
     use std::convert::TryInto;
+
+    use futures::StreamExt;
     use tari_comms::{
         peer_manager::NodeId,
         test_utils::{
@@ -289,6 +290,9 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
     use tokio::{sync::broadcast, task};
+
+    use super::*;
+    use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
 
     fn create_base_node_nci() -> (
         LocalNodeCommsInterface,

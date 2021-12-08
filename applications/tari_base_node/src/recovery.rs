@@ -30,7 +30,6 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
-
 use tari_common::{configuration::Network, exit_codes::ExitCodes, DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{

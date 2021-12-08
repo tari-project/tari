@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::peer_manager::Peer;
+use tari_wallet::WalletSqlite;
+use tokio::runtime::Handle;
+use tui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout},
+    Frame,
+};
+
 use crate::{
     notifier::Notifier,
     ui::{
@@ -39,15 +49,6 @@ use crate::{
         MAX_WIDTH,
     },
     wallet_modes::PeerConfig,
-};
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_comms::peer_manager::Peer;
-use tari_wallet::WalletSqlite;
-use tokio::runtime::Handle;
-use tui::{
-    backend::Backend,
-    layout::{Constraint, Direction, Layout},
-    Frame,
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";

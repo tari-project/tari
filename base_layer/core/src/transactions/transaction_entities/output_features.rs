@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_entities::OutputFlags,
-};
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     fmt,
     fmt::{Display, Formatter},
     io,
     io::{Read, Write},
+};
+
+use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    transactions::transaction_entities::OutputFlags,
 };
 
 /// Options for UTXO's

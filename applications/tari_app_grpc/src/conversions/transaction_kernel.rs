@@ -22,13 +22,12 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
-
 use tari_common_types::types::Commitment;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_entities::{KernelFeatures, TransactionKernel},
 };
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 use crate::tari_rpc as grpc;
 

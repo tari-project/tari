@@ -23,9 +23,6 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use aes_gcm::Aes256Gcm;
-use tokio::sync::broadcast;
-use tower::Service;
-
 use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -33,6 +30,8 @@ use tari_core::transactions::{
     transaction_entities::{Transaction, TransactionOutput},
 };
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
+use tower::Service;
 
 use crate::transaction_service::{
     error::TransactionServiceError,

@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
 };
+
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {

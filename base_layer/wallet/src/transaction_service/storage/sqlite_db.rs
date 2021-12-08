@@ -31,13 +31,6 @@ use aes_gcm::{self, Aes256Gcm};
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
-use tari_crypto::tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-};
-use thiserror::Error;
-use tokio::time::Instant;
-
 use tari_common_types::{
     transaction::{
         TransactionConversionError,
@@ -50,6 +43,12 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_crypto::tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
+};
+use thiserror::Error;
+use tokio::time::Instant;
 
 use crate::{
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
@@ -2051,22 +2050,8 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
-        test_utils::create_consensus_constants,
-        transaction_service::storage::{
-            database::{DbKey, TransactionBackend},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
-            sqlite_db::{
-                CompletedTransactionSql,
-                InboundTransactionSenderInfo,
-                InboundTransactionSql,
-                OutboundTransactionSql,
-                TransactionServiceSqliteDatabase,
-            },
-        },
-        util::encryption::Encryptable,
-    };
+    use std::{convert::TryFrom, time::Duration};
+
     use aes_gcm::{
         aead::{generic_array::GenericArray, NewAead},
         Aes256Gcm,
@@ -2074,7 +2059,6 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use std::{convert::TryFrom, time::Duration};
     use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
@@ -2096,6 +2080,23 @@ mod test {
     };
     use tari_test_utils::random::string;
     use tempfile::tempdir;
+
+    use crate::{
+        storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
+        test_utils::create_consensus_constants,
+        transaction_service::storage::{
+            database::{DbKey, TransactionBackend},
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+            sqlite_db::{
+                CompletedTransactionSql,
+                InboundTransactionSenderInfo,
+                InboundTransactionSql,
+                OutboundTransactionSql,
+                TransactionServiceSqliteDatabase,
+            },
+        },
+        util::encryption::Encryptable,
+    };
 
     #[test]
     fn test_crud() {

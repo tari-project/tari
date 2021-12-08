@@ -1,5 +1,6 @@
-use crate::blocks::ChainHeader;
 use std::{cmp::Ordering, fmt::Debug};
+
+use crate::blocks::ChainHeader;
 
 pub trait ChainStrengthComparer: Debug {
     fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering;

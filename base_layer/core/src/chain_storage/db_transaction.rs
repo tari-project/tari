@@ -20,26 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
-    chain_storage::error::ChainStorageError,
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
-};
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
 
-use crate::chain_storage::HorizonData;
 use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
+};
+
+use crate::{
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    chain_storage::{error::ChainStorageError, HorizonData},
+    transactions::transaction_entities::{
+        transaction_kernel::TransactionKernel,
+        transaction_output::TransactionOutput,
+    },
 };
 
 #[derive(Debug)]

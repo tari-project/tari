@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fs::File, time::Duration};
+
+use multiaddr::Multiaddr;
+use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
+use tokio::sync::RwLock;
+
 use crate::{
     peer_manager::{
         migrations,
@@ -35,10 +41,6 @@ use crate::{
     },
     types::{CommsDatabase, CommsPublicKey},
 };
-use multiaddr::Multiaddr;
-use std::{fmt, fs::File, time::Duration};
-use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
-use tokio::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers.
@@ -314,6 +316,10 @@ impl fmt::Debug for PeerManager {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::HashmapDatabase;
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
@@ -324,9 +330,6 @@ mod test {
         },
         runtime,
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);

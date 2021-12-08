@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tokio::sync::mpsc::UnboundedSender;
-
 use tari_common_types::types::Signature;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     mempool::{

@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use thiserror::Error;
+use tokio::sync::mpsc;
+use tower::Service;
+
 use crate::{
     message::{InboundMessage, OutboundMessage},
     pipeline::SinkService,
 };
-use thiserror::Error;
-use tokio::sync::mpsc;
-use tower::Service;
 
 const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
 const DEFAULT_OUTBOUND_BUFFER_SIZE: usize = 50;
@@ -160,10 +161,12 @@ pub enum PipelineBuilderError {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use futures::future;
     use std::convert::identity;
+
+    use futures::future;
     use tower::service_fn;
+
+    use super::*;
 
     #[test]
     fn minimal_usage() {

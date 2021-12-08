@@ -20,6 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+    RwLock,
+};
+
+use futures::StreamExt;
+use log::*;
+use tari_crypto::tari_utilities::{acquire_read_lock, acquire_write_lock};
+use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use tokio::sync::{broadcast, broadcast::error::SendError};
+
 use crate::services::liveness::{
     error::LivenessError,
     handle::LivenessEventSender,
@@ -28,17 +40,6 @@ use crate::services::liveness::{
     LivenessRequest,
     LivenessResponse,
 };
-use futures::StreamExt;
-use log::*;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-    RwLock,
-};
-
-use tari_crypto::tari_utilities::{acquire_read_lock, acquire_write_lock};
-use tari_service_framework::{reply_channel, reply_channel::RequestContext};
-use tokio::sync::{broadcast, broadcast::error::SendError};
 
 const LOG_TARGET: &str = "p2p::liveness_mock";
 

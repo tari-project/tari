@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::HashDigest;
+use std::fmt;
+
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -29,8 +30,9 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::fmt;
 use tari_crypto::tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
+
+use crate::types::HashDigest;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BulletRangeProof(pub Vec<u8>);

@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::multiaddr::{Multiaddr, Protocol};
 use std::marker::PhantomData;
+
+use crate::multiaddr::{Multiaddr, Protocol};
 
 pub trait Predicate<A: ?Sized> {
     fn check(&self, arg: &A) -> bool;

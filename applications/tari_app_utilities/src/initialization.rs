@@ -1,6 +1,6 @@
-use crate::consts;
-use config::Config;
 use std::{path::PathBuf, str::FromStr};
+
+use config::Config;
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
@@ -10,6 +10,8 @@ use tari_common::{
     GlobalConfig,
 };
 use tari_comms::multiaddr::Multiaddr;
+
+use crate::consts;
 
 pub const LOG_TARGET: &str = "tari::application";
 

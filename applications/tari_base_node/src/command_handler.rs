@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
-use chrono::{DateTime, Utc};
-use log::*;
 use std::{
     cmp,
     fs::File,
@@ -32,6 +28,9 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use chrono::{DateTime, Utc};
+use log::*;
 use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
@@ -68,6 +67,9 @@ use tokio::{
     sync::{broadcast, watch},
     time,
 };
+
+use super::LOG_TARGET;
+use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
 
 pub enum StatusOutput {
     Log,

@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    schema::dedup_cache,
-    storage::{DbConnection, StorageError},
-};
 use chrono::{NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
 use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::{
+    schema::dedup_cache,
+    storage::{DbConnection, StorageError},
+};
 
 const LOG_TARGET: &str = "comms::dht::dedup_cache";
 

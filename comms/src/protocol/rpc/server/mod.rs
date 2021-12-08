@@ -35,7 +35,23 @@ mod metrics;
 pub mod mock;
 
 mod router;
+use std::{
+    borrow::Cow,
+    future::Future,
+    io,
+    pin::Pin,
+    sync::Arc,
+    task::Poll,
+    time::{Duration, Instant},
+};
+
+use futures::{future, stream, SinkExt, StreamExt};
+use prost::Message;
 use router::Router;
+use tokio::{sync::mpsc, time};
+use tokio_stream::Stream;
+use tower::{make::MakeService, Service};
+use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 use super::{
     body::Body,
@@ -65,21 +81,6 @@ use crate::{
     Bytes,
     Substream,
 };
-use futures::{future, stream, SinkExt, StreamExt};
-use prost::Message;
-use std::{
-    borrow::Cow,
-    future::Future,
-    io,
-    pin::Pin,
-    sync::Arc,
-    task::Poll,
-    time::{Duration, Instant},
-};
-use tokio::{sync::mpsc, time};
-use tokio_stream::Stream;
-use tower::{make::MakeService, Service};
-use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc";
 

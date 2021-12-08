@@ -22,15 +22,23 @@
 
 // Because we use dynamically sized u8 vectors for hash types through the type alias HashOutput,
 // let's ignore this clippy error in this module
+
 #![allow(clippy::ptr_arg)]
+
+use std::{fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
 
 use croaring::Bitmap;
 use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
+};
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
+use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
+use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 use crate::{
     blocks::{
@@ -88,12 +96,6 @@ use crate::{
         },
     },
 };
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
-};
-use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 type DatabaseRef = Arc<Database<'static>>;
 

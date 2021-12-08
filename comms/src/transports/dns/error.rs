@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{multiaddr::Multiaddr, socks::SocksError};
 use std::{borrow::Cow, io};
+
 use thiserror::Error;
 use tokio::task::JoinError;
+
+use crate::{multiaddr::Multiaddr, socks::SocksError};
 
 #[derive(Debug, Error)]
 pub enum DnsResolverError {

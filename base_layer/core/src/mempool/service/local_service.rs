@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tokio::sync::broadcast;
-
 use tari_common_types::types::Signature;
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
 
 use crate::{
     mempool::{
@@ -119,9 +118,8 @@ impl LocalMempoolService {
 #[cfg(test)]
 mod test {
     use futures::StreamExt;
-    use tokio::{sync::broadcast, task};
-
     use tari_service_framework::reply_channel::{unbounded, Receiver};
+    use tokio::{sync::broadcast, task};
 
     use crate::mempool::{
         service::{local_service::LocalMempoolService, MempoolRequest, MempoolResponse},

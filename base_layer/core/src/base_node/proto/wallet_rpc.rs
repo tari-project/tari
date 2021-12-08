@@ -20,17 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    crypto::tari_utilities::ByteArrayError,
-    proto::{base_node as proto, types},
-};
-
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
+
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
+
+use crate::{
+    crypto::tari_utilities::ByteArrayError,
+    proto::{base_node as proto, types},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {

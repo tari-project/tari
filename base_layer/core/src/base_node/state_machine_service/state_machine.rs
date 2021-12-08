@@ -19,6 +19,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{future::Future, sync::Arc};
+
+use futures::{future, future::Either};
+use log::*;
+use randomx_rs::RandomXFlag;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::{broadcast, watch};
+
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
@@ -33,13 +42,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
-use futures::{future, future::Either};
-use log::*;
-use randomx_rs::RandomXFlag;
-use std::{future::Future, sync::Arc};
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::base_node";
 

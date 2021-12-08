@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
+use tari_common_types::types::Signature;
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
-
-use tari_common_types::types::Signature;
 
 use crate::{
     blocks::Block,

@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::envelope::{DhtMessageFlags, DhtMessageHeader};
-use digest::Digest;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     sync::Arc,
 };
+
+use digest::Digest;
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::Peer,
     types::{Challenge, CommsPublicKey},
 };
+
+use crate::envelope::{DhtMessageFlags, DhtMessageHeader};
 
 fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
     Challenge::new()

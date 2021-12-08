@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use once_cell::sync::Lazy;
+use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+
 use crate::{
     peer_manager::NodeId,
     protocol::{
@@ -27,8 +30,6 @@ use crate::{
         ProtocolId,
     },
 };
-use once_cell::sync::Lazy;
-use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 pub fn num_sessions(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {

@@ -20,6 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
+
+use bytes::Bytes;
+use futures::stream::FuturesUnordered;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_storage::HashmapDatabase;
+use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+};
+
 use crate::{
     backoff::ConstantBackoff,
     builder::CommsBuilder,
@@ -40,17 +53,6 @@ use crate::{
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
     CommsNode,
-};
-use bytes::Bytes;
-use futures::stream::FuturesUnordered;
-use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::HashmapDatabase;
-use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::{broadcast, mpsc, oneshot},
-    task,
 };
 
 async fn spawn_node(

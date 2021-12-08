@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+
+use tokio::sync::{broadcast, mpsc, Mutex};
+
 use crate::{
     connection_manager::{
         ConnectionManagerError,
@@ -31,14 +41,6 @@ use crate::{
     peer_manager::NodeId,
     runtime::task,
 };
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
-use tokio::sync::{broadcast, mpsc, Mutex};
 
 pub fn create_connection_manager_mock() -> (ConnectionManagerRequester, ConnectionManagerMock) {
     let (tx, rx) = mpsc::channel(10);

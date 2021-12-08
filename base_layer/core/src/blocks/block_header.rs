@@ -37,9 +37,11 @@
 //! state = Hash(Hash(mmr_root)|| Hash(roaring_bitmap))
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
-#[cfg(feature = "base_node")]
-use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
+use std::{
+    fmt,
+    fmt::{Display, Error, Formatter},
+};
+
 use chrono::{DateTime, Utc};
 use digest::Digest;
 use serde::{
@@ -49,13 +51,13 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{
-    fmt,
-    fmt::{Display, Error, Formatter},
-};
 use tari_common_types::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
+
+#[cfg(feature = "base_node")]
+use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
+use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
 
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
@@ -291,8 +293,9 @@ impl Display for BlockHeader {
 }
 
 pub(crate) mod hash_serializer {
-    use super::*;
     use tari_crypto::tari_utilities::hex::Hex;
+
+    use super::*;
 
     #[allow(clippy::ptr_arg)]
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
@@ -332,8 +335,9 @@ pub(crate) mod hash_serializer {
 
 #[cfg(test)]
 mod test {
-    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
     use tari_crypto::tari_utilities::Hashable;
+
+    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();

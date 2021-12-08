@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::task::Poll;
+
+use futures::{future::BoxFuture, task::Context};
+use log::*;
+use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
+use tari_utilities::epoch_time::EpochTime;
+use tower::{layer::Layer, Service, ServiceExt};
+
 use crate::{
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
 };
-use futures::{future::BoxFuture, task::Context};
-use log::*;
-use std::task::Poll;
-use tari_comms::{peer_manager::Peer, pipeline::PipelineError};
-use tari_utilities::epoch_time::EpochTime;
-use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 
@@ -257,14 +259,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
+    use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
+    use tokio::sync::mpsc;
+
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
         outbound::mock::create_outbound_service_mock,
         test_utils::{make_dht_inbound_message, make_node_identity, service_spy},
     };
-    use tari_comms::{runtime, runtime::task, wrap_in_envelope_body};
-    use tokio::sync::mpsc;
 
     #[runtime::test]
     async fn decryption_succeeded() {

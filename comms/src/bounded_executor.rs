@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::runtime::current;
-use futures::future::Either;
 use std::{future::Future, sync::Arc};
+
+use futures::future::Either;
 use tokio::{
     runtime,
     sync::{OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
 use tracing::{span, Instrument, Level};
+
+use crate::runtime::current;
 
 /// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
 #[derive(Debug)]
@@ -229,8 +231,6 @@ impl OptionallyBoundedExecutor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::runtime;
     use std::{
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -238,7 +238,11 @@ mod test {
         },
         time::Duration,
     };
+
     use tokio::time::sleep;
+
+    use super::*;
+    use crate::runtime;
 
     #[runtime::test]
     async fn spawn() {

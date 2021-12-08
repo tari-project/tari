@@ -1,11 +1,5 @@
 use std::collections::HashMap;
 
-use crate::ui::{
-    components::{balance::Balance, Component},
-    state::{AppState, CompletedTransactionInfo},
-    widgets::{draw_dialog, MultiColumnList, WindowedListState},
-    MAX_WIDTH,
-};
 use chrono::{DateTime, Local};
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tokio::runtime::Handle;
@@ -16,6 +10,13 @@ use tui::{
     text::{Span, Spans},
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
+};
+
+use crate::ui::{
+    components::{balance::Balance, Component},
+    state::{AppState, CompletedTransactionInfo},
+    widgets::{draw_dialog, MultiColumnList, WindowedListState},
+    MAX_WIDTH,
 };
 
 pub struct TransactionsTab {

@@ -20,49 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
-    storage::database::{WalletBackend, WalletDatabase},
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
-        protocols::{
-            transaction_broadcast_protocol::TransactionBroadcastProtocol,
-            transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
-            transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
-            transaction_validation_protocol::TransactionValidationProtocol,
-            TxRejection,
-        },
-        storage::{
-            database::{TransactionBackend, TransactionDatabase},
-            models::CompletedTransaction,
-        },
-        tasks::{
-            send_finalized_transaction::send_finalized_transaction_message,
-            send_transaction_cancelled::send_transaction_cancelled_message,
-            send_transaction_reply::send_transaction_reply,
-        },
-        utc::utc_duration_since,
-    },
-    types::HashDigest,
-    util::watch::Watch,
-    utxo_scanner_service::RECOVERY_KEY,
-};
-use chrono::{NaiveDateTime, Utc};
-use digest::Digest;
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use sha2::Sha256;
 use std::{
     collections::{HashMap, HashSet},
     convert::TryInto,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use chrono::{NaiveDateTime, Utc};
+use digest::Digest;
+use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use sha2::Sha256;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
@@ -97,6 +67,38 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot},
     task::JoinHandle,
+};
+
+use crate::{
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
+    storage::database::{WalletBackend, WalletDatabase},
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
+        protocols::{
+            transaction_broadcast_protocol::TransactionBroadcastProtocol,
+            transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
+            transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
+            transaction_validation_protocol::TransactionValidationProtocol,
+            TxRejection,
+        },
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            models::CompletedTransaction,
+        },
+        tasks::{
+            send_finalized_transaction::send_finalized_transaction_message,
+            send_transaction_cancelled::send_transaction_cancelled_message,
+            send_transaction_reply::send_transaction_reply,
+        },
+        utc::utc_duration_since,
+    },
+    types::HashDigest,
+    util::watch::Watch,
+    utxo_scanner_service::RECOVERY_KEY,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";

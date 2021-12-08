@@ -20,25 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::handle::OutputManagerHandle,
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
-        handle::{TransactionEvent, TransactionEventSender},
-        storage::{
-            database::{TransactionBackend, TransactionDatabase},
-            sqlite_db::UnconfirmedTransactionInfo,
-        },
-    },
-};
-use log::*;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
+
+use log::*;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::BlockHash,
@@ -54,6 +42,20 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::handle::OutputManagerHandle,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
+        handle::{TransactionEvent, TransactionEventSender},
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            sqlite_db::UnconfirmedTransactionInfo,
+        },
+    },
+};
+
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
 
 pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity> {
@@ -64,8 +66,9 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     event_publisher: TransactionEventSender,
     output_manager_handle: OutputManagerHandle,
 }
-use crate::transaction_service::protocols::TxRejection;
 use tari_common_types::types::Signature;
+
+use crate::transaction_service::protocols::TxRejection;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>

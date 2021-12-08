@@ -23,7 +23,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 use crate::{

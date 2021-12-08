@@ -23,9 +23,8 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-
 use tari_common_types::types::Signature;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,

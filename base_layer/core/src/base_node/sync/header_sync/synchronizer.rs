@@ -20,6 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::StreamExt;
+use log::*;
+use tari_common_types::types::HashOutput;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcError, RpcHandshakeError},
+    PeerConnection,
+};
+use tracing;
+
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockSyncConfig, SyncPeer},
@@ -34,21 +51,6 @@ use crate::{
     tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::StreamExt;
-use log::*;
-use std::{
-    convert::TryFrom,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common_types::types::HashOutput;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcHandshakeError},
-    PeerConnection,
-};
-use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 

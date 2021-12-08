@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
+
 use log::*;
 use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
 use tari_common::{
     configuration::{bootstrap::prompt, utils::get_local_ip},
     exit_codes::ExitCodes,

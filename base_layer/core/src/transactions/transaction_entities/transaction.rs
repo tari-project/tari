@@ -23,6 +23,15 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{
+    cmp::{max, min},
+    fmt::{Display, Formatter},
+    ops::Add,
+};
+
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
+
 use crate::{
     crypto::tari_utilities::hex::Hex,
     transactions::{
@@ -33,13 +42,6 @@ use crate::{
         CryptoFactories,
     },
 };
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::{max, min},
-    fmt::{Display, Formatter},
-    ops::Add,
-};
-use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
 /// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is

@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{node_id::NodeIdError, NodeId};
 use std::{
     convert::{TryFrom, TryInto},
     fmt,
     mem,
 };
+
+use super::{node_id::NodeIdError, NodeId};
 
 pub type NodeDistance = XorDistance;
 
@@ -130,10 +131,11 @@ impl fmt::Debug for XorDistance {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::types::CommsPublicKey;
     use rand::rngs::OsRng;
     use tari_crypto::keys::PublicKey;
+
+    use super::*;
+    use crate::types::CommsPublicKey;
 
     mod ord {
         use super::*;

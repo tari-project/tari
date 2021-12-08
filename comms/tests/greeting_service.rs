@@ -24,6 +24,7 @@
 
 use core::iter;
 use std::{cmp, time::Duration};
+
 use tari_comms::{
     async_trait,
     protocol::rpc::{Request, Response, RpcStatus, Streaming},

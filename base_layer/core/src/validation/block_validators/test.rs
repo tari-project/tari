@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::Arc;
-use tari_crypto::script;
 
 use tari_common::configuration::Network;
+use tari_crypto::script;
 use tari_test_utils::unpack_enum;
 
 use crate::{

@@ -65,8 +65,9 @@
 //! "#
 //! );
 //! ```
-use super::loader::{ConfigPath, ConfigurationError};
 use config::Config;
+
+use super::loader::{ConfigPath, ConfigurationError};
 
 /// Configuration writer based on ConfigPath selectors
 ///

@@ -22,13 +22,12 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use tokio::sync::broadcast;
-
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
 
 use crate::{
     base_node::comms_interface::{

@@ -20,6 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{env, time::Duration};
+
+use tari_shutdown::Shutdown;
+use tari_test_utils::{async_assert_eventually, unpack_enum};
+use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
+
 use crate::{
     connection_manager::PeerConnection,
     protocol::{
@@ -39,11 +46,6 @@ use crate::{
     runtime::task,
     test_utils::mocks::{new_peer_connection_mock_pair, PeerConnectionMockState},
 };
-use std::{env, time::Duration};
-use tari_shutdown::Shutdown;
-use tari_test_utils::{async_assert_eventually, unpack_enum};
-use tokio::sync::mpsc;
-use tokio_stream::StreamExt;
 
 async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
     let (conn1, conn1_state, conn2, conn2_state) = new_peer_connection_mock_pair().await;

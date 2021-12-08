@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::proto::liveness::MetadataKey;
-use log::*;
 use std::{
     collections::HashMap,
     convert::TryInto,
     time::{Duration, Instant},
 };
+
+use log::*;
 use tari_comms::peer_manager::NodeId;
+
+use super::LOG_TARGET;
+use crate::proto::liveness::MetadataKey;
 
 const LATENCY_SAMPLE_WINDOW_SIZE: usize = 25;
 const MAX_INFLIGHT_TTL: Duration = Duration::from_secs(40);

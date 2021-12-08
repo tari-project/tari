@@ -19,16 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    crypt,
-    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
-    inbound::DhtInboundMessage,
-    outbound::message::DhtOutboundMessage,
-    proto::envelope::{DhtEnvelope, DhtMessageType, OriginMac},
-    version::DhtProtocolVersion,
-};
-use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc};
+
+use rand::rngs::OsRng;
 use tari_comms::{
     message::{InboundMessage, MessageExt, MessageTag},
     multiaddr::Multiaddr,
@@ -44,6 +37,15 @@ use tari_crypto::{
 };
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::{paths::create_temporary_data_path, random};
+
+use crate::{
+    crypt,
+    envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    inbound::DhtInboundMessage,
+    outbound::message::DhtOutboundMessage,
+    proto::envelope::{DhtEnvelope, DhtMessageType, OriginMac},
+    version::DhtProtocolVersion,
+};
 
 pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     let public_addr = format!("/memory/{}", MemoryTransport::acquire_next_memsocket_port())

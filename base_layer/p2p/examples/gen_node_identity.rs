@@ -20,17 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Generates a random node identity JSON file. A node identity contains a node's public and secret keys, it's node
-/// id and an address used to establish peer connections. The files generated from this example are used to
-/// populate the peer manager in other examples.
-use clap::{App, Arg};
-use rand::{rngs::OsRng, Rng};
 use std::{
     env::current_dir,
     fs,
     net::{Ipv4Addr, SocketAddr},
     path::Path,
 };
+
+/// Generates a random node identity JSON file. A node identity contains a node's public and secret keys, it's node
+/// id and an address used to establish peer connections. The files generated from this example are used to
+/// populate the peer manager in other examples.
+use clap::{App, Arg};
+use rand::{rngs::OsRng, Rng};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},

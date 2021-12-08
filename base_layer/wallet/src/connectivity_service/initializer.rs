@@ -28,14 +28,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::mpsc;
+
 use super::{handle::WalletConnectivityHandle, service::WalletConnectivityService};
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::service::OnlineStatus,
     util::watch::Watch,
 };
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::mpsc;
 
 pub struct WalletConnectivityInitializer {
     config: BaseNodeServiceConfig,

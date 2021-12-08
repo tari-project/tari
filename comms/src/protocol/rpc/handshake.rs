@@ -20,16 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
+use std::{io, time::Duration};
+
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use prost::{DecodeError, Message};
-use std::{io, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
 use tracing::{debug, error, event, span, warn, Instrument, Level};
+
+use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 
 const LOG_TARGET: &str = "comms::rpc::handshake";
 

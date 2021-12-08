@@ -20,6 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
+    Substream,
+};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::{sync::mpsc, time::sleep};
+
 use crate::{
     base_node::StateMachineHandle,
     mempool::{
@@ -28,15 +39,6 @@ use crate::{
         MempoolServiceConfig,
     },
 };
-use log::*;
-use std::time::Duration;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
-    Substream,
-};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::{sync::mpsc, time::sleep};
 
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 

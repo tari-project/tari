@@ -30,7 +30,6 @@ use std::{
 use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
-
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},

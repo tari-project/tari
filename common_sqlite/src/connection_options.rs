@@ -25,6 +25,7 @@ use core::{
     result::{Result, Result::Ok},
     time::Duration,
 };
+
 use diesel::{connection::SimpleConnection, SqliteConnection};
 
 #[derive(Debug, Clone)]

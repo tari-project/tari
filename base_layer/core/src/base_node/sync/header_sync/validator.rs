@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp::Ordering;
+
+use log::*;
+use tari_common_types::types::HashOutput;
+
 use crate::{
     base_node::sync::BlockHeaderSyncError,
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -36,9 +41,6 @@ use crate::{
         check_timestamp_ftl,
     },
 };
-use log::*;
-use std::cmp::Ordering;
-use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -227,6 +229,9 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::{
         blocks::{BlockHeader, BlockHeaderAccumulatedData},
@@ -236,8 +241,6 @@ mod test {
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
         let rules = ConsensusManager::builder(Network::LocalNet).build();

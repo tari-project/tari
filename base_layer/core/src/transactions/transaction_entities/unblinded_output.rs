@@ -23,6 +23,16 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{cmp::Ordering, ops::Shl};
+
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    tari_utilities::ByteArray,
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
     crypto::{
@@ -42,14 +52,6 @@ use crate::{
         transaction_protocol::RewindData,
         CryptoFactories,
     },
-};
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, ops::Shl};
-use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::ByteArray,
 };
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to

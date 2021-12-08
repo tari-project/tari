@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
+
+use log::*;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+use tokio_stream::wrappers::BroadcastStream;
+
 use super::{
     commands,
     commands::{AddOnionFlag, AddOnionResponse, TorCommand},
@@ -34,13 +43,6 @@ use crate::{
     tor::control_client::{event::TorControlEvent, monitor::spawn_monitor},
     transports::{TcpTransport, Transport},
 };
-use log::*;
-use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
-};
-use tokio_stream::wrappers::BroadcastStream;
 
 /// Client for the Tor control port.
 ///
@@ -270,16 +272,18 @@ impl fmt::Display for Authentication {
 
 #[cfg(test)]
 mod test {
+    use std::net::SocketAddr;
+
+    use futures::future;
+    use tari_test_utils::unpack_enum;
+    use tokio::io::AsyncWriteExt;
+    use tokio_stream::StreamExt;
+
     use super::*;
     use crate::{
         runtime,
         tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
     };
-    use futures::future;
-    use std::net::SocketAddr;
-    use tari_test_utils::unpack_enum;
-    use tokio::io::AsyncWriteExt;
-    use tokio_stream::StreamExt;
 
     async fn setup_test() -> (TorControlPortClient, test_server::State) {
         let (_, mock_state, socket) = test_server::spawn().await;

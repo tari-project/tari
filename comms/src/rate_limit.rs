@@ -26,8 +26,6 @@
 
 // This is slightly changed from the libra rate limiter implementation
 
-use futures::FutureExt;
-use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
@@ -35,6 +33,9 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+
+use futures::FutureExt;
+use pin_project::pin_project;
 use tokio::{
     sync::{AcquireError, OwnedSemaphorePermit, Semaphore},
     time,
@@ -135,9 +136,10 @@ impl<T: Stream> Stream for RateLimiter<T> {
 
 #[cfg(test)]
 mod test {
+    use futures::{stream, StreamExt};
+
     use super::*;
     use crate::runtime;
-    use futures::{stream, StreamExt};
 
     #[runtime::test]
     async fn rate_limit() {

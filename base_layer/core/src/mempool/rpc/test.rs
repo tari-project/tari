@@ -20,6 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_comms::protocol::rpc::mock::RpcRequestMock;
+use tempfile::{tempdir, TempDir};
+
 use crate::{
     mempool::{
         test_utils::mock::{create_mempool_service_mock, MempoolMockState},
@@ -27,8 +30,6 @@ use crate::{
     },
     test_helpers::create_peer_manager,
 };
-use tari_comms::protocol::rpc::mock::RpcRequestMock;
-use tempfile::{tempdir, TempDir};
 
 fn setup() -> (MempoolRpcService, MempoolMockState, RpcRequestMock, TempDir) {
     let tmp = tempdir().unwrap();
@@ -84,15 +85,16 @@ mod get_state {
 }
 
 mod get_tx_state_by_excess_sig {
+    use tari_comms::protocol::rpc::RpcStatusCode;
+    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::{
         mempool::{MempoolService, TxStorageResponse},
         proto::types::Signature,
         tari_utilities::ByteArray,
     };
-    use tari_comms::protocol::rpc::RpcStatusCode;
-    use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
-    use tari_test_utils::unpack_enum;
 
     #[tokio::test]
     async fn it_returns_the_storage_status() {
@@ -129,15 +131,16 @@ mod get_tx_state_by_excess_sig {
 }
 
 mod submit_transaction {
+    use tari_comms::protocol::rpc::RpcStatusCode;
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::{
         mempool::{MempoolService, TxStorageResponse},
         proto::types::{AggregateBody, BlindingFactor, Transaction},
         tari_utilities::ByteArray,
     };
-    use tari_comms::protocol::rpc::RpcStatusCode;
-    use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_test_utils::unpack_enum;
 
     #[tokio::test]
     async fn it_submits_transaction() {

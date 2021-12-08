@@ -20,6 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+    mem,
+    sync::Arc,
+    time::Instant,
+};
+
+use croaring::Bitmap;
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::*;
+use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
+use tari_crypto::{
+    commitment::HomomorphicCommitment,
+    tari_utilities::{hex::Hex, Hashable},
+};
+use tari_mmr::{MerkleMountainRange, MutableMmr};
+use tokio::task;
+
 use super::error::HorizonSyncError;
 use crate::{
     base_node::{
@@ -45,23 +64,6 @@ use crate::{
     },
     validation::helpers,
 };
-use croaring::Bitmap;
-use futures::{stream::FuturesUnordered, StreamExt};
-use log::*;
-use std::{
-    cmp,
-    convert::{TryFrom, TryInto},
-    mem,
-    sync::Arc,
-    time::Instant,
-};
-use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
-use tari_crypto::{
-    commitment::HomomorphicCommitment,
-    tari_utilities::{hex::Hex, Hashable},
-};
-use tari_mmr::{MerkleMountainRange, MutableMmr};
-use tokio::task;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 

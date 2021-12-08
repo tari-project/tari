@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryInto, sync::Arc};
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use digest::Digest;
+use futures::{future, stream, StreamExt};
+use log::*;
+use prost::Message;
+use tari_comms::{
+    message::{EnvelopeBody, MessageTag},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
+    pipeline::PipelineError,
+    types::{Challenge, CommsPublicKey},
+    utils::signature,
+};
+use tari_utilities::{convert::try_convert_all, ByteArray};
+use tokio::sync::mpsc;
+use tower::{Service, ServiceExt};
+
 use crate::{
     actor::DhtRequester,
     crypt,
@@ -43,22 +61,6 @@ use crate::{
         StoreAndForwardRequester,
     },
 };
-use chrono::{DateTime, NaiveDateTime, Utc};
-use digest::Digest;
-use futures::{future, stream, StreamExt};
-use log::*;
-use prost::Message;
-use std::{convert::TryInto, sync::Arc};
-use tari_comms::{
-    message::{EnvelopeBody, MessageTag},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
-    pipeline::PipelineError,
-    types::{Challenge, CommsPublicKey},
-    utils::signature,
-};
-use tari_utilities::{convert::try_convert_all, ByteArray};
-use tokio::sync::mpsc;
-use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::handler";
 
@@ -604,6 +606,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use chrono::Utc;
+    use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
+    use tari_crypto::tari_utilities::hex;
+    use tari_test_utils::collect_recv;
+    use tari_utilities::hex::Hex;
+    use tokio::{sync::mpsc, task, time::sleep};
+
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
@@ -621,13 +632,6 @@ mod test {
             service_spy,
         },
     };
-    use chrono::Utc;
-    use std::time::Duration;
-    use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
-    use tari_crypto::tari_utilities::hex;
-    use tari_test_utils::collect_recv;
-    use tari_utilities::hex::Hex;
-    use tokio::{sync::mpsc, task, time::sleep};
 
     // TODO: unit tests for static functions (check_signature, etc)
 

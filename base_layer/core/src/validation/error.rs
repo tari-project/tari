@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::HashOutput;
 use thiserror::Error;
 use tokio::task;
-
-use tari_common_types::types::HashOutput;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},

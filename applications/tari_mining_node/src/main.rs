@@ -19,28 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-use config::MinerConfig;
-use futures::stream::StreamExt;
-use log::*;
 
-mod config;
-mod difficulty;
-mod errors;
-mod miner;
-mod stratum;
-mod utils;
-
-use crate::{
-    miner::MiningReport,
-    stratum::{
-        stratum_controller::controller::Controller,
-        stratum_miner::miner::StratumMiner,
-        stratum_statistics::stats::Statistics,
-    },
-};
-use errors::{err_empty, MinerError};
-use miner::Miner;
 use std::{
     convert::TryFrom,
     sync::{
@@ -51,6 +30,12 @@ use std::{
     thread,
     time::Instant,
 };
+
+use config::MinerConfig;
+use errors::{err_empty, MinerError};
+use futures::stream::StreamExt;
+use log::*;
+use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
@@ -66,8 +51,24 @@ use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
+use crate::{
+    miner::MiningReport,
+    stratum::{
+        stratum_controller::controller::Controller,
+        stratum_miner::miner::StratumMiner,
+        stratum_statistics::stats::Statistics,
+    },
+};
+
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
+
+mod config;
+mod difficulty;
+mod errors;
+mod miner;
+mod stratum;
+mod utils;
 
 /// Application entry point
 fn main() {

@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashMap;
+
+use tokio::sync::mpsc;
+
 use crate::{
     peer_manager::NodeId,
     protocol::{
@@ -32,8 +36,6 @@ use crate::{
     },
     Substream,
 };
-use std::collections::HashMap;
-use tokio::sync::mpsc;
 
 pub type ProtocolNotificationTx<TSubstream> = mpsc::Sender<ProtocolNotification<TSubstream>>;
 pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotification<TSubstream>>;
@@ -141,9 +143,10 @@ impl ProtocolExtension for Protocols<Substream> {
 
 #[cfg(test)]
 mod test {
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::runtime;
-    use tari_test_utils::unpack_enum;
 
     #[test]
     fn add() {

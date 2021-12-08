@@ -23,16 +23,15 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_crypto::tari_utilities::ByteArrayError;
-use thiserror::Error;
-use tokio::sync::broadcast::error::RecvError;
-
 use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction_entities::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
+use tokio::sync::broadcast::error::RecvError;
 
 use crate::{
     error::WalletStorageError,

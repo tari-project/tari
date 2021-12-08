@@ -20,30 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
-        recovery::StandardUtxoRecoverer,
-        resources::OutputManagerResources,
-        storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
-        },
-        tasks::TxoValidationTask,
-        MasterKeyManager,
-    },
-    types::HashDigest,
-};
+use std::{convert::TryInto, fmt, fmt::Display, sync::Arc};
+
 use blake2::Digest;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{convert::TryInto, fmt, fmt::Display, sync::Arc};
 use tari_common_types::{
     transaction::TxId,
     types::{HashOutput, PrivateKey, PublicKey},
@@ -73,6 +56,25 @@ use tari_crypto::{
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
+
+use crate::{
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
+        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        recovery::StandardUtxoRecoverer,
+        resources::OutputManagerResources,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+        },
+        tasks::TxoValidationTask,
+        MasterKeyManager,
+    },
+    types::HashDigest,
+};
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 

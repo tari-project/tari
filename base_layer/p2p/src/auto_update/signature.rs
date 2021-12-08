@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::auto_update::dns::UpdateSpec;
 use tari_utilities::hex::from_hex;
+
+use crate::auto_update::dns::UpdateSpec;
 
 pub struct SignedMessageVerifier {
     maintainers: Vec<pgp::SignedPublicKey>,
@@ -65,9 +66,10 @@ impl SignedMessageVerifier {
 
 #[cfg(test)]
 mod test {
+    use pgp::Deserializable;
+
     use super::*;
     use crate::auto_update::{maintainers, MAINTAINERS};
-    use pgp::Deserializable;
 
     const VALID_SIGNATURE: &str = r#"-----BEGIN PGP SIGNATURE-----
 iQIzBAEBCAAdFiEEM3uR78XxAn2K7fY9GIWxSVBMCmQFAmDYhicACgkQGIWxSVBM

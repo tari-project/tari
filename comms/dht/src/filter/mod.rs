@@ -7,12 +7,12 @@ pub mod future;
 mod layer;
 mod predicate;
 
-pub use layer::FilterLayer;
-pub use predicate::Predicate;
+use std::task::{Context, Poll};
 
 use future::ResponseFuture;
 use futures::ready;
-use std::task::{Context, Poll};
+pub use layer::FilterLayer;
+pub use predicate::Predicate;
 use tari_comms::pipeline::PipelineError;
 use tower::Service;
 

@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{ready, stream::FusedStream, task::Context, Future, FutureExt, Stream};
 use std::{pin::Pin, task::Poll};
+
+use futures::{ready, stream::FusedStream, task::Context, Future, FutureExt, Stream};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tower_service::Service;
@@ -213,11 +214,13 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use futures::{executor::block_on, future, StreamExt};
     use std::fmt::Debug;
+
+    use futures::{executor::block_on, future, StreamExt};
     use tari_test_utils::unpack_enum;
     use tower::ServiceExt;
+
+    use super::*;
 
     #[test]
     fn await_response_future_new() {

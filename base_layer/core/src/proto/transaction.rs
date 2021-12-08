@@ -24,12 +24,11 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
-
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 
 use crate::{
     proto,
