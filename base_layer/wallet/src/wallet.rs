@@ -268,8 +268,16 @@ where
             public_key, address
         );
 
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+            self.comms
+                .connectivity()
+                .remove_peer_from_allow_list(current_node)
+                .await?;
+        }
+
         let addresses = vec![address].into();
         let peer_manager = self.comms.peer_manager();
+        let mut connectivity = self.comms.connectivity();
         if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
             // Only invalidate the identity signature if addresses are different
             if current_peer.addresses != addresses {
@@ -283,6 +291,7 @@ where
                 peer_manager.add_peer(current_peer.clone()).await?;
             }
             self.wallet_connectivity.set_base_node(current_peer);
+            connectivity.add_peer_to_allow_list(peer.node_id).await?;
         } else {
             let node_id = NodeId::from_key(&public_key);
             let peer = Peer::new(
@@ -296,6 +305,7 @@ where
             );
             peer_manager.add_peer(peer.clone()).await?;
             self.wallet_connectivity.set_base_node(peer);
+            connectivity.add_peer_to_allow_list(peer.node_id).await?;
         }
 
         Ok(())
