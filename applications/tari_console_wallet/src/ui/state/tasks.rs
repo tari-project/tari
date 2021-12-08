@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{state::UiTransactionSendStatus, UiError};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionServiceHandle};
 use tokio::sync::{broadcast, watch};
+
+use crate::ui::{state::UiTransactionSendStatus, UiError};
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 

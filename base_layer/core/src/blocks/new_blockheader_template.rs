@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Error, Formatter};
+
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{BlindingFactor, BlockHash};
+use tari_crypto::tari_utilities::hex::Hex;
+
 use crate::{
     blocks::block_header::{hash_serializer, BlockHeader},
     proof_of_work::ProofOfWork,
 };
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Error, Formatter};
-use tari_common_types::types::{BlindingFactor, BlockHash};
-use tari_crypto::tari_utilities::hex::Hex;
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.

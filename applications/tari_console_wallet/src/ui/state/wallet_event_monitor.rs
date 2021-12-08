@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{notifier::Notifier, ui::state::AppStateInner};
-use log::*;
 use std::sync::Arc;
+
+use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
@@ -32,6 +32,8 @@ use tari_wallet::{
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::{broadcast, RwLock};
+
+use crate::{notifier::Notifier, ui::state::AppStateInner};
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 

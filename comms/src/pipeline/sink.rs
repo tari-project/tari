@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::PipelineError;
-use futures::{future::BoxFuture, task::Context, FutureExt};
 use std::task::Poll;
+
+use futures::{future::BoxFuture, task::Context, FutureExt};
 use tower::Service;
+
+use super::PipelineError;
 
 /// A service which forwards and messages it gets to the given Sink
 #[derive(Clone)]

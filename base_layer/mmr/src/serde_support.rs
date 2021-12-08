@@ -23,15 +23,17 @@
 
 // TODO - move all the to_hex serde stuff into a common module
 pub mod hash {
-    use crate::Hash;
+    use std::fmt;
+
     use serde::{
         de::{self, SeqAccess, Visitor},
         ser::SerializeSeq,
         Deserializer,
         Serializer,
     };
-    use std::fmt;
     use tari_utilities::hex::{self, Hex};
+
+    use crate::Hash;
 
     pub fn serialize<S>(hashes: &[Hash], ser: S) -> Result<S::Ok, S::Error>
     where S: Serializer {

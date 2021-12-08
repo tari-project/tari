@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{sync::Arc, time::Duration};
+
 use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, CommsNode};
 use tari_comms_dht::Dht;
 use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};

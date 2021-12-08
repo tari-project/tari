@@ -20,6 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryFrom,
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use chrono::Utc;
+use futures::{future, future::Either};
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::protocol::rpc::RpcError;
+use tokio::{sync::RwLock, time};
+
 use crate::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventSender},
@@ -29,18 +43,6 @@ use crate::{
     error::WalletStorageError,
     storage::database::{WalletBackend, WalletDatabase},
 };
-use chrono::Utc;
-use futures::{future, future::Either};
-use log::*;
-use std::{
-    convert::TryFrom,
-    future::Future,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::protocol::rpc::RpcError;
-use tokio::{sync::RwLock, time};
 
 const LOG_TARGET: &str = "wallet::base_node_service::chain_metadata_monitor";
 

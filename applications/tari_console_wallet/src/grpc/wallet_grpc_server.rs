@@ -1,6 +1,7 @@
+use std::convert::TryFrom;
+
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
-use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc,
@@ -51,7 +52,6 @@ use tari_wallet::{
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
-
 use tokio::task;
 use tonic::{Request, Response, Status};
 

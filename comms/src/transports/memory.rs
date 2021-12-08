@@ -23,18 +23,20 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    memsocket,
-    memsocket::{MemoryListener, MemorySocket},
-    transports::Transport,
-};
-use futures::stream::Stream;
-use multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
     num::NonZeroU16,
     pin::Pin,
     task::{Context, Poll},
+};
+
+use futures::stream::Stream;
+use multiaddr::{Multiaddr, Protocol};
+
+use crate::{
+    memsocket,
+    memsocket::{MemoryListener, MemorySocket},
+    transports::Transport,
 };
 
 /// Transport to build in-memory connections
@@ -127,10 +129,11 @@ impl Stream for Listener {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::runtime;
     use futures::{future::join, stream::StreamExt};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use super::*;
+    use crate::runtime;
 
     #[runtime::test]
     async fn simple_listen_and_dial() -> Result<(), ::std::io::Error> {

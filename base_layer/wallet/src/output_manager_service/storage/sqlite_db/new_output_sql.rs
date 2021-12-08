@@ -19,6 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use aes_gcm::Aes256Gcm;
+use diesel::{prelude::*, SqliteConnection};
+use tari_common_types::transaction::TxId;
+use tari_crypto::tari_utilities::ByteArray;
+
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
@@ -30,12 +35,6 @@ use crate::{
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use aes_gcm::Aes256Gcm;
-
-use diesel::{prelude::*, SqliteConnection};
-
-use tari_common_types::transaction::TxId;
-use tari_crypto::tari_utilities::ByteArray;
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
 /// equivalent datatypes for the members.

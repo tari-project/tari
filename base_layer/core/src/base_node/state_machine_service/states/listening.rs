@@ -20,6 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::{Display, Formatter},
+    ops::Deref,
+    time::{Duration, Instant},
+};
+
+use log::*;
+use num_format::{Locale, ToFormattedString};
+use serde::{Deserialize, Serialize};
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tokio::sync::broadcast;
+
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
@@ -39,17 +52,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-use log::*;
-use num_format::{Locale, ToFormattedString};
-use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{Display, Formatter},
-    ops::Deref,
-    time::{Duration, Instant},
-};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
@@ -376,10 +378,11 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rand::rngs::OsRng;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
+
+    use super::*;
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);

@@ -20,13 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    outbound::message::DhtOutboundMessage,
-    proto::envelope::{DhtEnvelope, DhtHeader},
-};
+use std::task::Poll;
+
 use futures::task::Context;
 use log::*;
-use std::task::Poll;
 use tari_comms::{
     message::{MessageExt, OutboundMessage},
     pipeline::PipelineError,
@@ -34,6 +31,11 @@ use tari_comms::{
 };
 use tari_utilities::ByteArray;
 use tower::{layer::Layer, util::Oneshot, Service, ServiceExt};
+
+use crate::{
+    outbound::message::DhtOutboundMessage,
+    proto::envelope::{DhtEnvelope, DhtHeader},
+};
 
 const LOG_TARGET: &str = "comms::dht::serialize";
 
@@ -134,10 +136,11 @@ impl<S> Layer<S> for SerializeLayer {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
     use prost::Message;
     use tari_comms::{peer_manager::NodeId, runtime};
+
+    use super::*;
+    use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
 
     #[runtime::test]
     async fn serialize() {

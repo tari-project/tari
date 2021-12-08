@@ -20,6 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
+use futures::StreamExt;
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityEvent,
+    peer_manager::{NodeId, Peer},
+    validate_peer_addresses,
+    PeerConnection,
+};
+use tokio::sync::broadcast;
+
 use crate::{
     event::DhtEvent,
     network_discovery::{
@@ -31,16 +43,6 @@ use crate::{
     rpc,
     DhtConfig,
 };
-use futures::StreamExt;
-use log::*;
-use std::convert::TryInto;
-use tari_comms::{
-    connectivity::ConnectivityEvent,
-    peer_manager::{NodeId, Peer},
-    validate_peer_addresses,
-    PeerConnection,
-};
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 

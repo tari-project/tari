@@ -1,7 +1,7 @@
-use once_cell::sync::Lazy;
-use prometheus::opts;
 use std::sync::{Arc, RwLock};
 
+use once_cell::sync::Lazy;
+use prometheus::opts;
 pub use prometheus::{
     core::Collector,
     proto,

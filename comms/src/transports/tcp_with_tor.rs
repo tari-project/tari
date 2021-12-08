@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
+use multiaddr::Multiaddr;
+use tokio::net::TcpStream;
+
 use super::Transport;
 use crate::transports::{dns::TorDnsResolver, predicate::is_onion_address, SocksConfig, SocksTransport, TcpTransport};
-use multiaddr::Multiaddr;
-use std::io;
-use tokio::net::TcpStream;
 
 /// Transport implementation for TCP with Tor support
 #[derive(Clone, Default)]

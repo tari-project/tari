@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use tari_common_types::types::{BlindingFactor, BLOCK_HASH_LENGTH};
+use tari_crypto::tari_utilities::ByteArray;
+
 use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     proof_of_work::ProofOfWork,
 };
-use std::convert::{TryFrom, TryInto};
-use tari_common_types::types::{BlindingFactor, BLOCK_HASH_LENGTH};
-use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- Block --------------------------------------------//
 

@@ -72,18 +72,11 @@ use std::{
     },
 };
 
+use error::MempoolProtocolError;
 use futures::{stream, SinkExt, Stream, StreamExt};
+pub use initializer::MempoolSyncInitializer;
 use log::*;
 use prost::Message;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::Semaphore,
-    task,
-};
-
-use error::MempoolProtocolError;
-pub use initializer::MempoolSyncInitializer;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx},
     framing,
@@ -93,6 +86,12 @@ use tari_comms::{
     protocol::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx},
     Bytes,
     PeerConnection,
+};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::Semaphore,
+    task,
 };
 
 use crate::{

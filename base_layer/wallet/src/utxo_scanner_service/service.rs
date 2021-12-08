@@ -20,8 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use futures::FutureExt;
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::HashOutput;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
+use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    sync::{broadcast, watch},
+    task,
+};
+
 use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     storage::database::{WalletBackend, WalletDatabase},
@@ -31,20 +45,6 @@ use crate::{
         utxo_scanner_task::UtxoScannerTask,
         uxto_scanner_service_builder::{UtxoScannerMode, UtxoScannerServiceBuilder},
     },
-};
-
-use crate::base_node_service::handle::BaseNodeEvent;
-use futures::FutureExt;
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tari_common_types::types::HashOutput;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
-use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    sync::{broadcast, watch},
-    task,
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";

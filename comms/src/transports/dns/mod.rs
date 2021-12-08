@@ -29,11 +29,12 @@ mod system;
 pub use system::SystemDnsResolver;
 
 mod tor;
+use std::{net::SocketAddr, sync::Arc};
+
+use futures::future::BoxFuture;
 pub use tor::TorDnsResolver;
 
 use crate::multiaddr::Multiaddr;
-use futures::future::BoxFuture;
-use std::{net::SocketAddr, sync::Arc};
 
 pub type DnsResolverRef = Arc<dyn DnsResolver>;
 

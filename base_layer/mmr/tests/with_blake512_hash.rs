@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::string::ToString;
+
 use blake2::Blake2b;
 use digest::Digest;
-use std::string::ToString;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::MerkleMountainRange;
 #[allow(clippy::vec_init_then_push)]

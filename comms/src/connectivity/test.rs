@@ -19,6 +19,13 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{sync::Arc, time::Duration};
+
+use futures::{future, StreamExt};
+use tari_shutdown::Shutdown;
+use tari_test_utils::{collect_try_recv, streams, unpack_enum};
+use tokio::sync::{broadcast, mpsc};
+
 use super::{
     config::ConnectivityConfig,
     connection_pool::ConnectionStatus,
@@ -40,11 +47,6 @@ use crate::{
     NodeIdentity,
     PeerManager,
 };
-use futures::{future, StreamExt};
-use std::{sync::Arc, time::Duration};
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_try_recv, streams, unpack_enum};
-use tokio::sync::{broadcast, mpsc};
 
 #[allow(clippy::type_complexity)]
 fn setup_connectivity_manager(

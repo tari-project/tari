@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
+use chrono::NaiveDateTime;
+use digest::Digest;
+use tari_comms::{message::MessageExt, types::Challenge};
+use tari_utilities::{hex, hex::Hex};
+
 use crate::{
     inbound::DecryptedDhtMessage,
     proto::envelope::DhtHeader,
     schema::stored_messages,
     store_forward::message::StoredMessagePriority,
 };
-use chrono::NaiveDateTime;
-use digest::Digest;
-use std::convert::TryInto;
-use tari_comms::{message::MessageExt, types::Challenge};
-use tari_utilities::{hex, hex::Hex};
 
 #[derive(Clone, Debug, Insertable, Default)]
 #[table_name = "stored_messages"]

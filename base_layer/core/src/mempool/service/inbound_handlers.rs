@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
-
-use tari_comms::peer_manager::NodeId;
 
 use crate::{
     base_node::comms_interface::BlockEvent,

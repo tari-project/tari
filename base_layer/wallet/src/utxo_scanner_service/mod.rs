@@ -1,3 +1,12 @@
+use std::sync::Arc;
+
+use futures::future;
+use log::*;
+use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
+use tari_core::transactions::CryptoFactories;
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::broadcast;
+
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
@@ -10,13 +19,6 @@ use crate::{
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
-use futures::future;
-use log::*;
-use std::sync::Arc;
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
-use tari_core::transactions::CryptoFactories;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::broadcast;
 
 pub mod error;
 pub mod handle;

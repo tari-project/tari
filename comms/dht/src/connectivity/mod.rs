@@ -24,11 +24,10 @@
 mod test;
 
 mod metrics;
-pub use metrics::{MetricsCollector, MetricsCollectorHandle};
-
-use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
-use log::*;
 use std::{sync::Arc, time::Instant};
+
+use log::*;
+pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
@@ -39,6 +38,8 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
+
+use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 

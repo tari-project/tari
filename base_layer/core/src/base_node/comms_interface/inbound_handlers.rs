@@ -1,16 +1,3 @@
-use std::{
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-
-use log::*;
-use strum_macros::Display;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tokio::sync::Semaphore;
-
-use tari_common_types::types::{BlockHash, HashOutput};
-use tari_comms::peer_manager::NodeId;
-
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -32,6 +19,19 @@ use tari_comms::peer_manager::NodeId;
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use log::*;
+use strum_macros::Display;
+use tari_common_types::types::{BlockHash, HashOutput};
+use tari_comms::peer_manager::NodeId;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tokio::sync::Semaphore;
+
 use crate::{
     base_node::comms_interface::{
         error::CommsInterfaceError,

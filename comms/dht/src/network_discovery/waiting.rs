@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::state_machine::StateEvent;
-use log::*;
 use std::time::Duration;
+
+use log::*;
 use tokio::time;
+
+use super::state_machine::StateEvent;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 

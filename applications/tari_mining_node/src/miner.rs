@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use super::difficulty::BlockHeaderSha3;
-use crossbeam::channel::{bounded, Select, Sender, TrySendError};
-use futures::Stream;
-use log::*;
 use std::{
     pin::Pin,
     task::{Context, Poll, Waker},
     thread,
     time::{Duration, Instant},
 };
+
+use crossbeam::channel::{bounded, Select, Sender, TrySendError};
+use futures::Stream;
+use log::*;
 use tari_app_grpc::{conversions::timestamp, tari_rpc::BlockHeader};
 use thread::JoinHandle;
+
+use super::difficulty::BlockHeaderSha3;
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::standalone";
 

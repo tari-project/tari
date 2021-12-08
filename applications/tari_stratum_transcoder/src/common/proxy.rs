@@ -20,12 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::StratumTranscoderProxyError;
+use std::convert::TryInto;
+
 use bytes::BytesMut;
 use futures::StreamExt;
 use hyper::{header, http::response, Body, Response, StatusCode};
 use serde_json as json;
-use std::convert::TryInto;
+
+use crate::error::StratumTranscoderProxyError;
 
 pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, StratumTranscoderProxyError> {
     let body_str = json::to_string(body)?;

@@ -23,7 +23,6 @@
 use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{

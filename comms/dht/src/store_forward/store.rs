@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, task::Poll};
+
+use futures::{future::BoxFuture, task::Context};
+use log::*;
+use tari_comms::{
+    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    pipeline::PipelineError,
+};
+use tari_utilities::epoch_time::EpochTime;
+use tower::{layer::Layer, Service, ServiceExt};
+
 use super::StoreAndForwardRequester;
 use crate::{
     inbound::DecryptedDhtMessage,
@@ -31,15 +42,6 @@ use crate::{
         SafResult,
     },
 };
-use futures::{future::BoxFuture, task::Context};
-use log::*;
-use std::{sync::Arc, task::Poll};
-use tari_comms::{
-    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
-    pipeline::PipelineError,
-};
-use tari_utilities::epoch_time::EpochTime;
-use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::store";
 
@@ -448,6 +450,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use chrono::Utc;
+    use tari_comms::{runtime, wrap_in_envelope_body};
+    use tari_test_utils::async_assert_eventually;
+    use tari_utilities::hex::Hex;
+
     use super::*;
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
@@ -460,11 +469,6 @@ mod test {
             service_spy,
         },
     };
-    use chrono::Utc;
-    use std::time::Duration;
-    use tari_comms::{runtime, wrap_in_envelope_body};
-    use tari_test_utils::async_assert_eventually;
-    use tari_utilities::hex::Hex;
 
     #[runtime::test]
     async fn cleartext_message_no_origin() {

@@ -23,6 +23,29 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::{
+    cmp::Ordering,
+    fmt::{Display, Formatter},
+};
+
+use blake2::Digest;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{
+    BlindingFactor,
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    MessageHash,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+    RangeProofService,
+};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+
 use crate::{
     crypto::{
         commitment::HomomorphicCommitmentFactory,
@@ -44,27 +67,6 @@ use crate::{
         },
     },
 };
-use blake2::Digest;
-use rand::rngs::OsRng;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fmt::{Display, Formatter},
-};
-use tari_common_types::types::{
-    BlindingFactor,
-    Challenge,
-    ComSignature,
-    Commitment,
-    CommitmentFactory,
-    HashDigest,
-    MessageHash,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
-};
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without

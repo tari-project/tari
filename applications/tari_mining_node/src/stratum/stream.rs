@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::stratum::error::Error;
-use bufstream::BufStream;
-use native_tls::{TlsConnector, TlsStream};
 use std::{
     self,
     io::{self, BufRead, Read, Write},
     net::TcpStream,
 };
+
+use bufstream::BufStream;
+use native_tls::{TlsConnector, TlsStream};
+
+use crate::stratum::error::Error;
 
 pub(crate) struct Stream {
     stream: Option<BufStream<TcpStream>>,

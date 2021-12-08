@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{memsocket::MemorySocket, multiaddr::Multiaddr, runtime, test_utils::transport::build_connected_sockets};
-use futures::{lock::Mutex, stream, SinkExt, StreamExt};
 use std::sync::Arc;
+
+use futures::{lock::Mutex, stream, SinkExt, StreamExt};
 use tokio_util::codec::{Framed, LinesCodec};
+
+use crate::{memsocket::MemorySocket, multiaddr::Multiaddr, runtime, test_utils::transport::build_connected_sockets};
 
 pub async fn spawn() -> (Multiaddr, State, MemorySocket) {
     let (addr, socket_out, socket_in) = build_connected_sockets().await;

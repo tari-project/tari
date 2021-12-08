@@ -22,9 +22,8 @@
 
 use std::sync::Arc;
 
-use thiserror::Error;
-
 use tari_common::configuration::Network;
+use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::{

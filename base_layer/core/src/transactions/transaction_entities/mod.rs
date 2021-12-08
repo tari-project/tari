@@ -85,6 +85,18 @@ pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &
 
 #[cfg(test)]
 mod test {
+    use rand::{self, rngs::OsRng};
+    use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        range_proof::{RangeProofError, RangeProofService},
+        ristretto::pedersen::PedersenCommitmentFactory,
+        script,
+        script::{ExecutionStack, StackItem},
+        tari_utilities::{hex::Hex, Hashable},
+    };
+
     use super::*;
     use crate::{
         transactions::{
@@ -96,17 +108,6 @@ mod test {
             CryptoFactories,
         },
         txn_schema,
-    };
-    use rand::{self, rngs::OsRng};
-    use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        range_proof::{RangeProofError, RangeProofService},
-        ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::{ExecutionStack, StackItem},
-        tari_utilities::{hex::Hex, Hashable},
     };
 
     #[test]
@@ -482,9 +483,8 @@ mod test {
     mod output_features {
         use std::io;
 
-        use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
         use super::*;
+        use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
         #[test]
         fn consensus_encode_minimal() {

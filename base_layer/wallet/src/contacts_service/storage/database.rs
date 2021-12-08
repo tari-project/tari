@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::contacts_service::error::ContactsServiceStorageError;
-use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use log::*;
 use tari_comms::types::CommsPublicKey;
+
+use crate::contacts_service::error::ContactsServiceStorageError;
 
 const LOG_TARGET: &str = "wallet::contacts_service::database";
 

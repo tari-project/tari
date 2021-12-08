@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::MempoolError;
 use futures::io;
 use tari_comms::peer_manager::NodeId;
 use thiserror::Error;
+
+use crate::mempool::MempoolError;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]

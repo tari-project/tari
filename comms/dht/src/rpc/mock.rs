@@ -20,15 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::DhtRpcService,
-};
 use tari_comms::protocol::rpc::{
     mock::{RpcMock, RpcMockMethodState},
     Request,
     RpcStatus,
     Streaming,
+};
+
+use crate::{
+    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
+    rpc::DhtRpcService,
 };
 
 // TODO: This mock can be generated

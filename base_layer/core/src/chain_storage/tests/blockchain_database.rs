@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common::configuration::Network;
+use tari_test_utils::unpack_enum;
+
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -43,9 +48,6 @@ use crate::{
     },
     txn_schema,
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_test_utils::unpack_enum;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
@@ -250,9 +252,8 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
-    use crate::chain_storage::ChainStorageError;
-
     use super::*;
+    use crate::chain_storage::ChainStorageError;
 
     #[test]
     fn it_returns_none_given_empty_vec() {

@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
+
 use futures::task::Context;
 use log::*;
-use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
 use tower::{layer::Layer, Service};
 
 const LOG_TARGET: &str = "comms::middleware::message_logging";

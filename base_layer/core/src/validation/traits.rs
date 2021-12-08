@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 use crate::{

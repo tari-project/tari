@@ -30,9 +30,6 @@ mod test {
 
     use chrono::Utc;
     use rand::rngs::OsRng;
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
-
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
@@ -44,6 +41,7 @@ mod test {
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
@@ -54,6 +52,7 @@ mod test {
         test_utils::make_wallet_database_connection,
         transaction_service::{
             handle::TransactionEvent,
+            protocols::TxRejection,
             storage::{
                 database::TransactionDatabase,
                 models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
@@ -61,9 +60,9 @@ mod test {
             },
         },
     };
+    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
 
     use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
-    use tari_wallet::transaction_service::protocols::TxRejection;
 
     #[derive(Debug)]
     struct CallbackState {

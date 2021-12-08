@@ -23,7 +23,6 @@
 use std::{sync::Arc, time::Duration};
 
 use serde::{Deserialize, Serialize};
-
 use tari_common::configuration::seconds;
 use tari_common_types::types::Signature;
 
@@ -120,14 +119,13 @@ mod test {
 
     use tari_common::configuration::Network;
 
+    use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
         transactions::tari_amount::MicroTari,
         tx,
     };
-
-    use super::*;
 
     #[test]
     fn test_insert_rlu_and_ttl() {

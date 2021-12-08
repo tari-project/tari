@@ -37,6 +37,13 @@
 
 mod memory_net;
 
+use std::{iter::repeat_with, time::Duration};
+
+use futures::future;
+use rand::{rngs::OsRng, Rng};
+use tari_comms::peer_manager::PeerFeatures;
+use tokio::sync::mpsc;
+
 use crate::memory_net::utilities::{
     discovery,
     do_network_wide_propagation,
@@ -49,11 +56,6 @@ use crate::memory_net::utilities::{
     shutdown_all,
     take_a_break,
 };
-use futures::future;
-use rand::{rngs::OsRng, Rng};
-use std::{iter::repeat_with, time::Duration};
-use tari_comms::peer_manager::PeerFeatures;
-use tokio::sync::mpsc;
 
 // Size of network
 const NUM_NODES: usize = 40;

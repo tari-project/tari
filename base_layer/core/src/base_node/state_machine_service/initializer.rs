@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
-use tokio::sync::{broadcast, watch};
-
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::{broadcast, watch};
 
 use crate::{
     base_node::{

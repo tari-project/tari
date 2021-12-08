@@ -24,8 +24,6 @@ use std::{convert::TryFrom, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tokio::sync::{broadcast, mpsc};
-
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -40,6 +38,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},

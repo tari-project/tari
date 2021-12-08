@@ -23,6 +23,14 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{
+    cmp,
+    collections::{hash_map::Entry, HashMap},
+    num::NonZeroU16,
+    pin::Pin,
+    sync::Mutex,
+};
+
 use bytes::{Buf, Bytes};
 use futures::{
     channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -31,13 +39,6 @@ use futures::{
     task::{Context, Poll},
 };
 use log::*;
-use std::{
-    cmp,
-    collections::{hash_map::Entry, HashMap},
-    num::NonZeroU16,
-    pin::Pin,
-    sync::Mutex,
-};
 use tokio::{
     io,
     io::{AsyncRead, AsyncWrite, ErrorKind, ReadBuf},
@@ -508,11 +509,12 @@ impl AsyncWrite for MemorySocket {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{framing, runtime};
     use futures::SinkExt;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_stream::StreamExt;
+
+    use super::*;
+    use crate::{framing, runtime};
 
     #[test]
     fn listener_bind() -> io::Result<()> {

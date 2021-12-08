@@ -20,26 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{
-    error::OutputManagerStorageError,
-    service::Balance,
-    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
-};
-use tari_crypto::tari_utilities::hex::Hex;
-
-use crate::output_manager_service::service::UTXOSelectionStrategy;
-use aes_gcm::Aes256Gcm;
-use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use aes_gcm::Aes256Gcm;
+use log::*;
 use tari_common_types::{
     transaction::TxId,
     types::{BlindingFactor, Commitment, HashOutput},
 };
 use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::TransactionOutput};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::cipher_seed::CipherSeed;
+
+use crate::output_manager_service::{
+    error::OutputManagerStorageError,
+    service::{Balance, UTXOSelectionStrategy},
+    storage::models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
+};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 

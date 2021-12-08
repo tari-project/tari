@@ -27,19 +27,11 @@
 //!
 //! [DhtRequest]: ./enum.DhtRequest.html
 
-use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
-    dedup::DedupCacheDatabase,
-    discovery::DhtDiscoveryError,
-    outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
-    proto::{dht::JoinMessage, envelope::DhtMessageType},
-    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
-    DhtConfig,
-};
+use std::{cmp, fmt, fmt::Display, sync::Arc};
+
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
-use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
@@ -54,6 +46,16 @@ use tokio::{
     task,
     time,
     time::MissedTickBehavior,
+};
+
+use crate::{
+    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    dedup::DedupCacheDatabase,
+    discovery::DhtDiscoveryError,
+    outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
+    proto::{dht::JoinMessage, envelope::DhtMessageType},
+    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -710,12 +712,6 @@ impl DhtActor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        broadcast_strategy::BroadcastClosestRequest,
-        envelope::NodeDestination,
-        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
-    };
     use chrono::{DateTime, Utc};
     use tari_comms::{
         runtime,
@@ -723,6 +719,13 @@ mod test {
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
+
+    use super::*;
+    use crate::{
+        broadcast_strategy::BroadcastClosestRequest,
+        envelope::NodeDestination,
+        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
+    };
 
     async fn db_connection() -> DbConnection {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();

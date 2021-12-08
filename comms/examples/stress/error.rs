@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 
 use std::io;
+
 use tari_comms::{
     connectivity::ConnectivityError,
     message::OutboundMessage,

@@ -54,9 +54,10 @@ impl<'a, T> ConsensusEncodingWrapper<'a, T> {
 // TODO: move traits and implement consensus encoding for TariScript
 //       for now, this wrapper will do that job
 mod tariscript_impl {
+    use tari_crypto::script::TariScript;
+
     use super::*;
     use crate::common::byte_counter::ByteCounter;
-    use tari_crypto::script::TariScript;
 
     impl<'a> ConsensusEncoding for ConsensusEncodingWrapper<'a, TariScript> {
         fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {

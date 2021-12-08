@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_options::ConnectionOptions, error::SqliteStorageError};
 use core::{
     option::Option::{None, Some},
     result::{
@@ -29,11 +28,14 @@ use core::{
     },
     time::Duration,
 };
+
 use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
     SqliteConnection,
 };
 use log::*;
+
+use crate::{connection_options::ConnectionOptions, error::SqliteStorageError};
 
 const LOG_TARGET: &str = "common_sqlite::sqlite_connection_pool";
 

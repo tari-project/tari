@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Error, Formatter};
+
+use randomx_rs::RandomXFlag;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::NodeId;
+
 use crate::base_node::{
     state_machine_service::states::{
         BlockSync,
@@ -34,10 +40,6 @@ use crate::base_node::{
     },
     sync::SyncPeer,
 };
-use randomx_rs::RandomXFlag;
-use std::fmt::{Display, Error, Formatter};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug)]
 pub enum BaseNodeState {

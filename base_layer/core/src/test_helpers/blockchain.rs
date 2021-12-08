@@ -29,7 +29,6 @@ use std::{
 };
 
 use croaring::Bitmap;
-
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -38,6 +37,7 @@ use tari_common_types::{
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
+use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
         genesis_block::get_weatherwax_genesis_block,
@@ -85,8 +85,6 @@ use crate::{
         DifficultyCalculator,
     },
 };
-
-use super::{create_block, mine_to_difficulty};
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

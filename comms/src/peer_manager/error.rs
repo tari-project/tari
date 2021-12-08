@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use std::sync::PoisonError;
+
 use tari_storage::KeyValStoreError;
 use thiserror::Error;
 

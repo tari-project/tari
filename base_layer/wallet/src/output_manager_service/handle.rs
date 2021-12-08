@@ -20,13 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{
-    error::OutputManagerError,
-    service::Balance,
-    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
-};
-use aes_gcm::Aes256Gcm;
 use std::{fmt, sync::Arc};
+
+use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
     types::{HashOutput, PublicKey},
@@ -42,6 +38,12 @@ use tari_crypto::{script::TariScript, tari_utilities::hex::Hex};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+
+use crate::output_manager_service::{
+    error::OutputManagerError,
+    service::Balance,
+    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
+};
 
 /// API Request enum
 pub enum OutputManagerRequest {

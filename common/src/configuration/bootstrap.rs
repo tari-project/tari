@@ -47,6 +47,17 @@
 //!                                      set: [env: TARI_LOG_CONFIGURATION=]
 //! ```
 
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    io,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
+use structopt::StructOpt;
+
 use super::{
     error::ConfigError,
     utils::{config_installer, load_configuration},
@@ -62,15 +73,6 @@ use crate::{
     DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-    io,
-    net::SocketAddr,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-use structopt::StructOpt;
 
 #[derive(StructOpt, Debug, Clone)]
 pub struct ConfigBootstrap {
@@ -395,6 +397,11 @@ impl Display for ApplicationType {
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
+    use structopt::StructOpt;
+    use tempfile::tempdir;
+
     use crate::{
         configuration::bootstrap::ApplicationType,
         dir_utils,
@@ -404,9 +411,6 @@ mod test {
         DEFAULT_BASE_NODE_LOG_CONFIG,
         DEFAULT_CONFIG,
     };
-    use std::path::PathBuf;
-    use structopt::StructOpt;
-    use tempfile::tempdir;
 
     #[test]
     fn test_bootstrap_and_load_configuration() {

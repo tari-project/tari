@@ -24,8 +24,6 @@ use std::sync::Arc;
 
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{inputs, script};
-
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
@@ -60,6 +58,7 @@ use tari_core::{
         ValidationError,
     },
 };
+use tari_crypto::{inputs, script};
 
 use crate::helpers::{
     block_builders::{

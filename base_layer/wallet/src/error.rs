@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::error::BaseNodeServiceError,
-    contacts_service::error::ContactsServiceError,
-    output_manager_service::error::OutputManagerError,
-    storage::database::DbKey,
-    transaction_service::error::TransactionServiceError,
-    utxo_scanner_service::error::UtxoScannerError,
-};
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
@@ -45,6 +37,15 @@ use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::ServiceInitializationError;
 use thiserror::Error;
+
+use crate::{
+    base_node_service::error::BaseNodeServiceError,
+    contacts_service::error::ContactsServiceError,
+    output_manager_service::error::OutputManagerError,
+    storage::database::DbKey,
+    transaction_service::error::TransactionServiceError,
+    utxo_scanner_service::error::UtxoScannerError,
+};
 
 #[derive(Debug, Error)]
 pub enum WalletError {

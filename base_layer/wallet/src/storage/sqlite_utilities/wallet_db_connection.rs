@@ -22,12 +22,13 @@
 
 use std::{fs::File, sync::Arc};
 
-use crate::error::WalletStorageError;
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+
+use crate::error::WalletStorageError;
 
 #[derive(Clone)]
 pub struct WalletDbConnection {

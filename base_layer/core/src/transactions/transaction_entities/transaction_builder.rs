@@ -23,13 +23,14 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use tari_common_types::types::{BlindingFactor, HashOutput};
+
 use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::MicroTari,
     transaction_entities::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
-use tari_common_types::types::{BlindingFactor, HashOutput};
 
 //----------------------------------------  Transaction Builder   ----------------------------------------------------//
 pub struct TransactionBuilder {

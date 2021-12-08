@@ -20,6 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, sync::Arc};
+
+use log::*;
+use multiaddr::Multiaddr;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use time::Duration;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc, oneshot},
+    task,
+    time,
+};
+use tracing::{span, Instrument, Level};
+
 use super::{
     dialer::{Dialer, DialerRequest},
     error::ConnectionManagerError,
@@ -37,18 +51,6 @@ use crate::{
     transports::{TcpTransport, Transport},
     PeerManager,
 };
-use log::*;
-use multiaddr::Multiaddr;
-use std::{fmt, sync::Arc};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use time::Duration;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc, oneshot},
-    task,
-    time,
-};
-use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 

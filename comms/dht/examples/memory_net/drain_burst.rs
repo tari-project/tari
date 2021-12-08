@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{Future, Stream, StreamExt};
 use std::{
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::{Future, Stream, StreamExt};
 
 pub struct DrainBurst<'a, St>
 where St: Stream + ?Sized
@@ -68,9 +69,10 @@ where St: ?Sized + Stream + Unpin
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use futures::stream;
     use tari_comms::runtime;
+
+    use super::*;
 
     #[runtime::test]
     async fn drain_terminating_stream() {

@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
 use std::sync::Arc;
+
+use rand::rngs::OsRng;
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,

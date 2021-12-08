@@ -20,19 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::memory_net::{
-    utilities::{get_short_name, NodeEventRx, TestNode},
-    DrainBurst,
-};
+use std::{collections::HashMap, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
+
 use lazy_static::lazy_static;
 use petgraph::{
     dot::Dot,
     stable_graph::{NodeIndex, StableGraph},
     visit::{Bfs, IntoNodeReferences},
 };
-use std::{collections::HashMap, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
 use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
 use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
+
+use crate::memory_net::{
+    utilities::{get_short_name, NodeEventRx, TestNode},
+    DrainBurst,
+};
 
 const TEMP_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet_temp";
 

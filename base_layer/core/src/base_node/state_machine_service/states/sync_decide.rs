@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use crate::{
     base_node::{
         state_machine_service::{
@@ -30,7 +32,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-use log::*;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 
@@ -127,9 +128,10 @@ impl From<HeaderSync> for DecideNextSync {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rand::{rngs::OsRng, seq::SliceRandom};
     use tari_common_types::chain_metadata::ChainMetadata;
+
+    use super::*;
 
     mod find_best_latency {
         use super::*;

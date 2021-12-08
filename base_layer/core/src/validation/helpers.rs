@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp::Ordering;
+
+use log::*;
+use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script::TariScript,
+    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
+};
+
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
@@ -48,14 +58,6 @@ use crate::{
         CryptoFactories,
     },
     validation::ValidationError,
-};
-use log::*;
-use std::cmp::Ordering;
-use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script::TariScript,
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
 };
 
 pub const LOG_TARGET: &str = "c::val::helpers";

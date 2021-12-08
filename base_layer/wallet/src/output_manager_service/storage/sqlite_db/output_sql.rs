@@ -20,27 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{
-        error::OutputManagerStorageError,
-        service::Balance,
-        storage::{
-            models::{DbUnblindedOutput, OutputStatus},
-            sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
-        },
-    },
-    schema::outputs,
-    util::{
-        diesel_ext::ExpectedRowsExtension,
-        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    },
-};
-use aes_gcm::Aes256Gcm;
+use std::convert::TryFrom;
 
-use crate::output_manager_service::service::UTXOSelectionStrategy;
+use aes_gcm::Aes256Gcm;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
-use std::convert::TryFrom;
 use tari_common_types::{
     transaction::TxId,
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
@@ -57,6 +41,22 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
+};
+
+use crate::{
+    output_manager_service::{
+        error::OutputManagerStorageError,
+        service::{Balance, UTXOSelectionStrategy},
+        storage::{
+            models::{DbUnblindedOutput, OutputStatus},
+            sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
+        },
+    },
+    schema::outputs,
+    util::{
+        diesel_ext::ExpectedRowsExtension,
+        encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
+    },
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";

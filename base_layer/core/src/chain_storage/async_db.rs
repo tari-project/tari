@@ -25,7 +25,6 @@ use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, Signature},

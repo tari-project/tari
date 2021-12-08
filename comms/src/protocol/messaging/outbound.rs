@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::{Duration, Instant};
+
+use futures::{future::Either, SinkExt, StreamExt, TryStreamExt};
+use tokio::sync::mpsc as tokiompsc;
+use tracing::{debug, error, event, span, Instrument, Level};
+
 use super::{error::MessagingProtocolError, metrics, MessagingEvent, MessagingProtocol, SendFailReason};
 use crate::{
     connection_manager::{NegotiatedSubstream, PeerConnection},
@@ -29,10 +35,6 @@ use crate::{
     peer_manager::NodeId,
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
-use futures::{future::Either, SinkExt, StreamExt, TryStreamExt};
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc as tokiompsc;
-use tracing::{debug, error, event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.

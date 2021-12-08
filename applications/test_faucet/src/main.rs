@@ -9,9 +9,6 @@
 use std::{fs::File, io::Write};
 
 use serde::Serialize;
-use tari_crypto::{script, tari_utilities::hex::Hex};
-use tokio::{sync::mpsc, task};
-
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_core::transactions::{
     tari_amount::{MicroTari, T},
@@ -19,6 +16,8 @@ use tari_core::transactions::{
     transaction_entities::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
+use tari_crypto::{script, tari_utilities::hex::Hex};
+use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
 

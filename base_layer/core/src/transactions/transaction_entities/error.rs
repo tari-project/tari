@@ -23,9 +23,10 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]

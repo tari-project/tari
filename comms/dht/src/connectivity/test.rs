@@ -20,13 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity::{DhtConnectivity, MetricsCollector},
-    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
-    DhtConfig,
-};
-use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{iter::repeat_with, sync::Arc, time::Duration};
+
+use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures},
@@ -42,6 +38,12 @@ use tari_comms::{
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
 use tokio::sync::broadcast;
+
+use crate::{
+    connectivity::{DhtConnectivity, MetricsCollector},
+    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
+    DhtConfig,
+};
 
 async fn setup(
     config: DhtConfig,
@@ -262,9 +264,10 @@ async fn insert_neighbour() {
 mod metrics {
     use super::*;
     mod collector {
+        use tari_comms::peer_manager::NodeId;
+
         use super::*;
         use crate::connectivity::MetricsCollector;
-        use tari_comms::peer_manager::NodeId;
 
         #[runtime::test]
         async fn it_adds_message_received() {

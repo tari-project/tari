@@ -20,19 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::automation::{commands::WalletCommand, error::ParseError};
-use chrono::{DateTime, Utc};
 use core::str::SplitWhitespace;
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
 
+use chrono::{DateTime, Utc};
 use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_hash};
 use tari_common_types::types::PublicKey;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::automation::{commands::WalletCommand, error::ParseError};
 
 #[derive(Debug, Clone)]
 pub struct ParsedCommand {
@@ -397,15 +398,17 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use rand::rngs::OsRng;
+    use tari_common_types::types::PublicKey;
+    use tari_core::transactions::tari_amount::MicroTari;
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+
     use crate::automation::{
         command_parser::{parse_command, ParsedArgument},
         error::ParseError,
     };
-    use rand::rngs::OsRng;
-    use std::str::FromStr;
-    use tari_common_types::types::PublicKey;
-    use tari_core::transactions::tari_amount::MicroTari;
-    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     #[test]
     fn test_parse_command() {

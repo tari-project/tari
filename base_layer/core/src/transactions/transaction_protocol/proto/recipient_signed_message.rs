@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::protocol as proto;
-
-use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
+
+use super::protocol as proto;
+use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;
 
 impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
     type Error = String;

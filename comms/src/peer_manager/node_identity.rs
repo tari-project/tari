@@ -20,18 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, sync::RwLock};
+
+use multiaddr::Multiaddr;
+use rand::{CryptoRng, Rng};
+use serde::{Deserialize, Serialize};
+use tari_crypto::{
+    keys::{PublicKey, SecretKey},
+    tari_utilities::hex::serialize_to_hex,
+};
+
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
     peer_manager::{node_id::NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
-};
-use multiaddr::Multiaddr;
-use rand::{CryptoRng, Rng};
-use serde::{Deserialize, Serialize};
-use std::{fmt, sync::RwLock};
-use tari_crypto::{
-    keys::{PublicKey, SecretKey},
-    tari_utilities::hex::serialize_to_hex,
 };
 
 /// The public and private identity of this node on the network

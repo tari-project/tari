@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Display;
+
+use futures::future::Either;
+use log::*;
+use tokio::{runtime, sync::mpsc};
+use tower::{Service, ServiceExt};
+
 use crate::{
     message::OutboundMessage,
     pipeline::builder::OutboundPipelineConfig,
     protocol::messaging::MessagingRequest,
 };
-use futures::future::Either;
-use log::*;
-use std::fmt::Display;
-use tokio::{runtime, sync::mpsc};
-use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::pipeline::outbound";
 
@@ -118,12 +120,14 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{pipeline::SinkService, runtime, utils};
-    use bytes::Bytes;
     use std::time::Duration;
+
+    use bytes::Bytes;
     use tari_test_utils::{collect_recv, unpack_enum};
     use tokio::{runtime::Handle, time};
+
+    use super::*;
+    use crate::{pipeline::SinkService, runtime, utils};
 
     #[runtime::test]
     async fn run() {

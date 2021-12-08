@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utils::datetime::format_duration;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     time::Instant,
 };
+
+use crate::utils::datetime::format_duration;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PeerConnectionStats {

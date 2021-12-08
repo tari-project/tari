@@ -53,11 +53,12 @@ pub mod async_mempool;
 
 // Public re-exports
 #[cfg(feature = "base_node")]
-pub use self::config::{MempoolConfig, MempoolServiceConfig};
-#[cfg(feature = "base_node")]
 pub use error::MempoolError;
 #[cfg(feature = "base_node")]
 pub use mempool::Mempool;
+
+#[cfg(feature = "base_node")]
+pub use self::config::{MempoolConfig, MempoolServiceConfig};
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod proto;
@@ -69,14 +70,15 @@ pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoo
 
 #[cfg(feature = "base_node")]
 mod sync_protocol;
+use core::fmt::{Display, Error, Formatter};
+
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
-
-use crate::transactions::transaction_entities::transaction::Transaction;
-use core::fmt::{Display, Error, Formatter};
-use serde::{Deserialize, Serialize};
 use tari_common_types::types::Signature;
 use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::transactions::transaction_entities::transaction::Transaction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {

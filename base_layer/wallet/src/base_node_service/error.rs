@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connectivity_service::WalletConnectivityError, error::WalletStorageError};
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+
+use crate::{connectivity_service::WalletConnectivityError, error::WalletStorageError};
 
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {

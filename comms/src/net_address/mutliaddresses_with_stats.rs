@@ -1,8 +1,10 @@
-use super::multiaddr_with_stats::MutliaddrWithStats;
+use std::{ops::Index, time::Duration};
+
 use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{ops::Index, time::Duration};
+
+use super::multiaddr_with_stats::MutliaddrWithStats;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, Eq)]
@@ -235,8 +237,9 @@ impl From<Vec<MutliaddrWithStats>> for MultiaddressesWithStats {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use multiaddr::Multiaddr;
+
+    use super::*;
 
     #[test]
     fn test_index_impl() {

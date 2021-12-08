@@ -28,11 +28,6 @@ pub mod service;
 
 mod monitor;
 
-use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
-    connectivity_service::WalletConnectivityHandle,
-    storage::database::{WalletBackend, WalletDatabase},
-};
 use log::*;
 use tari_service_framework::{
     async_trait,
@@ -42,6 +37,12 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tokio::sync::broadcast;
+
+use crate::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    connectivity_service::WalletConnectivityHandle,
+    storage::database::{WalletBackend, WalletDatabase},
+};
 
 const LOG_TARGET: &str = "wallet::base_node_service";
 

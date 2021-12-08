@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError, PeerConnectionError};
 use thiserror::Error;
+
+use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError, PeerConnectionError};
 
 #[derive(Debug, Error)]
 pub enum ConnectivityError {

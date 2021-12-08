@@ -28,8 +28,9 @@
 //! #serde(with="seconds")
 //! pub my_var: Duration
 //! ```
-use serde::{Deserialize, Deserializer, Serializer};
 use std::time::Duration;
+
+use serde::{Deserialize, Deserializer, Serializer};
 
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
 where D: Deserializer<'de> {

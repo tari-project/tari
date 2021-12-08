@@ -20,23 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    connectivity_service::WalletConnectivityHandle,
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::OutputManagerHandle,
-        service::OutputManagerService,
-        storage::database::{OutputManagerBackend, OutputManagerDatabase},
-    },
-};
-use tari_comms::NodeIdentity;
-
 use std::sync::Arc;
 
 use futures::future;
 use log::*;
 pub(crate) use master_key_manager::MasterKeyManager;
+use tari_comms::NodeIdentity;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::{
@@ -47,6 +36,17 @@ use tari_service_framework::{
     ServiceInitializerContext,
 };
 use tokio::sync::broadcast;
+
+use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
+    connectivity_service::WalletConnectivityHandle,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        handle::OutputManagerHandle,
+        service::OutputManagerService,
+        storage::database::{OutputManagerBackend, OutputManagerDatabase},
+    },
+};
 
 pub mod config;
 pub mod error;

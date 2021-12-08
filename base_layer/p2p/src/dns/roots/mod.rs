@@ -22,7 +22,6 @@
 
 mod tls;
 pub(super) use tls::TLS_SERVER_ROOTS;
-
 use trust_dns_client::proto::rr::dnssec::{public_key::Rsa, TrustAnchor};
 
 #[inline]
