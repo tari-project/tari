@@ -40,13 +40,8 @@ use crate::{
         tari_utilities::{hex::Hex, ByteArray, Hashable},
     },
     transactions::{
-        transaction_entities,
-        transaction_entities::{
-            transaction_output::TransactionOutput,
-            OutputFeatures,
-            TransactionError,
-            UnblindedOutput,
-        },
+        transaction,
+        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
     },
 };
 
@@ -179,7 +174,7 @@ impl TransactionInput {
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
-        transaction_entities::hash_output(&self.features, &self.commitment, &self.script)
+        transaction::hash_output(&self.features, &self.commitment, &self.script)
     }
 }
 

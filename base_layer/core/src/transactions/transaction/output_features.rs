@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction_entities::OutputFlags,
+    transactions::transaction::OutputFlags,
 };
 
 /// Options for UTXO's

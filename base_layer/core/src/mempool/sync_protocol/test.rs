@@ -49,7 +49,7 @@ use crate::{
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{tari_amount::uT, test_helpers::create_tx, transaction_entities::transaction::Transaction},
+    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
     validation::mocks::MockValidator,
 };
 

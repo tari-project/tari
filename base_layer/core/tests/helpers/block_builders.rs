@@ -42,7 +42,7 @@ use tari_core::{
             TestParams,
             TransactionSchema,
         },
-        transaction_entities::{
+        transaction::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,

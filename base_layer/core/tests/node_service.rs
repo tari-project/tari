@@ -43,7 +43,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{schema_to_transaction, spend_utxos},
-        transaction_entities::OutputFeatures,
+        transaction::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,

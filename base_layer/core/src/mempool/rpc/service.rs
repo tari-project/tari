@@ -28,7 +28,7 @@ use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
     proto,
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 const LOG_TARGET: &str = "c::mempool::rpc";

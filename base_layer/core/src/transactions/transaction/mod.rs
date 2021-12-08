@@ -41,20 +41,22 @@ pub use transaction_kernel::TransactionKernel;
 pub use transaction_output::TransactionOutput;
 pub use unblinded_output::UnblindedOutput;
 
-pub(crate) mod error;
-pub(crate) mod full_rewind_result;
-pub(crate) mod kernel_builder;
-pub(crate) mod kernel_features;
-pub(crate) mod kernel_sum;
-pub(crate) mod output_features;
-pub(crate) mod output_flags;
-pub(crate) mod rewind_result;
-pub(crate) mod transaction;
-pub(crate) mod transaction_builder;
-pub(crate) mod transaction_input;
-pub(crate) mod transaction_kernel;
-pub(crate) mod transaction_output;
-pub(crate) mod unblinded_output;
+mod error;
+mod full_rewind_result;
+mod kernel_builder;
+mod kernel_features;
+mod kernel_sum;
+mod output_features;
+mod output_flags;
+mod rewind_result;
+// TODO: in future, this module can be renamed
+#[allow(clippy::module_inception)]
+mod transaction;
+mod transaction_builder;
+mod transaction_input;
+mod transaction_kernel;
+mod transaction_output;
+mod unblinded_output;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -103,7 +105,7 @@ mod test {
             tari_amount::{MicroTari, T},
             test_helpers,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_entities::OutputFeatures,
+            transaction::OutputFeatures,
             transaction_protocol::RewindData,
             CryptoFactories,
         },

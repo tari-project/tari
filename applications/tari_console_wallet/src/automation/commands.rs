@@ -46,7 +46,7 @@ use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
         tari_amount::{uT, MicroTari, Tari},
-        transaction_entities::{TransactionOutput, UnblindedOutput},
+        transaction::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_crypto::{

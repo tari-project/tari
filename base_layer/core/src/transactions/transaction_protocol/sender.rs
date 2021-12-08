@@ -46,7 +46,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction_entities::{
+        transaction::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -755,7 +755,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_entities::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,

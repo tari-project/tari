@@ -31,7 +31,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
     test_helpers::blockchain::TempDatabase,
-    transactions::{transaction_entities::UnblindedOutput, CryptoFactories},
+    transactions::{transaction::UnblindedOutput, CryptoFactories},
 };
 use tari_crypto::tari_utilities::Hashable;
 

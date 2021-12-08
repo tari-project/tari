@@ -27,7 +27,7 @@ use crate::{
         MmrTree,
         UtxoMinedInfo,
     },
-    transactions::transaction_entities::{transaction_input::TransactionInput, transaction_kernel::TransactionKernel},
+    transactions::transaction::{TransactionInput, TransactionKernel},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that

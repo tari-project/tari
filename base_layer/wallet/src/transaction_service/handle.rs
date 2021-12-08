@@ -27,7 +27,7 @@ use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_entities::{Transaction, TransactionOutput},
+    transaction::{Transaction, TransactionOutput},
 };
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;

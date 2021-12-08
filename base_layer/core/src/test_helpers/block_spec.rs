@@ -22,7 +22,7 @@
 
 use crate::{
     proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroTari, transaction_entities::transaction::Transaction},
+    transactions::{tari_amount::MicroTari, transaction::Transaction},
 };
 
 pub struct BlockSpecs {

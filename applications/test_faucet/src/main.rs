@@ -13,7 +13,7 @@ use tari_common_types::types::{Commitment, PrivateKey};
 use tari_core::transactions::{
     tari_amount::{MicroTari, T},
     test_helpers,
-    transaction_entities::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+    transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
 use tari_crypto::{script, tari_utilities::hex::Hex};

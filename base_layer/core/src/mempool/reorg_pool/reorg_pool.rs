@@ -32,7 +32,7 @@ use crate::{
         consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
         reorg_pool::{ReorgPoolError, ReorgPoolStorage},
     },
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 /// Configuration for the ReorgPool

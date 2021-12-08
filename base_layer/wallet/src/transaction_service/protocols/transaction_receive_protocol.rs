@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
-    transaction_entities::Transaction,
+    transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;

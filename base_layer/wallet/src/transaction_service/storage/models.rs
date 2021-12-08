@@ -29,7 +29,7 @@ use tari_common_types::{
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_entities::Transaction,
+    transaction::Transaction,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };

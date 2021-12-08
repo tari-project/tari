@@ -28,7 +28,7 @@ use tari_core::{
     tari_utilities::hex::HexError,
     transactions::{
         tari_amount::{MicroTariError, TariConversionError},
-        transaction_entities::TransactionError,
+        transaction::TransactionError,
     },
 };
 use tari_wallet::{

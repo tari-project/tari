@@ -89,11 +89,7 @@ use crate::{
     crypto::tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_entities::{
-            transaction_input::TransactionInput,
-            transaction_kernel::TransactionKernel,
-            transaction_output::TransactionOutput,
-        },
+        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
     },
 };
 

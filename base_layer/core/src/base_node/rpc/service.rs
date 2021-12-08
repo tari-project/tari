@@ -50,7 +50,7 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";

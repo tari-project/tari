@@ -31,7 +31,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 #[derive(Clone)]

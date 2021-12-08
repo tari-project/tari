@@ -36,12 +36,7 @@ use crate::{
     transactions::{
         tari_amount::{uT, MicroTari},
         test_helpers::{create_random_signature_from_s_key, create_utxo},
-        transaction_entities::{
-            kernel_builder::KernelBuilder,
-            output_features::OutputFeatures,
-            transaction_kernel::TransactionKernel,
-            KernelFeatures,
-        },
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
     validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},

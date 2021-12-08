@@ -93,7 +93,7 @@ use tari_crypto::{
 };
 use thiserror::Error;
 
-use crate::transactions::{tari_amount::*, transaction_entities::error::TransactionError};
+use crate::transactions::{tari_amount::*, transaction::TransactionError};
 
 pub mod proto;
 pub mod recipient;

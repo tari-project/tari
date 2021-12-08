@@ -37,7 +37,7 @@ use crate::{
     crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
+        transaction::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },

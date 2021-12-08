@@ -78,7 +78,7 @@ pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
 use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::transactions::transaction_entities::transaction::Transaction;
+use crate::transactions::transaction::Transaction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {

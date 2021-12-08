@@ -72,11 +72,7 @@ use crate::{
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_entities::{
-            transaction_input::TransactionInput,
-            transaction_kernel::TransactionKernel,
-            unblinded_output::UnblindedOutput,
-        },
+        transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{

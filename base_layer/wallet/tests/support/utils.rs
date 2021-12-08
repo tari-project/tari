@@ -27,7 +27,7 @@ use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-    transaction_entities::{OutputFeatures, TransactionInput, UnblindedOutput},
+    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},

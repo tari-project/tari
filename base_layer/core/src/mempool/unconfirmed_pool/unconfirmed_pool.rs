@@ -37,7 +37,7 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction_entities::Transaction, weight::TransactionWeight},
+    transactions::{transaction::Transaction, weight::TransactionWeight},
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -492,7 +492,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_entities::KernelFeatures,
+            transaction::KernelFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,

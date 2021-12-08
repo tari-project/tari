@@ -40,11 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction_entities::{
-            output_features::OutputFeatures,
-            transaction::Transaction,
-            unblinded_output::UnblindedOutput,
-        },
+        transaction::{OutputFeatures, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
