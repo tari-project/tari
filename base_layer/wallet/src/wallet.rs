@@ -290,8 +290,10 @@ where
                 current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
                 peer_manager.add_peer(current_peer.clone()).await?;
             }
+            connectivity
+                .add_peer_to_allow_list(current_peer.node_id.clone())
+                .await?;
             self.wallet_connectivity.set_base_node(current_peer);
-            connectivity.add_peer_to_allow_list(peer.node_id).await?;
         } else {
             let node_id = NodeId::from_key(&public_key);
             let peer = Peer::new(
@@ -304,8 +306,8 @@ where
                 String::new(),
             );
             peer_manager.add_peer(peer.clone()).await?;
+            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
             self.wallet_connectivity.set_base_node(peer);
-            connectivity.add_peer_to_allow_list(peer.node_id).await?;
         }
 
         Ok(())
