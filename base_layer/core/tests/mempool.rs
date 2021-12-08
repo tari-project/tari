@@ -52,7 +52,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
-        transaction_entities::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
+        transaction::{KernelBuilder, OutputFeatures, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
     },

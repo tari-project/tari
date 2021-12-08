@@ -45,7 +45,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction_entities::transaction_kernel::TransactionKernel,
+    transactions::transaction::TransactionKernel,
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";

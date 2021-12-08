@@ -28,7 +28,7 @@ use tari_core::{
         script::TariScript,
         tari_utilities::{ByteArray, Hashable},
     },
-    transactions::transaction_entities::TransactionOutput,
+    transactions::transaction::TransactionOutput,
 };
 
 use crate::tari_rpc as grpc;

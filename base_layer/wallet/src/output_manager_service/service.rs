@@ -38,7 +38,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction_entities::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::sender::TransactionSenderMessage,
         CoinbaseBuilder,
         CryptoFactories,

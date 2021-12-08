@@ -27,11 +27,7 @@ use tari_common_types::types::Signature;
 use tari_crypto::tari_utilities::hex::Hex;
 use ttl_cache::TtlCache;
 
-use crate::{
-    blocks::Block,
-    mempool::reorg_pool::reorg_pool::ReorgPoolConfig,
-    transactions::transaction_entities::transaction::Transaction,
-};
+use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig, transactions::transaction::Transaction};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

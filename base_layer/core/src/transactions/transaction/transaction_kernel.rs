@@ -36,7 +36,7 @@ use crate::{
     crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
     transactions::{
         tari_amount::MicroTari,
-        transaction_entities::{KernelFeatures, TransactionError},
+        transaction::{KernelFeatures, TransactionError},
         transaction_protocol::{build_challenge, TransactionMetadata},
     },
 };

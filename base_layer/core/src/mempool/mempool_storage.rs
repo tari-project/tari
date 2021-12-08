@@ -38,7 +38,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction_entities::transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction::Transaction, weight::TransactionWeight},
     validation::{MempoolTransactionValidation, ValidationError},
 };
 

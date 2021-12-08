@@ -97,7 +97,7 @@ use tokio::{
 use crate::{
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 #[cfg(test)]

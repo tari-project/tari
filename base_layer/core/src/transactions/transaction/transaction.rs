@@ -37,7 +37,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, MicroTari},
-        transaction_entities::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
         weight::TransactionWeight,
         CryptoFactories,
     },

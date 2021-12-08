@@ -37,13 +37,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction_entities::{
-            output_features::OutputFeatures,
-            transaction_kernel::TransactionKernel,
-            transaction_output::TransactionOutput,
-            KernelFeatures,
-            OutputFlags,
-        },
+        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     },
 };
 

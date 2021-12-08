@@ -28,10 +28,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::Difficulty,
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
 /// API Response enum

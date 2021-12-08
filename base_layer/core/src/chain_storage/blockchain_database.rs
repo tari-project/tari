@@ -78,7 +78,7 @@ use crate::{
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
-    transactions::transaction_entities::transaction_kernel::TransactionKernel,
+    transactions::transaction::TransactionKernel,
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,

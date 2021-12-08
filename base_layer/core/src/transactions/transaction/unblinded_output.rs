@@ -42,8 +42,8 @@ use crate::{
     },
     transactions::{
         tari_amount::MicroTari,
-        transaction_entities,
-        transaction_entities::{
+        transaction,
+        transaction::{
             transaction_input::TransactionInput,
             transaction_output::TransactionOutput,
             OutputFeatures,
@@ -201,7 +201,7 @@ impl UnblindedOutput {
     // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction_entities::hash_output(&self.features, &commitment, &self.script)
+        transaction::hash_output(&self.features, &commitment, &self.script)
     }
 }
 

@@ -35,7 +35,7 @@ use tari_common_types::{
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::Transaction};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 
 use crate::transaction_service::{
     error::TransactionStorageError,

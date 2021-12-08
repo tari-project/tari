@@ -47,7 +47,7 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_entities::Transaction,
+    transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};

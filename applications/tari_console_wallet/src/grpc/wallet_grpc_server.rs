@@ -44,7 +44,7 @@ use tari_common_types::types::{BlockHash, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::{
     tari_utilities::{hex::Hex, ByteArray},
-    transactions::{tari_amount::MicroTari, transaction_entities::UnblindedOutput},
+    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
 };
 use tari_crypto::tari_utilities::Hashable;
 use tari_wallet::{

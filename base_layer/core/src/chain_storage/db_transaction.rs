@@ -36,10 +36,7 @@ use tari_crypto::tari_utilities::{
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData},
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
 #[derive(Debug)]
