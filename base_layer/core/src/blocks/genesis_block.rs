@@ -243,6 +243,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
                 version:OutputFeaturesVersion::V0,
                 flags:OutputFlags::COINBASE_OUTPUT,
                 maturity:60,
+                recovery_byte: OutputFeatures::RECOVERY_BYTE_DEFAULT,
                 metadata: Vec::new(),
                 unique_id: None,
                 parent_public_key: None,

@@ -5206,8 +5206,8 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let features = if features.is_null() {
-        OutputFeatures::with_maturity(0)
+    let mut features = if features.is_null() {
+        OutputFeatures::default()
     } else {
         (*features).clone()
     };
@@ -5244,7 +5244,24 @@ pub unsafe extern "C" fn wallet_import_utxo(
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
-    // Todo the script_lock_height can be something other than 0, for example an HTLC transaction
+
+    let recovery_byte;
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .calculate_recovery_byte((*spending_key).clone(), amount),
+    ) {
+        Ok(v) => recovery_byte = v,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 0;
+        },
+    };
+    features.set_recovery_byte(recovery_byte);
+
+    // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),

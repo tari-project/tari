@@ -290,6 +290,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
+            features.recovery_byte as u8,
             features.metadata,
             unique_id,
             parent_public_key,
@@ -323,6 +324,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
+            recovery_byte: features.recovery_byte as u32,
         }
     }
 }

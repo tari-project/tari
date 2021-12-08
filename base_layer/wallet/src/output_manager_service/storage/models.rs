@@ -22,7 +22,7 @@
 
 use std::cmp::Ordering;
 
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, RangeProof};
+use tari_common_types::types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{
     transaction_components::UnblindedOutput,
     transaction_protocol::RewindData,
@@ -73,7 +73,7 @@ impl DbUnblindedOutput {
         factory: &CryptoFactories,
         rewind_data: &RewindData,
         spending_priority: Option<SpendingPriority>,
-        proof: Option<&RangeProof>,
+        proof: Option<&BulletRangeProof>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, proof)?;
         Ok(DbUnblindedOutput {

@@ -214,6 +214,13 @@ impl SenderTransactionInitializer {
     ) -> Result<&mut Self, BuildError> {
         let commitment_factory = PedersenCommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
+        if recovery_byte != output.features.recovery_byte {
+            self.clone().build_err(&*format!(
+                "Recovery byte not valid (expected {}, got {}), cannot add output: {:?}",
+                recovery_byte, output.features.recovery_byte, output
+            ))?;
+        }
         let e = TransactionOutput::build_metadata_signature_challenge(
             &output.script,
             &output.features,
@@ -313,7 +320,10 @@ impl SenderTransactionInitializer {
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
-    fn add_change_if_required(&mut self) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
+    fn add_change_if_required(
+        &mut self,
+        factories: &CryptoFactories,
+    ) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + self.num_recipients;
         let num_inputs = self.inputs.len();
@@ -335,7 +345,7 @@ impl SenderTransactionInitializer {
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
 
-        let output_features = self.get_recipient_output_features();
+        let mut output_features = self.get_recipient_output_features();
         let change_metadata_size = self
             .change_script
             .as_ref()
@@ -373,6 +383,10 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
+                        let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
+                        let recovery_byte =
+                            OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
+                        output_features.set_recovery_byte(recovery_byte);
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             &v,
                             &change_key.clone(),
@@ -481,7 +495,7 @@ impl SenderTransactionInitializer {
             return self.build_err("Too many inputs in transaction");
         }
         // Calculate the fee based on whether we need to add a residual change output or not
-        let (total_fee, change, change_output) = match self.add_change_if_required() {
+        let (total_fee, change, change_output) = match self.add_change_if_required(factories) {
             Ok((fee, change, output)) => (fee, change, output),
             Err(e) => return self.build_err(&e),
         };
@@ -499,10 +513,18 @@ impl SenderTransactionInitializer {
             .sender_custom_outputs
             .iter()
             .map(|o| {
+                let commitment = factories.commitment.commit_value(&o.spending_key, o.value.as_u64());
+                let mut uo = o.clone();
+                uo.features = OutputFeatures::update_recovery_byte_if_required(
+                    &commitment,
+                    self.rewind_data.as_ref(),
+                    &o.features.clone(),
+                );
+
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    o.as_rewindable_transaction_output(factories, rewind_data, None)
+                    uo.as_rewindable_transaction_output(factories, rewind_data, None)
                 } else {
-                    o.as_transaction_output(factories)
+                    uo.as_transaction_output(factories)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
