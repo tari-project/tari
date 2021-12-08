@@ -1878,6 +1878,7 @@ mod test {
         },
         util::encryption::Encryptable,
     };
+    use tari_common_types::transaction::TxId;
 
     #[test]
     fn test_crud() {
@@ -2503,7 +2504,7 @@ mod test {
                 _ => (true, false, TransactionStatus::Completed, Some(i)),
             };
             let completed_tx = CompletedTransaction {
-                tx_id: i,
+                tx_id: TxId::from(i),
                 source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),

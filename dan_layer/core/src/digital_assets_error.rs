@@ -56,6 +56,8 @@ pub enum DigitalAssetError {
     NotEnoughFunds,
     #[error("Entity {entity}:{id} was not found")]
     NotFound { entity: &'static str, id: String },
+    #[error("Not authorised: {0}")]
+    NotAuthorised(String),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

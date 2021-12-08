@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,33 +19,14 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use crate::schema::*;
 
-use super::ValidatorNodeRpcService;
-use crate::{
-    p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcServiceImpl},
-    services::mocks::{create_mempool_mock, MockMempoolService},
-};
-use tari_comms::protocol::rpc::mock::RpcRequestMock;
-use tari_core::test_helpers::create_peer_manager;
-use tari_dan_core::services::mocks::{create_mempool_mock, MockMempoolService};
-use tari_test_utils::paths::temp_tari_path;
-
-fn setup() -> (ValidatorNodeRpcServiceImpl<MockMempoolService>, RpcRequestMock) {
-    let mempool = create_mempool_mock();
-    let peer_manager = create_peer_manager(temp_tari_path());
-    let mock = RpcRequestMock::new(peer_manager);
-    let service_impl = ValidatorNodeRpcServiceImpl::new(mempool);
-    (service_impl, mock)
-}
-
-#[tokio::test]
-async fn it_works() {
-    let (service_impl, req_mock) = setup();
-    let msg = proto::SubmitInstructionRequest {
-        asset_public_key: vec![0; 32],
-        ..Default::default()
-    };
-    let request = req_mock.request_no_context(msg);
-    let response = service_impl.submit_instruction(request).await.unwrap();
-    assert_eq!(response.into_message().status, proto::Status::Accepted as i32);
+#[derive(Queryable, Insertable, Identifiable)]
+#[table_name = "tip721_tokens"]
+pub struct Tip721Token {
+  pub id: Vec<u8>,
+  pub address_id: Vec<u8>,
+  pub token_id: i64,
+  pub is_deleted: bool,
+  pub token: String,
 }

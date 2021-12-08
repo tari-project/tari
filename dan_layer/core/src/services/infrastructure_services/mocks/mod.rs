@@ -105,7 +105,7 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayl
     }
 }
 
-use crate::dan_layer::models::Payload;
+use crate::models::Payload;
 use std::fmt::Debug;
 
 #[async_trait]

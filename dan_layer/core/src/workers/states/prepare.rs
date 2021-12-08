@@ -139,13 +139,9 @@ where
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
-        let mut next_event_result = ConsensusWorkerStateEvent::Errored {
-            reason: "loop ended without setting this event".to_string(),
-        };
-
         let started = Instant::now();
         let mut chain_tx = chain_tx;
-
+        let next_event_result;
         loop {
             tokio::select! {
                 (from, message) = self.wait_for_message(inbound_services) => {
@@ -394,13 +390,14 @@ where
 mod test {
 
     use super::*;
-    use crate::dan_layer::{
+    use crate::{
         models::ViewId,
         services::{
             infrastructure_services::mocks::mock_outbound,
             mocks::{mock_payload_processor, mock_payload_provider, mock_signing_service},
         },
     };
+    use std::sync::Arc;
     use tokio::time::Duration;
 
     #[tokio::test(flavor = "multi_thread")]

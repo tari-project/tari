@@ -59,7 +59,6 @@ use tari_dan_core::{
         ConcreteAssetProcessor,
         ConcreteCommitteeManager,
         LoggingEventsPublisher,
-        MemoryInstructionLog,
         MempoolService,
         MempoolServiceHandle,
         NodeIdentitySigningService,
@@ -210,7 +209,7 @@ impl DanNode {
         let _backend = LmdbAssetStore::initialize(self.config.data_dir.join("asset_data"), Default::default())
             .map_err(|err| ExitCodes::DatabaseError(err.to_string()))?;
         // let data_store = AssetDataStore::new(backend);
-        let asset_processor = ConcreteAssetProcessor::new();
+        let asset_processor = ConcreteAssetProcessor::default();
 
         let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service.clone());
         let mut inbound = TariCommsInboundConnectionService::new();

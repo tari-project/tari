@@ -51,7 +51,7 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.to_lowercase().as_str() {
+    match method.to_lowercase().replace("_", "").as_str() {
         "balanceof" => balance_of(args, state_db),
         _ => todo!(),
     }
@@ -62,7 +62,7 @@ pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
-    match method.to_lowercase().as_str() {
+    match method.to_lowercase().replace("_", "").as_str() {
         "transfer" => transfer(args, state_db),
         _ => todo!(),
     }
@@ -105,6 +105,7 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
         message_type: "tip002::TransferRequest".to_string(),
     })?;
 
+    dbg!(&request);
     let data = state_db.get_value("owners", &request.from)?;
     match data {
         Some(data) => {
@@ -115,25 +116,26 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
                 return Err(DigitalAssetError::NotEnoughFunds);
             }
             let new_balance = balance - request.amount;
+            dbg!(new_balance);
             state_db.set_value(
                 "owners".to_string(),
                 request.from.clone(),
                 Vec::from(new_balance.to_le_bytes()),
             )?;
             let receiver_data = state_db.get_value("owners", &request.to)?;
-            let receiver_balance = match receiver_data {
+            let mut receiver_balance = match receiver_data {
                 Some(d) => {
                     let mut data2: [u8; 8] = [0; 8];
-                    data2.copy_from_slice(&data);
-                    let balance = u64::from_le_bytes(data2);
-                    balance
+                    data2.copy_from_slice(&d);
+                    
+                    u64::from_le_bytes(data2)
                 },
                 None => 0,
             };
-            receiver_balance
-                .checked_add(request.amount)
-                .ok_or_else(|| DigitalAssetError::Overflow);
-
+            dbg!(receiver_balance);
+            receiver_balance = receiver_balance
+                .checked_add(request.amount).ok_or(DigitalAssetError::Overflow)?;
+            dbg!(receiver_balance);
             state_db.set_value(
                 "owners".to_string(),
                 request.to.clone(),

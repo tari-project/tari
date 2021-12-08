@@ -28,6 +28,7 @@ use crate::{
     templates::tip002_template,
 };
 
+use crate::templates::{tip004_template, tip721_template};
 use tari_core::transactions::transaction::TemplateParameter;
 
 pub trait AssetProcessor {
@@ -55,6 +56,7 @@ pub trait AssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
+#[derive(Default)]
 pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
 }
@@ -95,6 +97,7 @@ impl AssetProcessor for ConcreteAssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         match template_id {
             TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
+            TemplateId::Tip004 => tip004_template::invoke_read_method(method, args, state_db),
             _ => {
                 todo!()
             },
@@ -103,12 +106,6 @@ impl AssetProcessor for ConcreteAssetProcessor {
 }
 
 impl ConcreteAssetProcessor {
-    pub fn new() -> Self {
-        Self {
-            template_factory: TemplateFactory {},
-        }
-    }
-
     pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_id: TemplateId,
@@ -119,6 +116,12 @@ impl ConcreteAssetProcessor {
         match template_id {
             TemplateId::Tip002 => {
                 tip002_template::invoke_method(method, &args, state_db)?;
+            },
+            TemplateId::Tip004 => {
+                tip004_template::invoke_method(method, &args, state_db)?;
+            },
+            TemplateId::Tip721 => {
+                tip721_template::invoke_method(method, &args, state_db)?;
             },
             _ => {
                 todo!()
@@ -134,6 +137,7 @@ impl ConcreteAssetProcessor {
     }
 }
 
+#[derive(Default)]
 pub struct TemplateFactory {}
 
 impl TemplateFactory {

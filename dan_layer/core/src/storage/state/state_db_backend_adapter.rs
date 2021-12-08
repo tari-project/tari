@@ -35,5 +35,6 @@ pub trait StateDbBackendAdapter: Send + Sync + Clone {
         tx: &Self::BackendTransaction,
     ) -> Result<(), Self::Error>;
     fn get(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
+    fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error>;
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }

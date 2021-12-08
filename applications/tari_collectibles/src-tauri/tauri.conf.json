@@ -7,7 +7,7 @@
     "distDir": "../web-app/build",
     "devPath": "http://localhost:3000",
     "beforeDevCommand": "cd web-app && npm start",
-    "beforeBuildCommand": ""
+    "beforeBuildCommand": "cd web-app && npm run build"
   },
   "tauri": {
     "bundle": {

@@ -75,6 +75,19 @@ async function command_next_asset_public_key() {
 }
 
 
+async function command_tip004_mint_token(assetPublicKey, token) {
+  return await invoke("tip004_mint_token", {assetPublicKey, token});
+}
+
+async function command_tip004_list_tokens(assetPublicKey) {
+  return await invoke("tip004_list_tokens", {assetPublicKey});
+}
+
+async function command_tip721_transfer_from(assetPublicKey, fromAddressId, sendToAddress, tokenId) {
+  console.log(fromAddressId, sendToAddress, tokenId);
+  return await invoke("tip721_transfer_from", {assetPublicKey,  fromAddressId, sendToAddress, tokenId});
+}
+
 async function command_wallets_create(passphrase, name) {
   return await invoke("wallets_create", { passphrase, name });
 }
@@ -121,6 +134,9 @@ const commands = {
   command_asset_wallets_get_latest_address,
   command_asset_wallets_create_address,
   command_asset_wallets_send_to,
+  command_tip004_mint_token,
+  command_tip004_list_tokens,
+  command_tip721_transfer_from,
   command_wallets_create,
   command_wallets_list,
   command_wallets_unlock,

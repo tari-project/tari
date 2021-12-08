@@ -82,7 +82,7 @@ impl MempoolService for ConcreteMempoolService {
     async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
         let mut new_instructions = Vec::with_capacity(self.instructions.len());
         for instruction in self.instructions.drain(..) {
-            if instruction.1.as_ref().map(|i| i.as_slice()) != Some(block_hash) {
+            if instruction.1.as_deref() != Some(block_hash) {
                 new_instructions.push(instruction)
             }
         }
@@ -92,7 +92,7 @@ impl MempoolService for ConcreteMempoolService {
 
     async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
         for mut instruction in self.instructions.iter_mut() {
-            if instruction.1.as_ref().map(|i| i.as_slice()) == Some(block_hash) {
+            if instruction.1.as_deref() == Some(block_hash) {
                 instruction.1 = None;
             }
         }

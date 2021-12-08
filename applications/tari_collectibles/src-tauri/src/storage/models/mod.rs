@@ -25,4 +25,5 @@ pub mod asset_row;
 pub mod asset_wallet_row;
 pub mod key_index_row;
 pub mod tip002_address_row;
+pub mod tip721_token_row;
 pub mod wallet_row;

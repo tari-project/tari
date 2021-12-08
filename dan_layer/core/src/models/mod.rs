@@ -66,6 +66,9 @@ impl InstructionCaller {
 #[derive(Copy, Clone, Debug)]
 pub enum TemplateId {
     Tip002 = 2,
+    Tip003 = 3,
+    Tip004 = 4,
+    Tip721 = 721,
     EditableMetadata = 20,
 }
 
@@ -87,6 +90,9 @@ impl From<u32> for TemplateId {
         // Must be an easier way than this
         match v {
             2 => TemplateId::Tip002,
+            3 => TemplateId::Tip003,
+            4 => TemplateId::Tip004,
+            721 => TemplateId::Tip721,
             _ => {
                 unimplemented!()
             },

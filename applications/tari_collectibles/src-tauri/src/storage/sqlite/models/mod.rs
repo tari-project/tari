@@ -25,6 +25,7 @@ mod asset;
 mod asset_wallet;
 mod key_indices;
 mod tip002_address;
+mod tip721_token;
 mod wallet;
 
 pub use address::Address;
@@ -32,4 +33,5 @@ pub use asset::Asset;
 pub use asset_wallet::AssetWallet;
 pub use key_indices::KeyIndex;
 pub use tip002_address::Tip002Address;
+pub use tip721_token::Tip721Token;
 pub use wallet::Wallet;

@@ -56,8 +56,20 @@ impl MempoolService for MockMempoolService {
         Ok(vec![])
     }
 
-    async fn remove_instructions(&mut self, _instructions: &[Instruction]) -> Result<(), DigitalAssetError> {
-        Ok(())
+    async fn reserve_instruction_in_block(
+        &mut self,
+        instruction_hash: &[u8],
+        block_hash: Vec<u8>,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+        todo!()
     }
 
     async fn size(&self) -> usize {

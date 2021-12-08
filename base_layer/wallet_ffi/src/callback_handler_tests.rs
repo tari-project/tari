@@ -31,7 +31,7 @@ mod test {
         time::Duration,
     };
     use tari_common_types::{
-        transaction::{TransactionDirection, TransactionStatus},
+        transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
     use tari_comms_dht::event::DhtEvent;
@@ -168,9 +168,9 @@ mod test {
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         match (*tx).tx_id {
-            3 => lock.tx_cancellation_callback_called_inbound = true,
-            4 => lock.tx_cancellation_callback_called_completed = true,
-            5 => lock.tx_cancellation_callback_called_outbound = true,
+            TxId(3) => lock.tx_cancellation_callback_called_inbound = true,
+            TxId(4) => lock.tx_cancellation_callback_called_completed = true,
+            TxId(5) => lock.tx_cancellation_callback_called_outbound = true,
             _ => (),
         }
         drop(lock);
@@ -205,7 +205,7 @@ mod test {
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
-            1u64,
+            TxId(1u64),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             rtp,
@@ -214,7 +214,7 @@ mod test {
             Utc::now().naive_utc(),
         );
         let completed_tx = CompletedTransaction::new(
-            2u64,
+            TxId(2u64),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             MicroTari::from(100),
@@ -234,7 +234,7 @@ mod test {
         );
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(
-            3u64,
+            TxId(3u64),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             23 * uT,
@@ -245,11 +245,11 @@ mod test {
             false,
         );
         let inbound_tx_cancelled = InboundTransaction {
-            tx_id: 4u64,
+            tx_id: TxId(4u64),
             ..inbound_tx.clone()
         };
         let completed_tx_cancelled = CompletedTransaction {
-            tx_id: 5u64,
+            tx_id: TxId(5u64),
             ..completed_tx.clone()
         };
 
