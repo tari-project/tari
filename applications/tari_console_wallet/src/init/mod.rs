@@ -153,7 +153,18 @@ pub async fn get_base_node_peer_config(
     wallet: &mut WalletSqlite,
 ) -> Result<PeerConfig, ExitCodes> {
     // custom
-    let base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
+    let mut base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
+
+    if let Some(custom) = config.wallet_custom_base_node.clone() {
+        match SeedPeer::from_str(&custom) {
+            Ok(node) => {
+                base_node_custom = Some(Peer::from(node));
+            },
+            Err(err) => {
+                return Err(ExitCodes::ConfigError(format!("Malformed custom base node: {}", err)));
+            },
+        }
+    }
 
     // config
     let base_node_peers = config
