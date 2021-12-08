@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::Debug;
+
 use crate::{
     models::{Payload, QuorumCertificate, TreeNodeHash},
     storage::{
@@ -27,7 +29,6 @@ use crate::{
         StorageError,
     },
 };
-use std::fmt::Debug;
 
 pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     type BackendTransaction;

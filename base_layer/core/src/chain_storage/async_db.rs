@@ -19,6 +19,23 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    mem,
+    ops::{Range, RangeBounds},
+    sync::Arc,
+    time::Instant,
+};
+
+use croaring::Bitmap;
+use log::*;
+use rand::{rngs::OsRng, RngCore};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+};
+use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_utilities::epoch_time::EpochTime;
+
 use crate::{
     blocks::{
         Block,
@@ -51,21 +68,6 @@ use crate::{
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
-use croaring::Bitmap;
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use std::{
-    mem,
-    ops::{Range, RangeBounds},
-    sync::Arc,
-    time::Instant,
-};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
-};
-use tari_mmr::pruned_hashset::PrunedHashSet;
-use tari_utilities::epoch_time::EpochTime;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 

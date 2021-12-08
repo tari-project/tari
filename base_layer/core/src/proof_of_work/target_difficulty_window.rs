@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
 use std::cmp;
+
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+
+use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficultyWindow {

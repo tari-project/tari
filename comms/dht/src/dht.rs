@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use futures::Future;
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    message::{InboundMessage, OutboundMessage},
+    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    pipeline::PipelineError,
+};
+use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
+use tokio::sync::{broadcast, mpsc};
+use tower::{layer::Layer, Service, ServiceBuilder};
+
 use self::outbound::OutboundMessageRequester;
 use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
@@ -43,19 +58,6 @@ use crate::{
     DhtBuilder,
     DhtConfig,
 };
-use futures::Future;
-use log::*;
-use std::sync::Arc;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    message::{InboundMessage, OutboundMessage},
-    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
-    pipeline::PipelineError,
-};
-use tari_shutdown::ShutdownSignal;
-use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
-use tower::{layer::Layer, Service, ServiceBuilder};
 
 const LOG_TARGET: &str = "comms::dht";
 
@@ -428,6 +430,19 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
 
 #[cfg(test)]
 mod test {
+    use std::{sync::Arc, time::Duration};
+
+    use tari_comms::{
+        message::{MessageExt, MessageTag},
+        pipeline::SinkService,
+        runtime,
+        test_utils::mocks::create_connectivity_mock,
+        wrap_in_envelope_body,
+    };
+    use tari_shutdown::Shutdown;
+    use tokio::{sync::mpsc, task, time};
+    use tower::{layer::Layer, Service};
+
     use super::*;
     use crate::{
         crypt,
@@ -443,17 +458,6 @@ mod test {
             service_spy,
         },
     };
-    use std::{sync::Arc, time::Duration};
-    use tari_comms::{
-        message::{MessageExt, MessageTag},
-        pipeline::SinkService,
-        runtime,
-        test_utils::mocks::create_connectivity_mock,
-        wrap_in_envelope_body,
-    };
-    use tari_shutdown::Shutdown;
-    use tokio::{sync::mpsc, task, time};
-    use tower::{layer::Layer, Service};
 
     #[runtime::test]
     async fn stack_unencrypted() {

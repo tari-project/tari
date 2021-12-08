@@ -31,16 +31,6 @@ mod miner;
 mod stratum;
 mod utils;
 
-use crate::{
-    miner::MiningReport,
-    stratum::{
-        stratum_controller::controller::Controller,
-        stratum_miner::miner::StratumMiner,
-        stratum_statistics::stats::Statistics,
-    },
-};
-use errors::{err_empty, MinerError};
-use miner::Miner;
 use std::{
     convert::TryFrom,
     sync::{
@@ -51,6 +41,9 @@ use std::{
     thread,
     time::Instant,
 };
+
+use errors::{err_empty, MinerError};
+use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
@@ -64,6 +57,15 @@ use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
+
+use crate::{
+    miner::MiningReport,
+    stratum::{
+        stratum_controller::controller::Controller,
+        stratum_miner::miner::StratumMiner,
+        stratum_statistics::stats::Statistics,
+    },
+};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";

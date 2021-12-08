@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
 use proc_macro2::TokenStream;
 use quote::quote;
+
+use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
 
 pub struct RpcCodeGenerator {
     options: RpcTraitOptions,

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{Arc, RwLock};
+
 use crate::{
     models::StateRoot,
     storage::{
@@ -28,7 +30,6 @@ use crate::{
         UnitOfWorkTracker,
     },
 };
-use std::sync::{Arc, RwLock};
 
 pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;

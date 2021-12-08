@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::Signature,
     services::infrastructure_services::NodeAddressable,
 };
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
 
 pub trait SigningService<TAddr: NodeAddressable> {
     fn sign(&self, identity: &TAddr, challenge: &[u8]) -> Result<Signature, DigitalAssetError>;

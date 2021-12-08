@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, TestParams},
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    path::Path,
+    sync::Arc,
+    time::Duration,
 };
+
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -33,13 +36,6 @@ use futures::{
 };
 use prost::Message;
 use rand::rngs::OsRng;
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    path::Path,
-    sync::Arc,
-    time::Duration,
-};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -155,6 +151,12 @@ use tokio::{
     runtime::{Builder, Runtime},
     sync::{broadcast, broadcast::channel},
     time::sleep,
+};
+
+use crate::support::{
+    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+    comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+    utils::{make_input, TestParams},
 };
 
 fn create_runtime() -> Runtime {

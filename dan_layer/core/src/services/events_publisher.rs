@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::Event;
-use log::*;
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
 };
+
+use log::*;
+
+use crate::models::Event;
 
 const LOG_TARGET: &str = "tari::dan::services::events_publisher";
 

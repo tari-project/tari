@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
+
+use bitflags::bitflags;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::hex::serialize_to_hex;
+
 use super::{
     connection_stats::PeerConnectionStats,
     node_id::{deserialize_node_id_from_hex, NodeId},
@@ -32,17 +45,6 @@ use crate::{
     types::CommsPublicKey,
     utils::datetime::safe_future_datetime_from_duration,
 };
-use bitflags::bitflags;
-use chrono::{DateTime, NaiveDateTime, Utc};
-use multiaddr::Multiaddr;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    hash::{Hash, Hasher},
-    time::Duration,
-};
-use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
@@ -340,6 +342,13 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    use serde_json::Value;
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::RistrettoPublicKey,
+        tari_utilities::{hex::Hex, message_format::MessageFormat},
+    };
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
@@ -347,12 +356,6 @@ mod test {
         protocol,
         test_utils::node_identity::build_node_identity,
         types::CommsPublicKey,
-    };
-    use serde_json::Value;
-    use tari_crypto::{
-        keys::PublicKey,
-        ristretto::RistrettoPublicKey,
-        tari_utilities::{hex::Hex, message_format::MessageFormat},
     };
 
     #[test]

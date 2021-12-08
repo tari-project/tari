@@ -20,6 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::StreamExt;
+use log::*;
+use num_format::{Locale, ToFormattedString};
+use tari_comms::{
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
+    peer_manager::NodeId,
+    PeerConnection,
+};
+use tari_utilities::{hex::Hex, Hashable};
+use tracing;
+
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
@@ -32,21 +49,6 @@ use crate::{
     transactions::aggregated_body::AggregateBody,
     validation::BlockSyncBodyValidation,
 };
-use futures::StreamExt;
-use log::*;
-use num_format::{Locale, ToFormattedString};
-use std::{
-    convert::TryFrom,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    PeerConnection,
-};
-use tari_utilities::{hex::Hex, Hashable};
-use tracing;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 

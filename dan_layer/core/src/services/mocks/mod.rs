@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::VecDeque,
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
+
+use async_trait::async_trait;
+
+use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{BaseLayerMetadata, BaseLayerOutput, Committee, Event, Instruction, Payload, Signature},
@@ -34,14 +43,6 @@ use crate::{
     },
     types::PublicKey,
 };
-use async_trait::async_trait;
-use std::{
-    collections::VecDeque,
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
-
-use super::CommitteeManager;
 
 #[derive(Debug, Clone)]
 pub struct MockMempoolService;

@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
 use prost::Message;
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip002;
+
+use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
 
 pub fn init<TUnitOfWork: StateDbUnitOfWork>(
     template_parameter: &TemplateParameter,
@@ -127,14 +128,15 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
                 Some(d) => {
                     let mut data2: [u8; 8] = [0; 8];
                     data2.copy_from_slice(&d);
-                    
+
                     u64::from_le_bytes(data2)
                 },
                 None => 0,
             };
             dbg!(receiver_balance);
             receiver_balance = receiver_balance
-                .checked_add(request.amount).ok_or(DigitalAssetError::Overflow)?;
+                .checked_add(request.amount)
+                .ok_or(DigitalAssetError::Overflow)?;
             dbg!(receiver_balance);
             state_db.set_value(
                 "owners".to_string(),

@@ -20,6 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_utilities::hex::Hex;
+
 use super::LOG_TARGET;
 use crate::{
     blocks::ChainBlock,
@@ -27,9 +31,6 @@ use crate::{
     chain_storage::BlockchainBackend,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
-use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_utilities::hex::Hex;
 
 /// This validator tests whether a candidate block is internally consistent.
 /// This does not check that the orphan block has the correct mined height of utxos

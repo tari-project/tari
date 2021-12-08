@@ -24,12 +24,6 @@ use std::{iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
-
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
@@ -59,6 +53,11 @@ use tari_core::{
         },
         CryptoFactories,
     },
+};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
 

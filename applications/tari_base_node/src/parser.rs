@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::command_handler::{CommandHandler, Format, StatusOutput};
+use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+
 use futures::future::Either;
 use log::*;
 use rustyline::{
@@ -32,7 +32,6 @@ use rustyline::{
     Context,
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_utilities::utilities::{
@@ -48,6 +47,9 @@ use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
 };
+
+use super::LOG_TARGET;
+use crate::command_handler::{CommandHandler, Format, StatusOutput};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]

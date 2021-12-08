@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common::configuration::Network;
+use tari_common_types::types::PublicKey;
+use tari_test_utils::unpack_enum;
+
 use crate::{
     blocks::ChainBlock,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
@@ -38,10 +44,6 @@ use crate::{
     txn_schema,
     validation::{block_validators::BlockValidator, ValidationError},
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::PublicKey;
-use tari_test_utils::unpack_enum;
 
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
     let blockchain = TestBlockchain::create(rules.clone());

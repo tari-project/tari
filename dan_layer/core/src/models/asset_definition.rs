@@ -20,11 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::PublicKey;
-use serde::{self, de, Deserialize, Deserializer, Serialize};
 use std::{fmt, marker::PhantomData};
+
+use serde::{self, de, Deserialize, Deserializer, Serialize};
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
+
+use crate::types::PublicKey;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]

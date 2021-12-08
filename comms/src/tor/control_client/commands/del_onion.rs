@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tor::control_client::{commands::TorCommand, error::TorClientError, response::ResponseLine};
 use std::fmt;
+
+use crate::tor::control_client::{commands::TorCommand, error::TorClientError, response::ResponseLine};
 
 /// The DEL_ONION command.
 ///

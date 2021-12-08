@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::HashOutput;
+use thiserror::Error;
+use tokio::task;
+
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction::TransactionError,
 };
-use tari_common_types::types::HashOutput;
-use thiserror::Error;
-use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum ValidationError {

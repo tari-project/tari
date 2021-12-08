@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{iter, sync::Arc, time::Instant};
+
+use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
+use log::*;
+use tari_comms::{
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
+    peer_manager::NodeId,
+    types::CommsPublicKey,
+};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{DhtOutboundError, OutboundMessageRequester},
+};
+use tari_service_framework::reply_channel::RequestContext;
+use tari_shutdown::ShutdownSignal;
+use tokio::{time, time::MissedTickBehavior};
+use tokio_stream::wrappers;
+
 use super::{
     config::LivenessConfig,
     error::LivenessError,
@@ -34,22 +52,6 @@ use crate::{
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
-use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
-use log::*;
-use std::{iter, sync::Arc, time::Instant};
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundMessageRequester},
-};
-use tari_service_framework::reply_channel::RequestContext;
-use tari_shutdown::ShutdownSignal;
-use tokio::{time, time::MissedTickBehavior};
-use tokio_stream::wrappers;
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream, TPingStream> {
@@ -305,14 +307,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        proto::liveness::MetadataKey,
-        services::liveness::{handle::LivenessHandle, state::Metadata},
-    };
+    use std::time::Duration;
+
     use futures::stream;
     use rand::rngs::OsRng;
-    use std::time::Duration;
     use tari_comms::{
         message::MessageTag,
         multiaddr::Multiaddr,
@@ -330,6 +328,12 @@ mod test {
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
+    };
+
+    use super::*;
+    use crate::{
+        proto::liveness::MetadataKey,
+        services::liveness::{handle::LivenessHandle, state::Metadata},
     };
 
     #[tokio::test]

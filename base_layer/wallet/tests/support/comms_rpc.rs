@@ -26,6 +26,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+
 use tari_common_types::types::Signature;
 use tari_comms::{
     protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus},
@@ -647,15 +648,14 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
 #[cfg(test)]
 mod test {
-    use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
+    use std::convert::TryFrom;
+
+    use tari_common_types::types::BlindingFactor;
     use tari_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
         test_utils::node_identity::build_node_identity,
     };
-
-    use std::convert::TryFrom;
-    use tari_common_types::types::BlindingFactor;
     use tari_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
@@ -665,6 +665,8 @@ mod test {
         transactions::transaction::Transaction,
     };
     use tokio::time::Duration;
+
+    use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
 
     #[tokio::test]
     async fn test_wallet_rpc_mock() {

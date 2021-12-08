@@ -20,6 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::task::{Context, Poll};
+
+use bytes::Bytes;
+use futures::future;
+use tower::Service;
+
 use super::{
     body::Body,
     message::{Request, Response},
@@ -27,10 +33,6 @@ use super::{
     RpcStatus,
 };
 use crate::protocol::ProtocolId;
-use bytes::Bytes;
-use futures::future;
-use std::task::{Context, Poll};
-use tower::Service;
 
 #[derive(Clone)]
 pub struct ProtocolServiceNotFound;

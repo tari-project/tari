@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::transactions::transaction::TransactionOutput;
 use tari_crypto::script::TariScript;
 use tari_utilities::{ByteArray, Hashable};
+
+use crate::tari_rpc as grpc;
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;

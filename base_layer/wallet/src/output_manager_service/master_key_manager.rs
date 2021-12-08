@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::PublicRewindKeys,
-        storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase},
-    },
-    types::KeyDigest,
-};
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::{PrivateKey, PublicKey};
@@ -37,6 +29,15 @@ use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     mnemonic::{Mnemonic, MnemonicLanguage},
+};
+
+use crate::{
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::PublicRewindKeys,
+        storage::database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase},
+    },
+    types::KeyDigest,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::master_key_manager";

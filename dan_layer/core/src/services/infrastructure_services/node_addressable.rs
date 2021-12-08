@@ -24,6 +24,7 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
 };
+
 use tari_comms::types::CommsPublicKey;
 
 pub trait NodeAddressable: Eq + Hash + Clone + Debug + Send + Sync + Display {}

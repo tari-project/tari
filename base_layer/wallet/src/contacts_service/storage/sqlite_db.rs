@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use tari_common_types::types::PublicKey;
+use tari_crypto::tari_utilities::ByteArray;
+
 use crate::{
     contacts_service::{
         error::ContactsServiceStorageError,
@@ -29,10 +35,6 @@ use crate::{
     storage::sqlite_utilities::WalletDbConnection,
     util::diesel_ext::ExpectedRowsExtension,
 };
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use std::convert::TryFrom;
-use tari_common_types::types::PublicKey;
-use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -181,19 +183,21 @@ pub struct UpdateContact {
 
 #[cfg(test)]
 mod test {
-    use crate::contacts_service::storage::{
-        database::Contact,
-        sqlite_db::{ContactSql, UpdateContact},
-    };
+    use std::convert::TryFrom;
+
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use std::convert::TryFrom;
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         tari_utilities::ByteArray,
     };
     use tari_test_utils::{paths::with_temp_dir, random::string};
+
+    use crate::contacts_service::storage::{
+        database::Contact,
+        sqlite_db::{ContactSql, UpdateContact},
+    };
 
     #[test]
     fn test_crud() {

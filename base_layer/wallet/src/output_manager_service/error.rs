@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
@@ -36,6 +35,8 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 use time::OutOfRangeError;
+
+use crate::base_node_service::error::BaseNodeServiceError;
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {

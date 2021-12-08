@@ -20,10 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use lmdb_zero as lmdb;
-use lmdb_zero::{put, ConstAccessor, LmdbResultExt, ReadTransaction, WriteAccessor, WriteTransaction};
 use std::{fs, fs::File, path::Path, sync::Arc};
 
+use lmdb_zero as lmdb;
+use lmdb_zero::{put, ConstAccessor, LmdbResultExt, ReadTransaction, WriteAccessor, WriteTransaction};
 use tari_common::file_lock;
 use tari_storage::lmdb_store::{DatabaseRef, LMDBConfig};
 

@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::{lmdb_db::helpers::deserialize, ChainStorageError};
+use std::marker::PhantomData;
+
 use lmdb_zero::{ConstAccessor, Cursor, LmdbResultExt};
 use serde::de::DeserializeOwned;
-use std::marker::PhantomData;
+
+use crate::chain_storage::{lmdb_db::helpers::deserialize, ChainStorageError};
 
 pub struct KeyPrefixCursor<'a, V> {
     cursor: Cursor<'a, 'a>,

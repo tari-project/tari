@@ -21,10 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(dead_code)]
 
-use crate::{
-    actor::{DhtRequest, DhtRequester},
-    storage::DhtMetadataKey,
-};
 use std::{
     collections::HashMap,
     sync::{
@@ -33,8 +29,14 @@ use std::{
         RwLock,
     },
 };
+
 use tari_comms::peer_manager::Peer;
 use tokio::{sync::mpsc, task};
+
+use crate::{
+    actor::{DhtRequest, DhtRequester},
+    storage::DhtMetadataKey,
+};
 
 pub fn create_dht_actor_mock(buf_size: usize) -> (DhtRequester, DhtActorMock) {
     let (tx, rx) = mpsc::channel(buf_size);

@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use futures::future;
+use log::*;
+use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
+use tari_core::transactions::CryptoFactories;
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::broadcast;
+
 use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
@@ -30,13 +39,6 @@ use crate::{
         utxo_scanning::{UtxoScannerMode, UtxoScannerService},
     },
 };
-use futures::future;
-use log::*;
-use std::{sync::Arc, time::Duration};
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
-use tari_core::transactions::CryptoFactories;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::broadcast;
 
 pub mod error;
 pub mod handle;

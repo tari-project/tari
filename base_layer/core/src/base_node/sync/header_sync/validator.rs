@@ -19,6 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::cmp::Ordering;
+
+use log::*;
+use tari_common_types::types::HashOutput;
+use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
+
 use crate::{
     base_node::sync::BlockHeaderSyncError,
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -33,10 +39,6 @@ use crate::{
         check_timestamp_ftl,
     },
 };
-use log::*;
-use std::cmp::Ordering;
-use tari_common_types::types::HashOutput;
-use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -219,6 +221,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+    use tari_test_utils::unpack_enum;
+    use tari_utilities::{hex::Hex, Hashable};
+
     use super::*;
     use crate::{
         blocks::{BlockHeader, BlockHeaderAccumulatedData},
@@ -227,9 +233,6 @@ mod test {
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
-    use tari_utilities::{hex::Hex, Hashable};
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
         let rules = ConsensusManager::builder(Network::LocalNet).build();

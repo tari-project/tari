@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::tari_amount::MicroTari;
 use std::cmp;
+
+use crate::transactions::tari_amount::MicroTari;
 
 pub trait Emission {
     fn block_reward(&self, height: u64) -> MicroTari;

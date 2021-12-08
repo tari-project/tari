@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use async_trait::async_trait;
+
 use crate::{
     models::{HotStuffTreeNode, Payload, SidechainMetadata},
     storage::{chain::ChainDbUnitOfWork, StorageError},
 };
-use async_trait::async_trait;
 
 // TODO: perhaps rename to ChainBusinessLogic
 // One per asset, per network

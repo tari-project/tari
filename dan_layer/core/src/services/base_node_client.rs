@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use async_trait::async_trait;
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{BaseLayerMetadata, BaseLayerOutput},
     types::PublicKey,
 };
-use async_trait::async_trait;
 
 #[async_trait]
 pub trait BaseNodeClient {

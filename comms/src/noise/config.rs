@@ -22,6 +22,13 @@
 
 // This file is heavily influenced by the Libra Noise protocol implementation.
 
+use std::sync::Arc;
+
+use log::*;
+use snow::{self, params::NoiseParams};
+use tari_crypto::tari_utilities::ByteArray;
+use tokio::io::{AsyncRead, AsyncWrite};
+
 use crate::{
     connection_manager::ConnectionDirection,
     noise::{
@@ -31,11 +38,6 @@ use crate::{
     },
     peer_manager::NodeIdentity,
 };
-use log::*;
-use snow::{self, params::NoiseParams};
-use std::sync::Arc;
-use tari_crypto::tari_utilities::ByteArray;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 const LOG_TARGET: &str = "comms::noise";
 pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
@@ -95,6 +97,10 @@ impl NoiseConfig {
 
 #[cfg(test)]
 mod test {
+    use futures::{future, FutureExt};
+    use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
     use super::*;
     use crate::{
         memsocket::MemorySocket,
@@ -102,9 +108,6 @@ mod test {
         runtime,
         test_utils::node_identity::build_node_identity,
     };
-    use futures::{future, FutureExt};
-    use snow::params::{BaseChoice, CipherChoice, DHChoice, HandshakePattern, HashChoice};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn check_noise_params(config: &NoiseConfig) {
         assert_eq!(config.parameters.hash, HashChoice::Blake2b);

@@ -20,15 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_comms::protocol::rpc::mock::RpcRequestMock;
+use tari_core::test_helpers::create_peer_manager;
+use tari_dan_core::services::mocks::{create_mempool_mock, MockMempoolService};
+use tari_test_utils::paths::temp_tari_path;
+
 use super::ValidatorNodeRpcService;
 use crate::{
     p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcServiceImpl},
     services::mocks::{create_mempool_mock, MockMempoolService},
 };
-use tari_comms::protocol::rpc::mock::RpcRequestMock;
-use tari_core::test_helpers::create_peer_manager;
-use tari_dan_core::services::mocks::{create_mempool_mock, MockMempoolService};
-use tari_test_utils::paths::temp_tari_path;
 
 fn setup() -> (ValidatorNodeRpcServiceImpl<MockMempoolService>, RpcRequestMock) {
     let mempool = create_mempool_mock();

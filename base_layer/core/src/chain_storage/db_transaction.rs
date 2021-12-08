@@ -19,23 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{error::ChainStorageError, MmrTree},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
-};
-use croaring::Bitmap;
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
 };
 use tari_mmr::pruned_hashset::PrunedHashSet;
+
+use crate::{
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
+    chain_storage::{error::ChainStorageError, MmrTree},
+    transactions::transaction::{TransactionKernel, TransactionOutput},
+};
 
 #[derive(Debug)]
 pub struct DbTransaction {

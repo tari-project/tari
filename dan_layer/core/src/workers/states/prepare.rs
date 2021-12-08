@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, marker::PhantomData, time::Instant};
+
+use log::*;
+use tokio::time::{sleep, Duration};
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{
@@ -29,25 +34,19 @@ use crate::{
         HotStuffTreeNode,
         Payload,
         QuorumCertificate,
+        TreeNodeHash,
         View,
         ViewId,
     },
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        PayloadProcessor,
         PayloadProvider,
         SigningService,
     },
+    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, StorageError},
     workers::states::ConsensusWorkerStateEvent,
 };
-use log::*;
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
-
-use crate::{
-    models::TreeNodeHash,
-    services::PayloadProcessor,
-    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, StorageError},
-};
-use tokio::time::{sleep, Duration};
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
 
@@ -389,6 +388,10 @@ where
 #[cfg(test)]
 mod test {
 
+    use std::sync::Arc;
+
+    use tokio::time::Duration;
+
     use super::*;
     use crate::{
         models::ViewId,
@@ -397,8 +400,6 @@ mod test {
             mocks::{mock_payload_processor, mock_payload_provider, mock_signing_service},
         },
     };
-    use std::sync::Arc;
-    use tokio::time::Duration;
 
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "missing implementations"]

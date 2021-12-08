@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use tari_crypto::tari_utilities::ByteArrayError;
+
 use super::mempool::{
     mempool_service_request::Request as ProtoMempoolRequest,
     MempoolServiceRequest as ProtoMempoolServiceRequest,
 };
 use crate::mempool::service::{MempoolRequest, MempoolServiceRequest};
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::ByteArrayError;
 
 impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     type Error = String;

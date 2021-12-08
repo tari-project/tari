@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, time::Duration};
+
+use bitflags::bitflags;
+use bytes::Bytes;
+
 use super::RpcError;
 use crate::{
     proto,
@@ -31,9 +36,6 @@ use crate::{
         RpcStatusCode,
     },
 };
-use bitflags::bitflags;
-use bytes::Bytes;
-use std::{fmt, time::Duration};
 
 #[derive(Debug)]
 pub struct Request<T> {

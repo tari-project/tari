@@ -19,6 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::convert::TryFrom;
+
+use tari_common_types::types::Signature;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+
 use crate::{
     base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
@@ -46,9 +51,6 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use std::convert::TryFrom;
-use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::base_node::rpc";
 

@@ -20,29 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    notifier::Notifier,
-    ui::{
-        state::{
-            debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_one_sided_transaction_task, send_transaction_task},
-            wallet_event_monitor::WalletEventMonitor,
-        },
-        UiContact,
-        UiError,
-    },
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::PeerConfig,
-};
-use bitflags::bitflags;
-use chrono::{DateTime, Local, NaiveDateTime};
-use log::*;
-use qrcode::{render::unicode, QrCode};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use bitflags::bitflags;
+use chrono::{DateTime, Local, NaiveDateTime};
+use log::*;
+use qrcode::{render::unicode, QrCode};
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_common_types::{
     emoji::EmojiId,
@@ -76,6 +63,21 @@ use tari_wallet::{
 use tokio::{
     sync::{watch, RwLock},
     task,
+};
+
+use crate::{
+    notifier::Notifier,
+    ui::{
+        state::{
+            debouncer::BalanceEnquiryDebouncer,
+            tasks::{send_one_sided_transaction_task, send_transaction_task},
+            wallet_event_monitor::WalletEventMonitor,
+        },
+        UiContact,
+        UiError,
+    },
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
+    wallet_modes::PeerConfig,
 };
 
 const LOG_TARGET: &str = "wallet::console_wallet::app_state";

@@ -22,14 +22,14 @@
 
 #[allow(dead_code)]
 mod helpers;
-use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
+use std::{sync::Arc, time::Duration};
+
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block, create_genesis_block_with_utxos},
     event_stream::event_stream_next,
     nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
 };
 use randomx_rs::RandomXFlag;
-use std::{sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
@@ -59,6 +59,8 @@ use tari_crypto::tari_utilities::Hashable;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
+
+use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
 
 #[tokio::test]
 async fn propagate_and_forward_many_valid_blocks() {

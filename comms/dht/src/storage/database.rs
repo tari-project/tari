@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use tari_utilities::message_format::MessageFormat;
+
 use super::{dht_setting_entry::DhtMetadataEntry, DbConnection, StorageError};
 use crate::{
     schema::dht_metadata,
     storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
 };
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
 pub struct DhtDatabase {

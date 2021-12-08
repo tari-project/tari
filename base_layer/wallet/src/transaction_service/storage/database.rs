@@ -20,6 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt,
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use aes_gcm::Aes256Gcm;
+use chrono::Utc;
+use log::*;
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::{BlindingFactor, BlockHash},
+};
+use tari_comms::types::CommsPublicKey;
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+
 use crate::transaction_service::{
     error::TransactionStorageError,
     storage::{
@@ -27,21 +44,6 @@ use crate::transaction_service::{
         sqlite_db::InboundTransactionSenderInfo,
     },
 };
-use aes_gcm::Aes256Gcm;
-use chrono::Utc;
-use log::*;
-use std::{
-    collections::HashMap,
-    fmt,
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{BlindingFactor, BlockHash},
-};
-use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 

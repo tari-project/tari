@@ -20,11 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fmt::Display};
+
+use log::*;
+use thiserror::Error;
+
 use super::RpcError;
 use crate::proto;
-use log::*;
-use std::{fmt, fmt::Display};
-use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::rpc::status";
 

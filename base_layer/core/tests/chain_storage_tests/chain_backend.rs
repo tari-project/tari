@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::database::create_orphan_block;
 use tari_common::configuration::Network;
 use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
@@ -31,6 +30,8 @@ use tari_core::{
 use tari_crypto::tari_utilities::Hashable;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
+
+use crate::helpers::database::create_orphan_block;
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_orphan() {

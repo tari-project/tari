@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::PrunedOutput;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
+
+use crate::chain_storage::PrunedOutput;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtxoMinedInfo {

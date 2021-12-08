@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::stratum::stratum_types::rpc_error::RpcError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::stratum::stratum_types::rpc_error::RpcError;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RpcResponse {

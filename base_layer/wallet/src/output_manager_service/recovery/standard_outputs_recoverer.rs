@@ -23,13 +23,12 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
-
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
 };
+use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},

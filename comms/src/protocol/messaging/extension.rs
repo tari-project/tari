@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
+use tokio::sync::mpsc;
+use tower::Service;
+
 use super::MessagingProtocol;
 use crate::{
     bounded_executor::BoundedExecutor,
@@ -34,9 +39,6 @@ use crate::{
     runtime,
     runtime::task,
 };
-use std::fmt;
-use tokio::sync::mpsc;
-use tower::Service;
 
 /// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
 /// messages before creating backpressure on peers speaking the messaging protocol.

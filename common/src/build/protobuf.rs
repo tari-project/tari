@@ -1,4 +1,3 @@
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -8,6 +7,8 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+
+use sha2::{Digest, Sha256};
 
 /// Runs rustfmt on the generated files - this is lifted from tonic-build
 fn rustfmt<P>(out_dir: P)

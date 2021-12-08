@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{BufRead, BufReader},
@@ -30,6 +29,8 @@ use std::{
     sync::Arc,
     thread,
 };
+
+use serde::{Deserialize, Serialize};
 use tari_storage::{
     lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,

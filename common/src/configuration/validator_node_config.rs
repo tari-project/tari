@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ConfigurationError;
-use config::Config;
-use serde::Deserialize;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
+
+use config::Config;
+use serde::Deserialize;
+
+use crate::ConfigurationError;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ValidatorNodeConfig {

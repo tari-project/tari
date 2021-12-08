@@ -22,14 +22,14 @@
 
 #[cfg(test)]
 mod test {
-    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
-    use chrono::Utc;
-    use rand::rngs::OsRng;
     use std::{
         sync::{Arc, Mutex},
         thread,
         time::Duration,
     };
+
+    use chrono::Utc;
+    use rand::rngs::OsRng;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{BlindingFactor, PrivateKey, PublicKey},
@@ -60,6 +60,8 @@ mod test {
         },
     };
     use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
+
+    use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
 
     struct CallbackState {
         pub received_tx_callback_called: bool,

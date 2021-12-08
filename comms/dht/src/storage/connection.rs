@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::error::StorageError;
-use diesel::{Connection, SqliteConnection};
-use log::*;
 use std::{
     io,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+
+use diesel::{Connection, SqliteConnection};
+use log::*;
 use tokio::task;
+
+use crate::storage::error::StorageError;
 
 const LOG_TARGET: &str = "comms::dht::storage::connection";
 
@@ -121,10 +123,11 @@ impl DbConnection {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use diesel::{expression::sql_literal::sql, sql_types::Integer, RunQueryDsl};
     use tari_comms::runtime;
     use tari_test_utils::random;
+
+    use super::*;
 
     #[runtime::test]
     async fn connect_and_migrate() {

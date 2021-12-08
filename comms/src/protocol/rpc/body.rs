@@ -20,11 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::MessageExt,
-    protocol::rpc::{Response, RpcStatus},
-    Bytes,
-};
+use std::{fmt, marker::PhantomData, pin::Pin};
+
 use bytes::BytesMut;
 use futures::{
     ready,
@@ -35,8 +32,13 @@ use futures::{
 };
 use pin_project::pin_project;
 use prost::bytes::Buf;
-use std::{fmt, marker::PhantomData, pin::Pin};
 use tokio::sync::mpsc;
+
+use crate::{
+    message::MessageExt,
+    protocol::rpc::{Response, RpcStatus},
+    Bytes,
+};
 
 pub trait IntoBody {
     fn into_body(self) -> Body;
@@ -296,10 +298,11 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::{message::MessageExt, protocol::rpc::body::Body, runtime};
     use bytes::Bytes;
     use futures::{stream, StreamExt};
     use prost::Message;
+
+    use crate::{message::MessageExt, protocol::rpc::body::Body, runtime};
 
     #[runtime::test]
     async fn single_body() {

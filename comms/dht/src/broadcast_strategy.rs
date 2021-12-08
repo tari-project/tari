@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::envelope::NodeDestination;
 use std::{
     fmt,
     fmt::{Display, Formatter},
 };
+
 use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
+
+use crate::envelope::NodeDestination;
 
 #[derive(Debug, Clone)]
 pub struct BroadcastClosestRequest {

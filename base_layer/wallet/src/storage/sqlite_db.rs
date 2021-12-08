@@ -20,15 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletStorageError,
-    schema::{client_key_values, wallet_settings},
-    storage::{
-        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
-        sqlite_utilities::WalletDbConnection,
-    },
-    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
+use std::{
+    str::{from_utf8, FromStr},
+    sync::{Arc, RwLock},
 };
+
 use aes_gcm::{
     aead::{generic_array::GenericArray, Aead},
     Aes256Gcm,
@@ -40,10 +36,6 @@ use argon2::{
 };
 use diesel::{prelude::*, SqliteConnection};
 use log::*;
-use std::{
-    str::{from_utf8, FromStr},
-    sync::{Arc, RwLock},
-};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_crypto::tari_utilities::{
@@ -52,6 +44,16 @@ use tari_crypto::tari_utilities::{
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::time::Instant;
+
+use crate::{
+    error::WalletStorageError,
+    schema::{client_key_values, wallet_settings},
+    storage::{
+        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+        sqlite_utilities::WalletDbConnection,
+    },
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
+};
 
 const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 
@@ -707,15 +709,16 @@ impl Encryptable<Aes256Gcm> for ClientKeyValueSql {
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::tari_utilities::hex::Hex;
+    use tari_key_manager::cipher_seed::CipherSeed;
+    use tari_test_utils::random::string;
+    use tempfile::tempdir;
+
     use crate::storage::{
         database::{DbKey, DbValue, WalletBackend},
         sqlite_db::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
-    use tari_crypto::tari_utilities::hex::Hex;
-    use tari_key_manager::cipher_seed::CipherSeed;
-    use tari_test_utils::random::string;
-    use tempfile::tempdir;
 
     #[test]
     fn test_unencrypted_secret_public_key_setting() {

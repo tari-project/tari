@@ -22,6 +22,21 @@
 //
 //! # Global configuration of tari base layer system
 
+use std::{
+    convert::TryInto,
+    fmt,
+    fmt::{Display, Formatter},
+    net::SocketAddr,
+    num::{NonZeroU16, TryFromIntError},
+    path::PathBuf,
+    str::FromStr,
+    time::Duration,
+};
+
+use config::{Config, ConfigError, Environment};
+use multiaddr::Multiaddr;
+use tari_storage::lmdb_store::LMDBConfig;
+
 use crate::{
     configuration::{
         bootstrap::ApplicationType,
@@ -33,19 +48,6 @@ use crate::{
     },
     ConfigurationError,
 };
-use config::{Config, ConfigError, Environment};
-use multiaddr::Multiaddr;
-use std::{
-    convert::TryInto,
-    fmt,
-    fmt::{Display, Formatter},
-    net::SocketAddr,
-    num::{NonZeroU16, TryFromIntError},
-    path::PathBuf,
-    str::FromStr,
-    time::Duration,
-};
-use tari_storage::lmdb_store::LMDBConfig;
 
 const DB_INIT_DEFAULT_MB: usize = 1000;
 const DB_GROW_SIZE_DEFAULT_MB: usize = 500;

@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
+use tokio::{
+    runtime::Handle,
+    sync::{mpsc, Mutex},
+};
+use tokio_stream::StreamExt;
+
 use crate::{
     connection_manager::{
         ConnectionDirection,
@@ -35,15 +46,6 @@ use crate::{
     test_utils::{node_identity::build_node_identity, transport},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-use tokio::{
-    runtime::Handle,
-    sync::{mpsc, Mutex},
-};
-use tokio_stream::StreamExt;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 

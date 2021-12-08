@@ -88,7 +88,6 @@ pub mod sender;
 pub mod sender_transaction_protocol_builder;
 pub mod single_receiver;
 
-use crate::transactions::{tari_amount::*, transaction::TransactionError};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{MessageHash, PrivateKey, PublicKey};
@@ -99,6 +98,8 @@ use tari_crypto::{
     tari_utilities::byte_array::ByteArray,
 };
 use thiserror::Error;
+
+use crate::transactions::{tari_amount::*, transaction::TransactionError};
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {

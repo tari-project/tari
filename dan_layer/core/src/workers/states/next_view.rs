@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{Committee, HotStuffMessage, Payload, View},
@@ -27,8 +30,6 @@ use crate::{
     storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
 };
-use log::*;
-use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
 

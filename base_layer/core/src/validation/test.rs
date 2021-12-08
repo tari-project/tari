@@ -20,6 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common::configuration::Network;
+use tari_common_types::types::Commitment;
+use tari_crypto::{commitment::HomomorphicCommitment, script};
+use tari_utilities::Hashable;
+
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::DbTransaction,
@@ -34,11 +41,6 @@ use crate::{
     },
     validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
 };
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::Commitment;
-use tari_crypto::{commitment::HomomorphicCommitment, script};
-use tari_utilities::Hashable;
 
 #[test]
 fn header_iter_empty_and_invalid_height() {

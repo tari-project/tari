@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ConfigurationError;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
+use crate::ConfigurationError;
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.

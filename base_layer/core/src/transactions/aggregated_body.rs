@@ -19,6 +19,28 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    cmp::max,
+    fmt::{Display, Error, Formatter},
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{
+    BlindingFactor,
+    Commitment,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProofService,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitment,
+    tari_utilities::hex::Hex,
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -36,26 +58,6 @@ use crate::{
         },
         weight::TransactionWeight,
     },
-};
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::max,
-    fmt::{Display, Error, Formatter},
-};
-use tari_common_types::types::{
-    BlindingFactor,
-    Commitment,
-    CommitmentFactory,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";

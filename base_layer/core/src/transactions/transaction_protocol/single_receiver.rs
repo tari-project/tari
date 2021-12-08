@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
@@ -38,7 +39,6 @@ use crate::transactions::{
         TransactionProtocolError as TPE,
     },
 };
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
@@ -136,6 +136,7 @@ impl SingleReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
@@ -154,7 +155,6 @@ mod test {
             TransactionProtocolError,
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey};
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);

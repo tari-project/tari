@@ -22,15 +22,16 @@
 
 mod dedup_cache;
 
-pub use dedup_cache::DedupCacheDatabase;
+use std::task::Poll;
 
-use crate::{actor::DhtRequester, inbound::DecryptedDhtMessage};
+pub use dedup_cache::DedupCacheDatabase;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use std::task::Poll;
 use tari_comms::pipeline::PipelineError;
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
+
+use crate::{actor::DhtRequester, inbound::DecryptedDhtMessage};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
 
@@ -133,14 +134,15 @@ impl<S> Layer<S> for DedupLayer {
 
 #[cfg(test)]
 mod test {
+    use tari_comms::wrap_in_envelope_body;
+    use tari_test_utils::panic_context;
+    use tokio::runtime::Runtime;
+
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
-    use tari_comms::wrap_in_envelope_body;
-    use tari_test_utils::panic_context;
-    use tokio::runtime::Runtime;
 
     #[test]
     fn process_message() {

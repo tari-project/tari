@@ -20,6 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use futures::{
+    future,
+    future::{BoxFuture, Either, FusedFuture},
+    pin_mut,
+    stream::FuturesUnordered,
+    FutureExt,
+};
+use log::*;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{self, span, Instrument, Level};
+
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection, types::ConnectionDirection};
 use crate::{
     backoff::Backoff,
@@ -38,24 +58,6 @@ use crate::{
     transports::Transport,
     types::CommsPublicKey,
 };
-use futures::{
-    future,
-    future::{BoxFuture, Either, FusedFuture},
-    pin_mut,
-    stream::FuturesUnordered,
-    FutureExt,
-};
-use log::*;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 

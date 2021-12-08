@@ -19,20 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    builder::BaseNodeContext,
-    grpc::{
-        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
-        helpers::{mean, median},
-    },
-};
-use either::Either;
-use futures::{channel::mpsc, SinkExt};
-use log::*;
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
 };
+
+use either::Either;
+use futures::{channel::mpsc, SinkExt};
+use log::*;
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
@@ -58,6 +52,14 @@ use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessH
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 use tokio::task;
 use tonic::{Request, Response, Status};
+
+use crate::{
+    builder::BaseNodeContext,
+    grpc::{
+        blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        helpers::{mean, median},
+    },
+};
 
 const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;

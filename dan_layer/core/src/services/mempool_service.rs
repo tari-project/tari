@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{digital_assets_error::DigitalAssetError, models::Instruction};
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use tokio::sync::Mutex;
+
+use crate::{digital_assets_error::DigitalAssetError, models::Instruction};
 
 #[async_trait]
 pub trait MempoolService: Sync + Send + 'static {

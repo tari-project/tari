@@ -20,14 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    config::TransactionRoutingMechanism,
-    error::TransactionServiceError,
-    storage::models::InboundTransaction,
-    tasks::wait_on_dial::wait_on_dial,
-};
-use log::*;
 use std::time::Duration;
+
+use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -36,6 +31,13 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::transaction_protocol::proto::protocol as proto;
 use tari_p2p::tari_message::TariMessageType;
+
+use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
+    error::TransactionServiceError,
+    storage::models::InboundTransaction,
+    tasks::wait_on_dial::wait_on_dial,
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 

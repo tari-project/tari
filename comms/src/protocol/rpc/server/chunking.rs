@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
+use bytes::Bytes;
+use log::*;
+
 use super::LOG_TARGET;
 use crate::{
     proto,
@@ -33,9 +38,6 @@ use crate::{
         },
     },
 };
-use bytes::Bytes;
-use log::*;
-use std::cmp;
 
 pub(super) struct ChunkedResponseIter {
     message: RpcResponse,
@@ -195,8 +197,9 @@ impl Iterator for ChunkedResponseIter {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::iter;
+
+    use super::*;
 
     fn create(size: usize) -> ChunkedResponseIter {
         let msg = RpcResponse {

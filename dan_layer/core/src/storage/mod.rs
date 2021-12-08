@@ -23,7 +23,6 @@
 pub use chain_storage_service::ChainStorageService;
 pub use error::StorageError;
 pub use lmdb::{LmdbAssetBackend, LmdbAssetStore};
-
 pub use store::{AssetDataStore, AssetStore};
 pub mod chain;
 mod chain_storage_service;

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_test_utils::unpack_enum;
+
 use crate::{
     framing,
     memsocket::MemorySocket,
@@ -31,7 +33,6 @@ use crate::{
     runtime,
     runtime::task,
 };
-use tari_test_utils::unpack_enum;
 
 #[runtime::test]
 async fn it_performs_the_handshake() {

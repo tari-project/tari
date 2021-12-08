@@ -57,11 +57,12 @@ pub fn encrypt_bytes_integral_nonce(cipher: &Aes256Gcm, plaintext: Vec<u8>) -> R
 
 #[cfg(test)]
 mod test {
-    use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
     use aes_gcm::{
         aead::{generic_array::GenericArray, NewAead},
         Aes256Gcm,
     };
+
+    use crate::util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 
     #[test]
     fn test_encrypt_decrypt() {

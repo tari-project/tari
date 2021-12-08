@@ -1,4 +1,3 @@
-use crate::ui::{components::Component, state::AppState};
 use tari_app_utilities::consts;
 use tui::{
     backend::Backend,
@@ -8,6 +7,8 @@ use tui::{
     widgets::{Block, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct Menu {}
 

@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::bounded_executor::BoundedExecutor;
+use std::fmt::Display;
+
 use futures::future::FusedFuture;
 use log::*;
-use std::fmt::Display;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
+
+use crate::bounded_executor::BoundedExecutor;
 
 const LOG_TARGET: &str = "comms::pipeline::inbound";
 
@@ -103,14 +105,16 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::runtime;
-    use futures::future;
     use std::time::Duration;
+
+    use futures::future;
     use tari_shutdown::Shutdown;
     use tari_test_utils::collect_recv;
     use tokio::{sync::mpsc, time};
     use tower::service_fn;
+
+    use super::*;
+    use crate::runtime;
 
     #[runtime::test]
     async fn run() {

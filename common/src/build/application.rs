@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde::Deserialize;
 use std::{
     env,
     fmt,
@@ -28,6 +27,8 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
+
+use serde::Deserialize;
 
 pub struct StaticApplicationInfo {
     manifest: Manifest,

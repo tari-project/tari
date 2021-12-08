@@ -28,7 +28,8 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "1024"]
-use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
+use std::{env, process};
+
 use init::{
     boot,
     change_password,
@@ -43,13 +44,14 @@ use init::{
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
-use std::{env, process};
 use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
+
+use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 

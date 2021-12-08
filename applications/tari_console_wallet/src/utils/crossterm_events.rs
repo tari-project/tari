@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utils::events::{Event, EventStream};
-use crossterm::event::{self, Event as CEvent, KeyEvent};
-use log::*;
 use std::{
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
+
+use crossterm::event::{self, Event as CEvent, KeyEvent};
+use log::*;
+
+use crate::utils::events::{Event, EventStream};
 
 pub const LOG_TARGET: &str = "wallet::app::crossterm_events";
 

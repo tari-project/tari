@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use async_trait::async_trait;
+
+use crate::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 /// This initializer adds a handle to the service context.
 pub struct RegisterHandle<T> {

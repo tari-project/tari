@@ -20,17 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::AutoUpdateError, AutoUpdateConfig, Version};
-use crate::dns::{default_trust_anchor, DnsClient};
-use anyhow::anyhow;
-use futures::future;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
+use anyhow::anyhow;
+use futures::future;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_utilities::hex::{from_hex, Hex};
+
+use super::{error::AutoUpdateError, AutoUpdateConfig, Version};
+use crate::dns::{default_trust_anchor, DnsClient};
 
 const LOG_TARGET: &str = "p2p::auto_update::dns";
 
@@ -188,8 +190,6 @@ impl Display for UpdateSpec {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::dns::mock;
     use trust_dns_client::{
         op::Query,
         proto::{
@@ -198,6 +198,9 @@ mod test {
         },
         rr::Record,
     };
+
+    use super::*;
+    use crate::dns::mock;
 
     fn create_txt_record(contents: Vec<&str>) -> DnsResponse {
         let resp_query = Query::query(Name::from_str("test.local.").unwrap(), RecordType::A);

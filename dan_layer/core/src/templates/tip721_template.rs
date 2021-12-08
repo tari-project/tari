@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
 use log::*;
 use prost::Message;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_common_types::proto::tips::tip721;
+
+use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip721_template";
 

@@ -1,8 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use crate::tx_id::TxId;

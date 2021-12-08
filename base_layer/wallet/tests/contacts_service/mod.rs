@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::data::get_temp_sqlite_database_connection;
 use rand::rngs::OsRng;
 use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -37,6 +36,8 @@ use tari_wallet::contacts_service::{
     ContactsServiceInitializer,
 };
 use tokio::runtime::Runtime;
+
+use crate::support::data::get_temp_sqlite_database_connection;
 
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     runtime: &mut Runtime,

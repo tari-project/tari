@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PublicKey},
+};
+use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
+use tari_service_framework::{reply_channel::SenderService, Service};
+
 use crate::{
     assets::{
         infrastructure::{AssetManagerRequest, AssetManagerResponse},
@@ -27,12 +34,6 @@ use crate::{
     },
     error::WalletError,
 };
-use tari_common_types::{
-    transaction::TxId,
-    types::{Commitment, PublicKey},
-};
-use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
-use tari_service_framework::{reply_channel::SenderService, Service};
 
 #[derive(Clone)]
 pub struct AssetManagerHandle {

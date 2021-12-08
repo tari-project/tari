@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use path_clean::PathClean;
 use std::path::PathBuf;
+
+use path_clean::PathClean;
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
@@ -71,10 +72,12 @@ where P: AsRef<std::path::Path> {
 
 #[cfg(test)]
 mod test {
-    use crate::dir_utils;
     use std::path::PathBuf;
+
     use tari_test_utils::random::string;
     use tempfile::tempdir;
+
+    use crate::dir_utils;
 
     #[test]
     fn test_multiple_levels_create_data_directory() {

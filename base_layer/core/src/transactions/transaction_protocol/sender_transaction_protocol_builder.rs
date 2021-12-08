@@ -20,6 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Error, Formatter},
+};
+
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, PrivateKey, PublicKey},
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::pedersen::PedersenCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
+
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -41,24 +61,6 @@ use crate::{
             TransactionMetadata,
         },
     },
-};
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-};
-use tari_common_types::{
-    transaction::TxId,
-    types::{BlindingFactor, PrivateKey, PublicKey},
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
@@ -642,6 +644,7 @@ impl SenderTransactionProtocolBuilder {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::PrivateKey;
     use tari_crypto::{
         common::Blake256,
         keys::SecretKey,
@@ -664,7 +667,6 @@ mod test {
             },
         },
     };
-    use tari_common_types::types::PrivateKey;
 
     /// One input, 2 outputs
     #[test]

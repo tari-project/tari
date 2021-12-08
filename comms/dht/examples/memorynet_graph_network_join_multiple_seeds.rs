@@ -54,6 +54,12 @@ const DEFAULT_GRAPH_OUTPUT_DIR: &str = "/tmp/memorynet";
 mod graphing_utilities;
 mod memory_net;
 
+use std::{path::Path, time::Duration};
+
+use clap::{App, Arg};
+use tari_comms::peer_manager::PeerFeatures;
+use tokio::sync::mpsc;
+
 use crate::{
     graphing_utilities::utilities::{network_graph_snapshot, run_python_network_graph_render, PythonRenderType},
     memory_net::utilities::{
@@ -64,10 +70,6 @@ use crate::{
         take_a_break,
     },
 };
-use clap::{App, Arg};
-use std::{path::Path, time::Duration};
-use tari_comms::peer_manager::PeerFeatures;
-use tokio::sync::mpsc;
 
 #[tokio::main]
 #[allow(clippy::same_item_push)]

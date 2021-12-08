@@ -23,8 +23,6 @@
 use std::sync::Arc;
 
 use log::*;
-use tokio::sync::watch;
-
 use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
@@ -50,6 +48,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::watch;
 
 use crate::bootstrap::BaseNodeBootstrapper;
 

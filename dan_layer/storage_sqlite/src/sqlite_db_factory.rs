@@ -20,15 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use diesel::{Connection, SqliteConnection};
+use diesel_migrations::embed_migrations;
+use tari_common::GlobalConfig;
+use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
+
 use crate::{
     error::SqliteStorageError,
     sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter,
     SqliteChainBackendAdapter,
 };
-use diesel::{Connection, SqliteConnection};
-use diesel_migrations::embed_migrations;
-use tari_common::GlobalConfig;
-use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
 
 #[derive(Clone)]
 pub struct SqliteDbFactory {

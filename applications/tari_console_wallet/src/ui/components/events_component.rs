@@ -1,12 +1,13 @@
-use crate::ui::{
-    components::{styles, Component},
-    state::AppState,
-};
 use tui::{
     backend::Backend,
     layout::{Constraint, Rect},
     widgets::{Block, Borders, Row, Table, TableState},
     Frame,
+};
+
+use crate::ui::{
+    components::{styles, Component},
+    state::AppState,
 };
 
 pub struct EventsComponent {

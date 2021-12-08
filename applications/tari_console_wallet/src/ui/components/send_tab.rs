@@ -1,12 +1,3 @@
-use crate::{
-    ui::{
-        components::{balance::Balance, styles, Component, KeyHandled},
-        state::{AppState, UiTransactionSendStatus},
-        widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
-        MAX_WIDTH,
-    },
-    utils::formatting::display_compressed_string,
-};
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
 use tari_wallet::tokens::Token;
@@ -20,6 +11,16 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
+
+use crate::{
+    ui::{
+        components::{balance::Balance, styles, Component, KeyHandled},
+        state::{AppState, UiTransactionSendStatus},
+        widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
+        MAX_WIDTH,
+    },
+    utils::formatting::display_compressed_string,
+};
 
 pub struct SendTab {
     balance: Balance,

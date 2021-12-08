@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::marker::PhantomData;
+
+use log::*;
+use tari_shutdown::ShutdownSignal;
+use tokio::time::Duration;
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, Payload, View, ViewId},
@@ -40,10 +46,6 @@ use crate::{
     },
     workers::{states, states::ConsensusWorkerStateEvent},
 };
-use log::*;
-use std::marker::PhantomData;
-use tari_shutdown::ShutdownSignal;
-use tokio::time::Duration;
 
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
@@ -404,6 +406,9 @@ where
 
 #[cfg(test)]
 mod test {
+    use tari_shutdown::Shutdown;
+    use tokio::task::JoinHandle;
+
     use super::*;
     use crate::{
         models::{Committee, ConsensusWorkerState::*},
@@ -420,8 +425,6 @@ mod test {
             },
         },
     };
-    use tari_shutdown::Shutdown;
-    use tokio::task::JoinHandle;
 
     fn start_replica(
         inbound: MockInboundConnectionService<&'static str, &'static str>,

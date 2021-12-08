@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::StorageError;
-use lmdb_zero::db;
 use std::path::Path;
+
+use lmdb_zero::db;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig, LMDBStore};
+
+use crate::storage::StorageError;
 
 const DATABASES: &[(&str, db::Flags)] = &[("metadata", db::INTEGERKEY)];
 

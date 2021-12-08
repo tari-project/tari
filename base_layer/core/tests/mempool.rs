@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{ops::Deref, sync::Arc, time::Duration};
+
 use helpers::{
     block_builders::{
         chain_block,
@@ -33,7 +35,6 @@ use helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
 };
 use randomx_rs::RandomXFlag;
-use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;

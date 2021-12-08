@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]

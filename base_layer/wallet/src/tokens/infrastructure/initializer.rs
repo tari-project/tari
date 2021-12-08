@@ -20,22 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::storage::database::OutputManagerBackend;
-
-use crate::tokens::{infrastructure::token_manager_service::TokenManagerService, TokenManagerHandle};
-use log::*;
-
 use futures::future;
-
+use log::*;
 use tari_service_framework::{
+    async_trait,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
 };
 
-use crate::output_manager_service::handle::OutputManagerHandle;
-use tari_service_framework::async_trait;
+use crate::{
+    output_manager_service::{handle::OutputManagerHandle, storage::database::OutputManagerBackend},
+    tokens::{infrastructure::token_manager_service::TokenManagerService, TokenManagerHandle},
+};
 
 const LOG_TARGET: &str = "wallet::assets::infrastructure::initializer";
 

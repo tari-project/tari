@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{
-    components::{styles, Component},
-    state::AppState,
-};
 use tari_crypto::tari_utilities::hex::Hex;
 use tui::{
     backend::Backend,
     layout::{Constraint, Rect},
     widgets::{Block, Borders, Row, Table, TableState},
     Frame,
+};
+
+use crate::ui::{
+    components::{styles, Component},
+    state::AppState,
 };
 
 pub struct TokensComponent {

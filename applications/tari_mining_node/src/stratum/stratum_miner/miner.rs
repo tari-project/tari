@@ -20,6 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+use std::{
+    convert::TryFrom,
+    sync::{mpsc, Arc, RwLock},
+    thread,
+    time,
+    time::{Duration, SystemTime},
+};
+
+use log::*;
+use tari_core::blocks::BlockHeader;
+use tari_utilities::{hex::Hex, Hashable};
+
 use crate::{
     config::MinerConfig,
     difficulty::BlockHeaderSha3,
@@ -34,16 +46,6 @@ use crate::{
         stratum_statistics::stats::Statistics,
     },
 };
-use log::*;
-use std::{
-    convert::TryFrom,
-    sync::{mpsc, Arc, RwLock},
-    thread,
-    time,
-    time::{Duration, SystemTime},
-};
-use tari_core::blocks::BlockHeader;
-use tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";

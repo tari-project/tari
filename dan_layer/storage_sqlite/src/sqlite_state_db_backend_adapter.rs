@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::SqliteStorageError, models::state_key::StateKey, schema::*, SqliteTransaction};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use log::*;
 use tari_dan_core::storage::state::StateDbBackendAdapter;
+
+use crate::{error::SqliteStorageError, models::state_key::StateKey, schema::*, SqliteTransaction};
 
 const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_state_db_backend_adapter";
 

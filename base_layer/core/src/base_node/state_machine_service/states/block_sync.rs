@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Instant;
+
+use log::*;
+use randomx_rs::RandomXFlag;
+use tari_comms::PeerConnection;
+
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
@@ -29,10 +35,6 @@ use crate::{
     },
     chain_storage::{BlockAddResult, BlockchainBackend},
 };
-use log::*;
-use randomx_rs::RandomXFlag;
-use std::time::Instant;
-use tari_comms::PeerConnection;
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 

@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashMap;
+
+use async_trait::async_trait;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::HotStuffMessage,
     services::infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
 };
-use async_trait::async_trait;
-use std::collections::HashMap;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundConnectionService<TAddr, TPayload> {
     MockInboundConnectionService::new()
@@ -105,8 +107,9 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayl
     }
 }
 
-use crate::models::Payload;
 use std::fmt::Debug;
+
+use crate::models::Payload;
 
 #[async_trait]
 impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>

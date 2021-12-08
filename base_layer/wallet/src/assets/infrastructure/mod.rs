@@ -21,13 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod asset_manager_service;
-use crate::assets::Asset;
 pub use asset_manager_service::AssetManagerService;
 use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
+
+use crate::assets::Asset;
 
 pub mod initializer;
 

@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use rand::rngs::OsRng;
+use tari_common::configuration::Network;
+use tari_common_types::types::{CommitmentFactory, PublicKey};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::RistrettoPublicKey,
+};
+use tari_test_utils::unpack_enum;
+use tari_utilities::Hashable;
+
 use crate::{
     blocks::{genesis_block::get_genesis_block, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError, Validators},
@@ -42,17 +55,6 @@ use crate::{
         ValidationError,
     },
 };
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{CommitmentFactory, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::RistrettoPublicKey,
-};
-use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()

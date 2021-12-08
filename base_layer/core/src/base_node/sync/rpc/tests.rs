@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::StreamExt;
+use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
+use tempfile::{tempdir, TempDir};
+
 use super::BaseNodeSyncRpcService;
 use crate::{
     base_node::BaseNodeSyncService,
@@ -30,10 +35,6 @@ use crate::{
         create_peer_manager,
     },
 };
-use futures::StreamExt;
-use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
-use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
-use tempfile::{tempdir, TempDir};
 
 fn setup() -> (
     BaseNodeSyncRpcService<TempDatabase>,

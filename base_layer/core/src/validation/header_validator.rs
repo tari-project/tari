@@ -1,3 +1,6 @@
+use log::*;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+
 use crate::{
     blocks::BlockHeader,
     chain_storage::{fetch_headers, BlockchainBackend},
@@ -10,8 +13,6 @@ use crate::{
         ValidationError,
     },
 };
-use log::*;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 
 pub const LOG_TARGET: &str = "c::val::header_validators";
 

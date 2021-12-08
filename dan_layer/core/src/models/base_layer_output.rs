@@ -21,8 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! A trait to allow abstraction from a specific base layer output
-use crate::types::PublicKey;
 use tari_core::transactions::transaction::OutputFeatures;
+
+use crate::types::PublicKey;
 
 pub struct BaseLayerOutput {
     pub features: OutputFeatures,

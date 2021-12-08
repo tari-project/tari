@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{stream, Stream, StreamExt};
 use std::{borrow::BorrowMut, collections::HashMap, hash::Hash, time::Duration};
+
+use futures::{stream, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 
 #[allow(dead_code)]

@@ -31,15 +31,17 @@ mod common;
 mod error;
 mod proxy;
 
-use crate::error::StratumTranscoderProxyError;
+use std::convert::Infallible;
+
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{StratumTranscoderProxyConfig, StratumTranscoderProxyService};
-use std::convert::Infallible;
 use structopt::StructOpt;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tokio::time::Duration;
+
+use crate::error::StratumTranscoderProxyError;
 
 #[tokio::main]
 async fn main() -> Result<(), StratumTranscoderProxyError> {

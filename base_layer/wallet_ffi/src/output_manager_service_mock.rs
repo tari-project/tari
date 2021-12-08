@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::StreamExt;
 use std::sync::{Arc, Mutex};
+
+use futures::StreamExt;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::output_manager_service::{

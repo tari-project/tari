@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{components::Component, state::AppState};
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -29,6 +28,8 @@ use tui::{
     widgets::{Block, Borders, Tabs},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct TabsContainer<B: Backend> {
     title: String,

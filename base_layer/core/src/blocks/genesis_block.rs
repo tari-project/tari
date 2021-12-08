@@ -21,6 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // This file is used to store the genesis block
+use std::sync::Arc;
+
+use chrono::DateTime;
+use tari_common::configuration::Network;
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+use tari_crypto::{
+    script::TariScript,
+    tari_utilities::{hash::Hashable, hex::*},
+};
+
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{PowAlgorithm, ProofOfWork},
@@ -29,14 +39,6 @@ use crate::{
         tari_amount::MicroTari,
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     },
-};
-use chrono::DateTime;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
-use tari_crypto::{
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::*},
 };
 
 const LATEST_BLOCK_VERSION: u16 = 2;

@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{common::find_peaks, error::MerkleMountainRangeError, ArrayLike, Hash, MerkleMountainRange};
+use std::convert::TryFrom;
+
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+
+use crate::{common::find_peaks, error::MerkleMountainRangeError, ArrayLike, Hash, MerkleMountainRange};
 
 /// This is a specialised struct that represents a pruned hash set for Merkle Mountain Ranges.
 ///

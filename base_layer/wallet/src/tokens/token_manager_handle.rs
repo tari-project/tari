@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_service_framework::{reply_channel::SenderService, Service};
+
 use crate::{
     error::WalletError,
     tokens::{
@@ -27,7 +29,6 @@ use crate::{
         Token,
     },
 };
-use tari_service_framework::{reply_channel::SenderService, Service};
 
 #[derive(Clone)]
 pub struct TokenManagerHandle {

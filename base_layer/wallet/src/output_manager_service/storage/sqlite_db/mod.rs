@@ -20,6 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::{TryFrom, TryInto},
+    str::from_utf8,
+    sync::{Arc, RwLock},
+};
+
+use aes_gcm::Aes256Gcm;
+use chrono::{NaiveDateTime, Utc};
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use log::*;
+use tari_common_types::{
+    transaction::TxId,
+    types::{Commitment, PrivateKey},
+};
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
+use tari_crypto::{
+    script::{ExecutionStack, TariScript},
+    tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+};
+use tari_key_manager::cipher_seed::CipherSeed;
+use tokio::time::Instant;
+
 use super::OutputStatus;
 use crate::{
     output_manager_service::{
@@ -37,29 +62,6 @@ use crate::{
         encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
     },
 };
-use aes_gcm::Aes256Gcm;
-use chrono::{NaiveDateTime, Utc};
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use log::*;
-use std::{
-    convert::{TryFrom, TryInto},
-    str::from_utf8,
-    sync::{Arc, RwLock},
-};
-use tari_common_types::{
-    transaction::TxId,
-    types::{Commitment, PrivateKey},
-};
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        ByteArray,
-    },
-};
-use tari_key_manager::cipher_seed::CipherSeed;
-use tokio::time::Instant;
 mod new_output_sql;
 pub use new_output_sql::NewOutputSql;
 mod output_sql;
@@ -1549,9 +1551,6 @@ mod test {
     };
     use diesel::{Connection, SqliteConnection};
     use rand::{rngs::OsRng, RngCore};
-    use tari_crypto::script;
-    use tempfile::tempdir;
-
     use tari_common_types::types::CommitmentFactory;
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -1559,8 +1558,10 @@ mod test {
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
+    use tari_crypto::script;
     use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random;
+    use tempfile::tempdir;
 
     use crate::{
         output_manager_service::storage::{

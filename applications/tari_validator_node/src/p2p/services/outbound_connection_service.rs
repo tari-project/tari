@@ -20,9 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::p2p::proto;
-use async_trait::async_trait;
 use std::marker::PhantomData;
+
+use async_trait::async_trait;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_dan_core::{
@@ -32,6 +32,8 @@ use tari_dan_core::{
 };
 use tari_p2p::tari_message::TariMessageType;
 use tokio::sync::mpsc::Sender;
+
+use crate::p2p::proto;
 
 pub struct TariCommsOutboundService<TPayload: Payload> {
     outbound_message_requester: OutboundMessageRequester,

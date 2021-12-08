@@ -20,18 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    block_template_data::BlockTemplateRepository,
-    block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
-    common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
-    error::MmProxyError,
-};
-use bytes::Bytes;
-use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
-use json::json;
-use jsonrpc::error::StandardError;
-use reqwest::{ResponseBuilderExt, Url};
-use serde_json as json;
 use std::{
     cmp,
     convert::TryFrom,
@@ -45,11 +33,25 @@ use std::{
     task::{Context, Poll},
     time::Instant,
 };
+
+use bytes::Bytes;
+use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
+use json::json;
+use jsonrpc::error::StandardError;
+use reqwest::{ResponseBuilderExt, Url};
+use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
+
+use crate::{
+    block_template_data::BlockTemplateRepository,
+    block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
+    common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
+    error::MmProxyError,
+};
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 /// The JSON object key name used for merge mining proxy response extensions

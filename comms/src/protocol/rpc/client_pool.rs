@@ -20,6 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
+
+use log::*;
+use tokio::sync::Mutex;
+
 use crate::{
     peer_manager::NodeId,
     protocol::rpc::{
@@ -32,12 +40,6 @@ use crate::{
     },
     PeerConnection,
 };
-use log::*;
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
-use tokio::sync::Mutex;
 
 const LOG_TARGET: &str = "comms::protocol::rpc::client_pool";
 

@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::stratum::{error::Error, stratum_statistics::stats, stratum_types as types, stream::Stream};
-
-use log::*;
 use std::{
     self,
     io::{BufRead, ErrorKind, Write},
     sync::{mpsc, Arc, RwLock},
     thread,
 };
+
+use log::*;
+
+use crate::stratum::{error::Error, stratum_statistics::stats, stratum_types as types, stream::Stream};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";

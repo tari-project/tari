@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use fs2::FileExt;
 use std::{fs::File, io, path::Path};
+
+use fs2::FileExt;
 
 /// Acquire an exclusive OS level write lock at the given path. A file named .lock is written in
 /// this path.

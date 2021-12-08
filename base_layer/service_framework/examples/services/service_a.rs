@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::services::ServiceBHandle;
 use async_trait::async_trait;
 use futures::{pin_mut, StreamExt};
 use tari_service_framework::{
@@ -32,6 +31,8 @@ use tari_service_framework::{
 };
 use tari_shutdown::ShutdownSignal;
 use tower::Service;
+
+use crate::services::ServiceBHandle;
 
 pub struct ServiceA {
     response_msg: String,

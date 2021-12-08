@@ -20,19 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::{
-    block_builders::{
-        chain_block_with_coinbase,
-        chain_block_with_new_coinbase,
-        create_coinbase,
-        create_genesis_block_with_utxos,
-        find_header_with_achieved_difficulty,
-    },
-    test_blockchain::TestBlockchain,
-};
+use std::sync::Arc;
+
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
-use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
@@ -67,6 +58,17 @@ use tari_core::{
 };
 use tari_crypto::{inputs, script};
 use tari_utilities::{hex::Hex, Hashable};
+
+use crate::helpers::{
+    block_builders::{
+        chain_block_with_coinbase,
+        chain_block_with_new_coinbase,
+        create_coinbase,
+        create_genesis_block_with_utxos,
+        find_header_with_achieved_difficulty,
+    },
+    test_blockchain::TestBlockchain,
+};
 
 mod helpers;
 

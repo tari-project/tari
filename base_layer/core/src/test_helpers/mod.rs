@@ -28,6 +28,14 @@ mod block_spec;
 pub use block_spec::{BlockSpec, BlockSpecs};
 
 pub mod blockchain;
+use std::{iter, path::Path, sync::Arc};
+
+use rand::{distributions::Alphanumeric, Rng};
+use tari_common::configuration::Network;
+use tari_comms::PeerManager;
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_utilities::Hashable;
+
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
@@ -38,12 +46,6 @@ use crate::{
         CryptoFactories,
     },
 };
-use rand::{distributions::Alphanumeric, Rng};
-use std::{iter, path::Path, sync::Arc};
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use tari_utilities::Hashable;
 
 pub fn create_consensus_rules() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()

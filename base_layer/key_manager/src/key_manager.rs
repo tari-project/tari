@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::cipher_seed::CipherSeed;
+use std::marker::PhantomData;
+
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
 };
+
+use crate::cipher_seed::CipherSeed;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DerivedKey<K>
@@ -113,9 +115,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::key_manager::*;
     use sha2::Sha256;
     use tari_crypto::ristretto::RistrettoSecretKey;
+
+    use crate::key_manager::*;
 
     #[test]
     fn test_new_keymanager() {

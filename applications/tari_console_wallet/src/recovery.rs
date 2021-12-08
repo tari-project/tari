@@ -26,17 +26,16 @@ use log::*;
 use rustyline::Editor;
 use tari_common::exit_codes::ExitCodes;
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_key_manager::mnemonic::Mnemonic;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     storage::sqlite_db::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
     WalletSqlite,
 };
+use tokio::sync::broadcast;
 
 use crate::wallet_modes::PeerConfig;
-use tari_key_manager::cipher_seed::CipherSeed;
-use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 

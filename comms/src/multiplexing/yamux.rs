@@ -20,15 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection_manager::ConnectionDirection,
-    runtime,
-    stream_id,
-    stream_id::StreamId,
-    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
-};
-use futures::{task::Context, Stream};
 use std::{future::Future, io, pin::Pin, task::Poll};
+
+use futures::{task::Context, Stream};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
@@ -36,10 +30,17 @@ use tokio::{
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing::{self, debug, error, event, Level};
-use yamux::Mode;
-
 // Reexport
 pub use yamux::ConnectionError;
+use yamux::Mode;
+
+use crate::{
+    connection_manager::ConnectionDirection,
+    runtime,
+    stream_id,
+    stream_id::StreamId,
+    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
+};
 
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
@@ -331,6 +332,12 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
 
 #[cfg(test)]
 mod test {
+    use std::{io, time::Duration};
+
+    use tari_test_utils::collect_stream;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_stream::StreamExt;
+
     use crate::{
         connection_manager::ConnectionDirection,
         memsocket::MemorySocket,
@@ -338,10 +345,6 @@ mod test {
         runtime,
         runtime::task,
     };
-    use std::{io, time::Duration};
-    use tari_test_utils::collect_stream;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio_stream::StreamExt;
 
     #[runtime::test]
     async fn open_substream() -> io::Result<()> {

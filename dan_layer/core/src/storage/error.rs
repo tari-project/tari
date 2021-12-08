@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use lmdb_zero as lmdb;
 use std::io;
+
+use lmdb_zero as lmdb;
 use tari_storage::lmdb_store::LMDBError;
 
 #[derive(Debug, thiserror::Error)]

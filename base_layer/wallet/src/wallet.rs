@@ -20,10 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
 use digest::Digest;
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -49,7 +54,7 @@ use tari_crypto::{
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_key_manager::key_manager::KeyManager;
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -82,11 +87,6 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
 };
-use tari_common_types::{
-    transaction::TxId,
-    types::{ComSignature, PrivateKey, PublicKey},
-};
-use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";
 

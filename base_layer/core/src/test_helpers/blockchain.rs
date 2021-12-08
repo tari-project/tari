@@ -20,6 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fs,
+    ops::{Deref, Range},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use croaring::Bitmap;
+use tari_common::configuration::Network;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{Commitment, HashOutput, PublicKey, Signature},
+};
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
+use tari_utilities::Hashable;
+
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
@@ -63,22 +81,6 @@ use crate::{
         DifficultyCalculator,
     },
 };
-use croaring::Bitmap;
-use std::{
-    collections::HashMap,
-    fs,
-    ops::{Deref, Range},
-    path::{Path, PathBuf},
-    sync::Arc,
-};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
-};
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
-use tari_utilities::Hashable;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {

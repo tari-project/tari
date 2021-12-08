@@ -20,6 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, sync::Arc, time::Duration};
+
+use bytes::Bytes;
+use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
+use rand::rngs::OsRng;
+use tari_crypto::keys::PublicKey;
+use tari_shutdown::Shutdown;
+use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    time,
+};
+
 use super::protocol::{
     MessagingEvent,
     MessagingEventReceiver,
@@ -47,17 +60,6 @@ use crate::{
         transport,
     },
     types::{CommsDatabase, CommsPublicKey},
-};
-use bytes::Bytes;
-use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
-use rand::rngs::OsRng;
-use std::{io, sync::Arc, time::Duration};
-use tari_crypto::keys::PublicKey;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
-use tokio::{
-    sync::{broadcast, mpsc, oneshot},
-    time,
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");

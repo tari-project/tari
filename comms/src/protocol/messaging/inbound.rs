@@ -20,18 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use futures::{future::Either, StreamExt};
+use log::*;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+
 use crate::{
     message::InboundMessage,
     peer_manager::NodeId,
     protocol::messaging::{MessagingEvent, MessagingProtocol},
     rate_limit::RateLimit,
-};
-use futures::{future::Either, StreamExt};
-use log::*;
-use std::{sync::Arc, time::Duration};
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";

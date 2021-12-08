@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::comms_interface::CommsInterfaceError;
 use prost::DecodeError;
 use tari_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::NodeId};
 use tari_p2p::services::liveness::error::LivenessError;
 use thiserror::Error;
+
+use crate::base_node::comms_interface::CommsInterfaceError;
 
 #[derive(Debug, Error)]
 pub enum ChainMetadataSyncError {

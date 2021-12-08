@@ -119,6 +119,7 @@ use std::{
     time::Duration,
 };
 
+use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
@@ -134,22 +135,6 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    tari_utilities::ByteArray,
-};
-use tari_utilities::{hex, hex::Hex};
-use tokio::runtime::Runtime;
-
-use crate::{
-    callback_handler::CallbackHandler,
-    enums::SeedWordPushResult,
-    error::{InterfaceError, TransactionError},
-    tasks::recovery_event_monitoring,
-};
-use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -165,12 +150,19 @@ use tari_comms::{
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_crypto::{
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    tari_utilities::ByteArray,
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
 };
 use tari_shutdown::Shutdown;
+use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
@@ -191,6 +183,14 @@ use tari_wallet::{
     Wallet,
     WalletConfig,
     WalletSqlite,
+};
+use tokio::runtime::Runtime;
+
+use crate::{
+    callback_handler::CallbackHandler,
+    enums::SeedWordPushResult,
+    error::{InterfaceError, TransactionError},
+    tasks::recovery_event_monitoring,
 };
 
 mod callback_handler;
@@ -5289,11 +5289,10 @@ mod test {
     };
 
     use libc::{c_char, c_uchar, c_uint};
-    use tempfile::tempdir;
-
     use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_test_utils::random;
     use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
+    use tempfile::tempdir;
 
     use crate::*;
 

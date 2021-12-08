@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 use core::iter;
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::path::Path;
+
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_core::consensus::{ConsensusConstants, ConsensusManager};
 use tempfile::{tempdir, TempDir};
+
+use crate::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 
 pub fn random_string(len: usize) -> String {
     iter::repeat(())
