@@ -27,6 +27,8 @@ use tari_storage::HashmapDatabase;
 #[cfg(not(test))]
 use tari_storage::LMDBWrapper;
 
+use crate::peer_manager::{Peer, PeerId};
+
 /// Public key type
 pub type CommsPublicKey = RistrettoPublicKey;
 pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;

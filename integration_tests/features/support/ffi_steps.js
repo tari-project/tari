@@ -431,15 +431,19 @@ Then(
       120
     );
 
-    if (!(wallet.getCounters().saf >= amount)) {
-      console.log("Counter not adequate!");
+    if (wallet.getCounters().saf < amount) {
+      console.log(
+        `Expected to receive ${amount} SAF messages but received ${
+          wallet.getCounters().saf
+        }`
+      );
     } else {
       console.log(wallet.getCounters());
     }
     if (comparison === atLeast) {
-      expect(wallet.getCounters().saf >= amount).to.equal(true);
+      expect(wallet.getCounters().saf).to.be.gte(amount);
     } else {
-      expect(wallet.getCounters().saf === amount).to.equal(true);
+      expect(wallet.getCounters().saf).to.be.equal(amount);
     }
   }
 );

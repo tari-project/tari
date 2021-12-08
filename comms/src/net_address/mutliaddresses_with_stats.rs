@@ -8,6 +8,8 @@ use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
+use crate::net_address::MutliaddrWithStats;
+
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
 pub struct MultiaddressesWithStats {
