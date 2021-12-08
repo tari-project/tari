@@ -133,11 +133,11 @@ impl OutboundMessaging {
     async fn run_inner(mut self) -> Result<(), MessagingProtocolError> {
         let mut attempts = 0;
 
-        let substream = loop {
+        let (conn, substream) = loop {
             match self.try_establish().await {
-                Ok(substream) => {
+                Ok(conn_and_substream) => {
                     event!(Level::DEBUG, "Substream established");
-                    break substream;
+                    break conn_and_substream;
                 },
                 Err(err) => {
                     if attempts >= MAX_SEND_RETRIES {
@@ -156,7 +156,7 @@ impl OutboundMessaging {
                 },
             }
         };
-        self.start_forwarding_messages(substream).await?;
+        self.start_forwarding_messages(conn, substream).await?;
 
         Ok(())
     }
@@ -197,7 +197,9 @@ impl OutboundMessaging {
         .await
     }
 
-    async fn try_establish(&mut self) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
+    async fn try_establish(
+        &mut self,
+    ) -> Result<(PeerConnection, NegotiatedSubstream<Substream>), MessagingProtocolError> {
         let span = span!(
             Level::DEBUG,
             "establish_connection",
@@ -210,20 +212,20 @@ impl OutboundMessaging {
                 self.peer_node_id.short_str()
             );
             let start = Instant::now();
-            let conn = self.try_dial_peer().await?;
+            let mut conn = self.try_dial_peer().await?;
             debug!(
                 target: LOG_TARGET,
                 "Connection succeeded for peer `{}` in {:.0?}",
                 self.peer_node_id.short_str(),
                 start.elapsed()
             );
-            let substream = self.try_open_substream(conn).await?;
+            let substream = self.try_open_substream(&mut conn).await?;
             debug!(
                 target: LOG_TARGET,
                 "Substream established for peer `{}`",
                 self.peer_node_id.short_str(),
             );
-            Ok(substream)
+            Ok((conn, substream))
         }
         .instrument(span)
         .await
@@ -231,14 +233,14 @@ impl OutboundMessaging {
 
     async fn try_open_substream(
         &mut self,
-        mut conn: PeerConnection,
+        conn: &mut PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
         let span = span!(
             Level::DEBUG,
             "open_substream",
             node_id = self.peer_node_id.to_string().as_str()
         );
-        async move {
+        async {
             match conn.open_substream(&MESSAGING_PROTOCOL).await {
                 Ok(substream) => Ok(substream),
                 Err(err) => {
@@ -258,43 +260,44 @@ impl OutboundMessaging {
 
     async fn start_forwarding_messages(
         self,
+        conn: PeerConnection,
         substream: NegotiatedSubstream<Substream>,
     ) -> Result<(), MessagingProtocolError> {
+        let peer_node_id = self.peer_node_id;
         let span = span!(
             Level::DEBUG,
             "start_forwarding_messages",
-            node_id = self.peer_node_id.to_string().as_str()
+            node_id = peer_node_id.to_string().as_str()
         );
         let _enter = span.enter();
         debug!(
             target: LOG_TARGET,
-            "Starting direct message forwarding for peer `{}`",
-            self.peer_node_id.short_str()
+            "Starting direct message forwarding for peer `{}`", peer_node_id
         );
-        let substream = substream.stream;
 
-        let framed = MessagingProtocol::framed(substream);
+        let framed = MessagingProtocol::framed(substream.stream);
 
         let Self {
-            request_rx,
+            mut request_rx,
             inactivity_timeout,
             ..
         } = self;
 
         // Convert unbounded channel to a stream
-        let stream = futures::stream::unfold(request_rx, |mut rx| async move {
+        let outbound_stream = futures::stream::unfold(&mut request_rx, |rx| async move {
             let v = rx.recv().await;
             v.map(|v| (v, rx))
         });
 
         let stream = match inactivity_timeout {
             Some(timeout) => Either::Left(
-                tokio_stream::StreamExt::timeout(stream, timeout).map_err(|_| MessagingProtocolError::Inactivity),
+                tokio_stream::StreamExt::timeout(outbound_stream, timeout)
+                    .map_err(|_| MessagingProtocolError::Inactivity),
             ),
-            None => Either::Right(stream.map(Ok)),
+            None => Either::Right(outbound_stream.map(Ok)),
         };
 
-        let outbound_count = metrics::outbound_message_count(&self.peer_node_id);
+        let outbound_count = metrics::outbound_message_count(&peer_node_id);
         let stream = stream.map(|msg| {
             outbound_count.inc();
             msg.map(|mut out_msg| {
@@ -304,12 +307,26 @@ impl OutboundMessaging {
             })
         });
 
+        // Stop the stream as soon as the disconnection occurs, this allows the outbound stream to terminate as soon as
+        // the connection terminates rather than detecting the disconnect on the next message send.
+        let stream = stream.take_until(async move {
+            let fut = conn.disconnected();
+            let peer_node_id = conn.peer_node_id().clone();
+            // We drop the conn handle here BEFORE awaiting a disconnect to ensure that the outbound messaging isn't
+            // holding onto the handle keeping the connection alive
+            drop(conn);
+            fut.await;
+            debug!(
+                target: LOG_TARGET,
+                "Peer connection closed. Ending outbound messaging stream for peer {}.", peer_node_id
+            )
+        });
+
         super::forward::Forward::new(stream, framed.sink_map_err(Into::into)).await?;
 
         debug!(
             target: LOG_TARGET,
-            "Direct message forwarding successfully completed for peer `{}`.",
-            self.peer_node_id.short_str()
+            "Direct message forwarding successfully completed for peer `{}`.", peer_node_id
         );
         Ok(())
     }

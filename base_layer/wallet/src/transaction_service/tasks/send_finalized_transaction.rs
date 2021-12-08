@@ -177,16 +177,18 @@ pub async fn send_finalized_transaction_message_direct(
                         )
                         .await;
                     },
+
+                    Ok(SendMessageResponse::Failed(e)) => warn!(
+                        target: LOG_TARGET,
+                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
+                    ),
+                    Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
                             "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
                         );
                     },
-                    _ => warn!(
-                        target: LOG_TARGET,
-                        "Empty response received waiting for Discovery to complete TxId: {}", tx_id
-                    ),
                 }
             },
         },

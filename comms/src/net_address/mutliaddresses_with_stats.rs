@@ -2,10 +2,14 @@ use super::multiaddr_with_stats::MutliaddrWithStats;
 use chrono::{DateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{ops::Index, time::Duration};
+use std::{
+    fmt::{Display, Formatter},
+    ops::Index,
+    time::Duration,
+};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
 pub struct MultiaddressesWithStats {
     pub addresses: Vec<MutliaddrWithStats>,
     last_attempted: Option<DateTime<Utc>>,
@@ -187,6 +191,12 @@ impl MultiaddressesWithStats {
     }
 }
 
+impl PartialEq for MultiaddressesWithStats {
+    fn eq(&self, other: &Self) -> bool {
+        self.addresses == other.addresses
+    }
+}
+
 impl Index<usize> for MultiaddressesWithStats {
     type Output = MutliaddrWithStats;
 
@@ -226,6 +236,20 @@ impl From<Vec<MutliaddrWithStats>> for MultiaddressesWithStats {
             addresses,
             last_attempted: None,
         }
+    }
+}
+
+impl Display for MultiaddressesWithStats {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.addresses
+                .iter()
+                .map(|a| a.address.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 

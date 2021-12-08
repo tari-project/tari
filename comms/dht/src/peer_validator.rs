@@ -74,23 +74,43 @@ impl<'a> PeerValidator<'a> {
         debug!(target: LOG_TARGET, "Adding peer `{}`", new_peer.node_id);
 
         match self.peer_manager.find_by_node_id(&new_peer.node_id).await? {
-            Some(mut peer) => {
+            Some(mut current_peer) => {
+                let can_update = can_update && {
+                    // Update/insert peer if newer
+                    // unreachable panic: can_update is true only is identity_signature is present and valid
+                    let new_dt = new_peer
+                        .identity_signature
+                        .as_ref()
+                        .map(|i| i.updated_at())
+                        .expect("unreachable panic");
+
+                    // Update if new_peer has newer timestamp than current_peer
+                    current_peer
+                        .identity_signature
+                        .as_ref()
+                        .map(|i| i.updated_at() < new_dt)
+                        // If None, update to peer with valid signature
+                        .unwrap_or(true)
+                };
+
                 if !can_update {
                     debug!(
                         target: LOG_TARGET,
-                        "Peer `{}` already exists and will not be added to the peer list", new_peer.node_id
+                        "Peer `{}` already exists or is up to date and will not be updated", new_peer.node_id
                     );
                     return Ok(false);
                 }
 
-                peer.addresses.update_addresses(new_peer.addresses.into_vec());
-                peer.identity_signature = new_peer.identity_signature;
-                peer.set_offline(false);
-                self.peer_manager.add_peer(peer).await?;
+                debug!(target: LOG_TARGET, "Updating peer `{}`", new_peer.node_id);
+                current_peer.addresses.update_addresses(new_peer.addresses.into_vec());
+                current_peer.identity_signature = new_peer.identity_signature;
+                current_peer.set_offline(false);
+                self.peer_manager.add_peer(current_peer).await?;
 
                 Ok(false)
             },
             None => {
+                debug!(target: LOG_TARGET, "Adding peer `{}`", new_peer.node_id);
                 self.peer_manager.add_peer(new_peer).await?;
                 Ok(true)
             },

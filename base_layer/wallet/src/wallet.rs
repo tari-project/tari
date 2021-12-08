@@ -268,18 +268,35 @@ where
             public_key, address
         );
 
-        let peer = Peer::new(
-            public_key.clone(),
-            NodeId::from_key(&public_key),
-            vec![address].into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            String::new(),
-        );
-
-        self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.wallet_connectivity.set_base_node(peer);
+        let addresses = vec![address].into();
+        let peer_manager = self.comms.peer_manager();
+        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
+            // Only invalidate the identity signature if addresses are different
+            if current_peer.addresses != addresses {
+                info!(
+                    target: LOG_TARGET,
+                    "Address for base node differs from storage. Was {}, setting to {}",
+                    current_peer.addresses,
+                    addresses
+                );
+                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+                peer_manager.add_peer(current_peer.clone()).await?;
+            }
+            self.wallet_connectivity.set_base_node(current_peer);
+        } else {
+            let node_id = NodeId::from_key(&public_key);
+            let peer = Peer::new(
+                public_key,
+                node_id,
+                addresses,
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+                Default::default(),
+                String::new(),
+            );
+            peer_manager.add_peer(peer.clone()).await?;
+            self.wallet_connectivity.set_base_node(peer);
+        }
 
         Ok(())
     }

@@ -134,7 +134,7 @@ impl SendMessageResponse {
             Queued(send_states) if !send_states.is_empty() => Ok(send_states),
             Queued(_) => Err(SendFailure::NoMessagesQueued),
             Failed(err) => Err(err),
-            PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
+            PendingDiscovery(_) => panic!("queued_or_failed() called on PendingDiscovery"),
         }
     }
 }

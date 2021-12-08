@@ -2869,7 +2869,7 @@ pub unsafe extern "C" fn comms_config_create(
         Ok(selected_network) => {
             match public_address {
                 Ok(public_address) => {
-                    let ni = NodeIdentity::new(
+                    let node_identity = NodeIdentity::new(
                         CommsSecretKey::default(),
                         public_address,
                         PeerFeatures::COMMUNICATION_CLIENT,
@@ -2877,7 +2877,7 @@ pub unsafe extern "C" fn comms_config_create(
 
                     let config = TariCommsConfig {
                         network: selected_network,
-                        node_identity: Arc::new(ni),
+                        node_identity: Arc::new(node_identity),
                         transport_type: (*transport_type).clone(),
                         auxilary_tcp_listener_address: None,
                         datastore_path,
@@ -3205,8 +3205,6 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let result = runtime.block_on(async {
-        let identity_sig = wallet_database.get_comms_identity_signature().await?;
-
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
             .await
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
@@ -3214,6 +3212,7 @@ pub unsafe extern "C" fn wallet_create(
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
         let node_features = comms_config.node_identity.features();
         let node_address = comms_config.node_identity.public_address();
+        let identity_sig = wallet_database.get_comms_identity_signature().await?;
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
         // to None

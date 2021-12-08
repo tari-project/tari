@@ -297,15 +297,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         .send(SendMessageResponse::PendingDiscovery(discovery_reply_rx));
 
                     match self.initiate_peer_discovery(target_public_key).await {
-                        Ok(Some(peer)) => {
+                        Ok(peer) => {
                             // Set the reply_tx so that it can be used later
                             reply_tx = Some(discovery_reply_tx);
                             peers = vec![peer.node_id];
-                        },
-                        Ok(None) => {
-                            // Message sent to 0 peers
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![].into()));
-                            return Ok(Vec::new());
                         },
                         Err(err @ DhtOutboundError::DiscoveryFailed) => {
                             let _ = discovery_reply_tx.send(SendMessageResponse::Failed(SendFailure::DiscoveryFailed));
@@ -374,7 +369,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn initiate_peer_discovery(
         &mut self,
         dest_public_key: Box<CommsPublicKey>,
-    ) -> Result<Option<Peer>, DhtOutboundError> {
+    ) -> Result<Peer, DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Initiating peer discovery for public key '{}'",
@@ -389,20 +384,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         {
             // Peer found!
             Ok(peer) => {
-                if peer.is_banned() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Peer discovery succeeded however peer with public key '{}' is marked as banned.",
-                        peer.public_key
-                    );
-                    return Ok(None);
-                }
-
                 debug!(
                     target: LOG_TARGET,
                     "Peer discovery succeeded for public key '{}'.", peer.public_key
                 );
-                Ok(Some(peer))
+                Ok(peer)
             },
             // Error during discovery
             Err(err) => {

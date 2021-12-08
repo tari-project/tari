@@ -49,6 +49,7 @@ use log::*;
 use multiaddr::Multiaddr;
 use std::{
     fmt,
+    future::Future,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -182,6 +183,12 @@ impl PeerConnection {
 
     pub fn is_connected(&self) -> bool {
         !self.request_tx.is_closed()
+    }
+
+    /// Returns a owned future that resolves on disconnection
+    pub fn disconnected(&self) -> impl Future<Output = ()> + 'static {
+        let request_tx = self.request_tx.clone();
+        async move { request_tx.closed().await }
     }
 
     pub fn age(&self) -> Duration {

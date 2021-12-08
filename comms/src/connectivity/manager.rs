@@ -291,6 +291,9 @@ impl ConnectivityManagerActor {
         let mut node_ids = Vec::with_capacity(self.pool.count_connected());
         for mut state in self.pool.filter_drain(|_| true) {
             if let Some(conn) = state.connection_mut() {
+                if !conn.is_connected() {
+                    continue;
+                }
                 match conn.disconnect_silent().await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());

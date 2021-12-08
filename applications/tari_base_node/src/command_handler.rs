@@ -458,6 +458,9 @@ impl CommandHandler {
             if let Some(dt) = peer.last_seen() {
                 println!("Last seen: {}", dt);
             }
+            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                println!("Last updated: {} (UTC)", updated_at);
+            }
         });
     }
 
@@ -492,7 +495,7 @@ impl CommandHandler {
                                 }
                             } else if let Some(dt) = peer.last_seen() {
                                 s.push(format!(
-                                    "LAST_SEEN = {}",
+                                    "LAST_SEEN: {}",
                                     Utc::now()
                                         .naive_utc()
                                         .signed_duration_since(dt)
@@ -517,10 +520,11 @@ impl CommandHandler {
                                 .get_metadata(1)
                                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                             {
-                                s.push(format!(
-                                    "chain height = {}",
-                                    metadata.metadata.height_of_longest_chain()
-                                ));
+                                s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
+                            }
+
+                            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                                s.push(format!("updated_at: {} (UTC)", updated_at));
                             }
 
                             if s.is_empty() {

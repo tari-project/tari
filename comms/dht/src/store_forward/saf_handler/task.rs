@@ -172,11 +172,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         &mut self,
         message: DecryptedDhtMessage,
     ) -> Result<(), StoreAndForwardError> {
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "Received request for stored message {} from {} (Trace: {})",
             message.tag,
-            message.source_peer.public_key,
+            message.source_peer.node_id,
             message.dht_header.message_tag
         );
         let msg = message

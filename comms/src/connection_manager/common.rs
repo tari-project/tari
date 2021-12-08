@@ -172,6 +172,10 @@ fn add_valid_identity_signature_to_peer(
         IdentitySignature::try_from(identity_sig).map_err(|_| ConnectionManagerError::PeerIdentityInvalidSignature)?;
 
     if !identity_sig.is_valid_for_peer(peer) {
+        warn!(
+            target: LOG_TARGET,
+            "Peer {} sent invalid identity signature", peer.node_id
+        );
         return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
     }
 

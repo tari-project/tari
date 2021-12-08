@@ -643,16 +643,17 @@ where
                             )
                             .await;
                         },
+                        Ok(SendMessageResponse::Failed(e)) => warn!(
+                            target: LOG_TARGET,
+                            "Failed to send message ({}) for TxId: {}", e, self.id
+                        ),
+                        Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                         Err(e) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
                         },
-                        _ => warn!(
-                            target: LOG_TARGET,
-                            "Empty message received waiting for Discovery to complete TxId: {}", self.id,
-                        ),
                     }
                 },
             },

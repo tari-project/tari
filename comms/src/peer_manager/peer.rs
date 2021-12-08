@@ -188,7 +188,8 @@ impl Peer {
         supported_protocols: Option<Vec<ProtocolId>>,
     ) {
         if let Some(new_net_addresses) = net_addresses {
-            self.addresses.update_addresses(new_net_addresses)
+            self.addresses.update_addresses(new_net_addresses);
+            self.identity_signature = None;
         }
         if let Some(new_flags) = flags {
             self.flags = new_flags
@@ -206,6 +207,7 @@ impl Peer {
         }
         if let Some(new_features) = features {
             self.features = new_features;
+            self.identity_signature = None;
         }
         if let Some(supported_protocols) = supported_protocols {
             self.supported_protocols = supported_protocols;
