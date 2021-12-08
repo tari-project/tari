@@ -82,12 +82,6 @@
 
 // #![allow(clippy::op_ref)]
 
-pub mod proto;
-pub mod recipient;
-pub mod sender;
-pub mod sender_transaction_protocol_builder;
-pub mod single_receiver;
-
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{MessageHash, PrivateKey, PublicKey};
@@ -100,6 +94,12 @@ use tari_crypto::{
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction::TransactionError};
+
+pub mod proto;
+pub mod recipient;
+pub mod sender;
+pub mod single_receiver;
+pub mod transaction_initializer;
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {

@@ -19,17 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-use config::MinerConfig;
-use futures::stream::StreamExt;
-use log::*;
-
-mod config;
-mod difficulty;
-mod errors;
-mod miner;
-mod stratum;
-mod utils;
 
 use std::{
     convert::TryFrom,
@@ -42,7 +31,10 @@ use std::{
     time::Instant,
 };
 
+use config::MinerConfig;
 use errors::{err_empty, MinerError};
+use futures::stream::StreamExt;
+use log::*;
 use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
 use tari_app_utilities::initialization::init_configuration;
@@ -69,6 +61,13 @@ use crate::{
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
+
+mod config;
+mod difficulty;
+mod errors;
+mod miner;
+mod stratum;
+mod utils;
 
 /// Application entry point
 fn main() {
@@ -231,10 +230,10 @@ async fn main_inner() -> Result<(), ExitCodes> {
 }
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_grpc_address.clone();
+    let base_node_addr = config.base_node_grpc_address.clone()?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(base_node_addr).await?;
-    let wallet_addr = config.wallet_grpc_address.clone();
+    let wallet_addr = config.wallet_grpc_address.clone()?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(wallet_addr).await?;
 

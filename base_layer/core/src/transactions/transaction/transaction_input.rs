@@ -1,24 +1,27 @@
-//  Copyright 2021. The Tari Project
+// Copyright 2018 The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
     cmp::Ordering,
@@ -28,17 +31,18 @@ use std::{
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Challenge, ComSignature, Commitment, CommitmentFactory, HashDigest, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, StackItem, TariScript},
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
-};
+use tari_crypto::script::ScriptContext;
 
-use crate::transactions::transaction::{
-    transaction_output::TransactionOutput,
-    OutputFeatures,
-    TransactionError,
-    UnblindedOutput,
+use crate::{
+    crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        script::{ExecutionStack, StackItem, TariScript},
+        tari_utilities::{hex::Hex, ByteArray, Hashable},
+    },
+    transactions::{
+        transaction,
+        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
+    },
 };
 
 /// A transaction input.
@@ -116,8 +120,9 @@ impl TransactionInput {
 
     /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
     /// public key.
-    pub fn run_script(&self) -> Result<PublicKey, TransactionError> {
-        match self.script.execute(&self.input_data)? {
+    pub fn run_script(&self, context: Option<ScriptContext>) -> Result<PublicKey, TransactionError> {
+        let context = context.unwrap_or_default();
+        match self.script.execute_with_context(&self.input_data, &context)? {
             StackItem::PublicKey(pubkey) => Ok(pubkey),
             _ => Err(TransactionError::ScriptExecutionError(
                 "The script executed successfully but it did not leave a public key on the stack".to_string(),
@@ -151,8 +156,12 @@ impl TransactionInput {
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
     /// from the script.
-    pub fn run_and_verify_script(&self, factory: &CommitmentFactory) -> Result<PublicKey, TransactionError> {
-        let key = self.run_script()?;
+    pub fn run_and_verify_script(
+        &self,
+        factory: &CommitmentFactory,
+        context: Option<ScriptContext>,
+    ) -> Result<PublicKey, TransactionError> {
+        let key = self.run_script(context)?;
         self.validate_script_signature(&key, factory)?;
         Ok(key)
     }
@@ -165,12 +174,7 @@ impl TransactionInput {
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.features.to_v1_bytes())
-            .chain(self.commitment.as_bytes())
-            .chain(self.script.as_bytes())
-            .finalize()
-            .to_vec()
+        transaction::hash_output(&self.features, &self.commitment, &self.script)
     }
 }
 

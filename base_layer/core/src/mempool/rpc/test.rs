@@ -88,7 +88,6 @@ mod get_tx_state_by_excess_sig {
     use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
     use tari_test_utils::unpack_enum;
-    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
@@ -126,7 +125,7 @@ mod get_tx_state_by_excess_sig {
             .await
             .unwrap_err();
 
-        unpack_enum!(RpcStatusCode::BadRequest = status.status_code());
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
     }
 }
 
@@ -134,7 +133,6 @@ mod submit_transaction {
     use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
-    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
@@ -177,6 +175,6 @@ mod submit_transaction {
             .await
             .unwrap_err();
 
-        unpack_enum!(RpcStatusCode::BadRequest = status.status_code());
+        unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
     }
 }

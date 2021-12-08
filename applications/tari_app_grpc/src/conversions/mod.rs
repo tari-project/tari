@@ -40,7 +40,7 @@ mod transaction_output;
 mod unblinded_output;
 
 use prost_types::Timestamp;
-use tari_utilities::epoch_time::EpochTime;
+use tari_core::crypto::tari_utilities::epoch_time::EpochTime;
 
 pub use self::{
     aggregate_body::*,

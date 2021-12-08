@@ -65,6 +65,7 @@ pub mod protocols;
 pub mod service;
 pub mod storage;
 pub mod tasks;
+mod utc;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";

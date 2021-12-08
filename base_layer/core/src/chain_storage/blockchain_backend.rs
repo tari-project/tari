@@ -1,9 +1,7 @@
-use std::ops::Range;
-
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, HashOutput, Signature},
 };
 use tari_mmr::Hash;
 
@@ -101,14 +99,11 @@ pub trait BlockchainBackend: Send + Sync {
         excess_sig: &Signature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
-    /// Fetch kernels by MMR position
-    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError>;
-
-    fn fetch_utxos_by_mmr_position(
+    /// Fetch all UTXOs and spends in the block
+    fn fetch_utxos_in_block(
         &self,
-        start: u64,
-        end: u64,
-        deleted: &Bitmap,
+        header_hash: &HashOutput,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
@@ -153,6 +148,10 @@ pub trait BlockchainBackend: Send + Sync {
     fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError>;
+
+    /// Clear all headers that are beyond the current height of longest chain, returning the number of headers that were
+    /// deleted.
+    fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header and accumulated data with the highest height.
     fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
@@ -199,4 +198,7 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         mmr_positions: Vec<u32>,
     ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError>;
+
+    /// Check if a block hash is in the bad block list
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError>;
 }

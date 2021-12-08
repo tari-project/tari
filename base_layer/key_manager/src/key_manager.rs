@@ -23,7 +23,6 @@
 use std::marker::PhantomData;
 
 use digest::Digest;
-use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
@@ -77,7 +76,7 @@ where
 
     /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
-        let concatenated = format!("{}{}", self.seed.entropy.to_vec().to_hex(), key_index.to_string());
+        let concatenated = format!("{}{}", self.seed.entropy().to_vec().to_hex(), key_index.to_string());
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
             Err(e) => Err(e),

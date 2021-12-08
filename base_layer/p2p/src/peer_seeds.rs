@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, str::FromStr};
+use std::str::FromStr;
 
 use anyhow::anyhow;
+use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures},
@@ -44,7 +45,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect_secure(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect_secure(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect_secure(name_server, default_trust_anchor()).await?;
         Ok(Self { client })
     }
@@ -53,7 +54,7 @@ impl DnsSeedResolver {
     ///
     /// ## Arguments
     /// -`name_server` - the DNS name server to use to resolve records
-    pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = DnsClient::connect(name_server).await?;
         Ok(Self { client })
     }
@@ -196,15 +197,18 @@ mod test {
         };
 
         use super::*;
-        use crate::dns::mock;
+        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
 
         #[ignore = "This test requires network IO and is mostly useful during development"]
         #[tokio::test]
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver {
-                client: DnsClient::connect("1.1.1.1:53".parse().unwrap()).await.unwrap(),
+                client: DnsClient::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
+                    .await
+                    .unwrap(),
             };
             let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
+            println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }
 

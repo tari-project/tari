@@ -28,8 +28,7 @@ use futures::{
     FutureExt,
 };
 use tokio::sync::mpsc;
-use tower::Service;
-use tower_make::MakeService;
+use tower::{make::MakeService, Service};
 
 use super::RpcServerError;
 use crate::{

@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
-
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
@@ -46,6 +45,7 @@ pub enum BaseNodeServiceResponse {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
+    NewBlockDetected(u64),
 }
 
 impl fmt::Display for BaseNodeEvent {

@@ -65,6 +65,7 @@ fn is_tcp_address(addr: &Multiaddr) -> bool {
     let protocol = iter.next();
     matches!(protocol, Some(Tcp(_)))
 }
+
 #[cfg(test)]
 mod test {
     use super::*;

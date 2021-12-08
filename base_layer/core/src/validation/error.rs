@@ -56,7 +56,7 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
-    #[error("Transaction contains already outputs that already exist")]
+    #[error("Transaction contains outputs that already exist")]
     ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
@@ -96,6 +96,13 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
     AsyncTaskFailed(#[from] task::JoinError),
+    #[error("Bad block with hash {hash} found")]
+    BadBlockFound { hash: String },
+    #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
+    TariScriptExceedsMaxSize {
+        max_script_size: usize,
+        actual_script_size: usize,
+    },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
 }

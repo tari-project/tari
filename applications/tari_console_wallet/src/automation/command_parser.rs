@@ -28,15 +28,15 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use chrono_english::{parse_date_string, Dialect};
-use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
+use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_hash};
 use tari_common_types::types::PublicKey;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::automation::{commands::WalletCommand, error::ParseError};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParsedCommand {
     pub command: WalletCommand,
     pub args: Vec<ParsedArgument>,
@@ -59,6 +59,9 @@ impl Display for ParsedCommand {
             SetBaseNode => "set-base-node",
             SetCustomBaseNode => "set-custom-base-node",
             ClearCustomBaseNode => "clear-custom-base-node",
+            InitShaAtomicSwap => "init-sha-atomic-swap",
+            FinaliseShaAtomicSwap => "finalise-sha-atomic-swap",
+            ClaimShaAtomicSwapRefund => "claim-sha-atomic-swap-refund",
             RegisterAsset => "register-asset",
             MintTokens => "mint-tokens",
             CreateInitialCheckpoint => "create-initial-checkpoint",
@@ -87,6 +90,7 @@ pub enum ParsedArgument {
     CSVFileName(String),
     Address(Multiaddr),
     Negotiated(bool),
+    Hash(Vec<u8>),
 }
 
 impl Display for ParsedArgument {
@@ -103,6 +107,7 @@ impl Display for ParsedArgument {
             CSVFileName(v) => write!(f, "{}", v.to_string()),
             Address(v) => write!(f, "{}", v.to_string()),
             Negotiated(v) => write!(f, "{}", v.to_string()),
+            Hash(v) => write!(f, "{}", v.to_hex()),
         }
     }
 }
@@ -129,6 +134,9 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         SetBaseNode => parse_public_key_and_address(args)?,
         SetCustomBaseNode => parse_public_key_and_address(args)?,
         ClearCustomBaseNode => Vec::new(),
+        InitShaAtomicSwap => parse_init_sha_atomic_swap(args)?,
+        FinaliseShaAtomicSwap => parse_finalise_sha_atomic_swap(args)?,
+        ClaimShaAtomicSwapRefund => parse_claim_htlc_refund_refund(args)?,
         RegisterAsset => parser_builder(args).text().build()?,
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
@@ -254,6 +262,56 @@ fn parse_public_key_and_address(mut args: SplitWhitespace) -> Result<Vec<ParsedA
     Ok(parsed_args)
 }
 
+fn parse_init_sha_atomic_swap(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // amount
+    let amount = args.next().ok_or_else(|| ParseError::Empty("amount".to_string()))?;
+    let amount = MicroTari::from_str(amount)?;
+    parsed_args.push(ParsedArgument::Amount(amount));
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+    // message
+    let message = args.collect::<Vec<&str>>().join(" ");
+    parsed_args.push(ParsedArgument::Text(message));
+
+    Ok(parsed_args)
+}
+
+fn parse_finalise_sha_atomic_swap(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+    // hash
+    let hash = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("Output hash".to_string()))?;
+    let hash = parse_hash(hash).ok_or(ParseError::Hash)?;
+    parsed_args.push(ParsedArgument::Hash(hash));
+
+    // public key
+    let pre_image = args.next().ok_or_else(|| ParseError::Empty("public key".to_string()))?;
+    let pre_image = parse_emoji_id_or_public_key(pre_image).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pre_image));
+
+    Ok(parsed_args)
+}
+
+fn parse_claim_htlc_refund_refund(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+    // hash
+    let hash = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("Output hash".to_string()))?;
+    let hash = parse_hash(hash).ok_or(ParseError::Hash)?;
+    parsed_args.push(ParsedArgument::Hash(hash));
+
+    Ok(parsed_args)
+}
+
 fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
     let mut parsed_args = Vec::new();
 
@@ -294,11 +352,10 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     // start time utc or 'now'
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
-    let now = Utc::now();
     let start_time = if start_time != "now" {
-        parse_date_string(start_time, now, Dialect::Uk).map_err(ParseError::Date)?
+        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
     } else {
-        now
+        Utc::now()
     };
     parsed_args.push(ParsedArgument::Date(start_time));
 
@@ -310,16 +367,14 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     parsed_args.push(ParsedArgument::PublicKey(pubkey));
 
     // transaction type
-    let txn_type = args
-        .next()
-        .ok_or_else(|| ParseError::Empty("transaction type".to_string()))?;
+    let txn_type = args.next();
     let negotiated = match txn_type {
-        "negotiated" => true,
-        "one_sided" => false,
+        Some("negotiated") | Some("interactive") => true,
+        Some("one_sided") | Some("one-sided") | Some("onesided") => false,
         _ => {
-            println!("Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'\n");
+            println!("Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'\n");
             return Err(ParseError::Invalid(
-                "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string(),
+                "Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'".to_string(),
             ));
         },
     };
@@ -555,7 +610,7 @@ mod test {
             Err(e) => match e {
                 ParseError::Invalid(e) => assert_eq!(
                     e,
-                    "Invalid data provided for <transaction type>, must be 'negotiated' or 'one_sided'".to_string()
+                    "Invalid data provided for <transaction type>, must be 'interactive' or 'one-sided'".to_string()
                 ),
                 _ => panic!("Expected parsing <transaction type> to return an error here"),
             },

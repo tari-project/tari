@@ -297,6 +297,8 @@ pub(crate) mod hash_serializer {
 
     use super::*;
 
+    use super::*;
+
     #[allow(clippy::ptr_arg)]
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
@@ -337,8 +339,7 @@ pub(crate) mod hash_serializer {
 mod test {
     use tari_crypto::tari_utilities::Hashable;
 
-    use crate::blocks::BlockHeader;
-
+    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();

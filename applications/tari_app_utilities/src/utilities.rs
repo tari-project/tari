@@ -25,7 +25,7 @@ use std::sync::Arc;
 use futures::future::Either;
 use log::*;
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
-use tari_common_types::emoji::EmojiId;
+use tari_common_types::{emoji::EmojiId, types::BlockHash};
 use tari_comms::{
     peer_manager::NodeId,
     socks,
@@ -36,7 +36,6 @@ use tari_comms::{
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
 use crate::identity_management::load_from_json;
@@ -172,6 +171,11 @@ pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
+}
+
+/// Returns a hash from a hex string
+pub fn parse_hash(hash_string: &str) -> Option<BlockHash> {
+    BlockHash::from_hex(hash_string).ok()
 }
 
 /// Returns a CommsPublicKey from either a emoji id, a public key or node id

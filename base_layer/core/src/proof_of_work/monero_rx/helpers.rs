@@ -23,7 +23,6 @@ use std::iter;
 
 use log::*;
 use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
-use tari_utilities::hex::HexError;
 
 use super::{
     error::MergeMineError,
@@ -196,6 +195,15 @@ mod test {
 
     use super::*;
     use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
+
+    use super::*;
+    use crate::{
+        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
+        tari_utilities::{
+            hex::{from_hex, Hex},
+            ByteArray,
+        },
+    };
 
     // This tests checks the hash of monero-rs
     #[test]

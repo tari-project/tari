@@ -220,7 +220,7 @@ async fn build_node_context(
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
@@ -245,6 +245,7 @@ async fn build_node_context(
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),
             config.base_node_bypass_range_proof_verification,
+            blockchain_db.clone(),
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),

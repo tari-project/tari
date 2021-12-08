@@ -44,6 +44,8 @@ use tari_utilities::hex::Hex;
 
 use super::block_builders::chain_block;
 
+use super::block_builders::chain_block;
+
 #[allow(dead_code)]
 pub fn create_test_pow_blockchain<T: BlockchainBackend>(
     db: &BlockchainDatabase<T>,

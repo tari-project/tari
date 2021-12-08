@@ -109,9 +109,9 @@ impl Default for LMDBConfig {
 ///     .build()
 ///     .unwrap();
 /// ```
-#[derive(Default)]
 pub struct LMDBBuilder {
     path: PathBuf,
+    env_flags: open::Flags,
     max_dbs: usize,
     db_names: HashMap<String, db::Flags>,
     env_config: LMDBConfig,
@@ -126,12 +126,7 @@ impl LMDBBuilder {
     /// | path      | ./store/|
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
-        LMDBBuilder {
-            path: "./store/".into(),
-            db_names: HashMap::new(),
-            max_dbs: 8,
-            env_config: LMDBConfig::default(),
-        }
+        Default::default()
     }
 
     /// Set the directory where the LMDB database exists, or must be created.
@@ -139,6 +134,12 @@ impl LMDBBuilder {
     /// return `LMDBError::InvalidPath`.
     pub fn set_path<P: AsRef<Path>>(mut self, path: P) -> LMDBBuilder {
         self.path = path.as_ref().to_owned();
+        self
+    }
+
+    /// Set environment flags
+    pub fn set_env_flags(mut self, flags: open::Flags) -> LMDBBuilder {
+        self.env_flags = flags;
         self
     }
 
@@ -176,8 +177,8 @@ impl LMDBBuilder {
             let mut builder = EnvBuilder::new()?;
             builder.set_mapsize(self.env_config.init_size_bytes)?;
             builder.set_maxdbs(max_dbs)?;
-            // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
-            let flags = open::Flags::from_bits(0x0020_0000).expect("LMDB open::Flag is correct");
+            // Always include NOTLS flag since we know that we're using this with tokio
+            let flags = self.env_flags | open::NOTLS;
             let env = builder.open(&path, flags, 0o600)?;
             // SAFETY: no transactions can be open at this point
             LMDBStore::resize_if_required(&env, &self.env_config)?;
@@ -213,6 +214,18 @@ impl LMDBBuilder {
             env,
             databases,
         })
+    }
+}
+
+impl Default for LMDBBuilder {
+    fn default() -> Self {
+        Self {
+            path: "./store/".into(),
+            env_flags: open::Flags::empty(),
+            db_names: HashMap::new(),
+            max_dbs: 8,
+            env_config: LMDBConfig::default(),
+        }
     }
 }
 

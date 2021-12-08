@@ -124,6 +124,11 @@ where
                     if let Err(err) = self.start_ping_round().await {
                         warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
                     }
+                    if self.config.max_allowed_ping_failures > 0 {
+                        if let Err(err) = self.disconnect_failed_peers().await {
+                            error!(target: LOG_TARGET, "Error occurred while disconnecting failed peers: {}", err);
+                        }
+                    }
                 },
 
                 // Incoming messages from the Comms layer
@@ -181,7 +186,7 @@ where
                     return Ok(());
                 }
 
-                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
+                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
                 debug!(
                     target: LOG_TARGET,
                     "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
@@ -284,6 +289,26 @@ where
 
         self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
 
+        Ok(())
+    }
+
+    async fn disconnect_failed_peers(&mut self) -> Result<(), LivenessError> {
+        let max_allowed_ping_failures = self.config.max_allowed_ping_failures;
+        for node_id in self
+            .state
+            .failed_pings_iter()
+            .filter(|(_, n)| **n > max_allowed_ping_failures)
+            .map(|(node_id, _)| node_id)
+        {
+            if let Some(mut conn) = self.connectivity.get_connection(node_id.clone()).await? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
+                );
+                conn.disconnect().await?;
+            }
+        }
+        self.state.clear_failed_pings();
         Ok(())
     }
 

@@ -21,15 +21,27 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::cmp::Ordering;
 
+use std::cmp::Ordering;
+
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PublicKeyTrait};
-use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script::TariScript,
+    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
+};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
+    consensus::{
+        emission::Emission,
+        ConsensusConstants,
+        ConsensusEncodingSized,
+        ConsensusEncodingWrapper,
+        ConsensusManager,
+    },
+    crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::to_hex},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -239,6 +251,8 @@ pub fn check_accounting_balance(
             bypass_range_proof_verification,
             total_coinbase,
             factories,
+            Some(block.header.prev_hash.clone()),
+            Some(block.header.height),
         )
         .map_err(|err| {
             warn!(
@@ -458,10 +472,17 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     Err(ValidationError::UnknownInput)
 }
 
-/// This function checks that the outputs do not already exist in the UTxO set.
-pub fn check_not_duplicate_txos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
-    let mut unique_ids = Vec::new();
+/// This function checks:
+/// 1. the byte size of TariScript does not exceed the maximum
+/// 2. that the outputs do not already exist in the UTxO set.
+pub fn check_outputs<B: BlockchainBackend>(
+    db: &B,
+    constants: &ConsensusConstants,
+    body: &AggregateBody,
+) -> Result<(), ValidationError> {
+    let max_script_size = constants.get_max_script_byte_size();
     for output in body.outputs() {
+        check_tari_script_byte_size(&output.script, max_script_size)?;
         // Check outputs for duplicate asset ids
         if output.features.is_non_fungible_mint() || output.features.is_non_fungible_burn() {
             if let Some(unique_id) = output.features.unique_asset_id() {
@@ -475,6 +496,18 @@ pub fn check_not_duplicate_txos<B: BlockchainBackend>(db: &B, body: &AggregateBo
             }
         }
         check_not_duplicate_txo(db, output)?;
+    }
+    Ok(())
+}
+
+/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
+pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
+    let script_size = ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size();
+    if script_size > max_script_size {
+        return Err(ValidationError::TariScriptExceedsMaxSize {
+            max_script_size,
+            actual_script_size: script_size,
+        });
     }
     Ok(())
 }
@@ -593,6 +626,13 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             expected: mmr_roots.output_mmr_size,
             actual: header.output_mmr_size,
         }));
+    }
+    Ok(())
+}
+
+pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<(), ValidationError> {
+    if db.bad_block_exists(hash.to_vec())? {
+        return Err(ValidationError::BadBlockFound { hash: to_hex(hash) });
     }
     Ok(())
 }

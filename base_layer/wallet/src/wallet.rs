@@ -85,7 +85,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -176,6 +176,7 @@ where
                 factories.clone(),
                 config.network,
                 master_seed,
+                node_identity.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -192,7 +193,6 @@ where
             ))
             .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
             .add_initializer(UtxoScannerServiceInitializer::new(
-                config.scan_for_utxo_interval,
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
@@ -279,7 +279,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.clone().wait_until_shutdown().await;
+        self.comms.to_owned().wait_until_shutdown().await;
     }
 
     /// This function will set the base node that the wallet uses to broadcast transactions, monitor outputs, and
@@ -306,8 +306,14 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.wallet_connectivity.set_base_node(peer);
-
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+            self.comms
+                .connectivity()
+                .remove_peer_from_allow_list(current_node)
+                .await?;
+        }
+        self.wallet_connectivity.set_base_node(peer.clone());
+        self.comms.connectivity().add_peer_to_allow_list(peer.node_id).await?;
         Ok(())
     }
 
@@ -367,6 +373,7 @@ where
         metadata_signature: ComSignature,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
+        script_lock_height: u64,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -377,7 +384,7 @@ where
             script_private_key.clone(),
             sender_offset_public_key.clone(),
             metadata_signature,
-            // TODO: Allow importing of unique ids
+            script_lock_height,
         );
 
         let tx_id = self
@@ -386,7 +393,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -421,7 +428,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_output_with_tx_id(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -509,7 +516,6 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_KEY;
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
     }
 }
@@ -572,6 +578,7 @@ pub async fn persist_one_sided_payment_script_for_node_identity(
         private_key: node_identity.secret_key().clone(),
         script,
         input: ExecutionStack::default(),
+        script_lock_height: 0,
     };
 
     output_manager_service.add_known_script(known_script).await?;

@@ -101,6 +101,8 @@ pub enum ConnectivityRequest {
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
+    AddPeerToAllowList(NodeId),
+    RemovePeerFromAllowList(NodeId),
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +245,22 @@ impl ConnectivityRequester {
     pub async fn ban_peer(&mut self, node_id: NodeId, reason: String) -> Result<(), ConnectivityError> {
         self.ban_peer_until(node_id, Duration::from_secs(u64::MAX), reason)
             .await
+    }
+
+    pub async fn add_peer_to_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
+        self.sender
+            .send(ConnectivityRequest::AddPeerToAllowList(node_id))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        Ok(())
+    }
+
+    pub async fn remove_peer_from_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
+        self.sender
+            .send(ConnectivityRequest::RemovePeerFromAllowList(node_id))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        Ok(())
     }
 
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {

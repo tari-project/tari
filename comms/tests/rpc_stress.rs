@@ -264,9 +264,11 @@ async fn high_contention_high_concurrency() {
 async fn run() {
     // let _ = env_logger::try_init();
     log_timing("quick", quick()).await;
-    log_timing("basic", basic()).await;
-    log_timing("many_small_messages", many_small_messages()).await;
-    log_timing("few_large_messages", few_large_messages()).await;
+    if option_env!["COMMS_SKIP_LONG_RUNNING_STRESS_TESTS"].is_none() {
+        log_timing("basic", basic()).await;
+        log_timing("many_small_messages", many_small_messages()).await;
+        log_timing("few_large_messages", few_large_messages()).await;
+    }
     // log_timing("payload_limit", payload_limit()).await;
     // log_timing("high_contention", high_contention()).await;
     // log_timing("high_concurrency", high_concurrency()).await;

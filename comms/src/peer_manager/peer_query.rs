@@ -20,8 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::min;
-
+use std::cmp::{min, Ordering};
 use tari_storage::{IterationResult, KeyValueStore};
 
 use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
@@ -35,6 +34,10 @@ pub enum PeerQuerySortBy<'a> {
     None,
     /// Sort by distance from a given node id
     DistanceFrom(&'a NodeId),
+    /// Sort by last connected
+    LastConnected,
+    /// Sort by distance from a given node followed by last connected
+    DistanceFromLastConnected(&'a NodeId),
 }
 
 impl Default for PeerQuerySortBy<'_> {
@@ -49,7 +52,6 @@ pub struct PeerQuery<'a> {
     select_predicate: Option<Predicate<'a, Peer>>,
     limit: Option<usize>,
     sort_by: PeerQuerySortBy<'a>,
-    until_predicate: Option<Predicate<'a, [Peer]>>,
 }
 
 impl<'a> PeerQuery<'a> {
@@ -78,12 +80,6 @@ impl<'a> PeerQuery<'a> {
         self
     }
 
-    pub fn until<F>(mut self, until_predicate: F) -> Self
-    where F: FnMut(&[Peer]) -> bool + Send + 'a {
-        self.until_predicate = Some(Box::new(until_predicate));
-        self
-    }
-
     /// Returns a `PeerQueryExecutor` with this `PeerQuery`
     pub(super) fn executor<DS>(self, store: &DS) -> PeerQueryExecutor<'a, '_, DS>
     where DS: KeyValueStore<PeerId, Peer> {
@@ -104,14 +100,6 @@ impl<'a> PeerQuery<'a> {
             .map(|predicate| (predicate)(peer))
             .unwrap_or(true)
     }
-
-    /// Returns true if the result collector should stop early, otherwise false
-    fn should_stop(&mut self, peers: &[Peer]) -> bool {
-        self.until_predicate
-            .as_mut()
-            .map(|predicate| (predicate)(peers))
-            .unwrap_or(false)
-    }
 }
 
 /// This struct executes the query using the given store
@@ -129,19 +117,41 @@ where DS: KeyValueStore<PeerId, Peer>
 
     pub fn get_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
         match self.query.sort_by {
-            PeerQuerySortBy::None => self.get_query_results(),
+            PeerQuerySortBy::None => self.get_unsorted_results(),
             PeerQuerySortBy::DistanceFrom(node_id) => self.get_distance_sorted_results(node_id),
+            PeerQuerySortBy::LastConnected => self.get_last_connected_sorted_results(),
+            PeerQuerySortBy::DistanceFromLastConnected(node_id) => {
+                self.get_distance_then_last_connected_results(node_id)
+            },
         }
     }
 
+    pub fn get_last_connected_sorted_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
+        self.get_sorted_results(last_seen_compare_desc)
+    }
+
     pub fn get_distance_sorted_results(&mut self, node_id: &NodeId) -> Result<Vec<Peer>, PeerManagerError> {
-        let mut peer_keys = Vec::new();
-        let mut distances = Vec::new();
+        self.get_sorted_results(|a, b| {
+            let a = a.node_id.distance(node_id);
+            let b = b.node_id.distance(node_id);
+            // Sort ascending
+            a.cmp(&b)
+        })
+    }
+
+    fn get_distance_then_last_connected_results(&mut self, node_id: &NodeId) -> Result<Vec<Peer>, PeerManagerError> {
+        let mut peers = self.get_distance_sorted_results(node_id)?;
+        peers.sort_by(last_seen_compare_desc);
+        Ok(peers)
+    }
+
+    fn get_sorted_results<F>(&mut self, compare: F) -> Result<Vec<Peer>, PeerManagerError>
+    where F: FnMut(&Peer, &Peer) -> Ordering {
+        let mut selected_peers = Vec::new();
         self.store
-            .for_each_ok(|(peer_key, peer)| {
+            .for_each_ok(|(_, peer)| {
                 if self.query.is_selected(&peer) {
-                    peer_keys.push(peer_key);
-                    distances.push(node_id.distance(&peer.node_id));
+                    selected_peers.push(peer);
                 }
 
                 IterationResult::Continue
@@ -152,46 +162,24 @@ where DS: KeyValueStore<PeerId, Peer>
         let max_available = self
             .query
             .limit
-            .map(|limit| min(peer_keys.len(), limit))
-            .unwrap_or_else(|| peer_keys.len());
+            .map(|limit| min(selected_peers.len(), limit))
+            .unwrap_or_else(|| selected_peers.len());
         if max_available == 0 {
             return Ok(Vec::new());
         }
 
-        // Perform partial sort of elements only up to N elements
-        let mut selected_peers = Vec::with_capacity(max_available);
-        for i in 0..max_available {
-            for j in (i + 1)..peer_keys.len() {
-                if distances[i] > distances[j] {
-                    distances.swap(i, j);
-                    peer_keys.swap(i, j);
-                }
-            }
-            let peer = self
-                .store
-                .get(&peer_keys[i])
-                .map_err(PeerManagerError::DatabaseError)?
-                .ok_or(PeerManagerError::PeerNotFoundError)?;
-
-            selected_peers.push(peer);
-
-            if self.query.should_stop(&selected_peers) {
-                break;
-            }
-        }
+        selected_peers.sort_by(compare);
+        selected_peers.truncate(max_available);
 
         Ok(selected_peers)
     }
 
-    pub fn get_query_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
-        let mut selected_peers = match self.query.limit {
-            Some(n) => Vec::with_capacity(n),
-            None => Vec::new(),
-        };
+    pub fn get_unsorted_results(&mut self) -> Result<Vec<Peer>, PeerManagerError> {
+        let mut selected_peers = self.query.limit.map(Vec::with_capacity).unwrap_or_default();
 
         self.store
             .for_each_ok(|(_, peer)| {
-                if self.query.within_limit(selected_peers.len()) && !self.query.should_stop(&selected_peers) {
+                if self.query.within_limit(selected_peers.len()) {
                     if self.query.is_selected(&peer) {
                         selected_peers.push(peer);
                     }
@@ -204,6 +192,17 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
 
         Ok(selected_peers)
+    }
+}
+
+fn last_seen_compare_desc(a: &Peer, b: &Peer) -> Ordering {
+    match (a.last_seen(), b.last_seen()) {
+        // Sort descending
+        (Some(a), Some(b)) => b.cmp(&a),
+        // Nones go to the end
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
     }
 }
 
@@ -330,45 +329,6 @@ mod test {
 
         assert_eq!(peers.len(), 5);
         assert!(peers.iter().all(|peer| !peer.is_banned()));
-    }
-
-    #[test]
-    fn select_where_until_query() {
-        // Create peer manager with random peers
-        let mut sample_peers = Vec::new();
-        // Create 20 peers were the 1st and last one is bad
-        let _rng = rand::rngs::OsRng;
-        sample_peers.push(create_test_peer(true));
-        let db = HashmapDatabase::new();
-        let mut id_counter = 0;
-
-        repeat_with(|| create_test_peer(true)).take(3).for_each(|peer| {
-            db.insert(id_counter, peer).unwrap();
-            id_counter += 1;
-        });
-
-        repeat_with(|| create_test_peer(false)).take(5).for_each(|peer| {
-            db.insert(id_counter, peer).unwrap();
-            id_counter += 1;
-        });
-
-        let peers = PeerQuery::new()
-            .select_where(|peer| !peer.is_banned())
-            .until(|peers| peers.len() == 2)
-            .executor(&db)
-            .get_results()
-            .unwrap();
-
-        assert_eq!(peers.len(), 2);
-        assert!(peers.iter().all(|peer| !peer.is_banned()));
-
-        let peers = PeerQuery::new()
-            .until(|peers| peers.len() == 100)
-            .executor(&db)
-            .get_results()
-            .unwrap();
-
-        assert_eq!(peers.len(), 8);
     }
 
     #[test]

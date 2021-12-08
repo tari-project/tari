@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::mem::size_of;
+use std::{convert::TryFrom, mem::size_of};
 
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use arrayvec::ArrayVec;
@@ -34,7 +34,6 @@ use chacha20::{
 use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
-use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::ByteArray;
 
 use crate::{
@@ -87,7 +86,7 @@ pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
-    pub entropy: [u8; CIPHER_SEED_ENTROPY_BYTES],
+    entropy: [u8; CIPHER_SEED_ENTROPY_BYTES],
     salt: [u8; CIPHER_SEED_SALT_BYTES],
 }
 
@@ -125,7 +124,7 @@ impl CipherSeed {
 
     pub fn encipher(&self, passphrase: Option<String>) -> Result<Vec<u8>, KeyManagerError> {
         let mut plaintext = self.birthday.to_le_bytes().to_vec();
-        plaintext.append(&mut self.entropy.clone().to_vec());
+        plaintext.append(&mut self.entropy().clone().to_vec());
 
         let passphrase = passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string());
 
@@ -252,6 +251,14 @@ impl CipherSeed {
         cipher.apply_keystream(data.as_mut_slice());
 
         Ok(())
+    }
+
+    pub fn entropy(&self) -> [u8; CIPHER_SEED_ENTROPY_BYTES] {
+        self.entropy
+    }
+
+    pub fn birthday(&self) -> u16 {
+        self.birthday
     }
 }
 

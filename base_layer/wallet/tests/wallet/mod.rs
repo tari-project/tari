@@ -44,7 +44,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     script,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -135,7 +135,7 @@ async fn create_wallet(
         .with_extension("sqlite3");
 
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-        initialize_sqlite_database_backends(sql_database_path, passphrase).unwrap();
+        initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
         resend_response_cooldown: Duration::from_secs(1),
@@ -153,9 +153,8 @@ async fn create_wallet(
         None,
         None,
         None,
-        None,
     );
-    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
     let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
@@ -240,7 +239,7 @@ async fn test_wallet() {
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
-    alice_wallet.output_manager_service.add_output(uo1).await.unwrap();
+    alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
     alice_wallet
         .transaction_service
@@ -312,7 +311,7 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
 
     if WalletSqliteDatabase::new(connection.clone(), None).is_ok() {
         panic!("Should not be able to instantiate encrypted wallet without cipher");
@@ -348,7 +347,7 @@ async fn test_wallet() {
     alice_wallet.wait_until_shutdown().await;
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let db = WalletSqliteDatabase::new(connection, None).expect(
         "Should be able to instantiate db with
     cipher",
@@ -386,12 +385,12 @@ async fn test_wallet() {
         .unwrap();
 
     let connection =
-        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+        run_migration_and_create_sqlite_connection(&current_wallet_path, 16).expect("Could not open Sqlite db");
     let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
     let master_seed = wallet_db.get_master_seed().await.unwrap();
     assert!(master_seed.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
-    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
+    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path, 16).expect(
         "Could not open Sqlite
     db",
     );
@@ -577,7 +576,7 @@ fn test_store_and_forward_send_tx() {
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
     alice_runtime
-        .block_on(alice_wallet.output_manager_service.add_output(uo1))
+        .block_on(alice_wallet.output_manager_service.add_output(uo1, None))
         .unwrap();
 
     let tx_id = alice_runtime
@@ -633,7 +632,7 @@ fn test_store_and_forward_send_tx() {
                 event = carol_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                        TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
+                        TransactionEvent::TransactionCancelled(..) => tx_cancelled = true,
                         _ => (),
                     }
                     if tx_recv && tx_cancelled {
@@ -705,7 +704,6 @@ async fn test_import_utxo() {
         None,
         None,
         None,
-        None,
     );
     let mut alice_wallet = Wallet::start(
         config,
@@ -739,13 +737,14 @@ async fn test_import_utxo() {
             utxo.metadata_signature.clone(),
             &p.script_private_key,
             &p.sender_offset_public_key,
+            0,
         )
         .await
         .unwrap();
 
     let balance = alice_wallet.output_manager_service.get_balance().await.unwrap();
 
-    assert_eq!(balance.available_balance, 20000 * uT);
+    assert_eq!(balance.pending_incoming_balance, 20000 * uT);
 
     let completed_tx = alice_wallet
         .transaction_service
@@ -756,8 +755,6 @@ async fn test_import_utxo() {
         .expect("Tx should be in collection");
 
     assert_eq!(completed_tx.amount, 20000 * uT);
-    let stored_utxo = alice_wallet.output_manager_service.get_unspent_outputs().await.unwrap()[0].clone();
-    assert_eq!(stored_utxo, utxo);
 }
 
 #[test]
@@ -765,14 +762,48 @@ fn test_db_file_locking() {
     let db_tempdir = tempdir().unwrap();
     let wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
-    let connection = run_migration_and_create_sqlite_connection(&wallet_path).expect("Could not open Sqlite db");
+    let connection = run_migration_and_create_sqlite_connection(&wallet_path, 16).expect("Could not open Sqlite db");
 
-    match run_migration_and_create_sqlite_connection(&wallet_path) {
+    match run_migration_and_create_sqlite_connection(&wallet_path, 16) {
         Err(WalletStorageError::CannotAcquireFileLock) => {},
         _ => panic!("Should not be able to acquire file lock"),
     }
 
     drop(connection);
 
-    assert!(run_migration_and_create_sqlite_connection(&wallet_path).is_ok());
+    assert!(run_migration_and_create_sqlite_connection(&wallet_path, 16).is_ok());
+}
+
+#[tokio::test]
+async fn test_recovery_birthday() {
+    let dir = tempdir().unwrap();
+    let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
+
+    let seed_words: Vec<String> = [
+        "cactus", "pool", "fuel", "skull", "chair", "casino", "season", "disorder", "flat", "crash", "wrist",
+        "whisper", "decorate", "narrow", "oxygen", "remember", "minor", "among", "happy", "cricket", "embark", "blue",
+        "ship", "sick",
+    ]
+    .to_vec()
+    .iter()
+    .map(|w| w.to_string())
+    .collect();
+
+    let recovery_seed = CipherSeed::from_mnemonic(seed_words.as_slice(), None).unwrap();
+    let birthday = recovery_seed.birthday();
+
+    let wallet = create_wallet(
+        dir.path(),
+        "wallet_db",
+        factories.clone(),
+        shutdown.to_signal(),
+        None,
+        Some(recovery_seed),
+    )
+    .await
+    .unwrap();
+
+    let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
+    assert_eq!(birthday, db_birthday);
 }

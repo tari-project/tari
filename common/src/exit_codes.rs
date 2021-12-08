@@ -3,7 +3,7 @@ use thiserror::Error;
 /// Enum to show failure information
 #[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
-    #[error("There is an error in the wallet configuration: {0}")]
+    #[error("There is an error in the configuration: {0}")]
     ConfigError(String),
     #[error("The application exited because an unknown error occurred: {0}. Check the logs for more details.")]
     UnknownError(String),
@@ -85,6 +85,12 @@ impl From<super::ConfigError> for ExitCodes {
     fn from(err: super::ConfigError) -> Self {
         // TODO: Move it out
         // error!(target: LOG_TARGET, "{}", err);
+        Self::ConfigError(err.to_string())
+    }
+}
+
+impl From<crate::ConfigurationError> for ExitCodes {
+    fn from(err: crate::ConfigurationError) -> Self {
         Self::ConfigError(err.to_string())
     }
 }

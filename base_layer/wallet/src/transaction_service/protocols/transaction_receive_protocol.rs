@@ -25,7 +25,10 @@ use std::sync::Arc;
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
+};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     transaction::Transaction,
@@ -42,17 +45,18 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
+        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
             models::{CompletedTransaction, InboundTransaction},
         },
         tasks::send_transaction_reply::send_transaction_reply,
+        utc::utc_duration_since,
     },
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionReceiveProtocolStage {
@@ -68,6 +72,8 @@ pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -83,6 +89,8 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -92,6 +100,8 @@ where
             resources,
             transaction_finalize_receiver: Some(transaction_finalize_receiver),
             cancellation_receiver: Some(cancellation_receiver),
+            prev_header,
+            height,
         }
     }
 
@@ -241,10 +251,7 @@ where
         };
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(inbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&inbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -266,10 +273,7 @@ where
         let resend = match inbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
@@ -364,15 +368,15 @@ where
                 self.id,
                 self.source_pubkey.clone()
             );
-            debug!(
-                target: LOG_TARGET_STRESS,
-                "Finalized Transaction with TX_ID = {} received from {}",
-                self.id,
-                self.source_pubkey.clone()
-            );
 
             finalized_transaction
-                .validate_internal_consistency(true, &self.resources.factories, None)
+                .validate_internal_consistency(
+                    true,
+                    &self.resources.factories,
+                    None,
+                    self.prev_header.clone(),
+                    self.height,
+                )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction
@@ -502,7 +506,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

@@ -140,23 +140,23 @@ Feature: Reorgs
   Scenario Outline: Massive multiple reorg
         #
         # Chain 1a:
-        #   Mine X1 blocks (orphan_storage_capacity default set to 10)
+        #   Mine X1 blocks
         #
     Given I have a seed node SEED_A1
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A1 connected to seed SEED_A1
     And I have a base node NODE_A2 connected to seed SEED_A1
-    When I mine <X1> blocks on SEED_A1
+    When I mine <X1> blocks with difficulty 1 on SEED_A1
     Then all nodes are on the same chain at height <X1>
         #
         # Chain 1b:
-        #   Mine Y1 blocks (orphan_storage_capacity default set to 10)
+        #   Mine Y1 blocks
         #
     And I have a seed node SEED_A2
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_A3 connected to seed SEED_A2
     And I have a base node NODE_A4 connected to seed SEED_A2
-    When I mine <Y1> blocks on SEED_A2
+    When I mine <Y1> blocks with difficulty 1 on SEED_A2
     Then node NODE_A3 is at height <Y1>
     Then node NODE_A4 is at height <Y1>
         #
@@ -167,17 +167,16 @@ Feature: Reorgs
     And I connect node SEED_A1 to node SEED_A2
     Then node SEED_A1 is in state LISTENING
     Then node SEED_A2 is in state LISTENING
-    When I mine 10 blocks on SEED_A1
-    Then all nodes are on the same chain tip
+    Then all nodes are on the same chain at height <Y1>
         #
         # Chain 2a:
-        #   Mine X2 blocks (orphan_storage_capacity default set to 10)
+        #   Mine X2 blocks
         #
     Given I have a seed node SEED_B1
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_B1 connected to seed SEED_B1
     And I have a base node NODE_B2 connected to seed SEED_B1
-    When I mine <X2> blocks on SEED_B1
+    When I mine <X2> blocks with difficulty 1 on SEED_B1
     Then node NODE_B1 is at height <X2>
     Then node NODE_B2 is at height <X2>
         #
@@ -188,7 +187,7 @@ Feature: Reorgs
         # Add multiple base nodes to ensure more robust comms
     And I have a base node NODE_B3 connected to seed SEED_B2
     And I have a base node NODE_B4 connected to seed SEED_B2
-    When I mine <Y2> blocks on SEED_B2
+    When I mine <Y2> blocks with difficulty 1 on SEED_B2
     Then node NODE_B3 is at height <Y2>
     Then node NODE_B4 is at height <Y2>
         #
@@ -199,20 +198,18 @@ Feature: Reorgs
     And I connect node SEED_B1 to node SEED_B2
     Then node SEED_B2 is in state LISTENING
     Then node SEED_B1 is in state LISTENING
-    When I mine 10 blocks on SEED_B1
-    Then node SEED_B2 is at the same height as node SEED_B1
-    Then node NODE_B1 is at the same height as node SEED_B1
-    Then node NODE_B2 is at the same height as node SEED_B1
-    Then node NODE_B3 is at the same height as node SEED_B1
-    Then node NODE_B4 is at the same height as node SEED_B1
+    Then node SEED_B2 is at height <Y2>
+    Then node NODE_B1 is at height <Y2>
+    Then node NODE_B2 is at height <Y2>
+    Then node NODE_B3 is at height <Y2>
+    Then node NODE_B4 is at height <Y2>
         #
         # Connect Chain 1 and 2
         #
     And I connect node NODE_A1 to node NODE_B1
     And I connect node NODE_A3 to node NODE_B3
     And I connect node SEED_A1 to node SEED_B1
-    When I mine 10 blocks on SEED_A1
-    Then all nodes are on the same chain tip
+    Then all nodes are on the same chain at height <Y2>
 
     Examples:
       | X1 | Y1 | X2 | Y2 |

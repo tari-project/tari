@@ -35,8 +35,6 @@ pub enum BlockSyncError {
     RpcRequestError(#[from] RpcStatus),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent invalid block body: {0}")]
-    ReceivedInvalidBlockBody(String),
     #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
     PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
     #[error("Connectivity Error: {0}")]
@@ -49,4 +47,6 @@ pub enum BlockSyncError {
     FailedToBan(ConnectivityError),
     #[error("Failed to construct valid chain block")]
     FailedToConstructChainBlock,
+    #[error("Peer violated the block sync protocol: {0}")]
+    ProtocolViolation(String),
 }

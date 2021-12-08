@@ -25,9 +25,12 @@ where P: AsRef<Path> + Display {
             .output()
             .unwrap();
 
-        if !out.status.success() {
-            panic!("status: {} - {}", out.status, String::from_utf8_lossy(&out.stderr));
-        }
+        assert!(
+            out.status.success(),
+            "status: {} - {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 }
 

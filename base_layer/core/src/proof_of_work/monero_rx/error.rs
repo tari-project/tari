@@ -23,6 +23,8 @@
 use randomx_rs::RandomXError;
 use tari_utilities::hex::HexError;
 
+use crate::crypto::tari_utilities::hex::HexError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]

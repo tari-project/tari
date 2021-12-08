@@ -1,24 +1,3 @@
-// Copyright 2020. The Tari Project
-//
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::time::Duration;
 
 use log::*;
@@ -28,8 +7,36 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto::protocol as proto};
+use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
 use tari_p2p::tari_message::TariMessageType;
+
+// Copyright 2020. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
+use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
+    error::TransactionServiceError,
+    tasks::wait_on_dial::wait_on_dial,
+};
 
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
@@ -38,7 +45,6 @@ use crate::transaction_service::{
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";
-const LOG_TARGET_STRESS: &str = "stress_test::send_finalized_transaction";
 
 pub async fn send_finalized_transaction_message(
     tx_id: TxId,
@@ -141,10 +147,6 @@ pub async fn send_finalized_transaction_message_direct(
                     target: LOG_TARGET,
                     "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
                 );
-                debug!(
-                    target: LOG_TARGET_STRESS,
-                    "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
-                );
                 if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
                     store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
                         tx_id,
@@ -196,10 +198,6 @@ pub async fn send_finalized_transaction_message_direct(
         },
         Err(e) => {
             warn!(target: LOG_TARGET, "Direct Finalized Transaction Send failed: {:?}", e);
-            debug!(
-                target: LOG_TARGET_STRESS,
-                "Direct Finalized Transaction Send failed: {:?}", e
-            );
         },
     }
     if !direct_send_result && !store_and_forward_send_result {
@@ -231,21 +229,10 @@ async fn send_transaction_finalized_message_store_and_forward(
                 tx_id,
                 send_states.to_tags(),
             );
-            debug!(
-                target: LOG_TARGET_STRESS,
-                "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with Message \
-                 Tags: {:?}",
-                tx_id,
-                send_states.to_tags(),
-            );
         },
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
-                "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
-            );
-            debug!(
-                target: LOG_TARGET_STRESS,
                 "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
             );
             return Ok(false);

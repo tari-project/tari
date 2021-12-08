@@ -136,7 +136,7 @@ pub async fn setup(
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
-    let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+    let db_connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name), 16).unwrap();
 
     let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection, None));
 
@@ -372,7 +372,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                     cancelled = true;
                 }
             },
@@ -549,7 +549,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     loop {
         tokio::select! {
             event = event_stream.recv() => {
-                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                 cancelled = true;
                 }
             },

@@ -28,9 +28,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
+use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
 use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
@@ -40,9 +42,16 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari, Tari},
-    transaction::UnblindedOutput,
+use tari_core::{
+    tari_utilities::hex::Hex,
+    transactions::{
+        tari_amount::{uT, MicroTari, Tari},
+        transaction::{TransactionOutput, UnblindedOutput},
+    },
+};
+use tari_crypto::{
+    ristretto::pedersen::PedersenCommitmentFactory,
+    tari_utilities::{ByteArray, Hashable},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::hex::Hex;
@@ -81,6 +90,9 @@ pub enum WalletCommand {
     SetBaseNode,
     SetCustomBaseNode,
     ClearCustomBaseNode,
+    InitShaAtomicSwap,
+    FinaliseShaAtomicSwap,
+    ClaimShaAtomicSwapRefund,
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
@@ -125,6 +137,31 @@ fn get_transaction_parameters(
     Ok((fee_per_gram, amount, dest_pubkey, message))
 }
 
+fn get_init_sha_atomic_swap_parameters(
+    args: Vec<ParsedArgument>,
+) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
+    // TODO: Consolidate "fee per gram" in codebase
+    let fee_per_gram = 25 * uT;
+
+    use ParsedArgument::*;
+    let amount = match args[0].clone() {
+        Amount(mtari) => Ok(mtari),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let dest_pubkey = match args[1].clone() {
+        PublicKey(key) => Ok(key),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let message = match args[2].clone() {
+        Text(msg) => Ok(msg),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    Ok((fee_per_gram, amount, dest_pubkey, message))
+}
+
 /// Send a normal negotiated transaction to a recipient
 pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
@@ -135,6 +172,66 @@ pub async fn send_tari(
         .send_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
+}
+
+/// publishes a tari-SHA atomic swap HTLC transaction
+pub async fn init_sha_atomic_swap(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
+    let (fee_per_gram, amount, dest_pubkey, message) = get_init_sha_atomic_swap_parameters(args)?;
+
+    let (tx_id, pre_image, output) = wallet_transaction_service
+        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)?;
+    Ok((tx_id, pre_image, output))
+}
+
+/// claims a tari-SHA atomic swap HTLC transaction
+pub async fn finalise_sha_atomic_swap(
+    mut output_service: OutputManagerHandle,
+    mut transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError> {
+    use ParsedArgument::*;
+    let output = match args[0].clone() {
+        Hash(output) => Ok(output),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let pre_image = match args[1].clone() {
+        PublicKey(key) => Ok(key),
+        _ => Err(CommandError::Argument),
+    }?;
+    let (tx_id, fee, amount, tx) = output_service
+        .create_claim_sha_atomic_swap_transaction(output, pre_image, MicroTari(25))
+        .await?;
+    transaction_service
+        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC atomic swap".into())
+        .await?;
+    Ok(tx_id)
+}
+
+/// claims a HTLC refund transaction
+pub async fn claim_htlc_refund(
+    mut output_service: OutputManagerHandle,
+    mut transaction_service: TransactionServiceHandle,
+    args: Vec<ParsedArgument>,
+) -> Result<TxId, CommandError> {
+    use ParsedArgument::*;
+    let output = match args[0].clone() {
+        Hash(output) => Ok(output),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let (tx_id, fee, amount, tx) = output_service
+        .create_htlc_refund_transaction(output, MicroTari(25))
+        .await?;
+    transaction_service
+        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC refund".into())
+        .await?;
+    Ok(tx_id)
 }
 
 /// Send a one-sided transaction to a recipient
@@ -275,7 +372,7 @@ pub async fn make_it_rain(
     }?;
 
     let start_time = match args[4].clone() {
-        Date(dt) => Ok(dt as DateTime<Utc>),
+        Date(dt) => Ok(dt),
         _ => Err(CommandError::Argument),
     }?;
 
@@ -421,7 +518,7 @@ pub async fn make_it_rain(
             num_txs,
             transaction_type,
             message,
-            Utc::now()
+            Utc::now(),
         );
     });
 
@@ -674,6 +771,27 @@ pub async fn command_runner(
                     .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
                     .await?;
                 println!("Custom base node peer cleared from wallet database.");
+            },
+            InitShaAtomicSwap => {
+                let (tx_id, pre_image, output) =
+                    init_sha_atomic_swap(transaction_service.clone(), parsed.clone().args).await?;
+                debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
+                let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+                println!("pre_image hex: {}", pre_image.to_hex());
+                println!("pre_image hash: {}", hash.to_hex());
+                println!("Output hash: {}", output.hash().to_hex());
+                tx_ids.push(tx_id);
+            },
+            FinaliseShaAtomicSwap => {
+                let tx_id =
+                    finalise_sha_atomic_swap(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            ClaimShaAtomicSwapRefund => {
+                let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                tx_ids.push(tx_id);
             },
             RegisterAsset => {
                 println!("Registering asset.");

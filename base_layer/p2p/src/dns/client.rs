@@ -20,22 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{sync::Arc, time::Duration};
 
 use futures::{future, FutureExt};
+use rustls::{ClientConfig, ProtocolVersion, RootCertStore};
+use tari_common::DnsNameServer;
 use tari_shutdown::Shutdown;
-use tokio::{net::UdpSocket, task};
+use tokio::task;
 use trust_dns_client::{
     client::{AsyncClient, AsyncDnssecClient, ClientHandle},
     op::Query,
-    proto::{error::ProtoError, rr::dnssec::TrustAnchor, udp::UdpClientStream, xfer::DnsResponse, DnsHandle},
-    rr::{DNSClass, IntoName, RecordType},
+    proto::{
+        error::ProtoError,
+        iocompat::AsyncIoTokioAsStd,
+        rr::dnssec::TrustAnchor,
+        rustls::tls_client_connect,
+        xfer::DnsResponse,
+        DnsHandle,
+        DnsMultiplexer,
+    },
+    rr::{dnssec::SigSigner, DNSClass, IntoName, RecordType},
     serialize::binary::BinEncoder,
 };
 
 use super::DnsClientError;
 #[cfg(test)]
 use crate::dns::mock::{DefaultOnSend, MockClientHandle};
+use crate::dns::roots;
 
 #[derive(Clone)]
 pub enum DnsClient {
@@ -46,12 +57,12 @@ pub enum DnsClient {
 }
 
 impl DnsClient {
-    pub async fn connect_secure(name_server: SocketAddr, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
+    pub async fn connect_secure(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
         let client = Client::connect_secure(name_server, trust_anchor).await?;
         Ok(DnsClient::Secure(client))
     }
 
-    pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let client = Client::connect(name_server).await?;
         Ok(DnsClient::Normal(client))
     }
@@ -111,13 +122,23 @@ pub struct Client<C> {
 }
 
 impl Client<AsyncDnssecClient> {
-    pub async fn connect_secure(name_server: SocketAddr, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
+    pub async fn connect_secure(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
-        let stream = UdpClientStream::<UdpSocket>::new(name_server);
-        let (client, background) = AsyncDnssecClient::builder(stream)
+
+        // TODO: make configurable
+        let timeout = Duration::from_secs(5);
+        let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
+            name_server.addr,
+            name_server.dns_name,
+            default_client_config(),
+        );
+
+        let dns_muxer = DnsMultiplexer::<_, SigSigner>::with_timeout(stream, handle, timeout, None);
+        let (client, background) = AsyncDnssecClient::builder(dns_muxer)
             .trust_anchor(trust_anchor)
             .build()
             .await?;
+
         task::spawn(future::select(shutdown.to_signal(), background.fuse()));
 
         Ok(Self {
@@ -128,10 +149,18 @@ impl Client<AsyncDnssecClient> {
 }
 
 impl Client<AsyncClient> {
-    pub async fn connect(name_server: SocketAddr) -> Result<Self, DnsClientError> {
+    pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
-        let stream = UdpClientStream::<UdpSocket>::new(name_server);
-        let (client, background) = AsyncClient::connect(stream).await?;
+
+        // TODO: make configurable
+        let timeout = Duration::from_secs(5);
+        let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
+            name_server.addr,
+            name_server.dns_name,
+            default_client_config(),
+        );
+
+        let (client, background) = AsyncClient::with_timeout(stream, handle, timeout, None).await?;
         task::spawn(future::select(shutdown.to_signal(), background.fuse()));
 
         Ok(Self {
@@ -149,8 +178,22 @@ where C: DnsHandle<Error = ProtoError>
             .inner
             .query(query.name().clone(), query.query_class(), query.query_type())
             .await?;
+
         Ok(client_resp)
     }
+}
+
+fn default_client_config() -> Arc<ClientConfig> {
+    let mut root_store = RootCertStore::empty();
+    root_store.add_server_trust_anchors(&roots::TLS_SERVER_ROOTS);
+    let versions = vec![ProtocolVersion::TLSv1_2];
+
+    let mut client_config = ClientConfig::new();
+    client_config.root_store = root_store;
+    client_config.versions = versions;
+    client_config.alpn_protocols.push("h2".as_bytes().to_vec());
+
+    Arc::new(client_config)
 }
 
 #[cfg(test)]

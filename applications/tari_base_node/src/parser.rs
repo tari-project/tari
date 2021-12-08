@@ -42,11 +42,7 @@ use tari_app_utilities::utilities::{
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
-use tari_utilities::{
-    hex,
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tokio::sync::Mutex;
 
 use super::LOG_TARGET;
 use crate::command_handler::{CommandHandler, Format, StatusOutput};
@@ -86,6 +82,7 @@ pub enum BaseNodeCommand {
     GetMempoolState,
     Whoami,
     GetStateInfo,
+    GetNetworkStats,
     Quit,
     Exit,
 }
@@ -95,7 +92,7 @@ pub enum BaseNodeCommand {
 pub struct Parser {
     commands: Vec<String>,
     hinter: HistoryHinter,
-    command_handler: Arc<CommandHandler>,
+    command_handler: Arc<Mutex<CommandHandler>>,
 }
 
 /// This will go through all instructions and look for potential matches
@@ -129,7 +126,7 @@ impl Hinter for Parser {
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(command_handler: Arc<CommandHandler>) -> Self {
+    pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
         Parser {
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
@@ -143,7 +140,7 @@ impl Parser {
     }
 
     /// This will parse the provided command and execute the task
-    pub fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
+    pub async fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
         if command_str.trim().is_empty() {
             return;
         }
@@ -151,7 +148,7 @@ impl Parser {
         let mut args = command_str.split_whitespace();
         match args.next().unwrap_or("help").parse() {
             Ok(command) => {
-                self.process_command(command, args, shutdown);
+                self.process_command(command, args, shutdown).await;
             },
             Err(_) => {
                 println!("{} is not a valid command, please enter a valid command", command_str);
@@ -160,12 +157,12 @@ impl Parser {
         }
     }
 
-    pub fn get_command_handler(&self) -> Arc<CommandHandler> {
+    pub fn get_command_handler(&self) -> Arc<Mutex<CommandHandler>> {
         self.command_handler.clone()
     }
 
     /// Function to process commands
-    fn process_command<'a, I: Iterator<Item = &'a str>>(
+    async fn process_command<'a, I: Iterator<Item = &'a str>>(
         &mut self,
         command: BaseNodeCommand,
         mut args: I,
@@ -181,91 +178,94 @@ impl Parser {
                 );
             },
             Status => {
-                self.command_handler.status(StatusOutput::Full);
+                self.command_handler.lock().await.status(StatusOutput::Full);
             },
             GetStateInfo => {
-                self.command_handler.state_info();
+                self.command_handler.lock().await.state_info();
             },
             Version => {
-                self.command_handler.print_version();
+                self.command_handler.lock().await.print_version();
             },
             CheckForUpdates => {
-                self.command_handler.check_for_updates();
+                self.command_handler.lock().await.check_for_updates();
             },
             GetChainMetadata => {
-                self.command_handler.get_chain_meta();
+                self.command_handler.lock().await.get_chain_meta();
             },
             GetDbStats => {
-                self.command_handler.get_blockchain_db_stats();
+                self.command_handler.lock().await.get_blockchain_db_stats();
             },
             DialPeer => {
-                self.process_dial_peer(args);
+                self.process_dial_peer(args).await;
             },
             PingPeer => {
-                self.process_ping_peer(args);
+                self.process_ping_peer(args).await;
             },
             DiscoverPeer => {
-                self.process_discover_peer(args);
+                self.process_discover_peer(args).await;
             },
             GetPeer => {
-                self.process_get_peer(args);
+                self.process_get_peer(args).await;
             },
             ListPeers => {
-                self.process_list_peers(args);
+                self.process_list_peers(args).await;
             },
             ResetOfflinePeers => {
-                self.command_handler.reset_offline_peers();
+                self.command_handler.lock().await.reset_offline_peers();
             },
             RewindBlockchain => {
-                self.process_rewind_blockchain(args);
+                self.process_rewind_blockchain(args).await;
             },
             CheckDb => {
-                self.command_handler.check_db();
+                self.command_handler.lock().await.check_db();
             },
             PeriodStats => {
-                self.process_period_stats(args);
+                self.process_period_stats(args).await;
             },
             HeaderStats => {
-                self.process_header_stats(args);
+                self.process_header_stats(args).await;
             },
             BanPeer => {
-                self.process_ban_peer(args, true);
+                self.process_ban_peer(args, true).await;
             },
             UnbanPeer => {
-                self.process_ban_peer(args, false);
+                self.process_ban_peer(args, false).await;
             },
             UnbanAllPeers => {
-                self.command_handler.unban_all_peers();
+                self.command_handler.lock().await.unban_all_peers();
             },
             ListBannedPeers => {
-                self.command_handler.list_banned_peers();
+                self.command_handler.lock().await.list_banned_peers();
             },
             ListConnections => {
-                self.command_handler.list_connections();
+                self.command_handler.lock().await.list_connections();
             },
             ListHeaders => {
-                self.process_list_headers(args);
+                self.process_list_headers(args).await;
             },
             BlockTiming | CalcTiming => {
-                self.process_block_timing(args);
+                self.process_block_timing(args).await;
             },
             GetBlock => {
-                self.process_get_block(args);
+                self.process_get_block(args).await;
             },
             SearchUtxo => {
-                self.process_search_utxo(args);
+                self.process_search_utxo(args).await;
             },
             SearchKernel => {
-                self.process_search_kernel(args);
+                self.process_search_kernel(args).await;
             },
             GetMempoolStats => {
-                self.command_handler.get_mempool_stats();
+                self.command_handler.lock().await.get_mempool_stats();
             },
             GetMempoolState => {
-                self.command_handler.get_mempool_state();
+                self.command_handler.lock().await.get_mempool_state();
             },
             Whoami => {
-                self.command_handler.whoami();
+                self.command_handler.lock().await.whoami();
+            },
+            GetNetworkStats => {
+                self.command_handler.lock().await.get_network_stats();
             },
             Exit | Quit => {
                 println!("Shutting down...");
@@ -414,6 +414,9 @@ impl Parser {
                      address"
                 );
             },
+            GetNetworkStats => {
+                println!("Displays network stats");
+            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
@@ -421,7 +424,7 @@ impl Parser {
     }
 
     /// Function to process the get-block command
-    fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let height_or_hash = match args.next() {
             Some(s) => s
                 .parse::<u64>()
@@ -446,8 +449,8 @@ impl Parser {
         };
 
         match height_or_hash {
-            Some(Either::Left(height)) => self.command_handler.get_block(height, format),
-            Some(Either::Right(hash)) => self.command_handler.get_block_by_hash(hash, format),
+            Some(Either::Left(height)) => self.command_handler.lock().await.get_block(height, format),
+            Some(Either::Right(hash)) => self.command_handler.lock().await.get_block_by_hash(hash, format),
             None => {
                 println!("Invalid block height or hash provided. Height must be an integer.");
                 self.print_help(BaseNodeCommand::GetBlock);
@@ -456,7 +459,7 @@ impl Parser {
     }
 
     /// Function to process the search utxo command
-    fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
@@ -471,11 +474,11 @@ impl Parser {
                 return;
             },
         };
-        self.command_handler.search_utxo(commitment)
+        self.command_handler.lock().await.search_utxo(commitment)
     }
 
     /// Function to process the search kernel command
-    fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
@@ -506,11 +509,11 @@ impl Parser {
         };
         let kernel_sig = Signature::new(public_nonce, signature);
 
-        self.command_handler.search_kernel(kernel_sig)
+        self.command_handler.lock().await.search_kernel(kernel_sig)
     }
 
     /// Function to process the discover-peer command
-    fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+    async fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let dest_pubkey = match args.next().and_then(parse_emoji_id_or_public_key) {
             Some(v) => Box::new(v),
             None => {
@@ -520,10 +523,10 @@ impl Parser {
             },
         };
 
-        self.command_handler.discover_peer(dest_pubkey)
+        self.command_handler.lock().await.discover_peer(dest_pubkey)
     }
 
-    fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+    async fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let (original_str, partial) = match args
             .next()
             .map(|s| {
@@ -544,18 +547,18 @@ impl Parser {
             },
         };
 
-        self.command_handler.get_peer(partial, original_str)
+        self.command_handler.lock().await.get_peer(partial, original_str)
     }
 
     /// Function to process the list-peers command
-    fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+    async fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let filter = args.next().map(ToOwned::to_owned);
 
-        self.command_handler.list_peers(filter)
+        self.command_handler.lock().await.list_peers(filter)
     }
 
     /// Function to process the dial-peer command
-    fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+    async fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let dest_node_id = match args
             .next()
             .and_then(parse_emoji_id_or_public_key_or_node_id)
@@ -569,11 +572,11 @@ impl Parser {
             },
         };
 
-        self.command_handler.dial_peer(dest_node_id)
+        self.command_handler.lock().await.dial_peer(dest_node_id)
     }
 
     /// Function to process the dial-peer command
-    fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+    async fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let dest_node_id = match args
             .next()
             .and_then(parse_emoji_id_or_public_key_or_node_id)
@@ -587,11 +590,11 @@ impl Parser {
             },
         };
 
-        self.command_handler.ping_peer(dest_node_id)
+        self.command_handler.lock().await.ping_peer(dest_node_id)
     }
 
     /// Function to process the ban-peer command
-    fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
+    async fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
         let node_id = match args
             .next()
             .and_then(parse_emoji_id_or_public_key_or_node_id)
@@ -613,11 +616,11 @@ impl Parser {
             .map(Duration::from_secs)
             .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
 
-        self.command_handler.ban_peer(node_id, duration, must_ban)
+        self.command_handler.lock().await.ban_peer(node_id, duration, must_ban)
     }
 
     /// Function to process the list-headers command
-    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let start = args.next().map(u64::from_str).map(Result::ok).flatten();
         let end = args.next().map(u64::from_str).map(Result::ok).flatten();
         if start.is_none() {
@@ -627,11 +630,11 @@ impl Parser {
             return;
         }
         let start = start.unwrap();
-        self.command_handler.list_headers(start, end)
+        self.command_handler.lock().await.list_headers(start, end)
     }
 
     /// Function to process the calc-timing command
-    fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let start = args.next().map(u64::from_str).map(Result::ok).flatten();
         let end = args.next().map(u64::from_str).map(Result::ok).flatten();
 
@@ -641,14 +644,14 @@ impl Parser {
                 println!("Number of headers must be at least 2.");
                 self.print_help(command);
             } else {
-                self.command_handler.block_timing(start, end)
+                self.command_handler.lock().await.block_timing(start, end)
             }
         } else {
             self.print_help(command);
         }
     }
 
-    fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+    async fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
         let command_arg = args.map(|arg| arg.to_string()).take(3).collect::<Vec<String>>();
         if command_arg.len() != 3 {
             println!("Prints out certain stats to of the block chain, use as follows: ");
@@ -679,10 +682,13 @@ impl Parser {
                 return;
             },
         };
-        self.command_handler.period_stats(period_end, period_ticker_end, period)
+        self.command_handler
+            .lock()
+            .await
+            .period_stats(period_end, period_ticker_end, period)
     }
 
-    fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let start_height = try_or_print!(args
             .next()
             .ok_or_else(|| {
@@ -708,14 +714,16 @@ impl Parser {
             _ => Err("Invalid pow algo"),
         }));
         self.command_handler
+            .lock()
+            .await
             .save_header_stats(start_height, end_height, filename, algo)
     }
 
-    fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+    async fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
         let new_height = try_or_print!(args
             .next()
             .ok_or("new_height argument required")
             .and_then(|s| u64::from_str(s).map_err(|_| "new_height must be an integer.")));
-        self.command_handler.rewind_blockchain(new_height);
+        self.command_handler.lock().await.rewind_blockchain(new_height);
     }
 }

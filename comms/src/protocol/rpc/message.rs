@@ -134,6 +134,10 @@ impl<T> BaseRequest<T> {
             message: f(self.message),
         }
     }
+
+    pub fn get_ref(&self) -> &T {
+        &self.message
+    }
 }
 
 #[derive(Debug, Clone)]

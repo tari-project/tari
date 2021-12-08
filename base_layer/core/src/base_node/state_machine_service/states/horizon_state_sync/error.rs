@@ -22,10 +22,20 @@
 
 use std::num::TryFromIntError;
 
-use tari_comms::protocol::rpc::{RpcError, RpcStatus};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
 use tari_mmr::error::MerkleMountainRangeError;
 use thiserror::Error;
 use tokio::task;
+
+use crate::{
+    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
+    chain_storage::{ChainStorageError, MmrTree},
+    transactions::transaction::TransactionError,
+    validation::ValidationError,
+};
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
@@ -38,8 +48,6 @@ use crate::{
 pub enum HorizonSyncError {
     #[error("Peer sent an invalid response: {0}")]
     IncorrectResponse(String),
-    // #[error("Exceeded maximum sync attempts")]
-    // MaxSyncAttemptsReached,
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Comms interface error: {0}")]
@@ -69,6 +77,10 @@ pub enum HorizonSyncError {
     ConversionError(String),
     #[error("MerkleMountainRangeError: {0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("Validation error: {0}")]
+    ValidationError(#[from] ValidationError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

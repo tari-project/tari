@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[allow(dead_code)]
-mod helpers;
 use std::{sync::Arc, time::Duration};
 
 use helpers::{
@@ -61,6 +59,9 @@ use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
 
 use crate::helpers::block_builders::{construct_chained_blocks, create_coinbase};
+
+#[allow(dead_code)]
+mod helpers;
 
 #[tokio::test]
 async fn propagate_and_forward_many_valid_blocks() {
@@ -512,7 +513,7 @@ async fn local_get_new_block_with_zero_conf() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::default(),
+            BodyOnlyValidator::new(rules.clone()),
             HeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )
@@ -591,7 +592,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
         .with_validators(
-            BodyOnlyValidator::default(),
+            BodyOnlyValidator::new(rules.clone()),
             HeaderValidator::new(rules.clone()),
             OrphanBlockValidator::new(rules, true, factories.clone()),
         )

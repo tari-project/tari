@@ -123,7 +123,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.addresses = addresses.into();
             peer.set_offline(false);
             if let Some(addr) = dialed_addr {
-                peer.addresses.mark_successful_connection_attempt(addr);
+                peer.addresses.mark_last_seen_now(addr);
             }
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols.clone();
@@ -147,7 +147,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
             );
             new_peer.connection_stats.set_connection_success();
             if let Some(addr) = dialed_addr {
-                new_peer.addresses.mark_successful_connection_attempt(addr);
+                new_peer.addresses.mark_last_seen_now(addr);
             }
             new_peer
         },

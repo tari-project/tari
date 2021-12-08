@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryFrom, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
+use std::{collections::HashMap, fs, fs::File, io::Write, path::Path, process::Command, sync::Mutex};
 
 use lazy_static::lazy_static;
 use petgraph::{
@@ -102,9 +102,7 @@ pub async fn network_graph_snapshot(
             graph.add_edge(
                 node_index.to_owned(),
                 peer_node_index.to_owned(),
-                u128::try_from(distance)
-                    .expect("Couldn't convert XorDistance to U128")
-                    .to_string(),
+                distance.as_u128().to_string(),
             );
         }
         if let Some(n) = num_neighbours {
@@ -125,9 +123,7 @@ pub async fn network_graph_snapshot(
                 neighbour_graph.add_edge(
                     node_index.to_owned(),
                     peer_node_index.to_owned(),
-                    u128::try_from(distance)
-                        .expect("Couldn't convert XorDistance to U128")
-                        .to_string(),
+                    distance.as_u128().to_string(),
                 );
             }
         }

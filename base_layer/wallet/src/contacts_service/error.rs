@@ -24,9 +24,9 @@ use diesel::result::Error as DieselError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
-use crate::contacts_service::storage::database::DbKey;
+use crate::{contacts_service::storage::database::DbKey, error::WalletStorageError};
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
 pub enum ContactsServiceError {
     #[error("Contact is not found")]
@@ -39,7 +39,7 @@ pub enum ContactsServiceError {
     TransportChannelError(#[from] TransportChannelError),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum ContactsServiceStorageError {
     #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
@@ -51,8 +51,8 @@ pub enum ContactsServiceStorageError {
     ValueNotFound(DbKey),
     #[error("Unexpected result error: `{0}`")]
     UnexpectedResult(String),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

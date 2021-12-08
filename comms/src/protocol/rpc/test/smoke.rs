@@ -29,6 +29,7 @@ use tari_test_utils::unpack_enum;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
+    time,
 };
 
 use crate::{
@@ -136,7 +137,7 @@ async fn request_response_errors_and_streaming() {
         .unwrap();
 
     // Latency is available "for free" as part of the connect protocol
-    assert!(client.get_last_request_latency().await.unwrap().is_some());
+    assert!(client.get_last_request_latency().is_some());
 
     let resp = client
         .say_hello(SayHelloRequest {
@@ -153,7 +154,7 @@ async fn request_response_errors_and_streaming() {
 
     let err = client.return_error().await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    assert_eq!(status.status_code(), RpcStatusCode::NotImplemented);
+    assert_eq!(status.as_status_code(), RpcStatusCode::NotImplemented);
     assert_eq!(status.details(), "I haven't gotten to this yet :(");
 
     let stream = client.streaming_error("Gurglesplurb".to_string()).await.unwrap();
@@ -165,7 +166,7 @@ async fn request_response_errors_and_streaming() {
         .into_iter()
         .collect::<Result<String, _>>()
         .unwrap_err();
-    assert_eq!(status.status_code(), RpcStatusCode::BadRequest);
+    assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(status.details(), "What does 'Gurglesplurb' mean?");
 
     let stream = client.streaming_error2().await.unwrap();
@@ -175,7 +176,7 @@ async fn request_response_errors_and_streaming() {
     assert_eq!(first_reply, "This is ok");
 
     let second_reply = results.get(1).unwrap().as_ref().unwrap_err();
-    assert_eq!(second_reply.status_code(), RpcStatusCode::BadRequest);
+    assert_eq!(second_reply.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(second_reply.details(), "This is a problem");
 
     let pk_hex = client.get_public_key_hex().await.unwrap();
@@ -263,7 +264,7 @@ async fn response_too_big() {
         .await
         .unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    unpack_enum!(RpcStatusCode::MalformedResponse = status.status_code());
+    unpack_enum!(RpcStatusCode::MalformedResponse = status.as_status_code());
 
     // Check that the exact frame size boundary works and that the session is still going
     let _ = client
@@ -315,7 +316,7 @@ async fn timeout() {
 
     let err = client.say_hello(Default::default()).await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    assert_eq!(status.status_code(), RpcStatusCode::Timeout);
+    assert_eq!(status.as_status_code(), RpcStatusCode::Timeout);
 
     *delay.write().await = Duration::from_secs(0);
 
@@ -391,7 +392,7 @@ async fn stream_still_works_after_cancel() {
     // Request was sent
     assert_eq!(service_impl.call_count(), 1);
 
-    // Subsequent call still works, after waiting for the previous one
+    // Subsequent call still works
     let resp = client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
@@ -404,4 +405,51 @@ async fn stream_still_works_after_cancel() {
     resp.collect::<Vec<_>>().await.into_iter().for_each(|r| {
         r.unwrap();
     });
+}
+
+#[runtime::test]
+async fn stream_interruption_handling() {
+    let service_impl = GreetingService::default();
+    let (mut muxer, _outbound, _, _, _shutdown) = setup(service_impl.clone(), 1).await;
+    let socket = muxer.incoming_mut().next().await.unwrap();
+
+    let framed = framing::canonical(socket, 1024);
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .connect(framed)
+        .await
+        .unwrap();
+
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 10000,
+            item_size: 100,
+            delay_ms: 100,
+        })
+        .await
+        .unwrap();
+
+    let _ = resp.next().await.unwrap().unwrap();
+    // Drop it before the stream is finished
+    drop(resp);
+
+    // Subsequent call still works, without waiting
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: 100,
+            item_size: 100,
+            delay_ms: 1,
+        })
+        .await
+        .unwrap();
+
+    let next_fut = resp.next();
+    tokio::pin!(next_fut);
+    // Allow 10 seconds, if the previous stream is still streaming, it will take a while for this stream to start and
+    // the timeout will expire
+    time::timeout(Duration::from_secs(10), next_fut)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
 }

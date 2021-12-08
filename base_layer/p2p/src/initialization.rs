@@ -24,7 +24,6 @@
 use std::{
     fs::File,
     iter,
-    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
@@ -33,9 +32,10 @@ use std::{
 
 use fs2::FileExt;
 use futures::future;
+use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, DnsNameServer};
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
@@ -148,8 +148,8 @@ pub struct P2pConfig {
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.
     pub dns_seeds: Vec<String>,
-    /// DNS resolver to use for DNS seeds.
-    pub dns_seeds_name_server: SocketAddr,
+    /// DNS name server to use for DNS seeds.
+    pub dns_seeds_name_server: DnsNameServer,
     /// All DNS seed records must pass DNSSEC validation
     pub dns_seeds_use_dnssec: bool,
     /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
@@ -177,6 +177,7 @@ pub async fn initialize_local_test_comms(
     std::fs::create_dir_all(data_path).unwrap();
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&peer_database_name, lmdb_zero::db::CREATE)
@@ -329,6 +330,7 @@ async fn configure_comms_and_dht(
 
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
@@ -477,13 +479,13 @@ impl P2pInitializer {
             .map_err(Into::into)
     }
 
-    #[inline(always)]
     async fn try_resolve_dns_seeds(
-        resolver_addr: SocketAddr,
+        resolver_addr: DnsNameServer,
         dns_seeds: &[String],
         use_dnssec: bool,
     ) -> Result<Vec<Peer>, ServiceInitializationError> {
         if dns_seeds.is_empty() {
+            debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
         }
 
@@ -563,12 +565,19 @@ impl ServiceInitializer for P2pInitializer {
         let node_identity = comms.node_identity();
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
-        let peers = Self::try_resolve_dns_seeds(
+        let peers = match Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
             &config.dns_seeds,
             config.dns_seeds_use_dnssec,
         )
-        .await?;
+        .await
+        {
+            Ok(peers) => peers,
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
+                Vec::new()
+            },
+        };
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

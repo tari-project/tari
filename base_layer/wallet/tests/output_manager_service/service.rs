@@ -199,6 +199,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
         basenode_service_handle,
         wallet_connectivity_mock.clone(),
         cipher_seed,
+        server_node_identity.clone(),
     )
     .await
     .unwrap();
@@ -221,6 +222,7 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     backend: T,
     height: Option<u64>,
+    node_identity: Arc<NodeIdentity>,
 ) -> (
     OutputManagerHandle,
     Shutdown,
@@ -265,6 +267,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         base_node_service_handle.clone(),
         connectivity,
         CipherSeed::new(),
+        node_identity,
     )
     .await
     .unwrap();
@@ -310,7 +313,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
             script_private_key,
         );
 
-    let mut stp = builder.build::<Blake256>(&factories).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
         tx_id,
@@ -327,7 +330,7 @@ async fn fee_estimate() {
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
-    oms.add_output(uo).await.unwrap();
+    oms.add_output(uo, None).await.unwrap();
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // minimum fpg
     let fee_per_gram = MicroTari::from(1);
@@ -372,10 +375,14 @@ async fn fee_estimate() {
 async fn test_utxo_selection_no_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // no chain metadata
-    let (mut oms, _shutdown, _, _, _) =
-        setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), None).await;
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        None,
+        server_node_identity,
+    )
+    .await;
 
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // no utxos - not enough funds
@@ -403,7 +410,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             &factories.commitment,
             Some(OutputFeatures::with_maturity(i)),
         );
-        oms.add_output(uo.clone()).await.unwrap();
+        oms.add_output(uo.clone(), None).await.unwrap();
     }
 
     // but we have no chain state so the lowest maturity should be used
@@ -472,9 +479,14 @@ async fn test_utxo_selection_with_chain_metadata() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _, _) =
-        setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection, None), Some(6)).await;
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+        server_node_identity,
+    )
+    .await;
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
 
     // no utxos - not enough funds
@@ -502,7 +514,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             &factories.commitment,
             Some(OutputFeatures::with_maturity(i)),
         );
-        oms.add_output(uo.clone()).await.unwrap();
+        oms.add_output(uo.clone(), None).await.unwrap();
     }
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -600,7 +612,7 @@ async fn send_not_enough_funds() {
             MicroTari::from(200 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
-        oms.add_output(uo).await.unwrap();
+        oms.add_output(uo, None).await.unwrap();
     }
 
     match oms
@@ -631,21 +643,27 @@ async fn send_no_change() {
     let constants = create_consensus_constants(0);
     let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = 500;
-    oms.add_output(create_unblinded_output(
-        script!(Nop),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(value1),
-    ))
+    oms.add_output(
+        create_unblinded_output(
+            script!(Nop),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value1),
+        ),
+        None,
+    )
     .await
     .unwrap();
     let value2 = 800;
-    oms.add_output(create_unblinded_output(
-        script!(Nop),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        MicroTari::from(value2),
-    ))
+    oms.add_output(
+        create_unblinded_output(
+            script!(Nop),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            MicroTari::from(value2),
+        ),
+        None,
+    )
     .await
     .unwrap();
 
@@ -679,21 +697,27 @@ async fn send_not_enough_for_change() {
     let constants = create_consensus_constants(0);
     let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroTari(500);
-    oms.add_output(create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        value1,
-    ))
+    oms.add_output(
+        create_unblinded_output(
+            TariScript::default(),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            value1,
+        ),
+        None,
+    )
     .await
     .unwrap();
     let value2 = MicroTari(800);
-    oms.add_output(create_unblinded_output(
-        TariScript::default(),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
-        value2,
-    ))
+    oms.add_output(
+        create_unblinded_output(
+            TariScript::default(),
+            OutputFeatures::default(),
+            TestParamsHelpers::new(),
+            value2,
+        ),
+        None,
+    )
     .await
     .unwrap();
 
@@ -730,7 +754,7 @@ async fn cancel_transaction() {
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
         );
-        oms.add_output(uo).await.unwrap();
+        oms.add_output(uo, None).await.unwrap();
     }
     let stp = oms
         .prepare_transaction_to_send(
@@ -802,11 +826,11 @@ async fn test_get_balance() {
     let output_val = MicroTari::from(2000);
     let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
     total += uo.value;
-    oms.add_output(uo).await.unwrap();
+    oms.add_output(uo, None).await.unwrap();
 
     let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
     total += uo.value;
-    oms.add_output(uo).await.unwrap();
+    oms.add_output(uo, None).await.unwrap();
 
     let send_value = MicroTari::from(1000);
     let stp = oms
@@ -831,7 +855,7 @@ async fn test_get_balance() {
     let balance = oms.get_balance().await.unwrap();
 
     assert_eq!(output_val, balance.available_balance);
-    assert_eq!(output_val, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
     assert_eq!(recv_value + change_val, balance.pending_incoming_balance);
     assert_eq!(output_val, balance.pending_outgoing_balance);
 }
@@ -847,11 +871,11 @@ async fn sending_transaction_with_short_term_clear() {
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
-    oms.add_output(uo).await.unwrap();
+    oms.add_output(uo, None).await.unwrap();
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
-    assert_eq!(balance.time_locked_balance.unwrap(), available_balance);
+    assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
 
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
     let _stp = oms
@@ -877,7 +901,7 @@ async fn sending_transaction_with_short_term_clear() {
 
     let balance = oms.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
-    assert_eq!(balance.time_locked_balance.unwrap(), available_balance);
+    assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = oms
@@ -917,9 +941,9 @@ async fn coin_split_with_change() {
     let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
     let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
     let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
-    assert!(oms.add_output(uo1).await.is_ok());
-    assert!(oms.add_output(uo2).await.is_ok());
-    assert!(oms.add_output(uo3).await.is_ok());
+    assert!(oms.add_output(uo1, None).await.is_ok());
+    assert!(oms.add_output(uo2, None).await.is_ok());
+    assert!(oms.add_output(uo3, None).await.is_ok());
 
     let fee_per_gram = MicroTari::from(5);
     let split_count = 8;
@@ -965,9 +989,9 @@ async fn coin_split_no_change() {
     let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
     let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
     let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
-    assert!(oms.add_output(uo1).await.is_ok());
-    assert!(oms.add_output(uo2).await.is_ok());
-    assert!(oms.add_output(uo3).await.is_ok());
+    assert!(oms.add_output(uo1, None).await.is_ok());
+    assert!(oms.add_output(uo2, None).await.is_ok());
+    assert!(oms.add_output(uo3, None).await.is_ok());
 
     let (_tx_id, coin_split_tx, amount) = oms
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
@@ -1056,7 +1080,7 @@ async fn test_txo_validation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1.into(), output1.clone()).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone(), None).await.unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -1067,7 +1091,7 @@ async fn test_txo_validation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2.into(), output2.clone()).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone(), None).await.unwrap();
 
     let output3_value = 4_000_000;
     let output3 = create_unblinded_output(
@@ -1077,7 +1101,7 @@ async fn test_txo_validation() {
         MicroTari::from(output3_value),
     );
 
-    oms.add_output_with_tx_id(3.into(), output3.clone()).await.unwrap();
+    oms.add_output_with_tx_id(3.into(), output3.clone(), None).await.unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;
@@ -1177,11 +1201,12 @@ async fn test_txo_validation() {
     let output6_tx_output = output6.unblinded_output.as_transaction_output(&factories).unwrap();
 
     let balance = oms.get_balance().await.unwrap();
+
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value)
     );
-    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
@@ -1282,7 +1307,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value)
     );
-    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 2);
 
@@ -1331,7 +1356,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
-    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
     // Trigger another validation and only Output3 should be checked
     oms.validate_txos().await.unwrap();
@@ -1454,7 +1479,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) - MicroTari::from(901_240)
     );
-    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
     // Now we will update the mined_height in the responses so that the outputs on the reorged chain are confirmed
     // Output 1:    Spent in Block 5 - Confirmed
@@ -1514,7 +1539,7 @@ async fn test_txo_validation() {
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
-    assert_eq!(balance.available_balance, balance.time_locked_balance.unwrap());
+    assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 }
 
 #[tokio::test]
@@ -1550,7 +1575,7 @@ async fn test_txo_revalidation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1.into(), output1.clone()).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone(), None).await.unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -1561,7 +1586,7 @@ async fn test_txo_revalidation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2.into(), output2.clone()).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone(), None).await.unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;
@@ -1695,6 +1720,7 @@ async fn test_oms_key_manager_discrepancy() {
 
     let master_seed1 = CipherSeed::new();
 
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver,
@@ -1706,6 +1732,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
         master_seed1.clone(),
+        server_node_identity,
     )
     .await
     .unwrap();
@@ -1713,6 +1740,8 @@ async fn test_oms_key_manager_discrepancy() {
     drop(output_manager_service);
 
     let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
+
+    let server_node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service2 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver2,
@@ -1724,6 +1753,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle.clone(),
         wallet_connectivity.clone(),
         master_seed1,
+        server_node_identity2,
     )
     .await
     .expect("Should be able to make a new OMS with same master key");
@@ -1731,6 +1761,7 @@ async fn test_oms_key_manager_discrepancy() {
 
     let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
     let master_seed2 = CipherSeed::new();
+    let server_node_identity3 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service3 = OutputManagerService::new(
         OutputManagerServiceConfig::default(),
         oms_request_receiver3,
@@ -1742,6 +1773,7 @@ async fn test_oms_key_manager_discrepancy() {
         basenode_service_handle,
         wallet_connectivity,
         master_seed2,
+        server_node_identity3,
     )
     .await;
 

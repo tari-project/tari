@@ -276,10 +276,13 @@ mod test {
         consensus::encode::{serialize, VarInt},
     };
     use tari_test_utils::unpack_enum;
-    use tari_utilities::hex::{from_hex, Hex};
 
     use super::*;
-    use crate::proof_of_work::randomx_factory::RandomXFactory;
+    use crate::{
+        crypto::tari_utilities::hex::Hex,
+        proof_of_work::randomx_factory::RandomXFactory,
+        tari_utilities::hex::from_hex,
+    };
 
     mod tree_hash {
         use super::*;

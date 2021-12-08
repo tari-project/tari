@@ -88,6 +88,6 @@ async fn run_service() {
     mock_state.set_response_err(RpcStatus::bad_request("Insert 💾"));
     let err = client.request_response::<_, ()>((), 0.into()).await.unwrap_err();
     unpack_enum!(RpcError::RequestFailed(status) = err);
-    unpack_enum!(RpcStatusCode::BadRequest = status.status_code());
+    unpack_enum!(RpcStatusCode::BadRequest = status.as_status_code());
     assert_eq!(mock_state.call_count(), 2);
 }

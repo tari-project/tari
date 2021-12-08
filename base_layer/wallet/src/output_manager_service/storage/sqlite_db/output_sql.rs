@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use aes_gcm::Aes256Gcm;
 use diesel::{prelude::*, sql_query, SqliteConnection};
@@ -29,33 +29,27 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{
-        AssetOutputFeatures,
-        MintNonFungibleFeatures,
-        OutputFeatures,
-        OutputFlags,
-        SideChainCheckpointFeatures,
-        UnblindedOutput,
+use tari_core::{
+    tari_utilities::hash::Hashable,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        CryptoFactories,
     },
-    CryptoFactories,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
-use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        service::Balance,
+        service::{Balance, UTXOSelectionStrategy},
         storage::{
-            models::DbUnblindedOutput,
-            sqlite_db::{UpdateOutput, UpdateOutputSql},
-            OutputStatus,
+            models::{DbUnblindedOutput, OutputStatus},
+            sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
         },
     },
     schema::outputs,
@@ -93,6 +87,8 @@ pub struct OutputSql {
     pub received_in_tx_id: Option<i64>,
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
+    pub script_lock_height: i64,
+    pub spend_priority: i32,
     pub metadata: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
     pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
@@ -115,6 +111,55 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+    }
+
+    /// Retrieves UTXOs than can be spent, sorted by priority, then value from smallest to largest.
+    pub fn fetch_unspent_outputs_for_spending(
+        mut strategy: UTXOSelectionStrategy,
+        amount: u64,
+        tip_height: i64,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        if strategy == UTXOSelectionStrategy::Default {
+            // lets get the max value for all utxos
+            let max: Vec<i64> = outputs::table
+                .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+                .filter(outputs::script_lock_height.le(tip_height))
+                .filter(outputs::maturity.le(tip_height))
+                .order(outputs::value.desc())
+                .select(outputs::value)
+                .limit(1)
+                .load(conn)?;
+            if max.is_empty() {
+                strategy = UTXOSelectionStrategy::Smallest
+            } else if amount > max[0] as u64 {
+                strategy = UTXOSelectionStrategy::Largest
+            } else {
+                strategy = UTXOSelectionStrategy::MaturityThenSmallest
+            }
+        }
+
+        let mut query = outputs::table
+            .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::script_lock_height.le(tip_height))
+            .filter(outputs::maturity.le(tip_height))
+            .order_by(outputs::spending_priority.asc());
+        match strategy {
+            UTXOSelectionStrategy::Smallest => {
+                query = query.then_order_by(outputs::value.asc());
+            },
+            UTXOSelectionStrategy::MaturityThenSmallest => {
+                query = query
+                    .then_order_by(outputs::maturity.asc())
+                    .then_order_by(outputs::value.asc());
+            },
+            UTXOSelectionStrategy::Largest => {
+                query = query.then_order_by(outputs::value.desc());
+            },
+            UTXOSelectionStrategy::Default => {},
+        };
+        Ok(query.load(conn)?)
     }
 
     /// Return all unspent outputs that have a maturity above the provided chain tip
@@ -201,7 +246,7 @@ impl OutputSql {
                  FROM outputs WHERE status = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity > ? \
+                 FROM outputs WHERE status = ? AND maturity > ? OR script_lock_height > ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ? \
@@ -213,6 +258,7 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
@@ -318,8 +364,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id.as_u64() as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
+                    .eq(Some(tx_id as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
             )
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
@@ -333,8 +379,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id.as_u64() as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
+                    .eq(Some(tx_id as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
             )
             .filter(
                 outputs::status
@@ -355,6 +401,18 @@ impl OutputSql {
         Ok(outputs::table
             .filter(outputs::status.eq(status as i32))
             .filter(outputs::spending_key.eq(spending_key))
+            .first::<OutputSql>(conn)?)
+    }
+
+    /// Find a particular Output, if it exists and is in the specified Spent state
+    pub fn find_by_hash(
+        hash: &[u8],
+        status: OutputStatus,
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.eq(status as i32))
+            .filter(outputs::hash.eq(Some(hash)))
             .first::<OutputSql>(conn)?)
     }
 
@@ -469,11 +527,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError {
-                    reason: "PrivateKey could not be converted from bytes".to_string(),
-                }
+                OutputManagerStorageError::ConversionError
             })?,
-            features,
+           features,
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
@@ -481,18 +537,14 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError {
-                    reason: "PrivateKey could not be converted from bytes".to_string(),
-                }
+                OutputManagerStorageError::ConversionError
             })?,
             PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError {
-                    reason: "PrivateKey could not be converted from bytes".to_string(),
-                }
+                OutputManagerStorageError::ConversionError
             })?,
             ComSignature::new(
                 Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
@@ -500,29 +552,24 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError {
-                        reason: "PublicKey could not be converted from bytes".to_string(),
-                    }
+                    OutputManagerStorageError::ConversionError
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError {
-                        reason: "PrivateKey could not be converted from bytes".to_string(),
-                    }
+                    OutputManagerStorageError::ConversionError
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError {
-                        reason: "PrivateKey could not be converted from bytes".to_string(),
-                    }
+                    OutputManagerStorageError::ConversionError
                 })?,
             ),
+            o.script_lock_height as u64,
         );
 
         let hash = match o.hash {
@@ -541,17 +588,17 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
-
+        let spend_priority = (o.spend_priority as u32).into();
         Ok(Self {
             commitment,
             unblinded_output,
             hash,
-            status: o.status.try_into()?,
             mined_height: o.mined_height.map(|mh| mh as u64),
             mined_in_block: o.mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
+            spend_priority,
         })
     }
 }

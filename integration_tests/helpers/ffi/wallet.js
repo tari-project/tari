@@ -11,8 +11,16 @@ const Balance = require("./balance");
 
 const utf8 = require("utf8");
 
+class WalletBalance {
+  available = 0;
+  timeLocked = 0;
+  pendingIn = 0;
+  pendingOut = 0;
+}
+
 class Wallet {
   ptr;
+  balance = new WalletBalance();
   log_path = "";
   receivedTransaction = 0;
   receivedTransactionReply = 0;
@@ -237,11 +245,11 @@ class Wallet {
     this.minedunconfirmed += 1;
   };
 
-  onTransactionCancellation = (ptr) => {
+  onTransactionCancellation = (ptr, reason) => {
     let tx = new CompletedTransaction();
     tx.pointerAssign(ptr);
     console.log(
-      `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} was cancelled`
+      `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} was cancelled with reason code ${reason}.`
     );
     tx.destroy();
     this.cancelled += 1;
@@ -270,8 +278,16 @@ class Wallet {
   onBalanceUpdated = (ptr) => {
     let b = new Balance();
     b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
     console.log(
-      `${new Date().toISOString()} callbackBalanceUpdated: available = ${b.getAvailable()},  time locked = ${b.getTimeLocked()}  pending incoming = ${b.getPendingIncoming()} pending outgoing = ${b.getPendingOutgoing()}`
+      `${new Date().toISOString()} callbackBalanceUpdated: available = ${
+        this.balance.available
+      },  time locked = ${this.balance.timeLocked}  pending incoming = ${
+        this.balance.pendingIn
+      } pending outgoing = ${this.balance.pendingOut}`
     );
     b.destroy();
   };
@@ -321,6 +337,22 @@ class Wallet {
     return result;
   }
 
+  getBalance() {
+    return this.balance;
+  }
+
+  pollBalance() {
+    let b = new Balance();
+    let ptr = InterfaceFFI.walletGetBalance(this.ptr);
+    b.pointerAssign(ptr);
+    this.balance.available = b.getAvailable();
+    this.balance.timeLocked = b.getTimeLocked();
+    this.balance.pendingIn = b.getPendingIncoming();
+    this.balance.pendingOut = b.getPendingOutgoing();
+    b.destroy();
+    return this.balance;
+  }
+
   getEmojiId() {
     let ptr = InterfaceFFI.walletGetPublicKey(this.ptr);
     let pk = new PublicKey();
@@ -328,21 +360,6 @@ class Wallet {
     let result = pk.getEmojiId();
     pk.destroy();
     return result;
-  }
-
-  getBalance() {
-    let available = InterfaceFFI.walletGetAvailableBalance(this.ptr);
-    let pendingIncoming = InterfaceFFI.walletGetPendingIncomingBalance(
-      this.ptr
-    );
-    let pendingOutgoing = InterfaceFFI.walletGetPendingOutgoingBalance(
-      this.ptr
-    );
-    return {
-      pendingIn: pendingIncoming,
-      pendingOut: pendingOutgoing,
-      available: available,
-    };
   }
 
   addBaseNodePeer(public_key_hex, address) {
@@ -356,14 +373,15 @@ class Wallet {
     return result;
   }
 
-  sendTransaction(destination, amount, fee_per_gram, message) {
+  sendTransaction(destination, amount, fee_per_gram, message, one_sided) {
     let dest_public_key = PublicKey.fromHexString(utf8.encode(destination));
     let result = InterfaceFFI.walletSendTransaction(
       this.ptr,
       dest_public_key.getPtr(),
       amount,
       fee_per_gram,
-      utf8.encode(message)
+      utf8.encode(message),
+      one_sided
     );
     dest_public_key.destroy();
     return result;

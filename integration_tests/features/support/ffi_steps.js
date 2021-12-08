@@ -31,7 +31,23 @@ When(
       this.getWalletPubkey(receiver),
       amount,
       feePerGram,
-      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`
+      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`,
+      false
+    );
+    console.log(result);
+  }
+);
+
+When(
+  "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions",
+  function (amount, sender, receiver, feePerGram) {
+    let ffiWallet = this.getWallet(sender);
+    let result = ffiWallet.sendTransaction(
+      this.getWalletPubkey(receiver),
+      amount,
+      feePerGram,
+      `Send from ffi ${sender} to ${receiver} at fee ${feePerGram}`,
+      true
     );
     console.log(result);
   }
@@ -223,6 +239,16 @@ Then(
     let peer = this.nodes[node].peerAddress().split("::");
     ffiWallet.addBaseNodePeer(peer[0], peer[1]);
     ffiWallet.startRecovery(peer[0]);
+  }
+);
+
+Then(
+  "I retrieve the mnemonic word list for {word} from ffi wallet {word}",
+  async function (language, walletName) {
+    const wallet = this.getWallet(walletName);
+    const mnemonicWordList = wallet.getMnemonicWordListForLanguage(language);
+    console.log("Mnemonic word list for", language, ":", mnemonicWordList);
+    expect(mnemonicWordList.length).to.equal(2048);
   }
 );
 
@@ -434,7 +460,7 @@ Then(
       120
     );
 
-    let balance = wallet.getBalance().available;
+    let balance = wallet.pollBalance().available;
 
     if (!(balance >= amount)) {
       console.log("Balance not adequate!");

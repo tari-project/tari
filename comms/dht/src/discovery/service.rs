@@ -94,8 +94,11 @@ impl DhtDiscoveryService {
     }
 
     pub fn spawn(self) {
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         task::spawn(async move {
-            debug!(target: LOG_TARGET, "Discovery service started");
+            log_mdc::extend(mdc);
+            info!(target: LOG_TARGET, "Discovery service started");
             self.run().await
         });
     }

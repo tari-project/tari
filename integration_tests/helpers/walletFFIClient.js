@@ -74,6 +74,10 @@ class WalletFFIClient {
     return this.wallet.getBalance();
   }
 
+  pollBalance() {
+    return this.wallet.pollBalance();
+  }
+
   addBaseNodePeer(public_key_hex, address) {
     return this.wallet.addBaseNodePeer(public_key_hex, address);
   }
@@ -84,6 +88,10 @@ class WalletFFIClient {
 
   getContactList() {
     return this.wallet.getContacts();
+  }
+
+  getMnemonicWordListForLanguage(language) {
+    return SeedWords.getMnemonicWordListForLanguage(language);
   }
 
   getCompletedTxs() {
@@ -131,12 +139,13 @@ class WalletFFIClient {
     }
   }
 
-  sendTransaction(destination, amount, fee_per_gram, message) {
+  sendTransaction(destination, amount, fee_per_gram, message, one_sided) {
     return this.wallet.sendTransaction(
       destination,
       amount,
       fee_per_gram,
-      message
+      message,
+      one_sided
     );
   }
 

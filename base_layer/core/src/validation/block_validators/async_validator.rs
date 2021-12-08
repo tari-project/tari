@@ -19,14 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{cmp, cmp::Ordering, thread, time::Instant};
+use std::{cmp, cmp::Ordering, convert::TryInto, thread, time::Instant};
 
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_utilities::Hashable;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
 use tokio::task;
 
 use super::LOG_TARGET;
@@ -254,12 +253,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         let block_height = header.height;
         let commitment_factory = self.factories.commitment.clone();
         let db = self.db.inner().clone();
+        let prev_hash: [u8; 32] = header.prev_hash.as_slice().try_into().unwrap_or([0; 32]);
+        let height = header.height;
         task::spawn_blocking(move || {
             let timer = Instant::now();
             let mut aggregate_input_key = PublicKey::default();
             let mut commitment_sum = Commitment::default();
             let mut not_found_inputs = Vec::new();
             let db = db.db_read_access()?;
+
             for (i, input) in inputs.iter().enumerate() {
                 // Check for duplicates and/or incorrect sorting
                 if i > 0 && input <= &inputs[i - 1] {
@@ -293,8 +295,10 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 // Once we've found unknown inputs, the aggregate data will be discarded and there is no reason to run
                 // the tari script
                 if not_found_inputs.is_empty() {
+                    let context = ScriptContext::new(height, &prev_hash, &input.commitment);
                     // lets count up the input script public keys
-                    aggregate_input_key = aggregate_input_key + input.run_and_verify_script(&commitment_factory)?;
+                    aggregate_input_key =
+                        aggregate_input_key + input.run_and_verify_script(&commitment_factory, Some(context))?;
                     commitment_sum = &commitment_sum + &input.commitment;
                 }
             }
@@ -344,6 +348,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
+                let max_script_size = self.rules.consensus_constants(height).get_max_script_byte_size();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
@@ -370,6 +375,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             // We should not count the coinbase tx here
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
+
+                        helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
 
                         output.verify_metadata_signature()?;
                         if !bypass_range_proof_verification {

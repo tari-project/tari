@@ -22,11 +22,11 @@
 
 var { createClient } = require('../baseNodeClient')
 
-var express = require('express')
+var express = require("express")
 var router = express.Router()
 
 /* GET home page. */
-router.get('/:height', async function (req, res, next) {
+router.get("/:height", async function (req, res) {
   let client = createClient()
   let height = req.params.height
 

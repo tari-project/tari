@@ -23,20 +23,21 @@
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 
 use aes_gcm::Aes256Gcm;
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{Transaction, TransactionOutput},
+};
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use crate::{
-    transaction_service::{
-        error::TransactionServiceError,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-    },
-    OperationId,
+use crate::transaction_service::{
+    error::TransactionServiceError,
+    protocols::TxRejection,
+    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
 };
 
 /// API Request enum
@@ -64,9 +65,10 @@ pub enum TransactionServiceRequest {
         fee_per_gram: MicroTari,
         message: String,
     },
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
-    SubmitSelfSendTransaction(TxId, Transaction, MicroTari, MicroTari, String),
+    SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -112,6 +114,9 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 message
             )),
+            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+                f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
+            },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
                 "ImportUtxo (from {}, {}, {} with maturity: {})",
@@ -120,9 +125,7 @@ impl fmt::Display for TransactionServiceRequest {
                 msg,
                 maturity.unwrap_or(0)
             )),
-            Self::SubmitSelfSendTransaction(tx_id, _, _, _, _) => {
-                f.write_str(&format!("SubmitTransaction ({})", tx_id))
-            },
+            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
@@ -164,6 +167,7 @@ pub enum TransactionServiceResponse {
     NumConfirmationsSet,
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
+    ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -177,7 +181,7 @@ pub enum TransactionEvent {
     TransactionDirectSendResult(TxId, bool),
     TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
-    TransactionCancelled(TxId),
+    TransactionCancelled(TxId, TxRejection),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
     TransactionMined {
@@ -191,11 +195,7 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
-    TransactionValidationTimedOut(OperationId),
-    TransactionValidationSuccess(OperationId),
-    TransactionValidationFailure(OperationId),
-    TransactionValidationAborted(OperationId),
-    TransactionValidationDelayed(OperationId),
+    TransactionValidationStateChanged(u64),
     Error(String),
 }
 
@@ -496,7 +496,7 @@ impl TransactionServiceHandle {
         let fee = tx.body.get_total_fee();
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitSelfSendTransaction(
+            .call(TransactionServiceRequest::SubmitTransactionToSelf(
                 tx_id, tx, fee, amount, message,
             ))
             .await??
@@ -624,6 +624,31 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_sha_atomic_swap_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
+                let (tx_id, pre_image, output) = *boxed;
+                Ok((tx_id, pre_image, output))
+            },
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -43,8 +43,8 @@ pub enum UtxoScannerEvent {
     },
     /// Progress of the recovery process (current_block, current_chain_height)
     Progress {
-        current_block: u64,
-        current_chain_height: u64,
+        current_index: u64,
+        total_index: u64,
     },
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {

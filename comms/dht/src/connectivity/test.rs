@@ -167,7 +167,6 @@ async fn added_neighbours() {
 #[runtime::test]
 async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
-    // let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
@@ -195,7 +194,22 @@ async fn replace_peer_when_peer_goes_offline() {
     connectivity.publish_event(ConnectivityEvent::PeerDisconnected(
         node_identities[4].node_id().clone(),
     ));
-    connectivity.publish_event(ConnectivityEvent::ConnectivityStateOffline);
+
+    async_assert!(
+        connectivity.call_count().await >= 1,
+        max_attempts = 20,
+        interval = Duration::from_millis(10),
+    );
+
+    let _ = connectivity.take_calls().await;
+    // Redial
+    let dialed = connectivity.take_dialed_peers().await;
+    assert_eq!(dialed.len(), 1);
+    assert_eq!(dialed[0], *node_identities[4].node_id());
+
+    connectivity.publish_event(ConnectivityEvent::PeerConnectFailed(
+        node_identities[4].node_id().clone(),
+    ));
 
     async_assert!(
         connectivity.call_count().await >= 1,
@@ -205,8 +219,8 @@ async fn replace_peer_when_peer_goes_offline() {
 
     // Check that the next closer neighbour was added to the pool
     let dialed = connectivity.take_dialed_peers().await;
-    assert_eq!(dialed.len(), 2);
-    assert_eq!(dialed[0], *node_identities.last().unwrap().node_id());
+    assert_eq!(dialed.len(), 1);
+    assert_eq!(dialed[0], *node_identities[5].node_id());
 }
 
 #[runtime::test]

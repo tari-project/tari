@@ -27,10 +27,9 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_common_types::types::{BlockHash, HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 use crate::{

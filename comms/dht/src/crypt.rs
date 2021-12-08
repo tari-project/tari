@@ -107,7 +107,7 @@ pub fn create_origin_mac_challenge_parts(
     body: &[u8],
 ) -> Challenge {
     let mut mac_challenge = Challenge::new();
-    // TODO: #testnetreset remove conditional
+    // TODO: #testnet_reset remove conditional
     if protocol_version.as_major() > 1 {
         mac_challenge.update(&protocol_version.to_bytes());
         mac_challenge.update(destination.to_inner_bytes().as_slice());

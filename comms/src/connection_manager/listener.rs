@@ -55,6 +55,7 @@ use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
         liveness::LivenessSession,
+        metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -64,7 +65,6 @@ use crate::{
     protocol::ProtocolId,
     runtime,
     transports::Transport,
-    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
@@ -242,6 +242,7 @@ where
 
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
+            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -328,6 +329,8 @@ where
                     );
                 },
             }
+
+            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 
@@ -337,21 +340,22 @@ where
     }
 
     async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
-        let public_key: Option<CommsPublicKey> = match time::timeout(
+        let noise_socket = time::timeout(
             Duration::from_secs(30),
             noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
         )
-        .await
-        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)
-        {
-            Ok(Ok(noise_socket)) => {
-                match noise_socket
-                    .get_remote_public_key()
-                    .ok_or(ConnectionManagerError::InvalidStaticPublicKey)
-                {
-                    Ok(pk) => Some(pk),
-                    _ => None,
+        .await;
+
+        let public_key = match noise_socket {
+            Ok(Ok(mut noise_socket)) => {
+                let pk = noise_socket.get_remote_public_key();
+                if let Err(err) = noise_socket.shutdown().await {
+                    debug!(
+                        target: LOG_TARGET,
+                        "IO error when closing socket after invalid wire format: {}", err
+                    );
                 }
+                pk
             },
             _ => None,
         };

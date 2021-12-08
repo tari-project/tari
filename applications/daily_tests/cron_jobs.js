@@ -53,14 +53,14 @@ async function runWalletRecoveryTest(instances) {
       recoveredAmount,
     } = await walletRecoveryTest({
       seedWords:
-        "spare man patrol essay divide hollow trip visual actress sadness country hungry toy blouse body club depend capital sleep aim high recycle crystal abandon",
+        "cactus pool fuel skull chair casino season disorder flat crash wrist whisper decorate narrow oxygen remember minor among happy cricket embark blue ship sick",
       log: LOG_FILE,
       numWallets: instances,
       baseDir,
     });
 
     notify(
-      `🙌 Wallet (Pubkey: ${identity.public_key} ) recovered to a block height of ${numScanned}, completed in ${timeDiffMinutes} minutes (${scannedRate} blocks/min). ${recoveredAmount} µT recovered for ${instances} instance(s).`
+      `🙌 Wallet (Pubkey: ${identity.public_key} ) recovered scanned ${numScanned} UTXO's, completed in ${timeDiffMinutes} minutes (${scannedRate} UTXOs/min). ${recoveredAmount} µT recovered for ${instances} instance(s).`
     );
   } catch (err) {
     console.error(err);
@@ -76,7 +76,12 @@ ${logLines.join("\n")}
 }
 
 async function runBaseNodeSyncTest(syncType) {
-  notify(`🚀 ${syncType} basenode sync check has begun 🚀`);
+  const node_pub_key =
+    "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849";
+  const node_address = "/ip4/3.8.193.254/tcp/18189";
+  notify(
+    `🚀 ${syncType} basenode sync (from ${node_pub_key}) check has begun 🚀`
+  );
 
   const baseDir = __dirname + "/temp/base-node-sync";
 
@@ -97,9 +102,7 @@ async function runBaseNodeSyncTest(syncType) {
       log: LOG_FILE,
       syncType,
       baseDir,
-      forceSyncPeers: [
-        "b0c1f788f137ba0cdc0b61e89ee43b80ebf5cca4136d3229561bf11eba347849::/ip4/3.8.193.254/tcp/18189",
-      ],
+      forceSyncPeers: [`${node_pub_key}::${node_address}`],
     });
 
     notify(
@@ -126,13 +129,13 @@ async function main() {
   });
 
   // ------------------------- CRON ------------------------- //
-  new CronJob("0 7 * * *", () => runWalletRecoveryTest(1)).start();
+  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1)).start();
   //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
-  new CronJob("0 6 * * *", () =>
+  new CronJob("0 1 * * *", () =>
     runBaseNodeSyncTest(SyncType.Archival)
   ).start();
-  new CronJob("30 6 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
-  new CronJob("0 4 * * *", () =>
+  new CronJob("30 1 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
+  new CronJob("0 0 * * *", () =>
     git.pull(__dirname).catch((err) => {
       failed("Failed to update git repo");
       console.error(err);

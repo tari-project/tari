@@ -51,8 +51,8 @@ pub enum MnemonicError {
          defined natural languages"
     )]
     UnknownLanguage,
-    #[error("Only 2048 words for each language was selected to form Mnemonic word lists")]
-    WordNotFound,
+    #[error("Word not found: `{0}`")]
+    WordNotFound(String),
     #[error("A mnemonic word does not exist for the requested index")]
     IndexOutOfBounds,
     #[error("A problem encountered constructing a secret key from bytes or mnemonic sequence: `{0}`")]

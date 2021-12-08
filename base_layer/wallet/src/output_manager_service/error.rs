@@ -34,7 +34,8 @@ use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
-use time::OutOfRangeError;
+
+use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 
 use crate::base_node_service::error::BaseNodeServiceError;
 
@@ -48,8 +49,6 @@ pub enum OutputManagerError {
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
     #[error("Output manager storage error: `{0}`")]
     OutputManagerStorageError(#[from] OutputManagerStorageError),
     #[error("Mnemonic error: `{0}`")]
@@ -151,10 +150,8 @@ pub enum OutputManagerStorageError {
     OutputAlreadyEncumbered,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Out of range error: `{0}`")]
-    OutOfRangeError(#[from] OutOfRangeError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Diesel error: `{0}`")]

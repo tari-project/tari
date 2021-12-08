@@ -27,6 +27,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![deny(clippy::redundant_clone)]
 #![recursion_limit = "1024"]
 use std::{env, process};
 

@@ -24,6 +24,7 @@ use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_common::exit_codes::ExitCodes;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
@@ -126,8 +127,8 @@ pub enum WalletStorageError {
     DbPathDoesNotExist,
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

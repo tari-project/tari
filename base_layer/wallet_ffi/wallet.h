@@ -90,6 +90,7 @@ struct TariTransportType *transport_tor_create(
     const char *control_server_address,
     struct ByteVector *tor_cookie,
     unsigned short tor_port,
+    bool tor_proxy_bypass_for_outbound,
     const char *socks_username,
     const char *socks_password,
     int *error_out);
@@ -162,6 +163,9 @@ void private_key_destroy(struct TariPrivateKey *pk);
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
+
+// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+struct TariSeedWords *seed_words_get_mnemonic_word_list_for_language(const char *language, int *error_out);
 
 // Get the number of seed words in the provided collection
 unsigned int seed_words_get_length(struct TariSeedWords *seed_words, int *error_out);
@@ -420,9 +424,22 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
-/// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
-/// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
-/// be conducted. The outcome of the discovery process is relayed via this callback
+/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
+/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
+/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
+/// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
+/// why said transaction failed that is mapped to the `TxRejection` enum:
+/// pub enum TxRejection {
+///     Unknown,                // 0
+///     UserCancelled,          // 1
+///     Timeout,                // 2
+///     DoubleSpend,            // 3
+///     Orphan,                 // 4
+///     TimeLocked,             // 5
+///     InvalidTransaction,     // 6
+/// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
@@ -466,13 +483,16 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
-                                 void (*callback_transaction_cancellation)(struct TariCompletedTransaction *),
+                                 void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
                                  void (*callback_saf_message_received)(),
                                  bool *recovery_in_progress,
                                  int *error_out);
+
+// Gets the balance
+struct TariBalance *wallet_get_balance(struct TariWallet *wallet, int *error_out);
 
 // Signs a message
 char *wallet_sign_message(struct TariWallet *wallet, const char *msg, int *error_out);
@@ -501,15 +521,6 @@ unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int
 // Gets the available balance from a TariBalance
 unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
 
-// Gets the available balance from a TariWallet
-unsigned long long wallet_get_available_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the incoming balance from a TariWallet
-unsigned long long wallet_get_pending_incoming_balance(struct TariWallet *wallet, int *error_out);
-
-// Gets the outgoing balance from a TariWallet
-unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet, int *error_out);
-
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);
 
@@ -520,7 +531,7 @@ unsigned long long wallet_get_num_confirmations_required(struct TariWallet *wall
 void wallet_set_num_confirmations_required(struct TariWallet *wallet, unsigned long long num, int *error_out);
 
 // Sends a TariPendingOutboundTransaction
-unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram, const char *message, int *error_out);
+unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram, const char *message, bool one_sided, int *error_out);
 
 // Get the TariContacts from a TariWallet
 struct TariContacts *wallet_get_contacts(struct TariWallet *wallet, int *error_out);
@@ -719,7 +730,7 @@ void balance_destroy(struct TariBalance *balance);
 void file_partial_backup(const char *original_file_path, const char *backup_file_path, int *error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
-void log_debug_message(const char *msg);
+void log_debug_message(const char *msg, int *error_out);
 
 struct EmojiSet *get_emoji_set();
 

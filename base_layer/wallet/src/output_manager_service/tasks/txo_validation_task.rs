@@ -23,7 +23,7 @@ use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_common_types::types::BlockHash;
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
+use tari_comms::protocol::rpc::RpcError::RequestFailed;
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
@@ -31,6 +31,19 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_shutdown::ShutdownSignal;
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
+        handle::{OutputManagerEvent, OutputManagerEventSender},
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
+    },
+};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
@@ -96,6 +109,10 @@ where
         self.update_spent_outputs(&mut base_node_client, last_mined_header)
             .await?;
         self.publish_event(OutputManagerEvent::TxoValidationSuccess(self.operation_id));
+        info!(
+            target: LOG_TARGET,
+            "Finished TXO validation protocol (Id: {})", self.operation_id,
+        );
         Ok(self.operation_id)
     }
 
@@ -117,8 +134,9 @@ where
         for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
                 target: LOG_TARGET,
-                "Asking base node for status of {} mmr_positions",
-                batch.len()
+                "Asking base node for status of {} mmr_positions (Operation ID: {})",
+                batch.len(),
+                self.operation_id
             );
 
             // We have to send positions to the base node because if the base node cannot find the hash of the output
@@ -176,10 +194,11 @@ where
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as spent at tip height {}",
+                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
                         output.commitment.to_hex(),
                         output.hash.to_hex(),
-                        deleted_bitmap_response.height_of_longest_chain
+                        deleted_bitmap_response.height_of_longest_chain,
+                        self.operation_id
                     );
                 }
 
@@ -198,10 +217,11 @@ where
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as unspent at tip height {}",
+                        "Updating output comm:{}: hash {} as unspent at tip height {} (Operation ID: {})",
                         output.commitment.to_hex(),
                         output.hash.to_hex(),
-                        deleted_bitmap_response.height_of_longest_chain
+                        deleted_bitmap_response.height_of_longest_chain,
+                        self.operation_id
                     );
                 }
             }
@@ -222,8 +242,9 @@ where
         for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
             info!(
                 target: LOG_TARGET,
-                "Asking base node for location of {} unconfirmed outputs by hash",
-                batch.len()
+                "Asking base node for location of {} unconfirmed outputs by hash (Operation ID: {})",
+                batch.len(),
+                self.operation_id
             );
             let (mined, unmined, tip_height) = self
                 .query_base_node_for_outputs(batch, wallet_client)
@@ -231,18 +252,20 @@ where
                 .for_protocol(self.operation_id)?;
             debug!(
                 target: LOG_TARGET,
-                "Base node returned {} outputs as mined and {} outputs as unmined",
+                "Base node returned {} outputs as mined and {} outputs as unmined (Operation ID: {})",
                 mined.len(),
-                unmined.len()
+                unmined.len(),
+                self.operation_id
             );
             for (output, mined_height, mined_in_block, mmr_position) in &mined {
                 info!(
                     target: LOG_TARGET,
-                    "Updating output comm:{}: hash {} as mined at height {} with current tip at {}",
+                    "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID: {})",
                     output.commitment.to_hex(),
                     output.hash.to_hex(),
                     mined_height,
-                    tip_height
+                    tip_height,
+                    self.operation_id
                 );
                 self.update_output_as_mined(output, mined_in_block, *mined_height, *mmr_position, tip_height)
                     .await?;
@@ -260,7 +283,7 @@ where
         let mut last_mined_header_hash = None;
         info!(
             target: LOG_TARGET,
-            "Checking last mined TXO to see if the base node has re-orged"
+            "Checking last mined TXO to see if the base node has re-orged (Operation ID: {})", self.operation_id
         );
 
         while let Some(last_spent_output) = self.db.get_last_spent_output().await.for_protocol(self.operation_id)? {
@@ -287,8 +310,9 @@ where
                 warn!(
                     target: LOG_TARGET,
                     "The block that output ({}) was spent in has been reorged out, will try to find this output \
-                     again, but these funds have potentially been re-orged out of the chain",
-                    last_spent_output.commitment.to_hex()
+                     again, but these funds have potentially been re-orged out of the chain (Operation ID: {})",
+                    last_spent_output.commitment.to_hex(),
+                    self.operation_id
                 );
                 self.db
                     .mark_output_as_unspent(last_spent_output.hash.clone())
@@ -297,7 +321,8 @@ where
             } else {
                 info!(
                     target: LOG_TARGET,
-                    "Last mined transaction is still in the block chain according to base node."
+                    "Last mined transaction is still in the block chain according to base node. (Operation ID: {})",
+                    self.operation_id
                 );
                 break;
             }
@@ -323,8 +348,9 @@ where
                 warn!(
                     target: LOG_TARGET,
                     "The block that output ({}) was in has been reorged out, will try to find this output again, but \
-                     these funds have potentially been re-orged out of the chain",
-                    last_mined_output.commitment.to_hex()
+                     these funds have potentially been re-orged out of the chain (Operation ID: {})",
+                    last_mined_output.commitment.to_hex(),
+                    self.operation_id
                 );
                 self.db
                     .set_output_to_unmined(last_mined_output.hash.clone())
@@ -333,7 +359,8 @@ where
             } else {
                 info!(
                     target: LOG_TARGET,
-                    "Last mined transaction is still in the block chain according to base node."
+                    "Last mined transaction is still in the block chain according to base node (Operation ID: {}).",
+                    self.operation_id
                 );
                 last_mined_header_hash = Some(mined_in_block_hash);
                 break;
@@ -352,10 +379,13 @@ where
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
             Err(rpc_error) => {
-                info!(target: LOG_TARGET, "Error asking base node for header:{}", rpc_error);
+                info!(
+                    target: LOG_TARGET,
+                    "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
+                );
                 match &rpc_error {
                     RequestFailed(status) => {
-                        if status.status_code() == NotFound {
+                        if status.as_status_code().is_not_found() {
                             return Ok(None);
                         } else {
                             return Err(rpc_error.into());

@@ -76,7 +76,7 @@ Feature: Wallet CLI
         And I have wallet RECEIVER connected to base node BASE
         And I have mining node MINE connected to base node BASE and wallet SENDER
         And mining node MINE mines 15 blocks
-        Then wallets SENDER should have 12 spendable coinbase outputs
+        Then wallets SENDER should have EXACTLY 12 spendable coinbase outputs
         # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
         # TODO: base node connection.
         And I wait 30 seconds
@@ -123,11 +123,12 @@ Feature: Wallet CLI
         Then I wait for wallet WALLET to have at least 1000000 uT
         And I export the utxos of wallet WALLET via command line
 
+    @flaky
     Scenario: As a user I want to discover-peer via command line
         Given I have a seed node SEED
+        And I have wallet WALLET connected to seed node SEED
         And I have a base node BASE1 connected to seed SEED
         And I have a base node BASE2 connected to seed SEED
-        And I have wallet WALLET connected to base node BASE1
         And I discover peer BASE2 on wallet WALLET via command line
         Then WALLET is connected to BASE2
 

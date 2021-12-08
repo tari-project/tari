@@ -31,7 +31,7 @@ mod common;
 mod error;
 mod proxy;
 
-use std::convert::Infallible;
+use std::convert::{Infallible, TryFrom};
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
@@ -47,7 +47,7 @@ use crate::error::StratumTranscoderProxyError;
 async fn main() -> Result<(), StratumTranscoderProxyError> {
     let config = initialize()?;
 
-    let config = StratumTranscoderProxyConfig::from(config);
+    let config = StratumTranscoderProxyConfig::try_from(config)?;
     let addr = config.transcoder_host_address;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
@@ -97,6 +97,6 @@ fn initialize() -> Result<GlobalConfig, StratumTranscoderProxyError> {
     #[cfg(not(feature = "envlog"))]
     bootstrap.initialize_logging()?;
 
-    let cfg = GlobalConfig::convert_from(application_type, cfg)?;
+    let cfg = GlobalConfig::convert_from(application_type, cfg, bootstrap.network)?;
     Ok(cfg)
 }

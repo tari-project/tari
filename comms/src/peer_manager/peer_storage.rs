@@ -22,6 +22,7 @@
 
 use std::{collections::HashMap, time::Duration};
 
+use chrono::Utc;
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{rngs::OsRng, seq::SliceRandom};
@@ -30,12 +31,14 @@ use tari_storage::{IterationResult, KeyValueStore};
 
 use crate::{
     peer_manager::{
-        node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::{generate_peer_key, PeerId},
+        NodeDistance,
+        NodeId,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
+        PeerQuerySortBy,
     },
     protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
@@ -220,7 +223,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     pub fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        if partial.is_empty() || partial.len() > NodeId::BYTE_SIZE {
+        if partial.is_empty() || partial.len() > NodeId::byte_size() {
             return Ok(Vec::new());
         }
 
@@ -327,25 +330,17 @@ where DS: KeyValueStore<PeerId, Peer>
             return Ok(Vec::new());
         }
 
-        let mut distances = Vec::new();
-        self.peer_db
-            .for_each_ok(|(_, peer)| {
-                if features.map(|f| peer.features == f).unwrap_or(true) &&
+        let query = PeerQuery::new()
+            .select_where(|peer| {
+                features.map(|f| peer.features == f).unwrap_or(true) &&
                     !peer.is_banned() &&
                     !peer.is_offline() &&
                     !excluded_peers.contains(&peer.node_id)
-                {
-                    let dist = node_id.distance(&peer.node_id);
-                    distances.push((peer, dist));
-                }
-                IterationResult::Continue
             })
-            .map_err(PeerManagerError::DatabaseError)?;
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
+            .limit(n);
 
-        distances.sort_by(|(_, dist_a), (_, dist_b)| dist_a.cmp(dist_b));
-        distances.truncate(n);
-
-        Ok(distances.into_iter().map(|(peer, _)| peer).collect())
+        self.perform_query(query)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
@@ -547,6 +542,16 @@ where DS: KeyValueStore<PeerId, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
         Ok(result)
+    }
+
+    pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut peer = self.find_by_node_id(node_id)?;
+        peer.last_seen = Some(Utc::now().naive_utc());
+        peer.set_offline(false);
+        self.peer_db
+            .insert(peer.id(), peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(())
     }
 }
 

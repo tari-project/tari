@@ -25,8 +25,6 @@ use std::{
     iter::{FromIterator, Iterator},
 };
 
-use tari_utilities::convert::try_convert_all;
-
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
@@ -42,6 +40,7 @@ use crate::{
         },
         core as core_proto_types,
     },
+    tari_utilities::convert::try_convert_all,
 };
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {

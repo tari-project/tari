@@ -1,46 +1,48 @@
-//  Copyright 2021. The Tari Project
+// Copyright 2018 The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::{
-    cmp::Ordering,
-    hash::{Hash, Hasher},
-    ops::Shl,
-};
+use std::{cmp::Ordering, ops::Shl};
 
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::{RangeProofError, RangeProofService},
-    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
 
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        range_proof::{RangeProofError, RangeProofService},
+        script::{ExecutionStack, TariScript},
+    },
     transactions::{
         tari_amount::MicroTari,
+        transaction,
         transaction::{
             transaction_input::TransactionInput,
             transaction_output::TransactionOutput,
@@ -65,6 +67,7 @@ pub struct UnblindedOutput {
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComSignature,
+    pub script_lock_height: u64,
 }
 
 impl UnblindedOutput {
@@ -79,6 +82,7 @@ impl UnblindedOutput {
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
+        script_lock_height: u64,
     ) -> UnblindedOutput {
         UnblindedOutput {
             value,
@@ -89,6 +93,7 @@ impl UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
+            script_lock_height,
         }
     }
 
@@ -191,6 +196,13 @@ impl UnblindedOutput {
         self.features.consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
     }
+
+    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not
+    // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
+    pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
+        let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
+        transaction::hash_output(&self.features, &commitment, &self.script)
+    }
 }
 
 // These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
@@ -199,12 +211,6 @@ impl Eq for UnblindedOutput {}
 impl PartialEq for UnblindedOutput {
     fn eq(&self, other: &UnblindedOutput) -> bool {
         self.value == other.value
-    }
-}
-
-impl Hash for UnblindedOutput {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
     }
 }
 

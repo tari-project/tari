@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use chrono::DateTime;
+use tari_common::configuration::Network;
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+use tari_crypto::{
+    script::TariScript,
+    tari_utilities::{hash::Hashable, hex::*},
+};
+
 // This file is used to store the genesis block
 use std::sync::Arc;
 
@@ -40,8 +50,6 @@ use crate::{
         transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
     },
 };
-
-const LATEST_BLOCK_VERSION: u16 = 2;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {

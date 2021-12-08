@@ -44,10 +44,11 @@ pub struct DnsSoftwareUpdate {
 impl DnsSoftwareUpdate {
     /// Connect to DNS host according to the given config
     pub async fn connect(config: AutoUpdateConfig) -> Result<Self, AutoUpdateError> {
+        let name_server = config.name_server.clone();
         let client = if config.use_dnssec {
-            DnsClient::connect_secure(config.name_server, default_trust_anchor()).await?
+            DnsClient::connect_secure(name_server, default_trust_anchor()).await?
         } else {
-            DnsClient::connect(config.name_server).await?
+            DnsClient::connect(name_server).await?
         };
 
         Ok(Self { client, config })

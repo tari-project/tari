@@ -30,7 +30,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
 use tari_wallet::{
     storage::sqlite_db::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
+    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
 };
 use tokio::sync::broadcast;
@@ -78,7 +78,11 @@ pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, E
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
-pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfig) -> Result<(), ExitCodes> {
+pub async fn wallet_recovery(
+    wallet: &WalletSqlite,
+    base_node_config: &PeerConfig,
+    retry_limit: usize,
+) -> Result<(), ExitCodes> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
@@ -96,12 +100,16 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             peer.node_id.to_hex()
         );
         peer_public_keys.push(peer.public_key.clone());
-        peer_manager.add_peer(peer).await?;
+        peer_manager
+            .add_peer(peer)
+            .await
+            .map_err(|err| ExitCodes::NetworkError(err.to_string()))?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
-        .with_retry_limit(3)
+        // Do not make this a small number as wallet recovery needs to be resilient
+        .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();
@@ -118,8 +126,8 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 println!("OK (latency = {:.2?})", latency);
             },
             Ok(UtxoScannerEvent::Progress {
-                current_block: current,
-                current_chain_height: total,
+                current_index: current,
+                total_index: total,
             }) => {
                 let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
                 debug!(

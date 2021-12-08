@@ -29,25 +29,20 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    PeerConnection,
-};
-use tari_utilities::{hex::Hex, Hashable};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
 use tracing;
 
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{hooks::Hooks, rpc},
+        sync::{hooks::Hooks, rpc, SyncPeer},
         BlockSyncConfig,
     },
-    blocks::{Block, ChainBlock},
+    blocks::{Block, BlockValidationError, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto::base_node::SyncBlocksRequest,
     transactions::aggregated_body::AggregateBody,
-    validation::BlockSyncBodyValidation,
+    validation::{BlockSyncBodyValidation, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::block_sync";
@@ -56,7 +51,7 @@ pub struct BlockSynchronizer<B> {
     config: BlockSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
-    sync_peer: Option<PeerConnection>,
+    sync_peer: SyncPeer,
     block_validator: Arc<dyn BlockSyncBodyValidation>,
     hooks: Hooks,
 }
@@ -66,7 +61,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         config: BlockSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        sync_peer: Option<PeerConnection>,
+        sync_peer: SyncPeer,
         block_validator: Arc<dyn BlockSyncBodyValidation>,
     ) -> Self {
         Self {
@@ -91,7 +86,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
     #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
-        let peer_conn = self.get_next_sync_peer().await?;
+        let peer_conn = self.connect_to_sync_peer().await?;
         let node_id = peer_conn.peer_node_id().clone();
         info!(
             target: LOG_TARGET,
@@ -102,7 +97,30 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 self.db.cleanup_orphans().await?;
                 Ok(())
             },
-            Err(err @ BlockSyncError::ValidationError(_)) | Err(err @ BlockSyncError::ReceivedInvalidBlockBody(_)) => {
+            Err(err @ BlockSyncError::ValidationError(ValidationError::AsyncTaskFailed(_))) => Err(err),
+            Err(BlockSyncError::ValidationError(err)) => {
+                match &err {
+                    ValidationError::BlockHeaderError(_) => {},
+                    ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots) |
+                    ValidationError::BadBlockFound { .. } |
+                    ValidationError::BlockError(BlockValidationError::MismatchedMmrSize { .. }) => {
+                        let num_cleared = self.db.clear_all_pending_headers().await?;
+                        warn!(
+                            target: LOG_TARGET,
+                            "Cleared {} incomplete headers from bad chain", num_cleared
+                        );
+                    },
+                    _ => {},
+                }
+                warn!(
+                    target: LOG_TARGET,
+                    "Banning peer because provided block failed validation: {}", err
+                );
+                self.ban_peer(node_id, &err).await?;
+                Err(err.into())
+            },
+            Err(err @ BlockSyncError::ProtocolViolation(_)) => {
+                warn!(target: LOG_TARGET, "Banning peer: {}", err);
                 self.ban_peer(node_id, &err).await?;
                 Err(err)
             },
@@ -110,20 +128,9 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         }
     }
 
-    async fn get_next_sync_peer(&mut self) -> Result<PeerConnection, BlockSyncError> {
-        match self.sync_peer {
-            Some(ref peer) => Ok(peer.clone()),
-            None => {
-                let mut peers = self
-                    .connectivity
-                    .select_connections(ConnectivitySelection::random_nodes(1, vec![]))
-                    .await?;
-                if peers.is_empty() {
-                    return Err(BlockSyncError::NoSyncPeers);
-                }
-                Ok(peers.remove(0))
-            },
-        }
+    async fn connect_to_sync_peer(&mut self) -> Result<PeerConnection, BlockSyncError> {
+        let connection = self.connectivity.dial_peer(self.sync_peer.node_id().clone()).await?;
+        Ok(connection)
     }
 
     async fn attempt_block_sync(&mut self, mut conn: PeerConnection) -> Result<(), BlockSyncError> {
@@ -183,9 +190,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .fetch_chain_header_by_block_hash(block.hash.clone())
                 .await?
                 .ok_or_else(|| {
-                    BlockSyncError::ReceivedInvalidBlockBody("Peer sent hash for block header we do not have".into())
+                    BlockSyncError::ProtocolViolation("Peer sent hash for block header we do not have".into())
                 })?;
 
+            let current_height = header.height();
             let header_hash = header.hash().clone();
 
             if header.header().prev_hash != prev_hash {
@@ -200,13 +208,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let body = block
                 .body
                 .map(AggregateBody::try_from)
-                .ok_or_else(|| BlockSyncError::ReceivedInvalidBlockBody("Block body was empty".to_string()))?
-                .map_err(BlockSyncError::ReceivedInvalidBlockBody)?;
+                .ok_or_else(|| BlockSyncError::ProtocolViolation("Block body was empty".to_string()))?
+                .map_err(BlockSyncError::ProtocolViolation)?;
 
             debug!(
                 target: LOG_TARGET,
                 "Validating block body #{} (PoW = {}, {})",
-                header.height(),
+                current_height,
                 header.header().pow_algo(),
                 body.to_counts_string(),
             );
@@ -214,7 +222,26 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let timer = Instant::now();
             let (header, header_accum_data) = header.into_parts();
 
-            let block = self.block_validator.validate_body(Block::new(header, body)).await?;
+            let block = match self.block_validator.validate_body(Block::new(header, body)).await {
+                Ok(block) => block,
+                Err(err @ ValidationError::BadBlockFound { .. }) |
+                Err(err @ ValidationError::FatalStorageError(_)) |
+                Err(err @ ValidationError::AsyncTaskFailed(_)) |
+                Err(err @ ValidationError::CustomError(_)) => return Err(err.into()),
+                Err(err) => {
+                    // Add to bad blocks
+                    if let Err(err) = self
+                        .db
+                        .write_transaction()
+                        .insert_bad_block(header_hash, current_height)
+                        .commit()
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Failed to insert bad block: {}", err);
+                    }
+                    return Err(err.into());
+                },
+            };
 
             let block = ChainBlock::try_construct(Arc::new(block), header_accum_data)
                 .map(Arc::new)

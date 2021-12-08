@@ -88,18 +88,21 @@ pub fn test_contacts_service() {
     let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
     let contact = runtime.block_on(contacts_service.get_contact(public_key.clone()));
-    assert_eq!(
-        contact,
-        Err(ContactsServiceError::ContactsServiceStorageError(
-            ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key.clone()))
-        ))
-    );
-    assert_eq!(
-        runtime.block_on(contacts_service.remove_contact(public_key.clone())),
-        Err(ContactsServiceError::ContactsServiceStorageError(
-            ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key))
-        ))
-    );
+    match contact {
+        Ok(_) => panic!("There should be an error here"),
+        Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
+            assert_eq!(val, DbKey::Contact(public_key.clone()))
+        },
+        _ => panic!("There should be a specific error here"),
+    }
+    let result = runtime.block_on(contacts_service.remove_contact(public_key.clone()));
+    match result {
+        Ok(_) => panic!("There should be an error here"),
+        Err(ContactsServiceError::ContactsServiceStorageError(ContactsServiceStorageError::ValueNotFound(val))) => {
+            assert_eq!(val, DbKey::Contact(public_key))
+        },
+        _ => panic!("There should be a specific error here"),
+    }
 
     let _ = runtime
         .block_on(contacts_service.remove_contact(contacts[0].public_key.clone()))

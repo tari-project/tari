@@ -24,13 +24,12 @@ use std::time::Instant;
 
 use log::*;
 use randomx_rs::RandomXFlag;
-use tari_comms::PeerConnection;
 
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo, StatusInfo},
-        sync::BlockSynchronizer,
+        sync::{BlockSynchronizer, SyncPeer},
         BaseNodeStateMachine,
     },
     chain_storage::{BlockAddResult, BlockchainBackend},
@@ -38,20 +37,16 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BlockSync {
-    sync_peer: Option<PeerConnection>,
+    sync_peer: SyncPeer,
     is_synced: bool,
 }
 
 impl BlockSync {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+    pub fn new(sync_peer: SyncPeer) -> Self {
         Self {
-            sync_peer: Some(sync_peer),
+            sync_peer,
             is_synced: false,
         }
     }
@@ -64,7 +59,7 @@ impl BlockSync {
             shared.config.block_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
-            self.sync_peer.take(),
+            self.sync_peer.clone(),
             shared.sync_validators.block_body.clone(),
         );
 
@@ -105,13 +100,17 @@ impl BlockSync {
         });
 
         let timer = Instant::now();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok(()) => {
+                log_mdc::extend(mdc);
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "Block sync failed: {}", err);
                 StateEvent::BlockSyncFailed
             },
@@ -124,7 +123,16 @@ impl BlockSync {
 }
 
 impl From<HorizonStateSync> for BlockSync {
-    fn from(_: HorizonStateSync) -> Self {
-        BlockSync::new()
+    fn from(sync: HorizonStateSync) -> Self {
+        BlockSync::new(sync.into_sync_peer())
+    }
+}
+
+impl From<SyncPeer> for BlockSync {
+    fn from(sync_peer: SyncPeer) -> Self {
+        Self {
+            sync_peer,
+            is_synced: false,
+        }
     }
 }

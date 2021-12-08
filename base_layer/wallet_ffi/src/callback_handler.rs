@@ -89,7 +89,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(u64, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
-    callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
@@ -124,7 +124,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_direct_send_result: unsafe extern "C" fn(u64, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
-        callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
@@ -243,8 +243,8 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_store_and_forward_send_result(tx_id, result);
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionCancelled(tx_id) => {
-                                    self.receive_transaction_cancellation(tx_id).await;
+                                TransactionEvent::TransactionCancelled(tx_id, reason) => {
+                                    self.receive_transaction_cancellation(tx_id, reason as u64).await;
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionBroadcast(tx_id) => {
@@ -259,18 +259,9 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionValidationSuccess(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
+                                TransactionEvent::TransactionValidationStateChanged(request_key)  => {
+                                    self.transaction_validation_complete_event(request_key);
                                     self.trigger_balance_refresh().await;
-                                },
-                                TransactionEvent::TransactionValidationFailure(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Failure);
-                                },
-                                TransactionEvent::TransactionValidationAborted(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Aborted);
-                                },
-                                TransactionEvent::TransactionValidationDelayed(tx_id)  => {
-                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::BaseNodeNotInSync);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id) |
@@ -426,7 +417,7 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    async fn receive_transaction_cancellation(&mut self, tx_id: TxId) {
+    async fn receive_transaction_cancellation(&mut self, tx_id: TxId, reason: u64) {
         let mut transaction = None;
         if let Ok(tx) = self.db.get_cancelled_completed_transaction(tx_id).await {
             transaction = Some(tx);
@@ -452,7 +443,7 @@ where TBackend: TransactionBackend + 'static
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
-                    (self.callback_transaction_cancellation)(boxing);
+                    (self.callback_transaction_cancellation)(boxing, reason);
                 }
             },
         }
@@ -506,38 +497,13 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn transaction_validation_complete_event(&mut self, request_key: OperationId, result: CallbackValidationResults) {
+    fn transaction_validation_complete_event(&mut self, request_key: u64) {
         debug!(
             target: LOG_TARGET,
-            "Calling Transaction Validation Complete callback function for Request Key: {} with result {:?}",
-            request_key,
-            result as u8,
+            "Calling Transaction Validation Complete callback function for Request Key: {}", request_key,
         );
-        match result {
-            CallbackValidationResults::Success => unsafe {
-                (self.callback_transaction_validation_complete)(
-                    request_key.as_u64(),
-                    CallbackValidationResults::Success as u8,
-                );
-            },
-            CallbackValidationResults::Aborted => unsafe {
-                (self.callback_transaction_validation_complete)(
-                    request_key.as_u64(),
-                    CallbackValidationResults::Aborted as u8,
-                );
-            },
-            CallbackValidationResults::Failure => unsafe {
-                (self.callback_transaction_validation_complete)(
-                    request_key.as_u64(),
-                    CallbackValidationResults::Failure as u8,
-                );
-            },
-            CallbackValidationResults::BaseNodeNotInSync => unsafe {
-                (self.callback_transaction_validation_complete)(
-                    request_key.as_u64(),
-                    CallbackValidationResults::BaseNodeNotInSync as u8,
-                );
-            },
+        unsafe {
+            (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
         }
     }
 

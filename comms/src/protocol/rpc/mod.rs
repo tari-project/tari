@@ -64,7 +64,13 @@ mod server;
 pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
 
 mod client;
-pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
+pub use client::{
+    pool,
+    pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient},
+    RpcClient,
+    RpcClientBuilder,
+    RpcClientConfig,
+};
 
 mod either;
 
@@ -76,9 +82,6 @@ pub use error::RpcError;
 
 mod handshake;
 pub use handshake::{Handshake, RpcHandshakeError};
-
-mod client_pool;
-pub use client_pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient};
 
 mod status;
 pub use status::{RpcStatus, RpcStatusCode};
@@ -95,8 +98,8 @@ pub mod __macro_reexports {
         framing::CanonicalFraming,
         protocol::{
             rpc::{
-                client_pool::RpcPoolClient,
                 message::{Request, Response},
+                pool::RpcPoolClient,
                 server::{NamedProtocolService, RpcServerError},
                 Body,
                 ClientStreaming,

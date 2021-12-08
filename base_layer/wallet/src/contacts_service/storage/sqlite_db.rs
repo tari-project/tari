@@ -32,7 +32,7 @@ use crate::{
         storage::database::{Contact, ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
     },
     schema::contacts,
-    storage::sqlite_utilities::WalletDbConnection,
+    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::diesel_ext::ExpectedRowsExtension,
 };
 
@@ -49,10 +49,10 @@ impl ContactsServiceSqliteDatabase {
 
 impl ContactsBackend for ContactsServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
 
         let result = match key {
-            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &(*conn)) {
+            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -69,13 +69,13 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
 
         match op {
             WriteOperation::Upsert(kvp) => match kvp {
-                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &(*conn)) {
+                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
                     Ok(found_c) => {
-                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &(*conn))?;
+                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;
                     },
                     Err(_) => {
                         ContactSql::from(c).commit(&conn)?;
@@ -83,7 +83,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &(*conn)) {
+                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &conn) {
                     Ok(c) => {
                         c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));

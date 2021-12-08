@@ -54,7 +54,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -1843,7 +1843,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.pruned_height(), 1);
+    assert_eq!(metadata.pruned_height(), 2);
     assert_eq!(metadata.height_of_longest_chain(), 5);
     assert_eq!(metadata.pruning_horizon(), 3);
 }

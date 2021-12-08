@@ -1,24 +1,27 @@
-//  Copyright 2021. The Tari Project
+// Copyright 2018 The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use std::{
     cmp::Ordering,
@@ -33,6 +36,7 @@ use tari_common_types::types::{
     Challenge,
     ComSignature,
     Commitment,
+    CommitmentFactory,
     HashDigest,
     MessageHash,
     PrivateKey,
@@ -40,24 +44,27 @@ use tari_common_types::types::{
     RangeProof,
     RangeProofService,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::RangeProofService as RangeProofServiceTrait,
-    ristretto::pedersen::PedersenCommitmentFactory,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 
-use crate::transactions::{
-    tari_amount::MicroTari,
-    transaction::{
-        full_rewind_result::FullRewindResult,
-        rewind_result::RewindResult,
-        OutputFeatures,
-        OutputFlags,
-        TransactionError,
-        TransactionInput,
+use crate::{
+    crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        range_proof::RangeProofService as RangeProofServiceTrait,
+        ristretto::pedersen::PedersenCommitmentFactory,
+        script::TariScript,
+        tari_utilities::{hex::Hex, ByteArray, Hashable},
+    },
+    transactions::{
+        tari_amount::MicroTari,
+        transaction,
+        transaction::{
+            full_rewind_result::FullRewindResult,
+            rewind_result::RewindResult,
+            OutputFeatures,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+        },
     },
 };
 
@@ -112,8 +119,14 @@ impl TransactionOutput {
     }
 
     /// Verify that range proof is valid
-    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.0, &self.commitment))
+    pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+        if prover.verify(&self.proof.0, &self.commitment) {
+            Ok(())
+        } else {
+            Err(TransactionError::ValidationError(
+                "Recipient output range proof failed to verify".to_string(),
+            ))
+        }
     }
 
     /// Verify that the metadata signature is valid
@@ -204,7 +217,7 @@ impl TransactionOutput {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())
             .chain(script.as_bytes())
-            // TODO: Use consensus encoded bytes #testnet reset
+            // TODO: Use consensus encoded bytes #testnet_reset
             .chain(features.to_v1_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
@@ -304,35 +317,24 @@ impl TransactionOutput {
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
-///
-/// We can exclude the range proof from this hash. The rationale for this is:
-/// a) It is a significant performance boost, since the RP is the biggest part of an output
-/// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
-/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            // TODO: use consensus encoding #testnetreset
-            .chain(self.features.to_v1_bytes())
-            .chain(self.commitment.as_bytes())
-            // .chain(range proof) // See docs as to why we exclude this
-            .chain(self.script.as_bytes())
-            .finalize()
-            .to_vec()
+        transaction::hash_output(&self.features, &self.commitment, &self.script)
     }
 }
 
-// impl Default for TransactionOutput {
-//     fn default() -> Self {
-//         TransactionOutput::new(
-//             OutputFeatures::default(),
-//             CommitmentFactory::default().zero(),
-//             RangeProof::default(),
-//             TariScript::default(),
-//             PublicKey::default(),
-//         )
-//     }
-// }
+impl Default for TransactionOutput {
+    fn default() -> Self {
+        TransactionOutput::new(
+            OutputFeatures::default(),
+            CommitmentFactory::default().zero(),
+            RangeProof::default(),
+            TariScript::default(),
+            PublicKey::default(),
+            ComSignature::default(),
+        )
+    }
+}
 
 impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {

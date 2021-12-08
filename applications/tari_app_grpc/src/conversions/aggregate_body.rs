@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_core::{proto::utils::try_convert_all, transactions::aggregated_body::AggregateBody};
+use tari_core::{tari_utilities::convert::try_convert_all, transactions::aggregated_body::AggregateBody};
 
 use crate::tari_rpc as grpc;
 

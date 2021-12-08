@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -26,6 +27,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![deny(clippy::needless_borrow)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -94,6 +96,9 @@ mod recovery;
 mod status_line;
 mod utils;
 
+#[cfg(feature = "metrics")]
+mod metrics;
+
 use std::{
     env,
     net::SocketAddr,
@@ -114,11 +119,16 @@ use tari_app_utilities::{
     utilities::setup_runtime,
 };
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError};
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    tor::HiddenServiceControllerError,
+    utils::multiaddr::multiaddr_to_socketaddr,
+};
 use tari_core::chain_storage::ChainStorageError;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
+    sync::Mutex,
     task,
     time::{self},
 };
@@ -128,6 +138,7 @@ use tracing_subscriber::{layer::SubscriberExt, Registry};
 use crate::command_handler::{CommandHandler, StatusOutput};
 
 const LOG_TARGET: &str = "base_node::app";
+
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
@@ -161,9 +172,13 @@ fn main_inner() -> Result<(), ExitCodes> {
 
 /// Sets up the base node and runs the cli_loop
 async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
+    // This is the main and only shutdown trigger for the system.
+    let shutdown = Shutdown::new();
+
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
+
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
@@ -171,6 +186,20 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
+
+    #[cfg(feature = "metrics")]
+    {
+        metrics::install(
+            ApplicationType::BaseNode,
+            &node_identity,
+            &node_config,
+            &bootstrap,
+            shutdown.to_signal(),
+        );
+    }
+
+    log_mdc::insert("node-public-key", node_identity.public_key().to_string());
+    log_mdc::insert("node-id", node_identity.node_id().to_string());
 
     // Exit if create_id or init arguments were run
     if bootstrap.create_id {
@@ -181,8 +210,6 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         );
         return Ok(());
     }
-    // This is the main and only shutdown trigger for the system.
-    let shutdown = Shutdown::new();
 
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
@@ -231,12 +258,14 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         if let Some(address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
+            let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
+                .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+            task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
-    }
+        }
 
     // Run, node, run!
-    let command_handler = Arc::new(CommandHandler::new(runtime::Handle::current(), &ctx));
+    let command_handler = Arc::new(Mutex::new(CommandHandler::new(runtime::Handle::current(), &ctx)));
     if bootstrap.non_interactive_mode {
         task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
@@ -345,7 +374,7 @@ fn status_interval(start_time: Instant) -> time::Sleep {
     time::sleep(duration)
 }
 
-async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
+async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
     loop {
@@ -357,7 +386,7 @@ async fn status_loop(command_handler: Arc<CommandHandler>, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusOutput::Log);
+               command_handler.lock().await.status(StatusOutput::Log);
             },
         }
     }
@@ -385,7 +414,12 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = command_handler.get_software_updater().new_update_notifier().clone();
+    let mut software_update_notif = command_handler
+        .lock()
+        .await
+        .get_software_updater()
+        .new_update_notifier()
+        .clone();
     loop {
         let interval = status_interval(start_time);
         tokio::select! {
@@ -393,7 +427,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 match res {
                     Ok((line, mut rustyline)) => {
                         if let Some(p) = rustyline.helper_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown);
+                            p.handle_command(line.as_str(), &mut shutdown).await;
                         }
                         if !shutdown.is_triggered() {
                             read_command_fut.set(read_command(rustyline).fuse());
@@ -418,7 +452,7 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
                 }
             }
             _ = interval => {
-               command_handler.status(StatusOutput::Full);
+                command_handler.lock().await.status(StatusOutput::Full);
             },
             _ = shutdown_signal.wait() => {
                 break;

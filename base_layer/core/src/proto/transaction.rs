@@ -29,7 +29,6 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
-use tari_utilities::convert::try_convert_all;
 
 use crate::{
     proto,
@@ -165,7 +164,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
         let sender_offset_public_key =
             PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
-        let script = TariScript::from_bytes(&output.script.to_vec()).map_err(|err| err.to_string())?;
+        let script = TariScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
 
         let metadata_signature = output
             .metadata_signature

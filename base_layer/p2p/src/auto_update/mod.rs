@@ -31,7 +31,6 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
-    net::SocketAddr,
 };
 
 pub use error::AutoUpdateError;
@@ -40,7 +39,7 @@ use pgp::Deserializable;
 use reqwest::IntoUrl;
 // Re-exports of foreign types used in public interface
 pub use semver::Version;
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{configuration::bootstrap::ApplicationType, DnsNameServer};
 use tari_utilities::hex::Hex;
 pub use trust_dns_client::rr::dnssec::TrustAnchor;
 
@@ -50,7 +49,7 @@ const LOG_TARGET: &str = "p2p::auto_update";
 
 #[derive(Debug, Clone)]
 pub struct AutoUpdateConfig {
-    pub name_server: SocketAddr,
+    pub name_server: DnsNameServer,
     pub update_uris: Vec<String>,
     pub use_dnssec: bool,
     pub download_base_url: String,

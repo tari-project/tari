@@ -26,7 +26,7 @@ use futures::{future::Either, SinkExt, StreamExt, TryStreamExt};
 use tokio::sync::mpsc as tokiompsc;
 use tracing::{debug, error, event, span, Instrument, Level};
 
-use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason};
+use super::{error::MessagingProtocolError, metrics, MessagingEvent, MessagingProtocol, SendFailReason};
 use crate::{
     connection_manager::{NegotiatedSubstream, PeerConnection},
     connectivity::{ConnectivityError, ConnectivityRequester},
@@ -73,6 +73,7 @@ impl OutboundMessaging {
             "comms::messaging::outbound",
             node_id = self.peer_node_id.to_string().as_str()
         );
+        metrics::num_sessions().inc();
         async move {
             debug!(
                 target: LOG_TARGET,
@@ -114,6 +115,7 @@ impl OutboundMessaging {
                     );
                 },
                 Err(err) => {
+                    metrics::error_count(&peer_node_id).inc();
                     error!(
                         target: LOG_TARGET,
                         "Outbound messaging protocol failed for peer {}: {}", peer_node_id, err
@@ -121,6 +123,7 @@ impl OutboundMessaging {
                 },
             }
 
+            metrics::num_sessions().dec();
             let _ = messaging_events_tx
                 .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
                 .await;
@@ -293,7 +296,9 @@ impl OutboundMessaging {
             None => Either::Right(stream.map(Ok)),
         };
 
+        let outbound_count = metrics::outbound_message_count(&self.peer_node_id);
         let stream = stream.map(|msg| {
+            outbound_count.inc();
             msg.map(|mut out_msg| {
                 event!(Level::DEBUG, "Message buffered for sending {}", out_msg);
                 out_msg.reply_success();

@@ -29,6 +29,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
+        RwLock,
     },
     task::{Context, Poll},
     time::Instant,
@@ -42,6 +43,7 @@ use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -62,7 +64,7 @@ const TARI_CHAIN_ID: &str = "xtr";
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyConfig {
     pub network: Network,
-    pub monerod_url: String,
+    pub monerod_url: Vec<String>,
     pub monerod_username: String,
     pub monerod_password: String,
     pub monerod_use_auth: bool,
@@ -74,21 +76,20 @@ pub struct MergeMiningProxyConfig {
 }
 
 impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
-    type Error = String;
+    type Error = std::io::Error;
 
     fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
-        let inner = config
-            .merge_mining_config
-            .ok_or_else(|| "Merge mining config was missing".to_string())?;
+        let grpc_base_node_address = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+        let grpc_console_wallet_address = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
         Ok(Self {
             network: config.network,
-            monerod_url: inner.monerod_url,
-            monerod_username: inner.monerod_username,
-            monerod_password: inner.monerod_password,
-            monerod_use_auth: inner.monerod_use_auth,
-            grpc_base_node_address: inner.base_node_grpc_address,
-            grpc_console_wallet_address: inner.wallet_grpc_address,
-            proxy_host_address: inner.proxy_host_address,
+            monerod_url: config.monerod_url,
+            monerod_username: config.monerod_username,
+            monerod_password: config.monerod_password,
+            monerod_use_auth: config.monerod_use_auth,
+            grpc_base_node_address,
+            grpc_console_wallet_address,
+            proxy_host_address: config.proxy_host_address,
             proxy_submit_to_origin: config.proxy_submit_to_origin,
             wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
         })
@@ -116,6 +117,7 @@ impl MergeMiningProxyService {
                 base_node_client,
                 wallet_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
+                last_available_server: Arc::new(RwLock::new(None)),
             },
         }
     }
@@ -137,7 +139,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             let bytes = match proxy::read_body_until_end(request.body_mut()).await {
                 Ok(b) => b,
                 Err(err) => {
-                    eprintln!("Method: Unknown, Failed to read request: {}", err);
+                    eprintln!("Method: Unknown, Failed to read request: {:?}", err);
                     let resp = proxy::json_response(
                         StatusCode::BAD_REQUEST,
                         &json_rpc::standard_error_response(
@@ -155,8 +157,8 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Error handling request: {}", err);
-                    eprintln!("Method: {}, Failed to handle request: {}", method_name, err);
+                    error!(target: LOG_TARGET, "Error handling request: {:?}", err);
+                    eprintln!("Method: {}, Failed to handle request: {:?}", method_name, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
@@ -182,6 +184,7 @@ struct InnerService {
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
     wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
     initial_sync_achieved: Arc<AtomicBool>,
+    last_available_server: Arc<RwLock<Option<String>>>,
 }
 
 impl InnerService {
@@ -584,9 +587,36 @@ impl InnerService {
         Ok(proxy::into_response(parts, &resp))
     }
 
-    fn get_fully_qualified_monerod_url(&self, uri: &Uri) -> Result<Url, MmProxyError> {
-        let uri = format!("{}{}", self.config.monerod_url, uri.path()).parse::<Url>()?;
-        Ok(uri)
+    async fn get_fully_qualified_monerod_url(&self, uri: &Uri) -> Result<Url, MmProxyError> {
+        {
+            let lock = self
+                .last_available_server
+                .read()
+                .expect("Read lock should not fail")
+                .clone();
+            if let Some(server) = lock {
+                let uri = format!("{}{}", server, uri.path()).parse::<Url>()?;
+                return Ok(uri);
+            }
+        }
+
+        for monerod_url in self.config.monerod_url.iter() {
+            let uri = format!("{}{}", monerod_url, uri.path()).parse::<Url>()?;
+            match reqwest::get(uri.clone()).await {
+                Ok(_) => {
+                    let mut lock = self.last_available_server.write().expect("Write lock should not fail");
+                    *lock = Some(monerod_url.to_string());
+                    info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
+                    return Ok(uri);
+                },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
+                    continue;
+                },
+            }
+        }
+
+        Err(MmProxyError::ServersUnavailable)
     }
 
     /// Proxy a request received by this server to Monerod
@@ -594,7 +624,7 @@ impl InnerService {
         &self,
         request: Request<Bytes>,
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError> {
-        let monerod_uri = self.get_fully_qualified_monerod_url(request.uri())?;
+        let monerod_uri = self.get_fully_qualified_monerod_url(request.uri()).await?;
 
         let mut headers = request.headers().clone();
         // Some public monerod setups (e.g. those that are reverse proxied by nginx) require the Host header.
@@ -746,34 +776,43 @@ impl InnerService {
                 .join(","),
         );
 
-        let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
-        // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
-        let monerod_status = monerod_resp.status();
-        if !monerod_status.is_success() {
-            // we dont break on xmrig returned error.
-            warn!(
-                target: LOG_TARGET,
-                "Monerod returned an error: {}",
-                monerod_resp.status()
-            );
-            println!(
-                "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
-                method_name,
-                monerod_status,
-                start.elapsed().as_millis()
-            );
-            return Ok(monerod_resp.map(|json| json.to_string().into()));
-        }
+        match self.proxy_request_to_monerod(request).await {
+            Ok((request, monerod_resp)) => {
+                // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
+                let monerod_status = monerod_resp.status();
+                if !monerod_status.is_success() {
+                    // we dont break on monerod returning an error code.
+                    warn!(
+                        target: LOG_TARGET,
+                        "Monerod returned an error: {}",
+                        monerod_resp.status()
+                    );
+                    println!(
+                        "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
+                        method_name,
+                        monerod_status,
+                        start.elapsed().as_millis()
+                    );
+                    return Ok(monerod_resp.map(|json| json.to_string().into()));
+                }
 
-        let response = self.get_proxy_response(request, monerod_resp).await?;
-        println!(
-            "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
-            method_name,
-            monerod_status,
-            response.status(),
-            start.elapsed().as_millis()
-        );
-        Ok(response)
+                let response = self.get_proxy_response(request, monerod_resp).await?;
+                println!(
+                    "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
+                    method_name,
+                    monerod_status,
+                    response.status(),
+                    start.elapsed().as_millis()
+                );
+                Ok(response)
+            },
+            Err(e) => {
+                // Monero Server encountered a problem processing the request, reset the last_available_server
+                let mut lock = self.last_available_server.write().expect("Write lock should not fail");
+                *lock = None;
+                Err(e)
+            },
+        }
     }
 }
 

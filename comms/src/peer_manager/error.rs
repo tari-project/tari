@@ -22,7 +22,6 @@
 
 use std::sync::PoisonError;
 
-use tari_common::exit_codes::ExitCodes;
 use tari_storage::KeyValStoreError;
 use thiserror::Error;
 
@@ -36,12 +35,6 @@ pub enum PeerManagerError {
     DatabaseError(#[from] KeyValStoreError),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),
-}
-
-impl From<PeerManagerError> for ExitCodes {
-    fn from(err: PeerManagerError) -> Self {
-        ExitCodes::NetworkError(err.to_string())
-    }
 }
 
 impl PeerManagerError {

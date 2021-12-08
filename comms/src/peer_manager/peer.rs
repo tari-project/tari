@@ -28,7 +28,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
@@ -79,6 +79,7 @@ pub struct Peer {
     pub banned_until: Option<NaiveDateTime>,
     pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
+    pub last_seen: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
     /// Connection statics for the peer
@@ -116,6 +117,7 @@ impl Peer {
             banned_until: None,
             banned_reason: "".to_string(),
             offline_at: None,
+            last_seen: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
@@ -208,8 +210,14 @@ impl Peer {
     }
 
     /// Provides that date time of the last successful interaction with the peer
-    pub fn last_seen(&self) -> Option<DateTime<Utc>> {
-        self.addresses.last_seen()
+    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+        self.last_seen
+    }
+
+    /// Provides that length of time since the last successful interaction with the peer
+    pub fn last_seen_since(&self) -> Option<Duration> {
+        self.last_seen()
+            .and_then(|dt| Utc::now().naive_utc().signed_duration_since(dt).to_std().ok())
     }
 
     /// Returns true if this peer has the given feature, otherwise false

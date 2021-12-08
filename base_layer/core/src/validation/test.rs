@@ -25,7 +25,6 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::{commitment::HomomorphicCommitment, script};
-use tari_utilities::Hashable;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},

@@ -90,7 +90,7 @@ where
                 },
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                     warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
-                    self.map_state(move |_| BaseNodeState {
+                    self.update_state(BaseNodeState {
                         chain_metadata: None,
                         is_synced: None,
                         updated: None,
@@ -121,7 +121,7 @@ where
                 .obtain_base_node_wallet_rpc_client()
                 .await
                 .ok_or(BaseNodeMonitorError::NodeShuttingDown)?;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Obtain RPC client {} ms",
                 timer.elapsed().as_millis()
@@ -136,7 +136,7 @@ where
             let tip_info = match interrupt(base_node_watch.changed(), client.get_tip_info()).await {
                 Some(tip_info) => tip_info?,
                 None => {
-                    self.map_state(|_| Default::default()).await;
+                    self.update_state(Default::default()).await;
                     continue;
                 },
             };
@@ -146,48 +146,48 @@ where
                 .and_then(|metadata| {
                     ChainMetadata::try_from(metadata).map_err(BaseNodeMonitorError::InvalidBaseNodeResponse)
                 })?;
-            debug!(
+            trace!(
                 target: LOG_TARGET,
-                "get_tip_info took {} ms",
+                "Obtain tip info in {} ms",
                 timer.elapsed().as_millis()
             );
 
-            let latency = match client.get_last_request_latency().await? {
+            let timer = Instant::now();
+            let latency = match client.get_last_request_latency() {
                 Some(latency) => latency,
                 None => continue,
             };
-
-            let is_synced = tip_info.is_synced;
-            debug!(
-                target: LOG_TARGET,
-                "Base node {} Tip: {} ({}) Latency: {} ms",
-                base_node_id,
-                chain_metadata.height_of_longest_chain(),
-                if is_synced { "Synced" } else { "Syncing..." },
-                latency.as_millis()
-            );
-
-            let timer = Instant::now();
-            self.db.set_chain_metadata(chain_metadata.clone()).await?;
             trace!(
                 target: LOG_TARGET,
-                "Update metadata in db {} ms",
+                "Obtain latency info in {} ms",
                 timer.elapsed().as_millis()
             );
 
-            let timer = Instant::now();
-            self.map_state(move |_| BaseNodeState {
+            self.db.set_chain_metadata(chain_metadata.clone()).await?;
+
+            let is_synced = tip_info.is_synced;
+            let height_of_longest_chain = chain_metadata.height_of_longest_chain();
+
+            self.update_state(BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
                 updated: Some(Utc::now().naive_utc()),
                 latency: Some(latency),
             })
             .await;
-            trace!(target: LOG_TARGET, "Publish event {} ms", timer.elapsed().as_millis());
+
+            debug!(
+                target: LOG_TARGET,
+                "Base node {} Tip: {} ({}) Latency: {} ms",
+                base_node_id,
+                height_of_longest_chain,
+                if is_synced { "Synced" } else { "Syncing..." },
+                latency.as_millis()
+            );
 
             let delay = time::sleep(self.interval.saturating_sub(latency));
             if interrupt(base_node_watch.changed(), delay).await.is_none() {
-                self.map_state(|_| Default::default()).await;
+                self.update_state(Default::default()).await;
             }
         }
 
@@ -196,14 +196,23 @@ where
         Ok(())
     }
 
-    async fn map_state<F>(&self, transform: F)
-    where F: FnOnce(&BaseNodeState) -> BaseNodeState {
-        let new_state = {
-            let mut lock = self.state.write().await;
-            let new_state = transform(&*lock);
-            *lock = new_state.clone();
-            new_state
+    async fn update_state(&self, new_state: BaseNodeState) {
+        let mut lock = self.state.write().await;
+        let (new_block_detected, height) = match (new_state.chain_metadata.clone(), (*lock).chain_metadata.clone()) {
+            (Some(new_metadata), Some(old_metadata)) => (
+                new_metadata.height_of_longest_chain() != old_metadata.height_of_longest_chain(),
+                new_metadata.height_of_longest_chain(),
+            ),
+            (Some(new_metadata), _) => (true, new_metadata.height_of_longest_chain()),
+            (None, _) => (false, 0),
         };
+
+        if new_block_detected {
+            self.publish_event(BaseNodeEvent::NewBlockDetected(height));
+        }
+
+        *lock = new_state.clone();
+
         self.publish_event(BaseNodeEvent::BaseNodeStateChanged(new_state));
     }
 

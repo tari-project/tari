@@ -12,7 +12,6 @@ use tui::{
     Frame,
 };
 
-use super::styles;
 use crate::ui::{
     components::{balance::Balance, Component},
     state::{AppState, CompletedTransactionInfo},

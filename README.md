@@ -129,13 +129,13 @@ First you'll need to make sure you have a full development environment set up:
 - Build Tools
 
   - [CMake](https://cmake.org/download/) (Used for RandomX)
-  
-  - Either: 
+
+  - Either:
     - Microsoft Visual Studio Version 2019 or later
       - C++ CMake tools for Windows
       - MSVC build tools (latest version for your platform ARM, ARM64 or x64.x86)
       - Spectre-mitigated libs (latest version for your platform ARM, ARM64 or x64.x86)
-    
+
     or
     - [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
 
@@ -422,7 +422,7 @@ The Tari Base Node, Tari Console Wallet, Tari Stratum Transcoder and Tari Mining
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
-For MiningCore see [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-linux) and [here](https://github.com/StriderDM/miningcore/tree/tari#runtime-requirements-on-windows).
+For MiningCore see [here](https://github.com/tari-project/miningcore/master/tari#runtime-requirements-on-linux) and [here](https://github.com/tari-project/miningcore/tree/master#runtime-requirements-on-windows).
 
 #### Configuration prerequisites
 
@@ -432,15 +432,19 @@ will be created in the `~/tari_weatherwax_testnet/config` (on Linux) or `%USERPR
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under section **`base_node.weatherwax`**:
+the Tari Base Node and the Tari Console Wallet, if they are not enabled already. Under sections **`base_node.weatherwax`** and **`wallet`** respectively:
 
+```
+[wallet]
+
+grpc_address = "127.0.0.1:18143"
+```
 ```
 [base_node.weatherwax]
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
 grpc_base_node_address = "127.0.0.1:18142"
-grpc_console_wallet_address = "127.0.0.1:18143"
 ```
 
 For Tari Stratum Transcoder:
@@ -453,7 +457,7 @@ transcoder_host_address = "127.0.0.1:7879"
 
 For MiningCore:
 
-See example configuration [here](https://github.com/StriderDM/miningcore/blob/tari/examples/tari_pool.json).
+See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
 
 For the Tari Mining Node there are some additional settings under section **`mining_node`** that can be changed:
 * For SHA3 Mining:
@@ -468,7 +472,7 @@ For the Tari Mining Node there are some additional settings under section **`min
 #base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet
-# Default: value from `base_node.grpc_console_wallet_address`
+# Default: value from `wallet.grpc_address`
 #wallet_grpc_address = "127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
@@ -492,14 +496,14 @@ For pooled SHA3 mining:
 
 # Stratum Mode configuration
 # mining_pool_address = "miningcore.tari.com:3052"
-# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY" 
+# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
 ```
-Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration. 
+Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values to your intended configuration.
 `mining_worker_name` is an optional configuration field allowing you to name your worker.
 
 #### Perform SHA3 mining
-* For SHA3 mining: 
+* For SHA3 mining:
   Tor and the required Tari applications must be started and preferably in this order:
 
   - Tor:
@@ -545,7 +549,7 @@ and performing mining:
   * Pool Operators:
     Tor and the required Tari applications must be started in this order:
     - Tor:
-      
+
       - Linux/OSX: Execute `start_tor.sh`.
       - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
@@ -566,7 +570,7 @@ and performing mining:
     - Tari Mining Node:
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Mining Node` menu item
-    or `start_tari_mining_node` shortcut in the Tari installation folder. 
+    or `start_tari_mining_node` shortcut in the Tari installation folder.
 
 ### Tari merge mining
 
@@ -603,14 +607,17 @@ directory.
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.weatherwax`**
+- For the Tari Base Node and the Tari Console Wallet, under sections **`base_node.weatherwax`** and **`wallet`** respectively
+  ```
+  [wallet]
+  grpc_address = "127.0.0.1:18143"
+  ```
   ```
   [base_node.weatherwax]
-  transport = "tor"
+  transpo*_r_*t = "tor"
   allow_test_addresses = false
   grpc_enabled = true
   grpc_base_node_address = "127.0.0.1:18142"
-  grpc_console_wallet_address = "127.0.0.1:18143"
   ```
 
 And then depending on if you are using solo mining or self-select mining you will use one of the following:
@@ -620,7 +627,14 @@ And then depending on if you are using solo mining or self-select mining you wil
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
   [merge_mining_proxy.weatherwax]
-  monerod_url = "http://monero-stagenet.exan.tech:38081"
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
+
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = true
   monerod_use_auth = false
@@ -633,7 +647,14 @@ And then depending on if you are using solo mining or self-select mining you wil
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
   ```
   [merge_mining_proxy.weatherwax]
-  monerod_url = "http://18.132.124.81:18081"
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
+
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = false
   monerod_use_auth = false
@@ -644,8 +665,8 @@ And then depending on if you are using solo mining or self-select mining you wil
 **Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If
 they are, choose different ports. You will need to update the ports in the steps below as well.
 
-The `monerod_url` must be set to a valid address (`host:port`) for `monerod` that is running Monero mainnet (e.g.
-`http://18.132.124.81:18081`) or stagenet (e.g. `http://monero-stagenet.exan.tech:38081`), which can be a
+The `monerod_url` set must contain valid addresses (`host:port`) for `monerod` that is running Monero mainnet (e.g.
+`["http://18.132.124.81:18081"]`) or stagenet (e.g. `["http://monero-stagenet.exan.tech:38081"]`), which can be a
 [public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the
 `monerod_url` address is working properly, try to paste `host:port/get_height` in an internet browser, for example:
 
@@ -681,7 +702,7 @@ in via the command line upon runtime.
   being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner
   with the wallet address of the pool.
 
-###### Solo mining
+###### Solo-mining
 
 The [XMRig configuration wizard](https://xmrig.com/wizard) can be used to create a solo mining configuration file
 in JSON format:
@@ -825,8 +846,19 @@ Monero wallet address:
 
 ```
 # URL to monerod
-#monerod_url = "http://18.132.124.81:18081" # mainnet
-monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
+  monerod_url = [ # mainnet
+  "http://18.132.124.81:18081",
+  "http://xmr.support:18081",
+  "http://node1.xmr-tw.org:18081",
+  "http://xmr.nthrow.nyc:18081",
+  ]
+  monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+  ]
 ```
 
 ###### Runtime
@@ -884,8 +916,12 @@ The `monerod_url` field in the `config.toml` should be enabled for the mainnet v
 
 ```
 # URL to monerod
-monerod_url = "http://18.132.124.81:18081" # mainnet
-#monerod_url = "http://monero-stagenet.exan.tech:38081" # stagenet
+  monerod_url = [ # mainnet
+  "http://18.132.124.81:18081",
+  "http://xmr.support:18081",
+  "http://node1.xmr-tw.org:18081",
+  "http://xmr.nthrow.nyc:18081",
+  ]
 ```
 
 ###### Runtime

@@ -27,7 +27,10 @@ use tari_crypto::tari_utilities::ByteArray;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{models::DbUnblindedOutput, sqlite_db::OutputSql, OutputStatus},
+        storage::{
+            models::{DbUnblindedOutput, OutputStatus},
+            sqlite_db::OutputSql,
+        },
     },
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
@@ -76,7 +79,7 @@ impl NewOutputSql {
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
-            received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
+            received_in_tx_id: received_in_tx_id.map(|i| i as i64),
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),

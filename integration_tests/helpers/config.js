@@ -40,21 +40,25 @@ function mapEnvs(options) {
   if (options.common && options.common.auto_update) {
     let { auto_update } = options.common;
     if (auto_update.enabled) {
-      res.TARI_COMMON__AUTO_UPDATE__ENABLED = auto_update.enabled
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__ENABLED = auto_update.enabled
         ? "true"
         : "false";
     }
     if (auto_update.check_interval) {
-      res.TARI_COMMON__AUTO_UPDATE__CHECK_INTERVAL = auto_update.check_interval;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__CHECK_INTERVAL =
+        auto_update.check_interval;
     }
     if (auto_update.dns_hosts) {
-      res.TARI_COMMON__AUTO_UPDATE__DNS_HOSTS = auto_update.dns_hosts.join(",");
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__DNS_HOSTS =
+        auto_update.dns_hosts.join(",");
     }
     if (auto_update.hashes_url) {
-      res.TARI_COMMON__AUTO_UPDATE__HASHES_URL = auto_update.hashes_url;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__HASHES_URL =
+        auto_update.hashes_url;
     }
     if (auto_update.hashes_sig_url) {
-      res.TARI_COMMON__AUTO_UPDATE__HASHES_SIG_URL = auto_update.hashes_sig_url;
+      res.TARI_COMMON__LOCALNET__AUTO_UPDATE__HASHES_SIG_URL =
+        auto_update.hashes_sig_url;
     }
   }
   return res;
@@ -83,25 +87,30 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
     TARI_BASE_NODE__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
-    TARI_COMMON__DNS_SEEDS_NAME_SERVER: "1.1.1.1:53",
-    TARI_COMMON__DNS_SEEDS_USE_DNSSEC: "false",
+    TARI_COMMON__LOCALNET__DNS_SEEDS_USE_DNSSEC: "false",
+    TARI_COMMON__LOCALNET__DNS_SEEDS: "",
     TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
     TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
-    TARI_MERGE_MINING_PROXY__MONEROD_URL:
+    TARI_MERGE_MINING_PROXY__MONEROD_URL: [
+      "http://stagenet.xmr-tw.org:38081",
+      "http://stagenet.community.xmr.to:38081",
       "http://monero-stagenet.exan.tech:38081",
-    TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH: false,
-    TARI_MERGE_MINING_PROXY__MONEROD_USERNAME: '""',
-    TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD: '""',
+      "http://xmr-lux.boldsuck.org:38081",
+      "http://singapore.node.xmr.pm:38081",
+    ],
+    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
+    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
+    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',
     TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
     TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
-    TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 2,
+    TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
     TARI_WALLET__GRPC_ENABLED: true,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
@@ -109,7 +118,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");
   }
   if (peerSeeds.length > 0) {
-    envs.TARI_COMMON__PEER_SEEDS = peerSeeds.join(",");
+    envs.TARI_COMMON__LOCALNET__PEER_SEEDS = peerSeeds.join(",");
   }
   if (committee.length != 0) {
     envs.TARI_DAN_NODE__LOCALNET__COMMITTEE = committee;
@@ -140,8 +149,9 @@ function createEnv(
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
   const configEnvs = {
-    ["TARI_BASE_NODE__GRPC_ADDRESS"]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    ["TARI_WALLET__GRPC_ADDRESS"]: `${walletGrpcAddress}:${walletGrpcPort}`,
+    [`TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
+    [`TARI_WALLET__GRPC_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
+
     ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
     ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `${walletGrpcAddress}:${walletGrpcPort}`,
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,

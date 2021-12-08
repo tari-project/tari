@@ -70,6 +70,17 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 
+use crate::helpers::{
+    block_builders::{
+        chain_block_with_coinbase,
+        chain_block_with_new_coinbase,
+        create_coinbase,
+        create_genesis_block_with_utxos,
+        find_header_with_achieved_difficulty,
+    },
+    test_blockchain::TestBlockchain,
+};
+
 mod helpers;
 
 #[test]
@@ -79,7 +90,7 @@ fn test_genesis_block() {
     let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories),
     );
@@ -266,7 +277,7 @@ fn test_orphan_validator() {
     let backend = create_test_db();
     let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         orphan_validator.clone(),
     );
@@ -383,10 +394,10 @@ fn test_orphan_body_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let body_only_validator = BodyOnlyValidator::default();
+    let body_only_validator = BodyOnlyValidator::new(rules.clone());
     let header_validator = HeaderValidator::new(rules.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
@@ -582,7 +593,7 @@ fn test_header_validation() {
     let backend = create_test_db();
     let header_validator = HeaderValidator::new(rules.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
@@ -691,7 +702,7 @@ async fn test_block_sync_body_validator() {
     let backend = create_test_db();
 
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );

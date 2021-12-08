@@ -1,35 +1,40 @@
-//  Copyright 2021. The Tari Project
+// Copyright 2018 The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
 //
-//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-//  following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-//  products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+//
+// Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
+// Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-pub use asset_output_features::AssetOutputFeatures;
+use blake2::Digest;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
-pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
+use tari_common_types::types::{Commitment, HashDigest};
+use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
@@ -67,30 +72,57 @@ pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
 pub const MAX_TRANSACTION_OUTPUTS: usize = 500;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
+//----------------------------------------     Crate functions   ----------------------------------------------------//
+
+/// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
+/// ordering as well as for the output hash calculation for TransactionInput.
+///
+/// We can exclude the range proof from this hash. The rationale for this is:
+/// a) It is a significant performance boost, since the RP is the biggest part of an output
+/// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
+/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
+pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &TariScript) -> Vec<u8> {
+    HashDigest::new()
+        // TODO: use consensus encoding #testnet_reset
+        .chain(features.to_v1_bytes())
+        .chain(commitment.as_bytes())
+        // .chain(range proof) // See docs as to why we exclude this
+        .chain(script.as_bytes())
+        .finalize()
+        .to_vec()
+}
+
+//-----------------------------------------       Tests           ----------------------------------------------------//
+
 #[cfg(test)]
 mod test {
     use rand::{self, rngs::OsRng};
-    use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey};
+    use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
     use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        range_proof::{RangeProofError, RangeProofService},
         ristretto::pedersen::PedersenCommitmentFactory,
         script,
-        script::ExecutionStack,
+        script::{ExecutionStack, StackItem},
+        tari_utilities::{hex::Hex, Hashable},
     };
 
     use super::*;
     use crate::{
         transactions::{
-            tari_amount::T,
+            tari_amount::{MicroTari, T},
             test_helpers,
             test_helpers::{TestParams, UtxoTestParams},
             transaction::OutputFeatures,
+            transaction_protocol::RewindData,
+            CryptoFactories,
         },
         txn_schema,
     };
 
     #[test]
-    fn input_and_output_hash_match() {
+    fn input_and_output_and_unblinded_output_hash_match() {
         let test_params = TestParams::new();
         let factory = PedersenCommitmentFactory::default();
 
@@ -98,6 +130,7 @@ mod test {
         let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
         let input = i.as_transaction_input(&factory).unwrap();
         assert_eq!(output.hash(), input.output_hash());
+        assert_eq!(output.hash(), i.hash(&CryptoFactories::default()));
     }
 
     #[test]
@@ -135,7 +168,7 @@ mod test {
         });
         let script = unblinded_output1.script.clone();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
-        assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
+        tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
         let unblinded_output2 = test_params_2.create_unblinded_output(UtxoTestParams {
             value: (2u64.pow(32) + 1u64).into(),
@@ -175,7 +208,7 @@ mod test {
             )
             .unwrap(),
         );
-        assert!(!tx_output3.verify_range_proof(&factories.range_proof).unwrap());
+        tx_output3.verify_range_proof(&factories.range_proof).unwrap_err();
     }
 
     #[test]
@@ -341,11 +374,13 @@ mod test {
         }
 
         // Validate basis transaction where cut-through has not been applied.
-        assert!(tx3.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx3
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .is_ok());
 
         // tx3_cut_through has manual cut-through, it should not be possible so this should fail
         assert!(tx3_cut_through
-            .validate_internal_consistency(false, &factories, None)
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
             .is_err());
     }
 
@@ -383,7 +418,9 @@ mod test {
         tx.body.inputs_mut()[0].input_data = stack;
 
         let factories = CryptoFactories::default();
-        let err = tx.validate_internal_consistency(false, &factories, None).unwrap_err();
+        let err = tx
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .unwrap_err();
         assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
     }
 
@@ -451,7 +488,10 @@ mod test {
         assert_eq!(full_rewind_result.blinding_factor, test_params.spend_key);
     }
     mod output_features {
+        use std::io;
+
         use super::*;
+        use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
         #[test]
         fn consensus_encode_minimal() {

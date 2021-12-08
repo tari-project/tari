@@ -208,6 +208,7 @@ impl CoinbaseBuilder {
             script_private_key,
             sender_offset_public_key,
             metadata_sig,
+            0,
         );
         // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
@@ -236,7 +237,7 @@ impl CoinbaseBuilder {
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
-            .build(&self.factories)
+            .build(&self.factories, None, Some(height))
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         Ok((tx, unblinded_output))
     }
@@ -325,7 +326,7 @@ mod test {
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
-        assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
+        utxo.verify_range_proof(&factories.range_proof).unwrap();
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
         assert_eq!(
             tx.body.check_coinbase_output(
@@ -527,7 +528,9 @@ mod test {
                 &PrivateKey::default(),
                 false,
                 block_reward,
-                &factories
+                &factories,
+                None,
+                Some(u64::MAX)
             ),
             Ok(())
         );

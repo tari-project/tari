@@ -30,6 +30,18 @@ Feature: Wallet FFI
         And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
+    Scenario: As a client I want to retrieve the mnemonic word list for a given language
+        Given I have a base node BASE
+        And I have a ffi wallet FFI_WALLET connected to base node BASE
+        Then I retrieve the mnemonic word list for CHINESE_SIMPLIFIED from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for ENGLISH from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for FRENCH from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for ITALIAN from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for JAPANESE from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for KOREAN from ffi wallet FFI_WALLET
+        Then I retrieve the mnemonic word list for SPANISH from ffi wallet FFI_WALLET
+        And I stop ffi wallet FFI_WALLET
+
     Scenario: As a client I want to set the base node
         Given I have a base node BASE1
         Given I have a base node BASE2
@@ -89,7 +101,12 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
         Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be Broadcast
-        And mining node MINER mines 10 blocks
+        # The broadcast check does not include delivery; create some holding points to ensure it was received
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 22
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 24
+        And mining node MINER mines 6 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         And I have 1 received and 1 send transaction in ffi wallet FFI_WALLET
         And I start TXO validation on ffi wallet FFI_WALLET
@@ -118,6 +135,30 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
+    Scenario: As a client I want to send a one-sided transaction
+        Given I have a seed node SEED
+        And I have a base node BASE1 connected to all seed nodes
+        And I have a base node BASE2 connected to all seed nodes
+        And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE2
+        And I have wallet RECEIVER connected to base node BASE2
+        And I have mining node MINER connected to base node BASE1 and wallet SENDER
+        And mining node MINER mines 10 blocks
+        Then I wait for wallet SENDER to have at least 1000000 uT
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
+        And mining node MINER mines 10 blocks
+        Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20 via one-sided transactions
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 22
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 24
+        And mining node MINER mines 6 blocks
+        Then I wait for wallet RECEIVER to have at least 1000000 uT
+        Then I wait for ffi wallet FFI_WALLET to receive 2 mined
+        And I stop ffi wallet FFI_WALLET
+
     # Scenario: As a client I want to get my balance
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"
 
@@ -139,7 +180,7 @@ Feature: Wallet FFI
     # Scenario: As a client I want feedback about my connection status to the specifed Base Node
 
     # Scenario: As a client I want feedback about the wallet restoration process
-    # As a client I want to be able to restore my wallet from seed words
+    # It's a subtest of "As a client I want to be able to restore my wallet from seed words"
 
     # Scenario: As a client I want feedback about TXO and TX validation processes
     # It's a subtest of "As a client I want to retrieve a list of transactions I have made and received"

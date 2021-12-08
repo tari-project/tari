@@ -63,13 +63,6 @@
 //!  |             END                |
 //! ```
 
-#[cfg(test)]
-mod test;
-
-mod error;
-use error::MempoolProtocolError;
-
-mod initializer;
 use std::{
     convert::TryFrom,
     iter,
@@ -79,6 +72,7 @@ use std::{
     },
 };
 
+use error::MempoolProtocolError;
 use futures::{stream, SinkExt, Stream, StreamExt};
 pub use initializer::MempoolSyncInitializer;
 use log::*;
@@ -105,6 +99,12 @@ use crate::{
     proto as shared_proto,
     transactions::transaction::Transaction,
 };
+
+#[cfg(test)]
+mod test;
+
+mod error;
+mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";

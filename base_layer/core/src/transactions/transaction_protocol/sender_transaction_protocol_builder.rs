@@ -28,10 +28,7 @@ use std::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::{
-    transaction::TxId,
-    types::{BlindingFactor, PrivateKey, PublicKey},
-};
+use tari_common_types::types::{BlindingFactor, HashOutput, PrivateKey, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -386,6 +383,7 @@ impl SenderTransactionProtocolBuilder {
                                 .clone(),
                             PublicKey::from_secret_key(&change_sender_offset_private_key),
                             metadata_signature,
+                            0,
                         );
                         Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
@@ -426,7 +424,12 @@ impl SenderTransactionProtocolBuilder {
     /// error (so that you can continue building) along with a string listing the missing fields.
     /// If all the input data is present, but one or more fields are invalid, the function will return a
     /// `SenderTransactionProtocol` instance in the Failed state.
-    pub fn build<D: Digest>(mut self, factories: &CryptoFactories) -> Result<SenderTransactionProtocol, BuildError> {
+    pub fn build<D: Digest>(
+        mut self,
+        factories: &CryptoFactories,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
+    ) -> Result<SenderTransactionProtocol, BuildError> {
         // Compile a list of all data that is missing
         let mut message = Vec::new();
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
@@ -629,6 +632,8 @@ impl SenderTransactionProtocolBuilder {
             recipient_info,
             signatures: Vec::new(),
             message: self.message.unwrap_or_else(|| "".to_string()),
+            prev_header,
+            height,
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
@@ -676,7 +681,7 @@ mod test {
         let p = TestParams::new();
         // Start the builder
         let builder = SenderTransactionProtocolBuilder::new(0, create_consensus_constants(0));
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
@@ -713,12 +718,12 @@ mod test {
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let expected_fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
         // We needed a change input, so this should fail
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
         builder.with_change_secret(p.change_spend_key);
-        let result = builder.build::<Blake256>(&factories).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -760,7 +765,7 @@ mod test {
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(4))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -811,7 +816,7 @@ mod test {
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(1))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -853,7 +858,7 @@ mod test {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);
         }
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         assert_eq!(err.message, "Too many inputs in transaction");
     }
 
@@ -886,7 +891,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             );
         // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
 
@@ -918,7 +923,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         assert_eq!(
             err.message,
             "You are spending (471 µT) more than you're providing (400 µT)."
@@ -962,7 +967,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         // Peek inside and check the results
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.into_state() {
             assert_eq!(s, "Multiple recipients are not supported yet")
@@ -1010,7 +1015,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.into_state() {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
@@ -1061,7 +1066,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories);
+        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX));
 
         match result {
             Ok(_) => panic!("Range proof should have failed to verify"),

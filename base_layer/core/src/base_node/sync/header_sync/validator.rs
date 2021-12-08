@@ -25,6 +25,11 @@ use log::*;
 use tari_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
+use std::cmp::Ordering;
+
+use log::*;
+use tari_common_types::types::HashOutput;
+
 use crate::{
     base_node::sync::BlockHeaderSyncError,
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -34,6 +39,7 @@ use crate::{
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     validation::helpers::{
         check_header_timestamp_greater_than_median,
+        check_not_bad_block,
         check_pow_data,
         check_target_difficulty,
         check_timestamp_ftl,
@@ -139,7 +145,13 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         );
         let achieved_target = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
 
-        check_pow_data(&header, &self.consensus_rules, &*self.db.inner().db_read_access()?)?;
+        let block_hash = header.hash();
+
+        {
+            let txn = self.db.inner().db_read_access()?;
+            check_not_bad_block(&*txn, &block_hash)?;
+            check_pow_data(&header, &self.consensus_rules, &*txn)?;
+        }
 
         // Header is valid, add this header onto the validation state for the next round
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
@@ -160,7 +172,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         state.target_difficulties.add_back(&header, target_difficulty);
 
         let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
-            .with_hash(header.hash())
+            .with_hash(block_hash)
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
@@ -223,7 +235,6 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
-    use tari_utilities::{hex::Hex, Hashable};
 
     use super::*;
     use crate::{

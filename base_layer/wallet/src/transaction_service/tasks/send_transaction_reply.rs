@@ -29,7 +29,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::transaction_protocol::proto::protocol as proto;
+use tari_core::transactions::transaction_protocol::proto;
 use tari_p2p::tari_message::TariMessageType;
 
 use crate::transaction_service::{

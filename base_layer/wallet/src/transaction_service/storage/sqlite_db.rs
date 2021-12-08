@@ -24,7 +24,7 @@ use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     str::from_utf8,
-    sync::{Arc, MutexGuard, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use aes_gcm::{self, Aes256Gcm};
@@ -39,7 +39,7 @@ use tari_common_types::{
         TransactionStatus,
         TxId,
     },
-    types::{BlockHash, PublicKey},
+    types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
@@ -52,7 +52,7 @@ use tokio::time::Instant;
 
 use crate::{
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
-    storage::sqlite_utilities::WalletDbConnection,
+    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     transaction_service::{
         error::{TransactionKeyError, TransactionStorageError},
         storage::{
@@ -77,54 +77,114 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        Self {
+        let mut new_self = Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
-        }
+        };
+
+        // TODO: Remove this call for the next #testnet_reset
+        match new_self.add_transaction_signature_for_legacy_transactions() {
+            Ok(count) => {
+                if count > 0 {
+                    info!(
+                        target: LOG_TARGET,
+                        "Updated transaction signatures for {} legacy transactions", count
+                    );
+                }
+            },
+            Err(e) => warn!(
+                target: LOG_TARGET,
+                "Legacy transaction signatures could not be updated: {:?}", e
+            ),
+        };
+
+        new_self
     }
 
-    fn insert(&self, kvp: DbKeyValuePair, conn: MutexGuard<SqliteConnection>) -> Result<(), TransactionStorageError> {
+    // TODO: Remove this function for the next #testnet_reset
+    fn add_transaction_signature_for_legacy_transactions(&mut self) -> Result<u32, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        let txs_sql = completed_transactions::table
+            .filter(
+                completed_transactions::transaction_signature_nonce
+                    .eq(completed_transactions::transaction_signature_key),
+            )
+            .load::<CompletedTransactionSql>(&*conn)?;
+
+        let mut count = 0u32;
+        if !txs_sql.is_empty() {
+            info!(
+                target: LOG_TARGET,
+                "Updating transaction signatures for {} legacy transactions...",
+                txs_sql.len()
+            );
+            for mut tx_sql in txs_sql {
+                self.decrypt_if_necessary(&mut tx_sql)?;
+                let tx = CompletedTransaction::try_from(tx_sql.clone())?;
+                let (transaction_signature_nonce, transaction_signature_key) =
+                    if let Some(transaction_signature) = tx.transaction.first_kernel_excess_sig() {
+                        (
+                            Some(transaction_signature.get_public_nonce().as_bytes().to_vec()),
+                            Some(transaction_signature.get_signature().as_bytes().to_vec()),
+                        )
+                    } else {
+                        (
+                            Some(Signature::default().get_public_nonce().as_bytes().to_vec()),
+                            Some(Signature::default().get_signature().as_bytes().to_vec()),
+                        )
+                    };
+                tx_sql.update(
+                    UpdateCompletedTransactionSql {
+                        transaction_signature_nonce,
+                        transaction_signature_key,
+                        ..Default::default()
+                    },
+                    &conn,
+                )?;
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         match kvp {
             DbKeyValuePair::PendingOutboundTransaction(k, v) => {
-                if OutboundTransactionSql::find_by_cancelled(k, false, &(*conn)).is_ok() {
+                if OutboundTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
                 let mut o = OutboundTransactionSql::try_from(*v)?;
                 self.encrypt_if_necessary(&mut o)?;
-                o.commit(&(*conn))?;
+                o.commit(conn)?;
             },
             DbKeyValuePair::PendingInboundTransaction(k, v) => {
-                if InboundTransactionSql::find_by_cancelled(k, false, &(*conn)).is_ok() {
+                if InboundTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
                 let mut i = InboundTransactionSql::try_from(*v)?;
                 self.encrypt_if_necessary(&mut i)?;
 
-                i.commit(&(*conn))?;
+                i.commit(conn)?;
             },
             DbKeyValuePair::CompletedTransaction(k, v) => {
-                if CompletedTransactionSql::find_by_cancelled(k, false, &(*conn)).is_ok() {
+                if CompletedTransactionSql::find_by_cancelled(k, false, conn).is_ok() {
                     return Err(TransactionStorageError::DuplicateOutput);
                 }
                 let mut c = CompletedTransactionSql::try_from(*v)?;
                 self.encrypt_if_necessary(&mut c)?;
 
-                c.commit(&(*conn))?;
+                c.commit(conn)?;
             },
         }
         Ok(())
     }
 
-    fn remove(
-        &self,
-        key: DbKey,
-        conn: MutexGuard<SqliteConnection>,
-    ) -> Result<Option<DbValue>, TransactionStorageError> {
+    fn remove(&self, key: DbKey, conn: &SqliteConnection) -> Result<Option<DbValue>, TransactionStorageError> {
         match key {
-            DbKey::PendingOutboundTransaction(k) => match OutboundTransactionSql::find_by_cancelled(k, false, &(*conn))
-            {
+            DbKey::PendingOutboundTransaction(k) => match OutboundTransactionSql::find_by_cancelled(k, false, conn) {
                 Ok(mut v) => {
-                    v.delete(&(*conn))?;
+                    v.delete(conn)?;
                     self.decrypt_if_necessary(&mut v)?;
                     Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
                         OutboundTransaction::try_from(v)?,
@@ -135,9 +195,9 @@ impl TransactionServiceSqliteDatabase {
                 ),
                 Err(e) => Err(e),
             },
-            DbKey::PendingInboundTransaction(k) => match InboundTransactionSql::find_by_cancelled(k, false, &(*conn)) {
+            DbKey::PendingInboundTransaction(k) => match InboundTransactionSql::find_by_cancelled(k, false, conn) {
                 Ok(mut v) => {
-                    v.delete(&(*conn))?;
+                    v.delete(conn)?;
                     self.decrypt_if_necessary(&mut v)?;
                     Ok(Some(DbValue::PendingInboundTransaction(Box::new(
                         InboundTransaction::try_from(v)?,
@@ -148,9 +208,9 @@ impl TransactionServiceSqliteDatabase {
                 ),
                 Err(e) => Err(e),
             },
-            DbKey::CompletedTransaction(k) => match CompletedTransactionSql::find_by_cancelled(k, false, &(*conn)) {
+            DbKey::CompletedTransaction(k) => match CompletedTransactionSql::find_by_cancelled(k, false, conn) {
                 Ok(mut v) => {
-                    v.delete(&(*conn))?;
+                    v.delete(conn)?;
                     self.decrypt_if_necessary(&mut v)?;
                     Ok(Some(DbValue::CompletedTransaction(Box::new(
                         CompletedTransaction::try_from(v)?,
@@ -168,9 +228,9 @@ impl TransactionServiceSqliteDatabase {
             DbKey::CancelledPendingInboundTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledCompletedTransactions => Err(TransactionStorageError::OperationNotSupported),
             DbKey::CancelledPendingOutboundTransaction(k) => {
-                match OutboundTransactionSql::find_by_cancelled(k, true, &(*conn)) {
+                match OutboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(mut v) => {
-                        v.delete(&(*conn))?;
+                        v.delete(conn)?;
                         self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingOutboundTransaction(Box::new(
                             OutboundTransaction::try_from(v)?,
@@ -183,9 +243,9 @@ impl TransactionServiceSqliteDatabase {
                 }
             },
             DbKey::CancelledPendingInboundTransaction(k) => {
-                match InboundTransactionSql::find_by_cancelled(k, true, &(*conn)) {
+                match InboundTransactionSql::find_by_cancelled(k, true, conn) {
                     Ok(mut v) => {
-                        v.delete(&(*conn))?;
+                        v.delete(conn)?;
                         self.decrypt_if_necessary(&mut v)?;
                         Ok(Some(DbValue::PendingInboundTransaction(Box::new(
                             InboundTransaction::try_from(v)?,
@@ -223,36 +283,32 @@ impl TransactionServiceSqliteDatabase {
 impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let result = match key {
-            DbKey::PendingOutboundTransaction(t) => {
-                match OutboundTransactionSql::find_by_cancelled(*t, false, &(*conn)) {
-                    Ok(mut o) => {
-                        self.decrypt_if_necessary(&mut o)?;
+            DbKey::PendingOutboundTransaction(t) => match OutboundTransactionSql::find_by_cancelled(*t, false, &conn) {
+                Ok(mut o) => {
+                    self.decrypt_if_necessary(&mut o)?;
 
-                        Some(DbValue::PendingOutboundTransaction(Box::new(
-                            OutboundTransaction::try_from(o)?,
-                        )))
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
-                    Err(e) => return Err(e),
-                }
+                    Some(DbValue::PendingOutboundTransaction(Box::new(
+                        OutboundTransaction::try_from(o)?,
+                    )))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
+                Err(e) => return Err(e),
             },
-            DbKey::PendingInboundTransaction(t) => {
-                match InboundTransactionSql::find_by_cancelled(*t, false, &(*conn)) {
-                    Ok(mut i) => {
-                        self.decrypt_if_necessary(&mut i)?;
-                        Some(DbValue::PendingInboundTransaction(Box::new(
-                            InboundTransaction::try_from(i)?,
-                        )))
-                    },
-                    Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
-                    Err(e) => return Err(e),
-                }
+            DbKey::PendingInboundTransaction(t) => match InboundTransactionSql::find_by_cancelled(*t, false, &conn) {
+                Ok(mut i) => {
+                    self.decrypt_if_necessary(&mut i)?;
+                    Some(DbValue::PendingInboundTransaction(Box::new(
+                        InboundTransaction::try_from(i)?,
+                    )))
+                },
+                Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
+                Err(e) => return Err(e),
             },
-            DbKey::CompletedTransaction(t) => match CompletedTransactionSql::find(*t, &(*conn)) {
+            DbKey::CompletedTransaction(t) => match CompletedTransactionSql::find(*t, &conn) {
                 Ok(mut c) => {
                     self.decrypt_if_necessary(&mut c)?;
                     Some(DbValue::CompletedTransaction(Box::new(CompletedTransaction::try_from(
@@ -263,7 +319,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(e) => return Err(e),
             },
             DbKey::AnyTransaction(t) => {
-                match OutboundTransactionSql::find(*t, &(*conn)) {
+                match OutboundTransactionSql::find(*t, &conn) {
                     Ok(mut o) => {
                         self.decrypt_if_necessary(&mut o)?;
 
@@ -274,7 +330,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 };
-                match InboundTransactionSql::find(*t, &(*conn)) {
+                match InboundTransactionSql::find(*t, &conn) {
                     Ok(mut i) => {
                         self.decrypt_if_necessary(&mut i)?;
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
@@ -284,7 +340,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
                     Err(e) => return Err(e),
                 };
-                match CompletedTransactionSql::find(*t, &(*conn)) {
+                match CompletedTransactionSql::find(*t, &conn) {
                     Ok(mut c) => {
                         self.decrypt_if_necessary(&mut c)?;
                         return Ok(Some(DbValue::WalletTransaction(Box::new(
@@ -299,7 +355,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in OutboundTransactionSql::index_by_cancelled(&(*conn), false)?.iter_mut() {
+                for o in OutboundTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
                     self.decrypt_if_necessary(o)?;
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
                 }
@@ -308,7 +364,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in InboundTransactionSql::index_by_cancelled(&(*conn), false)?.iter_mut() {
+                for i in InboundTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
                     self.decrypt_if_necessary(i)?;
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
                 }
@@ -317,7 +373,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&(*conn), false)?.iter_mut() {
+                for c in CompletedTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
                     self.decrypt_if_necessary(c)?;
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
                 }
@@ -326,7 +382,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledPendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in OutboundTransactionSql::index_by_cancelled(&(*conn), true)?.iter_mut() {
+                for o in OutboundTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
                     self.decrypt_if_necessary(o)?;
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
                 }
@@ -335,7 +391,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledPendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in InboundTransactionSql::index_by_cancelled(&(*conn), true)?.iter_mut() {
+                for i in InboundTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
                     self.decrypt_if_necessary(i)?;
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
                 }
@@ -344,7 +400,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledCompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&(*conn), true)?.iter_mut() {
+                for c in CompletedTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
                     self.decrypt_if_necessary(c)?;
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
                 }
@@ -352,7 +408,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransaction(t) => {
-                match OutboundTransactionSql::find_by_cancelled(*t, true, &(*conn)) {
+                match OutboundTransactionSql::find_by_cancelled(*t, true, &conn) {
                     Ok(mut o) => {
                         self.decrypt_if_necessary(&mut o)?;
 
@@ -365,7 +421,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 }
             },
             DbKey::CancelledPendingInboundTransaction(t) => {
-                match InboundTransactionSql::find_by_cancelled(*t, true, &(*conn)) {
+                match InboundTransactionSql::find_by_cancelled(*t, true, &conn) {
                     Ok(mut i) => {
                         self.decrypt_if_necessary(&mut i)?;
                         Some(DbValue::PendingInboundTransaction(Box::new(
@@ -377,31 +433,29 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 }
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
-            key,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
+                key,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(result)
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let result = match key {
-            DbKey::PendingOutboundTransaction(k) => {
-                OutboundTransactionSql::find_by_cancelled(*k, false, &(*conn)).is_ok()
-            },
-            DbKey::PendingInboundTransaction(k) => {
-                InboundTransactionSql::find_by_cancelled(*k, false, &(*conn)).is_ok()
-            },
-            DbKey::CompletedTransaction(k) => CompletedTransactionSql::find(*k, &(*conn)).is_ok(),
+            DbKey::PendingOutboundTransaction(k) => OutboundTransactionSql::find_by_cancelled(*k, false, &conn).is_ok(),
+            DbKey::PendingInboundTransaction(k) => InboundTransactionSql::find_by_cancelled(*k, false, &conn).is_ok(),
+            DbKey::CompletedTransaction(k) => CompletedTransactionSql::find(*k, &conn).is_ok(),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
@@ -409,72 +463,78 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             DbKey::CancelledPendingInboundTransactions => false,
             DbKey::CancelledCompletedTransactions => false,
             DbKey::CancelledPendingOutboundTransaction(k) => {
-                OutboundTransactionSql::find_by_cancelled(*k, true, &(*conn)).is_ok()
+                OutboundTransactionSql::find_by_cancelled(*k, true, &conn).is_ok()
             },
             DbKey::CancelledPendingInboundTransaction(k) => {
-                InboundTransactionSql::find_by_cancelled(*k, true, &(*conn)).is_ok()
+                InboundTransactionSql::find_by_cancelled(*k, true, &conn).is_ok()
             },
             DbKey::AnyTransaction(k) => {
-                CompletedTransactionSql::find(*k, &(*conn)).is_ok() ||
-                    InboundTransactionSql::find(*k, &(*conn)).is_ok() ||
-                    OutboundTransactionSql::find(*k, &(*conn)).is_ok()
+                CompletedTransactionSql::find(*k, &conn).is_ok() ||
+                    InboundTransactionSql::find(*k, &conn).is_ok() ||
+                    OutboundTransactionSql::find(*k, &conn).is_ok()
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - contains '{}': lock {} + db_op {} = {} ms",
-            key,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - contains '{}': lock {} + db_op {} = {} ms",
+                key,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(result)
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let key_text;
 
         let result = match op {
             WriteOperation::Insert(kvp) => {
                 key_text = "Insert";
-                self.insert(kvp, conn).map(|_| None)
+                self.insert(kvp, &conn).map(|_| None)
             },
             WriteOperation::Remove(key) => {
                 key_text = "Remove";
-                self.remove(key, conn)
+                self.remove(key, &conn)
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - write '{}': lock {} + db_op {} = {} ms",
-            key_text,
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - write '{}': lock {} + db_op {} = {} ms",
+                key_text,
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         result
     }
 
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() ||
-            InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() ||
-            CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok();
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - transaction_exists: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        let result = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() ||
+            InboundTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() ||
+            CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok();
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - transaction_exists: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(result)
     }
 
@@ -483,35 +543,79 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: TxId,
     ) -> Result<CommsPublicKey, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             self.decrypt_if_necessary(&mut outbound_tx_sql)?;
             let outbound_tx = OutboundTransaction::try_from(outbound_tx_sql)?;
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
+                     ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
             return Ok(outbound_tx.destination_public_key);
         }
-        if let Ok(mut inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        if let Ok(mut inbound_tx_sql) = InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             self.decrypt_if_necessary(&mut inbound_tx_sql)?;
             let inbound_tx = InboundTransaction::try_from(inbound_tx_sql)?;
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
+            if start.elapsed().as_millis() > 0 {
+                trace!(
+                    target: LOG_TARGET,
+                    "sqlite profile - get_pending_transaction_counterparty_pub_key_by_tx_id: lock {} + db_op {} = {} \
+                     ms",
+                    acquire_lock.as_millis(),
+                    (start.elapsed() - acquire_lock).as_millis(),
+                    start.elapsed().as_millis()
+                );
+            }
             return Ok(inbound_tx.source_public_key);
         }
 
         Err(TransactionStorageError::ValuesNotFound)
+    }
+
+    fn fetch_any_cancelled_transaction(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+
+        match OutboundTransactionSql::find_by_cancelled(tx_id, true, &conn) {
+            Ok(mut o) => {
+                self.decrypt_if_necessary(&mut o)?;
+
+                return Ok(Some(WalletTransaction::PendingOutbound(OutboundTransaction::try_from(
+                    o,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match InboundTransactionSql::find_by_cancelled(tx_id, true, &conn) {
+            Ok(mut i) => {
+                self.decrypt_if_necessary(&mut i)?;
+                return Ok(Some(WalletTransaction::PendingInbound(InboundTransaction::try_from(
+                    i,
+                )?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        match CompletedTransactionSql::find_by_cancelled(tx_id, true, &conn) {
+            Ok(mut c) => {
+                self.decrypt_if_necessary(&mut c)?;
+                return Ok(Some(WalletTransaction::Completed(CompletedTransaction::try_from(c)?)));
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => (),
+            Err(e) => return Err(e),
+        };
+        Ok(None)
     }
 
     fn complete_outbound_transaction(
@@ -520,19 +624,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
+        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
-        match OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             Ok(v) => {
                 let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction)?;
                 self.encrypt_if_necessary(&mut completed_tx_sql)?;
-                v.delete(&(*conn))?;
-                completed_tx_sql.commit(&(*conn))?;
+                v.delete(&conn)?;
+                completed_tx_sql.commit(&conn)?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(
@@ -541,13 +645,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - complete_outbound_transaction: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - complete_outbound_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
@@ -557,19 +663,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
+        if CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
         }
 
-        match InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             Ok(v) => {
                 let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_transaction)?;
                 self.encrypt_if_necessary(&mut completed_tx_sql)?;
-                v.delete(&(*conn))?;
-                completed_tx_sql.commit(&(*conn))?;
+                v.delete(&conn)?;
+                completed_tx_sql.commit(&conn)?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(
@@ -578,22 +684,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - complete_inbound_transaction: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - complete_inbound_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             Ok(v) => {
                 if TransactionStatus::try_from(v.status)? == TransactionStatus::Completed {
                     v.update(
@@ -601,7 +709,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                             status: Some(TransactionStatus::Broadcast as i32),
                             ..Default::default()
                         },
-                        &(*conn),
+                        &conn,
                     )?;
                 }
             },
@@ -612,23 +720,25 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - broadcast_completed_transaction: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - broadcast_completed_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
     fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             Ok(v) => {
-                v.reject(&(*conn))?;
+                v.reject(&conn)?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -637,13 +747,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - reject_completed_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
@@ -653,16 +765,16 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         cancelled: bool,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match InboundTransactionSql::find(tx_id, &(*conn)) {
+        match InboundTransactionSql::find(tx_id, &conn) {
             Ok(v) => {
-                v.set_cancelled(cancelled, &(*conn))?;
+                v.set_cancelled(cancelled, &conn)?;
             },
             Err(_) => {
-                match OutboundTransactionSql::find(tx_id, &(*conn)) {
+                match OutboundTransactionSql::find(tx_id, &conn) {
                     Ok(v) => {
-                        v.set_cancelled(cancelled, &(*conn))?;
+                        v.set_cancelled(cancelled, &conn)?;
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                         return Err(TransactionStorageError::ValuesNotFound);
@@ -671,21 +783,23 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 };
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - set_pending_transaction_cancellation_status: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_pending_transaction_cancellation_status: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+        match InboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
             Ok(v) => {
                 v.update(
                     UpdateInboundTransactionSql {
@@ -695,11 +809,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                         send_count: None,
                         last_send_timestamp: None,
                     },
-                    &(*conn),
+                    &conn,
                 )?;
             },
             Err(_) => {
-                match OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+                match OutboundTransactionSql::find_by_cancelled(tx_id, false, &conn) {
                     Ok(v) => {
                         v.update(
                             UpdateOutboundTransactionSql {
@@ -709,7 +823,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                                 send_count: None,
                                 last_send_timestamp: None,
                             },
-                            &(*conn),
+                            &conn,
                         )?;
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -719,13 +833,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 };
             },
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - mark_direct_send_success: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - mark_direct_send_success: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
@@ -737,7 +853,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
@@ -789,13 +905,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         (*current_cipher) = Some(cipher);
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - apply_encryption: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(())
     }
@@ -809,7 +927,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             return Ok(());
         };
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
@@ -837,33 +955,37 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         // Now that all the decryption has been completed we can safely remove the cipher fully
         let _ = (*current_cipher).take();
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - remove_encryption: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(())
     }
 
     fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
         for c in coinbase_txs.iter() {
             c.cancel(&conn)?;
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - cancel_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - cancel_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(())
     }
@@ -874,7 +996,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
@@ -885,20 +1007,22 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 return Ok(Some(completed_tx));
             }
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - find_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - find_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(None)
     }
 
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
         if let Ok(tx) = CompletedTransactionSql::find(tx_id, &conn) {
@@ -929,13 +1053,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         } else {
             return Err(TransactionStorageError::ValuesNotFound);
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - increment_send_count: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - increment_send_count: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(())
     }
@@ -950,9 +1076,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         is_confirmed: bool,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match CompletedTransactionSql::find(tx_id, &(*conn)) {
+        match CompletedTransactionSql::find(tx_id, &conn) {
             Ok(v) => {
                 v.update_mined_height(
                     is_valid,
@@ -960,7 +1086,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     mined_in_block,
                     num_confirmations,
                     is_confirmed,
-                    &(*conn),
+                    &conn,
                 )?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -970,19 +1096,21 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - update_mined_height: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
     fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let tx = completed_transactions::table
             .filter(completed_transactions::mined_height.is_not_null())
@@ -996,49 +1124,47 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             None => None,
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - fetch_last_mined_transaction: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - fetch_last_mined_transaction: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(result)
     }
 
-    fn fetch_unconfirmed_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let txs = completed_transactions::table
-            .filter(
-                completed_transactions::mined_height
-                    .is_null()
-                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
-            )
-            .filter(completed_transactions::cancelled.eq(false as i32))
-            .order_by(completed_transactions::tx_id)
-            .load::<CompletedTransactionSql>(&*conn)?;
-
-        let mut result = vec![];
-        for mut tx in txs {
-            self.decrypt_if_necessary(&mut tx)?;
-            result.push(tx.try_into()?);
+        let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
+        match UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&*conn) {
+            Ok(info) => {
+                for item in info {
+                    tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
+                }
+            },
+            Err(e) => return Err(e),
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - fetch_unconfirmed_transactions: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - fetch_unconfirmed_transactions_info: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
-        Ok(result)
+        Ok(tx_info)
     }
 
     fn get_transactions_to_be_broadcast(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let txs = completed_transactions::table
             .filter(completed_transactions::valid.eq(true as i32))
@@ -1061,46 +1187,50 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             self.decrypt_if_necessary(&mut tx)?;
             result.push(tx.try_into()?);
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - get_transactions_to_be_broadcast: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_transactions_to_be_broadcast: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
 
         Ok(result)
     }
 
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let result = diesel::update(completed_transactions::table.filter(completed_transactions::cancelled.eq(0)))
             .set((
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
             ))
-            .execute(&(*conn))?;
+            .execute(&conn)?;
 
         trace!(target: LOG_TARGET, "rows updated: {:?}", result);
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_transactions_to_be_revalidated: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        match CompletedTransactionSql::find(tx_id, &(*conn)) {
+        match CompletedTransactionSql::find(tx_id, &conn) {
             Ok(v) => {
-                v.set_as_unmined(&(*conn))?;
+                v.set_as_unmined(&conn)?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -1109,13 +1239,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         };
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - set_transaction_as_unmined: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_transaction_as_unmined: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 
@@ -1123,10 +1255,10 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError> {
         let start = Instant::now();
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut sender_info: Vec<InboundTransactionSenderInfo> = vec![];
-        match InboundTransactionSenderInfoSql::get_pending_inbound_transaction_sender_info(&(*conn)) {
+        match InboundTransactionSenderInfoSql::get_pending_inbound_transaction_sender_info(&conn) {
             Ok(info) => {
                 for item in info {
                     sender_info.push(InboundTransactionSenderInfo::try_from(item)?);
@@ -1134,13 +1266,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             Err(e) => return Err(e),
         }
-        trace!(
-            target: LOG_TARGET,
-            "sqlite profile - get_pending_inbound_transaction_sender_info: lock {} + db_op {} = {} ms",
-            acquire_lock.as_millis(),
-            (start.elapsed() - acquire_lock).as_millis(),
-            start.elapsed().as_millis()
-        );
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_pending_inbound_transaction_sender_info: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(sender_info)
     }
 }
@@ -1555,6 +1689,8 @@ struct CompletedTransactionSql {
     confirmations: Option<i64>,
     mined_height: Option<i64>,
     mined_in_block: Option<Vec<u8>>,
+    transaction_signature_nonce: Vec<u8>,
+    transaction_signature_key: Vec<u8>,
 }
 
 impl CompletedTransactionSql {
@@ -1771,6 +1907,8 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             confirmations: c.confirmations.map(|ic| ic as i64),
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block,
+            transaction_signature_nonce: c.transaction_signature.get_public_nonce().to_vec(),
+            transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
         })
     }
 }
@@ -1791,6 +1929,13 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
     type Error = CompletedTransactionConversionError;
 
     fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
+        let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
+            Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
+                Ok(signature) => Signature::new(public_nonce, signature),
+                Err(_) => Signature::default(),
+            },
+            Err(_) => Signature::default(),
+        };
         Ok(Self {
             tx_id: (c.tx_id as u64).into(),
             source_public_key: PublicKey::from_vec(&c.source_public_key).map_err(TransactionKeyError::Source)?,
@@ -1808,6 +1953,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp,
             valid: c.valid != 0,
+            transaction_signature,
             confirmations: c.confirmations.map(|ic| ic as u64),
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block: c.mined_in_block,
@@ -1829,11 +1975,82 @@ pub struct UpdateCompletedTransactionSql {
     confirmations: Option<Option<i64>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
+    transaction_signature_nonce: Option<Vec<u8>>,
+    transaction_signature_key: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnconfirmedTransactionInfo {
+    pub tx_id: TxId,
+    pub signature: Signature,
+    pub status: TransactionStatus,
+    pub coinbase_block_height: Option<u64>,
+}
+
+impl UnconfirmedTransactionInfo {
+    pub fn is_coinbase(&self) -> bool {
+        if let Some(height) = self.coinbase_block_height {
+            height > 0
+        } else {
+            false
+        }
+    }
+}
+
+impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
+    type Error = TransactionStorageError;
+
+    fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tx_id: i.tx_id as u64,
+            signature: Signature::new(
+                PublicKey::from_vec(&i.transaction_signature_nonce)?,
+                PrivateKey::from_vec(&i.transaction_signature_key)?,
+            ),
+            status: TransactionStatus::try_from(i.status)?,
+            coinbase_block_height: i.coinbase_block_height.map(|b| b as u64),
+        })
+    }
+}
+
+#[derive(Clone, Queryable)]
+pub struct UnconfirmedTransactionInfoSql {
+    pub tx_id: i64,
+    pub status: i32,
+    pub transaction_signature_nonce: Vec<u8>,
+    pub transaction_signature_key: Vec<u8>,
+    pub coinbase_block_height: Option<i64>,
+}
+
+impl UnconfirmedTransactionInfoSql {
+    /// This method returns completed but unconfirmed transactions
+    pub fn fetch_unconfirmed_transactions_info(
+        conn: &SqliteConnection,
+    ) -> Result<Vec<UnconfirmedTransactionInfoSql>, TransactionStorageError> {
+        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined.
+        let query_result = completed_transactions::table
+            .select((
+                completed_transactions::tx_id,
+                completed_transactions::status,
+                completed_transactions::transaction_signature_nonce,
+                completed_transactions::transaction_signature_key,
+                completed_transactions::coinbase_block_height,
+            ))
+            .filter(
+                completed_transactions::mined_height
+                    .is_null()
+                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+            )
+            .filter(completed_transactions::cancelled.eq(false as i32))
+            .order_by(completed_transactions::tx_id)
+            .load::<UnconfirmedTransactionInfoSql>(&*conn)?;
+        Ok(query_result)
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::{convert::TryFrom, time::Duration};
 
     use aes_gcm::{
         aead::{generic_array::GenericArray, NewAead},
@@ -1842,9 +2059,10 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
+    use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
     use tari_common_types::{
         transaction::{TransactionDirection, TransactionStatus, TxId},
-        types::{HashDigest, PrivateKey, PublicKey},
+        types::{HashDigest, PrivateKey, PublicKey, Signature},
     };
     use tari_core::transactions::{
         tari_amount::MicroTari,
@@ -1864,7 +2082,7 @@ mod test {
     use tempfile::tempdir;
 
     use crate::{
-        storage::sqlite_utilities::WalletDbConnection,
+        storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
         transaction_service::storage::{
             database::{DbKey, TransactionBackend},
@@ -1928,7 +2146,7 @@ mod test {
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+        let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1.into(),
@@ -2057,6 +2275,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2077,6 +2296,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2206,6 +2426,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2227,6 +2448,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2238,7 +2460,7 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: MicroTari::from(100),
-            transaction: tx,
+            transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -2248,6 +2470,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2359,6 +2582,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -2382,76 +2606,86 @@ mod test {
         let db_path = format!("{}{}", db_folder, db_name);
 
         embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, Duration::from_secs(60));
+        pool.create_pool()
+            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        // Note: For this test the connection pool is setup with a pool size of one; the pooled connection must go out
+        // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
+        {
+            let conn = pool
+                .get_pooled_connection()
+                .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+            embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
-        let inbound_tx = InboundTransaction {
-            tx_id: 1.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: MicroTari::from(100),
-            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direct_send_success: false,
-            send_count: 0,
-            last_send_timestamp: None,
-        };
-        let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
-        inbound_tx_sql.commit(&conn).unwrap();
+            let inbound_tx = InboundTransaction {
+                tx_id: 1.into(),
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                amount: MicroTari::from(100),
+                receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+                status: TransactionStatus::Pending,
+                message: "Yo!".to_string(),
+                timestamp: Utc::now().naive_utc(),
+                cancelled: false,
+                direct_send_success: false,
+                send_count: 0,
+                last_send_timestamp: None,
+            };
+            let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
+            inbound_tx_sql.commit(&conn).unwrap();
 
-        let outbound_tx = OutboundTransaction {
-            tx_id: 2.into(),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(10),
-            sender_protocol: SenderTransactionProtocol::new_placeholder(),
-            status: TransactionStatus::Pending,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direct_send_success: false,
-            send_count: 0,
-            last_send_timestamp: None,
-        };
-        let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
-        outbound_tx_sql.commit(&conn).unwrap();
+            let outbound_tx = OutboundTransaction {
+                tx_id: 2.into(),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                amount: MicroTari::from(100),
+                fee: MicroTari::from(10),
+                sender_protocol: SenderTransactionProtocol::new_placeholder(),
+                status: TransactionStatus::Pending,
+                message: "Yo!".to_string(),
+                timestamp: Utc::now().naive_utc(),
+                cancelled: false,
+                direct_send_success: false,
+                send_count: 0,
+                last_send_timestamp: None,
+            };
+            let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
+            outbound_tx_sql.commit(&conn).unwrap();
 
-        let completed_tx = CompletedTransaction {
-            tx_id: 3.into(),
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(100),
-            transaction: Transaction::new(
-                vec![],
-                vec![],
-                vec![],
-                PrivateKey::random(&mut OsRng),
-                PrivateKey::random(&mut OsRng),
-            ),
-            status: TransactionStatus::MinedUnconfirmed,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
-            send_count: 0,
-            last_send_timestamp: None,
-            valid: true,
-            confirmations: None,
-            mined_height: None,
-            mined_in_block: None,
-        };
-        let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
-        completed_tx_sql.commit(&conn).unwrap();
+            let completed_tx = CompletedTransaction {
+                tx_id: 3.into(),
+                source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+                amount: MicroTari::from(100),
+                fee: MicroTari::from(100),
+                transaction: Transaction::new(
+                    vec![],
+                    vec![],
+                    vec![],
+                    PrivateKey::random(&mut OsRng),
+                    PrivateKey::random(&mut OsRng),
+                ),
+                status: TransactionStatus::MinedUnconfirmed,
+                message: "Yo!".to_string(),
+                timestamp: Utc::now().naive_utc(),
+                cancelled: false,
+                direction: TransactionDirection::Unknown,
+                coinbase_block_height: None,
+                send_count: 0,
+                last_send_timestamp: None,
+                valid: true,
+                transaction_signature: Signature::default(),
+                confirmations: None,
+                mined_height: None,
+                mined_in_block: None,
+            };
+            let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
+            completed_tx_sql.commit(&conn).unwrap();
+        }
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
 
-        let connection = WalletDbConnection::new(conn, None);
+        let connection = WalletDbConnection::new(pool, None);
 
         let db1 = TransactionServiceSqliteDatabase::new(connection.clone(), Some(cipher.clone()));
         assert!(db1.apply_encryption(cipher.clone()).is_err());
@@ -2483,7 +2717,14 @@ mod test {
         let db_path = format!("{}{}", db_folder, db_name);
 
         embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
+        // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, Duration::from_secs(60));
+        pool.create_pool()
+            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+        let conn = pool
+            .get_pooled_connection()
+            .unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
 
         embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
@@ -2525,6 +2766,7 @@ mod test {
                 send_count: 0,
                 last_send_timestamp: None,
                 valid,
+                transaction_signature: Signature::default(),
                 confirmations: None,
                 mined_height: None,
                 mined_in_block: None,
@@ -2544,7 +2786,7 @@ mod test {
             }
         }
 
-        let connection = WalletDbConnection::new(conn, None);
+        let connection = WalletDbConnection::new(pool, None);
         let db1 = TransactionServiceSqliteDatabase::new(connection, None);
 
         let txn_list = db1.get_transactions_to_be_broadcast().unwrap();

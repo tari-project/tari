@@ -35,7 +35,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -196,7 +196,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
     ));
 
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), None).unwrap());
-    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
     runtime.block_on(db.set_chain_metadata(metadata)).unwrap();
 
@@ -212,6 +212,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
             factories.clone(),
             Network::Weatherwax.into(),
             CipherSeed::new(),
+            comms.node_identity(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -244,6 +245,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
         connectivity_service_handle,
     )
 }
+
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
 /// streams for testing purposes.
 #[allow(clippy::type_complexity)]
@@ -333,7 +335,6 @@ pub fn setup_transaction_service_no_comms(
     );
     let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, None));
-
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
@@ -346,6 +347,7 @@ pub fn setup_transaction_service_no_comms(
             basenode_service_handle.clone(),
             wallet_connectivity.clone(),
             CipherSeed::new(),
+            server_node_identity.clone(),
         ))
         .unwrap();
 
@@ -379,11 +381,7 @@ pub fn setup_transaction_service_no_comms(
         outbound_message_requester,
         wallet_connectivity.clone(),
         event_publisher,
-        Arc::new(NodeIdentity::random(
-            &mut OsRng,
-            get_next_memory_address(),
-            PeerFeatures::COMMUNICATION_NODE,
-        )),
+        server_node_identity.clone(),
         factories,
         shutdown.to_signal(),
         basenode_service_handle,
@@ -546,7 +544,7 @@ fn manage_single_transaction() {
         ))
         .is_err());
 
-    runtime.block_on(alice_oms.add_output(uo1)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1, None)).unwrap();
     let message = "TAKE MAH MONEYS!".to_string();
     runtime
         .block_on(alice_ts.send_transaction(
@@ -662,7 +660,7 @@ fn single_transaction_to_self() {
         let initial_wallet_value = 2500.into();
         let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
 
-        alice_oms.add_output(uo1).await.unwrap();
+        alice_oms.add_output(uo1, None).await.unwrap();
         let message = "TAKE MAH _OWN_ MONEYS!".to_string();
         let value = 1000.into();
         let tx_id = alice_ts
@@ -746,7 +744,7 @@ fn send_one_sided_transaction_to_other() {
     let initial_wallet_value = 2500.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
     let mut alice_oms_clone = alice_oms.clone();
-    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1, None).await.unwrap() });
 
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
@@ -869,6 +867,7 @@ fn recover_one_sided_transaction() {
         private_key: bob_node_identity.secret_key().clone(),
         script,
         input: ExecutionStack::default(),
+        script_lock_height: 0,
     };
     let mut cloned_bob_oms = bob_oms.clone();
     runtime.block_on(async move {
@@ -880,7 +879,7 @@ fn recover_one_sided_transaction() {
     let initial_wallet_value = 2500.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
     let mut alice_oms_clone = alice_oms;
-    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1, None).await.unwrap() });
 
     let message = "".to_string();
     let value = 1000.into();
@@ -916,6 +915,146 @@ fn recover_one_sided_transaction() {
         // Should ignore already existing outputs
         let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
         assert!(unblinded.is_empty());
+    });
+}
+
+#[test]
+fn test_htlc_send_and_claim() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let temp_dir_bob = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let path_string = temp_dir_bob.path().to_str().unwrap().to_string();
+    let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
+    let bob_db_path = format!("{}/{}", path_string, bob_db_name);
+
+    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let bob_connection = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms, mut alice_connectivity) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity,
+        vec![],
+        factories.clone(),
+        db_connection,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    let (
+        mut bob_ts,
+        mut bob_oms,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _,
+        bob_node_identity,
+        bob_node_mock,
+        _,
+        _,
+        _rpc_server_connection,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_connection, None);
+
+    log::info!(
+        "manage_single_transaction: Bob: '{}'",
+        bob_node_identity.node_id().short_str(),
+    );
+
+    let mut alice_event_stream = alice_ts.get_event_stream();
+
+    alice_connectivity.set_base_node(base_node_identity.to_peer());
+
+    let initial_wallet_value = 2500.into();
+    let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+    let mut alice_oms_clone = alice_oms.clone();
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1, None).await.unwrap() });
+
+    let message = "".to_string();
+    let value = 1000.into();
+    let mut alice_ts_clone = alice_ts.clone();
+    let bob_pubkey = bob_node_identity.public_key().clone();
+    let (tx_id, pre_image, output) = runtime.block_on(async move {
+        alice_ts_clone
+            .send_sha_atomic_swap_transaction(bob_pubkey, value, 20.into(), message.clone())
+            .await
+            .expect("Alice sending HTLC transaction")
+    });
+
+    runtime.block_on(async move {
+        let completed_tx = alice_ts
+            .get_completed_transaction(tx_id)
+            .await
+            .expect("Could not find completed HTLC tx");
+
+        let fees = completed_tx.fee;
+
+        assert_eq!(
+            alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+            initial_wallet_value - value - fees
+        );
+    });
+
+    runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(30));
+        tokio::pin!(delay);
+        loop {
+            tokio::select! {
+                event = alice_event_stream.recv() => {
+                    if let TransactionEvent::TransactionCompletedImmediately(id) = &*event.unwrap() {
+                        if id == &tx_id {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+    });
+    let hash = output.hash();
+    bob_node_mock.set_utxos(vec![output]);
+    runtime.block_on(async move {
+        let (tx_id_htlc, htlc_fee, htlc_amount, tx) = bob_oms
+            .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
+            .await
+            .unwrap();
+
+        bob_ts
+            .submit_transaction(tx_id_htlc, tx, htlc_fee, htlc_amount, "".to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+            htlc_amount
+        );
     });
 }
 
@@ -965,7 +1104,7 @@ fn send_one_sided_transaction_to_self() {
     let initial_wallet_value = 2500.into();
     let (_utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
     let mut alice_oms_clone = alice_oms;
-    runtime.block_on(async move { alice_oms_clone.add_output(uo1).await.unwrap() });
+    runtime.block_on(async move { alice_oms_clone.add_output(uo1, None).await.unwrap() });
 
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
@@ -1092,17 +1231,17 @@ fn manage_multiple_transactions() {
     );
 
     let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(3500), &factories.commitment);
-    runtime.block_on(bob_oms.add_output(uo2)).unwrap();
+    runtime.block_on(bob_oms.add_output(uo2, None)).unwrap();
     let (_utxo, uo3) = make_input(&mut OsRng, MicroTari(4500), &factories.commitment);
-    runtime.block_on(carol_oms.add_output(uo3)).unwrap();
+    runtime.block_on(carol_oms.add_output(uo3, None)).unwrap();
 
     // Add some funds to Alices wallet
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1a, None)).unwrap();
     let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1b, None)).unwrap();
     let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1c, None)).unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
     let value_a_to_b_1 = MicroTari::from(1000);
@@ -1259,7 +1398,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
@@ -1285,7 +1424,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     runtime
         .block_on(alice_ts.send_transaction(
@@ -1368,8 +1507,8 @@ fn finalize_tx_with_incorrect_pubkey() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -1411,7 +1550,7 @@ fn finalize_tx_with_incorrect_pubkey() {
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), connection_bob, None);
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
-    runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(bob_output_manager.add_output(uo, None)).unwrap();
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
             TxId::new_random(),
@@ -1446,7 +1585,8 @@ fn finalize_tx_with_incorrect_pubkey() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
     let tx = stp.get_transaction().unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -1497,8 +1637,8 @@ fn finalize_tx_with_missing_output() {
     let alice_db_path = format!("{}/{}", path_string, alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random::string(8).as_str());
     let bob_db_path = format!("{}/{}", path_string, bob_db_name);
-    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
-    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path).unwrap();
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path, 16).unwrap();
+    let connection_bob = run_migration_and_create_sqlite_connection(&bob_db_path, 16).unwrap();
 
     let (
         mut alice_ts,
@@ -1541,7 +1681,7 @@ fn finalize_tx_with_missing_output() {
 
     let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment);
 
-    runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(bob_output_manager.add_output(uo, None)).unwrap();
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
@@ -1577,7 +1717,8 @@ fn finalize_tx_with_missing_output() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: recipient_reply.tx_id.as_u64(),
@@ -1693,11 +1834,11 @@ fn discovery_async_return_test() {
     let mut alice_event_stream = alice_ts.get_event_stream();
 
     let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1a, None)).unwrap();
     let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1b, None)).unwrap();
     let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
-    runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
+    runtime.block_on(alice_oms.add_output(uo1c, None)).unwrap();
 
     let initial_balance = runtime.block_on(alice_oms.get_balance()).unwrap();
 
@@ -1837,6 +1978,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -1848,7 +1990,7 @@ fn test_power_mode_updates() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 6000 * uT,
         fee: MicroTari::from(200),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -1858,6 +2000,7 @@ fn test_power_mode_updates() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -2002,7 +2145,7 @@ fn test_transaction_cancellation() {
 
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -2061,7 +2204,7 @@ fn test_transaction_cancellation() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
@@ -2125,7 +2268,7 @@ fn test_transaction_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id2 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -2197,7 +2340,7 @@ fn test_transaction_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id3 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -2257,7 +2400,7 @@ fn test_transaction_cancellation() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(..) = &*event.unwrap() {
                        cancelled = true;
                        break;
                     }
@@ -2308,7 +2451,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -2481,7 +2624,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     // Now to repeat sending so we can test the SAF send of the finalize message
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 20000 * uT;
 
@@ -2580,13 +2723,13 @@ fn test_tx_direct_send_behaviour() {
     let mut alice_event_stream = alice_ts.get_event_stream();
 
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -2822,7 +2965,7 @@ fn test_restarting_transaction_protocols() {
             inputs!(PublicKey::from_secret_key(&script_private_key)),
             script_private_key,
         );
-    let mut bob_stp = builder.build::<Blake256>(&factories).unwrap();
+    let mut bob_stp = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
     let msg = bob_stp.build_single_round_message().unwrap();
     let bob_pre_finalize = bob_stp.clone();
 
@@ -2843,7 +2986,7 @@ fn test_restarting_transaction_protocols() {
         .add_single_recipient_info(alice_reply.clone(), &factories.range_proof)
         .unwrap();
 
-    match bob_stp.finalize(KernelFeatures::empty(), &factories) {
+    match bob_stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
         Ok(_) => (),
         Err(e) => panic!("Should be able to finalize tx: {}", e),
     };
@@ -3407,7 +3550,7 @@ fn test_coinbase_abandoned() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap() {
+                    if let TransactionEvent::TransactionCancelled(tx_id, _) = &*event.unwrap() {
                         if tx_id == &tx_id1  {
                             count += 1;
                         }
@@ -3567,7 +3710,7 @@ fn test_coinbase_abandoned() {
                                 count += 1;
                             }
                         },
-                        TransactionEvent::TransactionCancelled(tx_id) => {
+                        TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id2  {
                                 count += 1;
                             }
@@ -3654,7 +3797,7 @@ fn test_coinbase_abandoned() {
                                 count += 1;
                             }
                         },
-                        TransactionEvent::TransactionCancelled(tx_id) => {
+                        TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id1  {
                                 count += 1;
                             }
@@ -3797,7 +3940,7 @@ fn test_transaction_resending() {
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -3996,7 +4139,7 @@ fn test_resend_on_startup() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
@@ -4294,7 +4437,7 @@ fn test_replying_to_cancelled_tx() {
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -4429,7 +4572,7 @@ fn test_transaction_timeout_cancellation() {
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let amount_sent = 10000 * uT;
 
@@ -4505,7 +4648,7 @@ fn test_transaction_timeout_cancellation() {
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
@@ -4641,7 +4784,7 @@ fn test_transaction_timeout_cancellation() {
         loop {
             tokio::select! {
                 event = carol_event_stream.recv() => {
-                     if let TransactionEvent::TransactionCancelled(t) = &*event.unwrap() {
+                     if let TransactionEvent::TransactionCancelled(t, _) = &*event.unwrap() {
                         if t == &tx_id {
                             transaction_cancelled = true;
                             break;
@@ -4714,10 +4857,10 @@ fn transaction_service_tx_broadcast() {
     let alice_output_value = MicroTari(250000);
 
     let (_utxo, uo) = make_input(&mut OsRng, alice_output_value, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo, None)).unwrap();
 
     let (_utxo, uo2) = make_input(&mut OsRng, alice_output_value, &factories.commitment);
-    runtime.block_on(alice_output_manager.add_output(uo2)).unwrap();
+    runtime.block_on(alice_output_manager.add_output(uo2, None)).unwrap();
 
     let amount_sent1 = 10000 * uT;
 
@@ -4962,7 +5105,7 @@ fn transaction_service_tx_broadcast() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                     if let TransactionEvent::TransactionCancelled(tx_id) = &*event.unwrap(){
+                     if let TransactionEvent::TransactionCancelled(tx_id, _) = &*event.unwrap(){
                         if tx_id == &tx_id2 {
                             tx2_cancelled = true;
                             break;
@@ -5013,7 +5156,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -5023,6 +5166,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         send_count: 0,
         last_send_timestamp: None,
         valid: true,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,
@@ -5135,7 +5279,7 @@ fn dont_broadcast_invalid_transactions() {
     let temp_dir = tempdir().unwrap();
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
     let backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
 
     let kernel = KernelBuilder::new()
@@ -5158,7 +5302,7 @@ fn dont_broadcast_invalid_transactions() {
         destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         amount: 5000 * uT,
         fee: MicroTari::from(20),
-        transaction: tx,
+        transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
@@ -5168,6 +5312,7 @@ fn dont_broadcast_invalid_transactions() {
         send_count: 0,
         last_send_timestamp: None,
         valid: false,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
         mined_in_block: None,

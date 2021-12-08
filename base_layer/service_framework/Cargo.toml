@@ -1,6 +1,6 @@
 [package]
 name = "tari_service_framework"
-version = "0.13.0"
+version = "0.22.0"
 authors = ["The Tari Development Community"]
 description = "The Tari communication stack service framework"
 repository = "https://github.com/tari-project/tari"
@@ -10,19 +10,19 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { version = "^0.13", path = "../../infrastructure/shutdown" }
+tari_shutdown = { version = "^0.22", path = "../../infrastructure/shutdown" }
 
 anyhow = "1.0.32"
 async-trait = "0.1.50"
 futures = { version = "^0.3.16", features = ["async-await"] }
 log = "0.4.8"
 thiserror = "1.0.26"
-tokio = { version = "1.11", features = ["rt"] }
-tower-service = { version = "0.3.0" }
+tokio = { version = "1.14", features = ["rt"] }
+tower-service = { version = "0.3" }
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.13", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.22", path = "../../infrastructure/test_utils" }
 
-tokio = { version = "1.11", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.14", features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }
-tower = "0.3.1"
+tower = "0.4"

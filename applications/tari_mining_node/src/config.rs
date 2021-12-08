@@ -41,6 +41,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::NetworkConfigPath;
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MinerConfig {
@@ -68,6 +69,7 @@ impl NetworkConfigPath for MinerConfig {
 
 impl Default for MinerConfig {
     fn default() -> Self {
+        todo!("use multiaddress_to_socket");
         Self {
             base_node_grpc_address: "http://127.0.0.1:18142".to_string(),
             wallet_grpc_address: "http://127.0.0.1:18143".to_string(),

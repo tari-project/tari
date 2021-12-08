@@ -24,7 +24,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{BlockHash, PrivateKey},
+    types::{BlockHash, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
@@ -139,6 +139,7 @@ pub struct CompletedTransaction {
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub valid: bool,
+    pub transaction_signature: Signature,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
@@ -159,6 +160,11 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
     ) -> Self {
+        let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
+            excess_sig.clone()
+        } else {
+            Signature::default()
+        };
         Self {
             tx_id,
             source_public_key,
@@ -175,6 +181,7 @@ impl CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature,
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -197,7 +204,11 @@ impl CompletedTransaction {
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.coinbase_block_height.is_some()
+        if let Some(height) = self.coinbase_block_height {
+            height > 0
+        } else {
+            false
+        }
     }
 }
 
@@ -240,6 +251,19 @@ impl From<CompletedTransaction> for OutboundTransaction {
 
 impl From<OutboundTransaction> for CompletedTransaction {
     fn from(tx: OutboundTransaction) -> Self {
+        let transaction = if tx.sender_protocol.is_finalized() {
+            match tx.sender_protocol.get_transaction() {
+                Ok(tx) => tx.clone(),
+                Err(_) => Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
+            }
+        } else {
+            Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default())
+        };
+        let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
+            excess_sig.clone()
+        } else {
+            Signature::default()
+        };
         Self {
             tx_id: tx.tx_id,
             source_public_key: Default::default(),
@@ -250,12 +274,13 @@ impl From<OutboundTransaction> for CompletedTransaction {
             message: tx.message,
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
+            transaction,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature,
             confirmations: None,
             mined_height: None,
             mined_in_block: None,
@@ -281,6 +306,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             send_count: 0,
             last_send_timestamp: None,
             valid: true,
+            transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
             mined_in_block: None,

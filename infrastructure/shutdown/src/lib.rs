@@ -35,7 +35,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::future::FusedFuture;
+use futures::{future, future::FusedFuture};
 
 use crate::oneshot_trigger::OneshotSignal;
 
@@ -83,6 +83,10 @@ impl ShutdownSignal {
     /// Wait for the shutdown signal to trigger.
     pub fn wait(&mut self) -> &mut Self {
         self
+    }
+
+    pub fn select<T: Future + Unpin>(self, other: T) -> future::Select<Self, T> {
+        future::select(self, other)
     }
 }
 

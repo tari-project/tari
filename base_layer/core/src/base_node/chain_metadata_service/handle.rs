@@ -33,13 +33,15 @@ use tokio::sync::broadcast;
 pub struct PeerChainMetadata {
     node_id: NodeId,
     chain_metadata: ChainMetadata,
+    latency: Option<u32>,
 }
 
 impl PeerChainMetadata {
-    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata) -> Self {
+    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata, latency: Option<u32>) -> Self {
         Self {
             node_id,
             chain_metadata,
+            latency,
         }
     }
 
@@ -49,6 +51,10 @@ impl PeerChainMetadata {
 
     pub fn claimed_chain_metadata(&self) -> &ChainMetadata {
         &self.chain_metadata
+    }
+
+    pub fn latency(&self) -> Option<u32> {
+        self.latency
     }
 }
 

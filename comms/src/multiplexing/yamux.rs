@@ -221,12 +221,21 @@ impl StreamId for Substream {
 
 impl tokio::io::AsyncRead for Substream {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.stream).poll_read(cx, buf)
+        match Pin::new(&mut self.stream).poll_read(cx, buf) {
+            Poll::Ready(Ok(())) => {
+                #[cfg(feature = "metrics")]
+                super::metrics::TOTAL_BYTES_READ.inc_by(buf.filled().len() as u64);
+                Poll::Ready(Ok(()))
+            },
+            res => res,
+        }
     }
 }
 
 impl tokio::io::AsyncWrite for Substream {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        #[cfg(feature = "metrics")]
+        super::metrics::TOTAL_BYTES_WRITTEN.inc_by(buf.len() as u64);
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
 

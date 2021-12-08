@@ -76,7 +76,10 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_until_shutdown(move |handles| async move {
+            log_mdc::extend(mdc.clone());
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             // Ensure that we get an subscription ASAP so that we don't miss any connectivity events
@@ -86,6 +89,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             if !status_watch.borrow().bootstrapped {
                 debug!(target: LOG_TARGET, "Waiting for node to bootstrap...");
                 while status_watch.changed().await.is_ok() {
+                    log_mdc::extend(mdc.clone());
                     if status_watch.borrow().bootstrapped {
                         debug!(target: LOG_TARGET, "Node bootstrapped. Starting mempool sync protocol");
                         break;
@@ -96,6 +100,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                     );
                     sleep(Duration::from_secs(1)).await;
                 }
+                log_mdc::extend(mdc.clone());
             }
 
             MempoolSyncProtocol::new(config, notif_rx, connectivity_event_subscription, mempool)

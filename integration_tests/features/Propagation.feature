@@ -102,4 +102,4 @@ Feature: Block Propagation
     Then TX1 is in the MINED of all nodes
     When I mine 17 blocks on SENDER
     Then all nodes are on the same chain at height 21
-    Then node PNODE1 has a pruned height of 15
+    Then node PNODE1 has a pruned height of 16

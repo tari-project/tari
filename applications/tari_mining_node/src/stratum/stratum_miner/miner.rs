@@ -29,8 +29,10 @@ use std::{
 };
 
 use log::*;
-use tari_core::blocks::BlockHeader;
-use tari_utilities::{hex::Hex, Hashable};
+use tari_core::{
+    blocks::BlockHeader,
+    crypto::tari_utilities::{hex::Hex, Hashable},
+};
 
 use crate::{
     config::MinerConfig,

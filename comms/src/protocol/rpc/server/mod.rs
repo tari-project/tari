@@ -30,22 +30,27 @@ mod handle;
 pub use handle::RpcServerHandle;
 use handle::RpcServerRequest;
 
+mod metrics;
+
 pub mod mock;
 
 mod router;
 use std::{
     borrow::Cow,
     future::Future,
+    io,
+    pin::Pin,
     sync::Arc,
+    task::Poll,
     time::{Duration, Instant},
 };
 
-use futures::{stream, SinkExt, StreamExt};
+use futures::{future, stream, SinkExt, StreamExt};
 use prost::Message;
 use router::Router;
 use tokio::{sync::mpsc, time};
-use tower::Service;
-use tower_make::MakeService;
+use tokio_stream::Stream;
+use tower::{make::MakeService, Service};
 use tracing::{debug, error, instrument, span, trace, warn, Instrument, Level};
 
 use super::{
@@ -306,8 +311,15 @@ where
                 );
 
                 let framed = framing::canonical(substream, RPC_MAX_FRAME_SIZE);
-                match self.try_initiate_service(notification.protocol, node_id, framed).await {
+                match self
+                    .try_initiate_service(notification.protocol.clone(), &node_id, framed)
+                    .await
+                {
                     Ok(_) => {},
+                    Err(err @ RpcServerError::HandshakeError(_)) => {
+                        debug!(target: LOG_TARGET, "{}", err);
+                        metrics::handshake_error_counter(&node_id, &notification.protocol).inc();
+                    },
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
                     },
@@ -322,7 +334,7 @@ where
     async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,
-        node_id: NodeId,
+        node_id: &NodeId,
         mut framed: CanonicalFraming<Substream>,
     ) -> Result<(), RpcServerError> {
         let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
@@ -371,8 +383,14 @@ where
             self.comms_provider.clone(),
         );
 
+        let node_id = node_id.clone();
         self.executor
-            .try_spawn(service.start())
+            .try_spawn(async move {
+                let num_sessions = metrics::num_sessions(&node_id, &service.protocol);
+                num_sessions.inc();
+                service.start().await;
+                num_sessions.dec();
+            })
             .map_err(|_| RpcServerError::MaximumSessionsReached)?;
 
         Ok(())
@@ -425,6 +443,7 @@ where
             "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
+            metrics::error_counter(&self.node_id, &self.protocol, &err).inc();
             error!(
                 target: LOG_TARGET,
                 "({}) Rpc server exited with an error: {}", self.logging_context_string, err
@@ -433,10 +452,12 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
+        let request_bytes = metrics::inbound_requests_bytes(&self.node_id, &self.protocol);
         while let Some(result) = self.framed.next().await {
             match result {
                 Ok(frame) => {
                     let start = Instant::now();
+                    request_bytes.observe(frame.len() as f64);
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
                             error!(
@@ -446,6 +467,13 @@ where
                                 err
                             );
                         }
+                        error!(
+                            target: LOG_TARGET,
+                            "(peer: {}, protocol: {}) Failed to handle request: {}",
+                            self.node_id,
+                            self.protocol_name(),
+                            err
+                        );
                         return Err(err);
                     }
                     let elapsed = start.elapsed();
@@ -498,11 +526,17 @@ where
                 flags: RpcMessageFlags::FIN.bits().into(),
                 payload: status.to_details_bytes(),
             };
+            metrics::status_error_counter(&self.node_id, &self.protocol, status.as_status_code()).inc();
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
             return Ok(());
         }
 
         let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+
+        if msg_flags.contains(RpcMessageFlags::FIN) {
+            debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
+            return Ok(());
+        }
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
                 target: LOG_TARGET,
@@ -541,12 +575,17 @@ where
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,
-                    "RPC service was not able to complete within the deadline ({:.0?}). Request aborted for peer '{}' \
-                     ({}).",
+                    "{} RPC service was not able to complete within the deadline ({:.0?}). Request aborted",
+                    self.logging_context_string,
                     deadline,
-                    self.node_id,
-                    self.protocol_name()
                 );
+
+                metrics::error_counter(
+                    &self.node_id,
+                    &self.protocol,
+                    &RpcServerError::ServiceCallExceededDeadline,
+                )
+                .inc();
                 return Ok(());
             },
         };
@@ -556,12 +595,9 @@ where
                 self.process_body(request_id, deadline, body).await?;
             },
             Err(err) => {
-                debug!(
+                error!(
                     target: LOG_TARGET,
-                    "(peer: {}, protocol: {}) Service returned an error: {}",
-                    self.node_id,
-                    self.protocol_name(),
-                    err
+                    "{} Service returned an error: {}", self.logging_context_string, err
                 );
                 let resp = proto::rpc::RpcResponse {
                     request_id,
@@ -570,6 +606,7 @@ where
                     payload: err.to_details_bytes(),
                 };
 
+                metrics::status_error_counter(&self.node_id, &self.protocol, err.as_status_code()).inc();
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
             },
         }
@@ -587,14 +624,37 @@ where
         deadline: Duration,
         body: Response<Body>,
     ) -> Result<(), RpcServerError> {
+        let response_bytes = metrics::outbound_response_bytes(&self.node_id, &self.protocol);
         trace!(target: LOG_TARGET, "Service call succeeded");
+
+        let node_id = self.node_id.clone();
+        let protocol = self.protocol.clone();
         let mut stream = body
             .into_message()
             .map(|result| into_response(request_id, result))
-            .flat_map(|message| stream::iter(ChunkedResponseIter::new(message)))
+            .flat_map(move |message| {
+                if !message.status.is_ok() {
+                    metrics::status_error_counter(&node_id, &protocol, message.status).inc();
+                }
+                stream::iter(ChunkedResponseIter::new(message))
+            })
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
 
         loop {
+            // Check if the client interrupted the outgoing stream
+            if let Err(err) = self.check_interruptions().await {
+                match err {
+                    err @ RpcServerError::ClientInterruptedStream => {
+                        debug!(target: LOG_TARGET, "Stream was interrupted: {}", err);
+                        break;
+                    },
+                    err => {
+                        error!(target: LOG_TARGET, "Stream was interrupted: {}", err);
+                        return Err(err);
+                    },
+                }
+            }
+
             let next_item = log_timing(
                 self.logging_context_string.clone(),
                 request_id,
@@ -603,7 +663,8 @@ where
             );
             match time::timeout(deadline, next_item).await {
                 Ok(Some(msg)) => {
-                    trace!(
+                    response_bytes.observe(msg.len() as f64);
+                    debug!(
                         target: LOG_TARGET,
                         "({}) Sending body len = {}",
                         self.logging_context_string,
@@ -624,11 +685,46 @@ where
                         deadline
                     );
 
+                    metrics::error_counter(
+                        &self.node_id,
+                        &self.protocol,
+                        &RpcServerError::ReadStreamExceededDeadline,
+                    )
+                    .inc();
                     break;
                 },
             }
         } // end loop
         Ok(())
+    }
+
+    async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
+        let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
+            Poll::Ready(Some(Ok(mut msg))) => {
+                let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
+                    Ok(msg) => msg,
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Client send MALFORMED response: {}", err);
+                        return Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessageMalformed));
+                    },
+                };
+                let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+                if msg_flags.is_fin() {
+                    Poll::Ready(Some(RpcServerError::ClientInterruptedStream))
+                } else {
+                    Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessage(decoded_msg)))
+                }
+            },
+            Poll::Ready(Some(Err(err))) if err.kind() == io::ErrorKind::WouldBlock => Poll::Ready(None),
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(RpcServerError::from(err))),
+            Poll::Ready(None) => Poll::Ready(Some(RpcServerError::StreamClosedByRemote)),
+            Poll::Pending => Poll::Ready(None),
+        })
+        .await;
+        match check {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 
     fn create_request_context(&self, request_id: u32) -> RequestContext {
@@ -664,7 +760,7 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
             }
             RpcResponse {
                 request_id,
-                status: RpcStatus::ok().status_code(),
+                status: RpcStatus::ok().as_status_code(),
                 flags,
                 payload: msg.into_bytes().unwrap_or_else(Bytes::new),
             }
@@ -673,7 +769,7 @@ fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcRe
             debug!(target: LOG_TARGET, "Body contained an error: {}", err);
             RpcResponse {
                 request_id,
-                status: err.status_code(),
+                status: err.as_status_code(),
                 flags: RpcMessageFlags::FIN,
                 payload: Bytes::from(err.to_details_bytes()),
             }

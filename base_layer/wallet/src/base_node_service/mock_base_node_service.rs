@@ -95,7 +95,7 @@ impl MockBaseNodeService {
     }
 
     pub fn set_default_base_node_state(&mut self) {
-        let metadata = ChainMetadata::new(u64::MAX, Vec::new(), 0, 0, 0);
+        let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0);
         self.state = BaseNodeState {
             chain_metadata: Some(metadata),
             is_synced: Some(true),

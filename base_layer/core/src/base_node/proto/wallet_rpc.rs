@@ -31,6 +31,11 @@ use tari_utilities::ByteArrayError;
 
 use crate::proto::{base_node as proto, types};
 
+use crate::{
+    crypto::tari_utilities::ByteArrayError,
+    proto::{base_node as proto, types},
+};
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
     pub accepted: bool,

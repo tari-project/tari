@@ -45,12 +45,12 @@ use super::{
 };
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
+    pool::RpcClientPool,
+    pool::RpcPoolClient,
     NamedProtocolService,
     RpcClient,
     RpcClientBuilder,
-    RpcClientPool,
     RpcError,
-    RpcPoolClient,
     RPC_MAX_FRAME_SIZE,
 };
 use crate::{
@@ -243,7 +243,11 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
-        builder.with_protocol_id(protocol).connect(framed).await
+        builder
+            .with_protocol_id(protocol)
+            .with_node_id(self.peer_node_id.clone())
+            .connect(framed)
+            .await
     }
 
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to

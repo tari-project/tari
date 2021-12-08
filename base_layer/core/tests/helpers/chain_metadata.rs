@@ -63,7 +63,7 @@ impl MockChainMetadata {
         id: &NodeId,
         metadata: &ChainMetadata,
     ) -> Result<usize, Arc<ChainMetadataEvent>> {
-        let data = PeerChainMetadata::new(id.clone(), metadata.clone());
+        let data = PeerChainMetadata::new(id.clone(), metadata.clone(), None);
         self.publish_event(ChainMetadataEvent::PeerChainMetadataReceived(vec![data]))
     }
 }
@@ -74,5 +74,5 @@ pub fn random_peer_metadata(height: u64, difficulty: u128) -> PeerChainMetadata 
     let id = NodeId::from_key(&key);
     let block_hash = Blake256::digest(id.as_bytes()).to_vec();
     let metadata = ChainMetadata::new(height, block_hash, 2800, 0, difficulty);
-    PeerChainMetadata::new(id, metadata)
+    PeerChainMetadata::new(id, metadata, None)
 }

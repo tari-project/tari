@@ -25,7 +25,10 @@ use std::sync::Arc;
 use chrono::Utc;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
+};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -54,6 +57,7 @@ use crate::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionServiceResponse},
+        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
@@ -64,11 +68,11 @@ use crate::{
             send_transaction_cancelled::send_transaction_cancelled_message,
             wait_on_dial::wait_on_dial,
         },
+        utc::utc_duration_since,
     },
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::send_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionSendProtocolStage {
@@ -88,6 +92,8 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -110,6 +116,8 @@ where
             oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
         >,
         stage: TransactionSendProtocolStage,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -123,6 +131,8 @@ where
             message,
             service_request_reply_channel,
             stage,
+            prev_header,
+            height,
         }
     }
 
@@ -336,10 +346,7 @@ where
         }
 
         // Determine the time remaining before this transaction times out
-        let elapsed_time = Utc::now()
-            .naive_utc()
-            .signed_duration_since(outbound_tx.timestamp)
-            .to_std()
+        let elapsed_time = utc_duration_since(&outbound_tx.timestamp)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
 
         let timeout_duration = match self
@@ -361,10 +368,7 @@ where
         let resend = match outbound_tx.last_send_timestamp {
             None => true,
             Some(timestamp) => {
-                let elapsed_time = Utc::now()
-                    .naive_utc()
-                    .signed_duration_since(timestamp)
-                    .to_std()
+                let elapsed_time = utc_duration_since(&timestamp)
                     .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
                 elapsed_time > self.resources.config.transaction_resend_period
             },
@@ -468,14 +472,15 @@ where
 
         outbound_tx
             .sender_protocol
-            .finalize(KernelFeatures::empty(), &self.resources.factories)
+            .finalize(
+                KernelFeatures::empty(),
+                &self.resources.factories,
+                self.prev_header.clone(),
+                self.height,
+            )
             .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
-                );
-                debug!(
-                    target: LOG_TARGET_STRESS,
                     "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
                 );
                 TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
@@ -507,10 +512,6 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         info!(
             target: LOG_TARGET,
-            "Transaction Recipient Reply for TX_ID = {} received", tx_id,
-        );
-        debug!(
-            target: LOG_TARGET_STRESS,
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
         );
 
@@ -629,10 +630,6 @@ where
                         target: LOG_TARGET,
                         "Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction Send Direct for TxID {} failed: {}", self.id, err
-                    );
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
                 SendMessageResponse::PendingDiscovery(rx) => {
@@ -672,7 +669,6 @@ where
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
-                debug!(target: LOG_TARGET_STRESS, "Direct Transaction Send failed: {:?}", e);
             },
         }
 
@@ -717,13 +713,6 @@ where
                         self.id,
                         successful_sends[0],
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction (TxId: {}) Send to Neighbours for Store and Forward successful with Message \
-                         Tags: {:?}",
-                        self.id,
-                        successful_sends[0],
-                    );
                     Ok(true)
                 } else if !failed_sends.is_empty() {
                     warn!(
@@ -732,22 +721,10 @@ where
                          messages were sent",
                         self.id
                     );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                         messages were sent",
-                        self.id
-                    );
                     Ok(false)
                 } else {
                     warn!(
                         target: LOG_TARGET,
-                        "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
-                         unsuccessful. Some message might still be sent.",
-                        self.id
-                    );
-                    debug!(
-                        target: LOG_TARGET_STRESS,
                         "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
                          unsuccessful. Some message might still be sent.",
                         self.id
@@ -762,21 +739,11 @@ where
                      messages were sent",
                     self.id
                 );
-                debug!(
-                    target: LOG_TARGET_STRESS,
-                    "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
-                     messages were sent",
-                    self.id
-                );
                 Ok(false)
             },
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
-                );
-                debug!(
-                    target: LOG_TARGET_STRESS,
                     "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
                 );
                 Ok(false)
@@ -828,7 +795,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
