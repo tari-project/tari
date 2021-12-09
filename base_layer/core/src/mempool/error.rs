@@ -26,7 +26,7 @@ use thiserror::Error;
 use crate::{
     chain_storage::ChainStorageError,
     mempool::{reorg_pool::ReorgPoolError, unconfirmed_pool::UnconfirmedPoolError},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
 };
 
 #[derive(Debug, Error)]

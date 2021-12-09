@@ -42,7 +42,7 @@ use tari_core::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
-        transaction_entities::OutputFeatures,
+        transaction::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,

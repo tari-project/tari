@@ -44,7 +44,7 @@ use tari_core::{
     tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction_entities::{TransactionOutput, UnblindedOutput},
+        transaction::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;

@@ -28,7 +28,7 @@ use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
 };
 
 #[derive(Debug, Error)]

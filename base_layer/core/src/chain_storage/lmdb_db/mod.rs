@@ -24,11 +24,7 @@ pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatab
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 
-use crate::transactions::transaction_entities::{
-    transaction_input::TransactionInput,
-    transaction_kernel::TransactionKernel,
-    transaction_output::TransactionOutput,
-};
+use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
 
 mod lmdb;
 #[allow(clippy::module_inception)]

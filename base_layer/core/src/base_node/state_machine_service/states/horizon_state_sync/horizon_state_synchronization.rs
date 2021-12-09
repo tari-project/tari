@@ -58,10 +58,7 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
     validation::helpers,
 };
 

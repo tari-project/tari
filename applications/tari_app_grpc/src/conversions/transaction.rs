@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::transaction::{self as tx, TxId};
 use tari_core::{
     crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
-    transactions::transaction_entities::Transaction,
+    transactions::transaction::Transaction,
 };
 
 use crate::tari_rpc as grpc;

@@ -55,7 +55,7 @@ use crate::{
         MempoolServiceConfig,
     },
     proto,
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";

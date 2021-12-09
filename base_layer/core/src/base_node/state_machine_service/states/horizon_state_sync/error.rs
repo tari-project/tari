@@ -33,7 +33,7 @@ use tokio::task;
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
     chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
     validation::ValidationError,
 };
 

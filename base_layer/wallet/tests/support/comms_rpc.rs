@@ -61,7 +61,7 @@ use tari_core::{
         },
     },
     tari_utilities::Hashable,
-    transactions::transaction_entities::{Transaction, TransactionOutput},
+    transactions::transaction::{Transaction, TransactionOutput},
 };
 use tokio::time::sleep;
 
@@ -662,7 +662,7 @@ mod test {
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::transaction_entities::Transaction,
+        transactions::transaction::Transaction,
     };
     use tokio::time::Duration;
 

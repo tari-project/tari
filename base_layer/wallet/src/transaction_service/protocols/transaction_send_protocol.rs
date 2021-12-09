@@ -36,7 +36,7 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_entities::KernelFeatures,
+    transaction::KernelFeatures,
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
     SenderTransactionProtocol,
 };

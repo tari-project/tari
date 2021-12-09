@@ -37,7 +37,7 @@ mod test {
     use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
-        transaction_entities::Transaction,
+        transaction::Transaction,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };

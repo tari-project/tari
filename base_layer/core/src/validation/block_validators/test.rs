@@ -36,7 +36,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_entities::error::TransactionError,
+        transaction::TransactionError,
         CoinbaseBuilder,
         CryptoFactories,
     },

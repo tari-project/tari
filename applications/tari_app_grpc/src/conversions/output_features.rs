@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_core::transactions::transaction_entities::{OutputFeatures, OutputFlags};
+use tari_core::transactions::transaction::{OutputFeatures, OutputFlags};
 
 use crate::tari_rpc as grpc;
 

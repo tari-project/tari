@@ -27,7 +27,7 @@ use tari_common_types::types::Signature;
 use crate::{
     blocks::Block,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 macro_rules! make_async {

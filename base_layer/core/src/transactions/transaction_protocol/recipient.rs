@@ -27,7 +27,7 @@ use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_entities::{output_features::OutputFeatures, transaction_output::TransactionOutput},
+    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -219,7 +219,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction_entities::output_features::OutputFeatures,
+            transaction::OutputFeatures,
             transaction_protocol::{
                 build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},

@@ -40,10 +40,7 @@ use crate::{
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;

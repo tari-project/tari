@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
-    transactions::transaction_entities::{TransactionKernel, TransactionOutput},
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
 use crate::error::StratumTranscoderProxyError;
