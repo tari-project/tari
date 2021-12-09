@@ -17,7 +17,8 @@ const u8Array = ArrayType(ref.types.uint8);
 const u8ArrayPtr = ref.refType(u8Array);
 const byteVectorRef = ref.refType(u8Array);
 const publicKeyRef = ref.refType(ref.types.void);
-const strArray = ArrayType("string");
+const publicKeyArrPtr = ref.refType(u8Array);
+const strArray = ref.refType(ArrayType(ref.types.void));
 const strArrayPtr = ref.refType(ArrayType("string"));
 
 module.exports = {
@@ -37,6 +38,7 @@ module.exports = {
   u8ArrayPtr,
   byteVectorRef,
   publicKeyRef,
+  publicKeyArrPtr,
   strArray,
   strArrayPtr,
 };

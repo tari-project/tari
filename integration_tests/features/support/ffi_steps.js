@@ -615,3 +615,26 @@ Then(
     }
   }
 );
+
+Then(
+  "I wait for ffi wallet {word} to connect to {word}",
+  { timeout: 125 * 1000 },
+  async function (walletName, nodeName) {
+    const wallet = this.getWallet(walletName, true);
+    const client = this.getClient(nodeName);
+    // let client = await node.connectClient();
+    let nodeIdentity = await client.identify();
+
+    await waitForIterate(
+      () => {
+        let publicKeys = wallet.listConnectedPublicKeys();
+        return (
+          publicKeys && publicKeys.some((p) => p === nodeIdentity.public_key)
+        );
+      },
+      true,
+      1000,
+      10
+    );
+  }
+);

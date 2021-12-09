@@ -3660,7 +3660,7 @@ Then(
 );
 
 When(
-  /I wait for (.*) to connect to (.*)/,
+  "I wait for {word} to connect to {word}",
   async function (firstNode, secondNode) {
     const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
     const secondNodeClient = await this.getNodeOrWalletClient(secondNode);

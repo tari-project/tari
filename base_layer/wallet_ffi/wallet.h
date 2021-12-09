@@ -51,6 +51,8 @@ struct TariWallet;
 
 struct TariPublicKey;
 
+struct TariPublicKeys;
+
 struct TariContacts;
 
 struct TariContact;
@@ -142,6 +144,7 @@ char *public_key_to_emoji_id(struct TariPublicKey *pk, int *error_out);
 
 // Converts a char array in emoji format to a public key
 struct TariPublicKey *emoji_id_to_public_key(const char *emoji, int *error_out);
+
 
 /// -------------------------------- TariPrivateKey ----------------------------------------------- ///
 
@@ -397,6 +400,8 @@ struct TariCommsConfig *comms_config_create(const char *public_address,
 // Frees memory for a TariCommsConfig
 void comms_config_destroy(struct TariCommsConfig *wc);
 
+// Converts a char array in emoji format to a public key
+struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *wallet, int *error_out);
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
 /// Creates a TariWallet

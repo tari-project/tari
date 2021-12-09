@@ -208,6 +208,9 @@ pub struct EmojiSet(Vec<ByteVector>);
 #[derive(Debug, PartialEq)]
 pub struct TariSeedWords(Vec<String>);
 
+#[derive(Debug, PartialEq)]
+pub struct TariPublicKeys(Vec<TariPublicKey>);
+
 pub struct TariWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
@@ -528,6 +531,23 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
         Box::from_raw(pk);
+    }
+}
+
+/// Frees memory for TariPublicKeys
+///
+/// ## Arguments
+/// `pks` - The pointer to TariPublicKeys
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
+    if !pks.is_null() {
+        Box::from_raw(pks);
     }
 }
 
@@ -2938,6 +2958,53 @@ pub unsafe extern "C" fn comms_config_create(
 pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
     if !wc.is_null() {
         Box::from_raw(wc);
+    }
+}
+
+/// This function lists the public keys of all connected peers
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+///
+/// # Safety
+/// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+#[no_mangle]
+pub unsafe extern "C" fn comms_list_connected_public_keys(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPublicKeys {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let mut connectivity = (*wallet).wallet.comms.connectivity();
+    let peer_manager = (*wallet).wallet.comms.peer_manager();
+
+    match (*wallet).runtime.block_on(async move {
+        let connections = connectivity.get_active_connections().await?;
+        let mut public_keys = Vec::with_capacity(connections.len());
+        for conn in connections {
+            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
+                public_keys.push(peer.public_key);
+            }
+        }
+        Result::<_, WalletError>::Ok(public_keys)
+    }) {
+        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
     }
 }
 
