@@ -139,6 +139,9 @@ struct TariPublicKey *public_key_from_hex(const char *hex, int *error_out);
 // Frees memory for a TariPublicKey pointer
 void public_key_destroy(struct TariPublicKey *pk);
 
+// Frees memory for a TariPublicKeys pointer
+void public_keys_destroy(struct TariPublicKeys *pk);
+
 //Converts a TariPublicKey to char array in emoji format
 char *public_key_to_emoji_id(struct TariPublicKey *pk, int *error_out);
 

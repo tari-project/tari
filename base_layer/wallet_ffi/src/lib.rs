@@ -3003,7 +3003,7 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            ptr::null_mut()
         },
     }
 }

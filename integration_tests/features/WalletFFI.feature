@@ -42,6 +42,7 @@ Feature: Wallet FFI
         Then I retrieve the mnemonic word list for SPANISH from ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+        @doit
     Scenario: As a client I want to set the base node
         Given I have a base node BASE1
         And I have a base node BASE2
