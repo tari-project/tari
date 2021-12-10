@@ -42,7 +42,7 @@ pub trait ServiceInitializer {
 /// ```edition2018
 /// # use tari_service_framework::ServiceInitializerContext;
 /// # use tokio::runtime;
-/// let my_initializer = |executor: runtime::Handle, context: ServiceInitializerContext| {
+/// let my_initializer = |context: ServiceInitializerContext| {
 ///     // initialization code
 ///     futures::future::ready(Result::<_, ()>::Ok(()))
 /// };

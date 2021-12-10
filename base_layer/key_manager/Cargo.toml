@@ -5,9 +5,13 @@ description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "0.22.0"
-edition = "2018"
+edition = "2021"
+
+[lib]
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
+tari_common_types = { version = "^0.22", path = "../../base_layer/common_types" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 
 arrayvec = "0.7.1"
@@ -16,15 +20,24 @@ blake2 = "0.9.1"
 chacha20 = "0.7.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 clear_on_drop = "=0.2.4"
+console_error_panic_hook = "0.1.7"
 crc32fast = "1.2.1"
-rand = "0.8"
 digest = "0.9.0"
+getrandom = { version = "0.2.3", optional = true }
+js-sys = { version = "0.3.55", optional = true }
+rand = "0.8"
+serde = "1.0.89"
+serde_derive = "1.0.89"
+serde_json = "1.0.39"
 thiserror = "1.0.26"
 strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"] }
+wasm-bindgen-test = "0.3.28"
 
 [dev-dependencies]
 sha2 = "0.9.8"
 
 [features]
 avx2 = ["tari_crypto/avx2"]
+js = ["getrandom/js", "js-sys"]

@@ -32,7 +32,7 @@ log-mdc = "0.1.0"
 multiaddr = { version = "0.13.0" }
 nom = { version = "5.1.0", features = ["std"], default-features = false }
 once_cell = "1.8.0"
-openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }
+openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
 pin-project = "1.0.8"
 prost = "=0.8.0"
 rand = "0.8"

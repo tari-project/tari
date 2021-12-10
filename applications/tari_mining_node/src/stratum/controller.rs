@@ -180,7 +180,7 @@ impl Controller {
     }
 
     fn send_message_submit(&mut self, job_id: u64, hash: String, nonce: u64) -> Result<(), Error> {
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Submitting share with hash {} and nonce {}", hash, nonce
         );
@@ -282,15 +282,13 @@ impl Controller {
                     let error = st.error;
                     if let Some(error) = error {
                         // rejected share
-                        self.handle_error(error.clone());
-                        info!(target: LOG_TARGET, "Rejected");
-                        debug!(target: LOG_TARGET_FILE, "Share rejected: {:?}", error);
+                        self.handle_error(error);
+                        warn!(target: LOG_TARGET, "Rejected");
                         let mut stats = self.stats.write().unwrap();
                         stats.mining_stats.solution_stats.rejected += 1;
                     } else {
                         // accepted share
-                        info!(target: LOG_TARGET, "Accepted");
-                        debug!(target: LOG_TARGET_FILE, "Share accepted: {:?}", st.status);
+                        debug!(target: LOG_TARGET, "Share accepted: {:?}", st.status);
                     }
                     return Ok(());
                 }

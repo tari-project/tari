@@ -104,7 +104,7 @@ impl DhtDiscoveryService {
     }
 
     pub async fn run(mut self) {
-        info!(target: LOG_TARGET, "Dht discovery service started");
+        debug!(target: LOG_TARGET, "Dht discovery service started");
         loop {
             tokio::select! {
                 biased;

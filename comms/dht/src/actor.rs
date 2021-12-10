@@ -258,7 +258,7 @@ impl DhtActor {
             .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
             .ok()
             .flatten();
-        info!(
+        debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
             offline_ts

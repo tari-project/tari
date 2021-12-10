@@ -595,7 +595,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn check_saf_messages_were_requested(&mut self, peer: &NodeId) -> Result<(), StoreAndForwardError> {
         match self.saf_requester.mark_saf_response_received(peer.clone()).await? {
             Some(age) if age <= self.config.max_inflight_request_age => Ok(()),
-            Some(age) => Err(StoreAndForwardError::SafMessagesRecievedAfterDeadline {
+            Some(age) => Err(StoreAndForwardError::SafMessagesReceivedAfterDeadline {
                 peer: peer.clone(),
                 message_age: age,
             }),

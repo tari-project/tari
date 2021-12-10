@@ -105,7 +105,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
         Ok(Self {
-            tx_id: data.tx_id,
+            tx_id: data.tx_id.into(),
             amount: data.amount.into(),
             public_excess,
             public_nonce,
@@ -122,7 +122,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
 impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
     fn from(sender_data: SingleRoundSenderData) -> Self {
         Self {
-            tx_id: sender_data.tx_id,
+            tx_id: sender_data.tx_id.into(),
             // The amount, in µT, being sent to the recipient
             amount: sender_data.amount.into(),
             // The offset public excess for this transaction

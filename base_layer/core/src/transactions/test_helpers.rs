@@ -285,7 +285,7 @@ macro_rules! txn_schema {
             to_outputs: vec![],
             fee: $fee,
             lock_height: $lock,
-            features: $features,
+            features: $features.clone(),
             script: tari_crypto::script![Nop],
             input_data: None,
         }
@@ -297,10 +297,18 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
+            features: $features.clone()
+        )
+    }};
+   (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock: 0,
             features: $features
         )
     }};
-
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
         txn_schema!(
             from: $input,
@@ -536,7 +544,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
-        schema.features,
+        OutputFeatures::default(),
         script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key

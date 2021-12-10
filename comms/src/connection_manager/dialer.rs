@@ -259,7 +259,7 @@ where
             });
     }
 
-    #[tracing::instrument(skip(self, pending_dials, reply_tx))]
+    #[tracing::instrument(level = "trace", skip(self, pending_dials, reply_tx))]
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
@@ -345,7 +345,10 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal))]
+    #[tracing::instrument(
+        level = "trace",
+        skip(peer_manager, socket, conn_man_notifier, config, cancel_signal)
+    )]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -429,7 +432,7 @@ where
         )
     }
 
-    #[tracing::instrument(skip(dial_state, noise_config, transport, backoff, config))]
+    #[tracing::instrument(level = "trace", skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,
@@ -437,7 +440,7 @@ where
         backoff: Arc<TBackoff>,
         config: &ConnectionManagerConfig,
     ) -> (DialState, DialResult<TTransport::Output>) {
-        // Container for dial state
+        // Container for dial
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
 

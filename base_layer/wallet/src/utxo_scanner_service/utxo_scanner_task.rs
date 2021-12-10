@@ -38,16 +38,15 @@ use tari_comms::{
 use tari_core::{
     base_node::sync::rpc::BaseNodeSyncRpcClient,
     blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
     proto,
     proto::base_node::{FindChainSplitRequest, SyncUtxosRequest},
-    tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::broadcast, time};
 
 use crate::{

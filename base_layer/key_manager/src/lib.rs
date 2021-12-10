@@ -11,3 +11,4 @@ pub mod error;
 pub mod key_manager;
 pub mod mnemonic;
 pub mod mnemonic_wordlists;
+pub mod wasm;

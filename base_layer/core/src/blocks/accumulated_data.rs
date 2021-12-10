@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -41,11 +40,11 @@ use serde::{
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_utilities::Hashable;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    tari_utilities::Hashable,
     transactions::aggregated_body::AggregateBody,
 };
 
@@ -502,14 +501,14 @@ impl ChainBlock {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blocks::genesis_block::get_weatherwax_genesis_block;
 
     mod chain_block {
         use super::*;
+        use crate::blocks::genesis_block::get_dibbler_genesis_block;
 
         #[test]
         fn it_converts_to_a_chain_header() {
-            let genesis = get_weatherwax_genesis_block();
+            let genesis = get_dibbler_genesis_block();
             let header = genesis.to_chain_header();
             assert_eq!(header.header(), genesis.header());
             assert_eq!(header.accumulated_data(), genesis.accumulated_data());
@@ -517,7 +516,7 @@ mod test {
 
         #[test]
         fn it_provides_guarantees_about_data_integrity() {
-            let mut genesis = get_weatherwax_genesis_block();
+            let mut genesis = get_dibbler_genesis_block();
             // Mess with the header, only possible using the non-public fields
             genesis.block = Arc::new({
                 let mut b = (*genesis.block).clone();

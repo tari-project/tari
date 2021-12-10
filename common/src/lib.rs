@@ -73,7 +73,7 @@
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("weatherwax".into())).unwrap();
-//! assert_eq!(global.network, Network::Weatherwax);
+//! assert_eq!(global.network, Network::Dibbler);
 //! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
@@ -94,6 +94,7 @@ pub use configuration::{
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;
+pub mod file_lock;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";

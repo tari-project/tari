@@ -25,7 +25,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_core::transactions::transaction_protocol::proto;
+use tari_core::transactions::transaction_protocol::proto::protocol as proto;
 use tari_p2p::tari_message::TariMessageType;
 
 use crate::transaction_service::error::TransactionServiceError;
@@ -35,7 +35,7 @@ pub async fn send_transaction_cancelled_message(
     destination_public_key: CommsPublicKey,
     mut outbound_message_service: OutboundMessageRequester,
 ) -> Result<(), TransactionServiceError> {
-    let proto_message = proto::TransactionCancelledMessage { tx_id };
+    let proto_message = proto::TransactionCancelledMessage { tx_id: tx_id.into() };
 
     // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as
     // they are just courtesy messages

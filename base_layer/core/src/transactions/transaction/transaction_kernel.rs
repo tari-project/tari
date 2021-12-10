@@ -31,14 +31,12 @@ use std::{
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashDigest, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
-use crate::{
-    crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, TransactionError},
-        transaction_protocol::{build_challenge, TransactionMetadata},
-    },
+use crate::transactions::{
+    tari_amount::MicroTari,
+    transaction::{KernelFeatures, TransactionError},
+    transaction_protocol::{build_challenge, TransactionMetadata},
 };
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and

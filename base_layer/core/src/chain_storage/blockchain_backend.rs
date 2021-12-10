@@ -1,7 +1,9 @@
+use std::ops::Range;
+
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::Hash;
 
@@ -115,6 +117,23 @@ pub trait BlockchainBackend: Send + Sync {
         &self,
         commitment: &Commitment,
     ) -> Result<Option<HashOutput>, ChainStorageError>;
+
+    /// Returns the unspent TransactionOutput output that matches the given unique_id if it exists, otherwise None is
+    /// returned.
+    fn fetch_utxo_by_unique_id(
+        &self,
+        parent_public_key: Option<&PublicKey>,
+        unique_id: &[u8],
+        deleted_at: Option<u64>,
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
+
+    /// Returns all unspent outputs with a parent public key
+    fn fetch_all_unspent_by_parent_public_key(
+        &self,
+        parent_public_key: &PublicKey,
+        range: Range<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError>;
+
     /// Fetch all outputs in a block
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 

@@ -1,0 +1,13 @@
+.home {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.title {
+  font-size: xx-large;
+  text-align: center;
+  justify-self: stretch;
+  border-bottom: 1px solid;
+  width: 100%;
+}

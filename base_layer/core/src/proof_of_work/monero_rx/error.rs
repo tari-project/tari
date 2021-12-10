@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use randomx_rs::RandomXError;
-
-use crate::crypto::tari_utilities::hex::HexError;
+use tari_utilities::hex::HexError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {

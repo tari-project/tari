@@ -39,15 +39,16 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
 }
 
 impl From<TxStorageResponse> for proto::TxStorageResponse {
-    fn from(resp: TxStorageResponse) -> Self {
+    fn from(response: TxStorageResponse) -> Self {
         use TxStorageResponse::*;
-        match resp {
+        match response {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
             ReorgPool => proto::TxStorageResponse::ReorgPool,
             NotStored => proto::TxStorageResponse::NotStored,
             NotStoredOrphan => proto::TxStorageResponse::NotStored,
             NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
             NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
+            NotStoredConsensus => proto::TxStorageResponse::NotStored,
         }
     }
 }

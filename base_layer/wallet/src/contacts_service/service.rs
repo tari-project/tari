@@ -75,7 +75,7 @@ where T: ContactsBackend + 'static
             .expect("Output Manager Service initialized without shutdown signal");
         pin_mut!(shutdown);
 
-        info!(target: LOG_TARGET, "Contacts Service started");
+        debug!(target: LOG_TARGET, "Contacts Service started");
         loop {
             tokio::select! {
                 Some(request_context) = request_stream.next() => {

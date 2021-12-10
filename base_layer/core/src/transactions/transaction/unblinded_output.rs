@@ -29,17 +29,15 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::{RangeProofError, RangeProofService},
+    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
 
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        range_proof::{RangeProofError, RangeProofService},
-        script::{ExecutionStack, TariScript},
-    },
     transactions::{
         tari_amount::MicroTari,
         transaction,

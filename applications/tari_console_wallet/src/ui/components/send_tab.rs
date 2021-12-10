@@ -1,18 +1,20 @@
 use tari_core::transactions::tari_amount::MicroTari;
+use tari_utilities::hex::Hex;
+use tari_wallet::tokens::Token;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, Clear, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, ListItem, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
     ui::{
-        components::{balance::Balance, Component, KeyHandled},
+        components::{balance::Balance, styles, Component, KeyHandled},
         state::{AppState, UiTransactionSendStatus},
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,
@@ -37,6 +39,8 @@ pub struct SendTab {
     contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
     confirmation_dialog: Option<ConfirmationDialogType>,
+    selected_unique_id: Option<Vec<u8>>,
+    table_state: TableState,
 }
 
 impl SendTab {
@@ -58,6 +62,8 @@ impl SendTab {
             contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
             confirmation_dialog: None,
+            selected_unique_id: None,
+            table_state: TableState::default(),
         }
     }
 
@@ -89,7 +95,7 @@ impl SendTab {
                 Span::raw(" field, "),
                 Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
-                Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled("Amount/Token", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(", "),
                 Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
@@ -127,12 +133,19 @@ impl SendTab {
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
             .split(vert_chunks[2]);
 
-        let amount_input = Paragraph::new(self.amount_field.as_ref())
-            .style(match self.send_input_mode {
-                SendInputMode::Amount => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
-            .block(Block::default().borders(Borders::ALL).title("(A)mount (uT or T):"));
+        let amount_input = Paragraph::new(match &self.selected_unique_id {
+            Some(token) => format!("Token selected : {}", token.to_hex()),
+            None => self.amount_field.to_string(),
+        })
+        .style(match self.send_input_mode {
+            SendInputMode::Amount => Style::default().fg(Color::Magenta),
+            _ => Style::default(),
+        })
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("(A)mount (uT or T) or select Token:"),
+        );
         f.render_widget(amount_input, amount_fee_layout[0]);
 
         let fee_input = Paragraph::new(self.fee_field.as_ref())
@@ -159,12 +172,16 @@ impl SendTab {
                 // Move one line down, from the border to the input line
                 vert_chunks[1].y + 1,
             ),
-            SendInputMode::Amount => f.set_cursor(
-                // Put cursor past the end of the input text
-                amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
-                // Move one line down, from the border to the input line
-                amount_fee_layout[0].y + 1,
-            ),
+            SendInputMode::Amount => {
+                if self.selected_unique_id.is_none() {
+                    f.set_cursor(
+                        // Put cursor past the end of the input text
+                        amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
+                        // Move one line down, from the border to the input line
+                        amount_fee_layout[0].y + 1,
+                    )
+                }
+            },
             SendInputMode::Fee => f.set_cursor(
                 // Put cursor past the end of the input text
                 amount_fee_layout[1].x + self.fee_field.width() as u16 + 1,
@@ -301,6 +318,50 @@ impl SendTab {
         }
     }
 
+    fn draw_tokens<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let tokens = app_state.get_owned_tokens();
+
+        let tokens: Vec<_> = tokens
+            .iter()
+            .filter(|&token| token.output_status() == "Unspent")
+            .map(|r| {
+                (
+                    r.name().to_string(),
+                    r.output_status().to_string(),
+                    r.asset_public_key().to_hex(),
+                    Vec::from(r.unique_id()).to_hex(),
+                    r.owner_commitment().to_hex(),
+                )
+            })
+            .collect();
+        let rows: Vec<_> = tokens
+            .iter()
+            .map(|v| {
+                Row::new(vec![
+                    v.0.as_str(),
+                    v.1.as_str(),
+                    v.2.as_str(),
+                    v.3.as_str(),
+                    v.4.as_str(),
+                ])
+            })
+            .collect();
+        let table = Table::new(rows)
+            .header(Row::new(vec!["Name", "Status", "Asset Pub Key", "Unique ID", "Owner"]).style(styles::header_row()))
+            .block(Block::default().title("Tokens").borders(Borders::ALL))
+            .widths(&[
+                Constraint::Length(30),
+                Constraint::Length(20),
+                Constraint::Length(32),
+                Constraint::Length(32),
+                Constraint::Length(64),
+            ])
+            .highlight_style(styles::highlight())
+            .highlight_symbol(">>");
+        f.render_stateful_widget(table, area, &mut self.table_state)
+    }
+
     fn on_key_confirmation_dialog(&mut self, c: char, app_state: &mut AppState) -> KeyHandled {
         if self.confirmation_dialog.is_some() {
             if 'n' == c {
@@ -316,9 +377,12 @@ impl SendTab {
                             let amount = if let Ok(v) = self.amount_field.parse::<MicroTari>() {
                                 v
                             } else {
-                                self.error_message =
-                                    Some("Amount should be an integer\nPress Enter to continue.".to_string());
-                                return KeyHandled::Handled;
+                                if self.selected_unique_id.is_none() {
+                                    self.error_message =
+                                        Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                                    return KeyHandled::Handled;
+                                }
+                                MicroTari::from(0)
                             };
 
                             let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
@@ -336,6 +400,7 @@ impl SendTab {
                                 match Handle::current().block_on(app_state.send_one_sided_transaction(
                                     self.to_field.clone(),
                                     amount.into(),
+                                    self.selected_unique_id.clone(),
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
@@ -352,6 +417,7 @@ impl SendTab {
                                 match Handle::current().block_on(app_state.send_transaction(
                                     self.to_field.clone(),
                                     amount.into(),
+                                    self.selected_unique_id.clone(),
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
@@ -368,6 +434,7 @@ impl SendTab {
                             if reset_fields {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
+                                self.selected_unique_id = None;
                                 self.fee_field = app_state.get_default_fee_per_gram().as_u64().to_string();
                                 self.message_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
@@ -406,20 +473,25 @@ impl SendTab {
             match self.send_input_mode {
                 SendInputMode::None => (),
                 SendInputMode::To => match c {
-                    '\n' => {
-                        self.send_input_mode = SendInputMode::Amount;
-                    },
+                    '\n' => self.send_input_mode = SendInputMode::Amount,
                     c => {
                         self.to_field.push(c);
                         return KeyHandled::Handled;
                     },
                 },
                 SendInputMode::Amount => match c {
-                    '\n' => self.send_input_mode = SendInputMode::Message,
+                    '\n' => {
+                        if self.selected_unique_id.is_some() {
+                            self.amount_field = "".to_string();
+                        }
+                        self.send_input_mode = SendInputMode::Message
+                    },
                     c => {
-                        let symbols = &['t', 'T', 'u', 'U'];
-                        if c.is_numeric() || symbols.contains(&c) {
-                            self.amount_field.push(c);
+                        if self.selected_unique_id.is_none() {
+                            let symbols = &['t', 'T', 'u', 'U'];
+                            if c.is_numeric() || symbols.contains(&c) {
+                                self.amount_field.push(c);
+                            }
                         }
                         return KeyHandled::Handled;
                     },
@@ -543,6 +615,10 @@ impl<B: Backend> Component<B> for SendTab {
                 self.draw_edit_contact(f, area, app_state);
             }
         };
+
+        if self.send_input_mode == SendInputMode::Amount {
+            self.draw_tokens(f, areas[2], app_state);
+        }
 
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
@@ -669,7 +745,6 @@ impl<B: Backend> Component<B> for SendTab {
                     self.send_input_mode = SendInputMode::None;
                 }
             },
-
             'e' => {
                 if let Some(c) = self
                     .contacts_list_state
@@ -685,21 +760,25 @@ impl<B: Backend> Component<B> for SendTab {
                 }
             },
             't' => self.send_input_mode = SendInputMode::To,
-            'a' => self.send_input_mode = SendInputMode::Amount,
+            'a' => {
+                self.send_input_mode = SendInputMode::Amount;
+            },
             'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
             's' | 'o' => {
-                if self.amount_field.is_empty() || self.to_field.is_empty() {
-                    self.error_message = Some(
-                        "Destination Public Key/Emoji ID and Amount required\nPress Enter to continue.".to_string(),
-                    );
+                if self.to_field.is_empty() {
+                    self.error_message = Some("Destination Public Key/Emoji ID\nPress Enter to continue.".to_string());
                     return;
                 }
-                if self.amount_field.parse::<MicroTari>().is_err() {
+                if self.amount_field.is_empty() && self.selected_unique_id.is_none() {
+                    self.error_message = Some("Amount or token required\nPress Enter to continue.".to_string());
+                    return;
+                }
+                if self.amount_field.parse::<MicroTari>().is_err() && self.selected_unique_id.is_none() {
                     self.error_message =
                         Some("Amount should be a valid amount of Tari\nPress Enter to continue.".to_string());
                     return;
-                };
+                }
 
                 if matches!(c, 'o') {
                     self.confirmation_dialog = Some(ConfirmationDialogType::OneSidedSend);
@@ -712,13 +791,45 @@ impl<B: Backend> Component<B> for SendTab {
     }
 
     fn on_up(&mut self, app_state: &mut AppState) {
-        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-        self.contacts_list_state.previous();
+        if self.show_contacts {
+            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
+            self.contacts_list_state.previous();
+        } else if self.send_input_mode == SendInputMode::Amount {
+            let index = self.table_state.selected().unwrap_or_default();
+            if index == 0 {
+                self.table_state.select(None);
+                self.selected_unique_id = None;
+            } else {
+                let tokens: Vec<&Token> = app_state
+                    .get_owned_tokens()
+                    .iter()
+                    .filter(|&token| token.output_status() == "Unspent")
+                    .collect();
+                self.selected_unique_id = Some(Vec::from(tokens[index - 1].unique_id()));
+                self.table_state.select(Some(index - 1));
+            }
+        }
     }
 
     fn on_down(&mut self, app_state: &mut AppState) {
-        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
-        self.contacts_list_state.next();
+        if self.show_contacts {
+            self.contacts_list_state.set_num_items(app_state.get_contacts().len());
+            self.contacts_list_state.next();
+        } else if self.send_input_mode == SendInputMode::Amount {
+            let index = self.table_state.selected().map(|s| s + 1).unwrap_or_default();
+            let tokens: Vec<&Token> = app_state
+                .get_owned_tokens()
+                .iter()
+                .filter(|&token| token.output_status() == "Unspent")
+                .collect();
+            if index > tokens.len().saturating_sub(1) {
+                self.table_state.select(None);
+                self.selected_unique_id = None;
+            } else {
+                self.selected_unique_id = Some(Vec::from(tokens[index].unique_id()));
+                self.table_state.select(Some(index));
+            }
+        }
     }
 
     fn on_esc(&mut self, _: &mut AppState) {
@@ -734,7 +845,9 @@ impl<B: Backend> Component<B> for SendTab {
                 let _ = self.to_field.pop();
             },
             SendInputMode::Amount => {
-                let _ = self.amount_field.pop();
+                if self.selected_unique_id.is_none() {
+                    let _ = self.amount_field.pop();
+                }
             },
             SendInputMode::Fee => {
                 let _ = self.fee_field.pop();

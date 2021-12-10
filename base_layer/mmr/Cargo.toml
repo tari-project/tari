@@ -8,7 +8,7 @@ version = "0.22.0"
 edition = "2018"
 
 [features]
-default = ["native_bitmap"]
+default = []
 native_bitmap = ["croaring"]
 benches = ["criterion"]
 

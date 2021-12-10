@@ -40,13 +40,13 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_core::{
-    crypto::tari_utilities::hex::from_hex,
-    proof_of_work::PowAlgorithm,
-    tari_utilities::{hex::Hex, ByteArray},
-};
-use tari_crypto::tari_utilities::hex;
+use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
+use tari_utilities::{
+    hex,
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tokio::sync::Mutex;
 
 use super::LOG_TARGET;

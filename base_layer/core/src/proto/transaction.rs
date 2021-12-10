@@ -29,17 +29,21 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
+use tari_utilities::convert::try_convert_all;
 
 use crate::{
     proto,
-    tari_utilities::convert::try_convert_all,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
         transaction::{
+            AssetOutputFeatures,
             KernelFeatures,
+            MintNonFungibleFeatures,
             OutputFeatures,
             OutputFlags,
+            SideChainCheckpointFeatures,
+            TemplateParameter,
             Transaction,
             TransactionInput,
             TransactionKernel,
@@ -203,6 +207,21 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
+            metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: match features.parent_public_key {
+                Some(a) => Some(PublicKey::from_bytes(a.as_bytes()).map_err(|err| format!("{:?}", err))?),
+                None => None,
+            },
+            asset: match features.asset {
+                Some(a) => Some(a.try_into()?),
+                None => None,
+            },
+            mint_non_fungible: match features.mint_non_fungible {
+                Some(m) => Some(m.try_into()?),
+                None => None,
+            },
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
         })
     }
 }
@@ -212,6 +231,107 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
         Self {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
+            metadata: features.metadata,
+            unique_id: features.unique_id,
+            parent_public_key: features.parent_public_key.map(|a| a.as_bytes().to_vec()),
+            asset: features.asset.map(|a| a.into()),
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::AssetOutputFeatures> for AssetOutputFeatures {
+    type Error = String;
+
+    fn try_from(features: proto::types::AssetOutputFeatures) -> Result<Self, Self::Error> {
+        let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            public_key,
+            template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|s| s.into()).collect(),
+        })
+    }
+}
+
+impl From<AssetOutputFeatures> for proto::types::AssetOutputFeatures {
+    fn from(features: AssetOutputFeatures) -> Self {
+        Self {
+            public_key: features.public_key.as_bytes().to_vec(),
+            template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
+        }
+    }
+}
+
+impl From<proto::types::TemplateParameter> for TemplateParameter {
+    fn from(source: proto::types::TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+
+impl From<TemplateParameter> for proto::types::TemplateParameter {
+    fn from(source: TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+
+impl TryFrom<proto::types::MintNonFungibleFeatures> for MintNonFungibleFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::MintNonFungibleFeatures) -> Result<Self, Self::Error> {
+        let asset_public_key =
+            PublicKey::from_bytes(value.asset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let asset_owner_commitment = value
+            .asset_owner_commitment
+            .map(|c| Commitment::from_bytes(&c.data))
+            .ok_or_else(|| "asset_owner_commitment is missing".to_string())?
+            .map_err(|err| err.to_string())?;
+        Ok(Self {
+            asset_public_key,
+            asset_owner_commitment,
+        })
+    }
+}
+
+impl From<MintNonFungibleFeatures> for proto::types::MintNonFungibleFeatures {
+    fn from(value: MintNonFungibleFeatures) -> Self {
+        Self {
+            asset_public_key: value.asset_public_key.as_bytes().to_vec(),
+            asset_owner_commitment: Some(value.asset_owner_commitment.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
+        let merkle_root = value.merkle_root.as_bytes().to_vec();
+        let committee = value
+            .committee
+            .into_iter()
+            .map(|c| PublicKey::from_bytes(&c).map_err(|err| format!("{:?}", err)))
+            .collect::<Result<_, _>>()?;
+        Ok(Self { merkle_root, committee })
+    }
+}
+
+impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeatures {
+    fn from(value: SideChainCheckpointFeatures) -> Self {
+        Self {
+            merkle_root: value.merkle_root.as_bytes().to_vec(),
+            committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
         }
     }
 }

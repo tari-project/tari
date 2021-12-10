@@ -31,16 +31,14 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
+use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::{
-    crypto::tari_utilities::hex::Hex,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::{uT, MicroTari},
-        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        weight::TransactionWeight,
-        CryptoFactories,
-    },
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    tari_amount::{uT, MicroTari},
+    transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    weight::TransactionWeight,
+    CryptoFactories,
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.

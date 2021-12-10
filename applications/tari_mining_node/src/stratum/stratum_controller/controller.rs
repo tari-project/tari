@@ -72,7 +72,6 @@ impl Controller {
 
     fn display_stats(&mut self, elapsed: Duration) {
         let mut stats = self.stats.write().unwrap();
-        debug!(target: LOG_TARGET_FILE, "{:?}", stats.mining_stats);
         info!(
             target: LOG_TARGET,
             "{}",

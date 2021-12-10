@@ -68,6 +68,7 @@ pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> R
         MiningNode => include_str!("../logging/log4rs_sample_mining_node.yml"),
         MergeMiningProxy => include_str!("../logging/log4rs_sample_proxy.yml"),
         StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
+        ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),
     };
 
     if let Some(d) = path.parent() {

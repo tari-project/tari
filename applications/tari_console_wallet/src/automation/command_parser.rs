@@ -23,6 +23,7 @@
 use core::str::SplitWhitespace;
 use std::{
     fmt::{Display, Formatter},
+    iter::Peekable,
     str::FromStr,
 };
 
@@ -61,6 +62,9 @@ impl Display for ParsedCommand {
             InitShaAtomicSwap => "init-sha-atomic-swap",
             FinaliseShaAtomicSwap => "finalise-sha-atomic-swap",
             ClaimShaAtomicSwapRefund => "claim-sha-atomic-swap-refund",
+            RegisterAsset => "register-asset",
+            MintTokens => "mint-tokens",
+            CreateInitialCheckpoint => "create-initial-checkpoint",
         };
 
         let args = self
@@ -133,9 +137,83 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         InitShaAtomicSwap => parse_init_sha_atomic_swap(args)?,
         FinaliseShaAtomicSwap => parse_finalise_sha_atomic_swap(args)?,
         ClaimShaAtomicSwapRefund => parse_claim_htlc_refund_refund(args)?,
+        RegisterAsset => parser_builder(args).text().build()?,
+        // mint-tokens pub_key nft_id1 nft_id2
+        MintTokens => parser_builder(args).pub_key().text_array().build()?,
+        CreateInitialCheckpoint => parser_builder(args).pub_key().text().pub_key_array().build()?,
     };
 
     Ok(ParsedCommand { command, args })
+}
+
+struct ArgParser<'a> {
+    args: Peekable<SplitWhitespace<'a>>,
+    result: Vec<Result<ParsedArgument, ParseError>>,
+}
+
+impl<'a> ArgParser<'a> {
+    fn new(args: SplitWhitespace<'a>) -> Self {
+        Self {
+            args: args.peekable(),
+            result: vec![],
+        }
+    }
+
+    fn text(mut self) -> Self {
+        let text_result = self
+            .args
+            .next()
+            .map(|t| ParsedArgument::Text(t.to_string()))
+            .ok_or_else(|| ParseError::Empty("text".to_string()));
+        self.result.push(text_result);
+        self
+    }
+
+    fn text_array(self) -> Self {
+        let mut me = self;
+        while me.args.peek().is_some() {
+            me = me.text();
+        }
+
+        me
+    }
+
+    fn pub_key(mut self) -> Self {
+        // public key/emoji id
+        let pubkey = self
+            .args
+            .next()
+            .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()));
+        let result = pubkey.and_then(
+            |pb| match parse_emoji_id_or_public_key(pb).ok_or(ParseError::PublicKey) {
+                Ok(pk) => Ok(ParsedArgument::PublicKey(pk)),
+                Err(err) => Err(err),
+            },
+        );
+        self.result.push(result);
+        self
+    }
+
+    fn pub_key_array(self) -> Self {
+        let mut me = self;
+        while me.args.peek().is_some() {
+            me = me.pub_key();
+        }
+
+        me
+    }
+
+    fn build(self) -> Result<Vec<ParsedArgument>, ParseError> {
+        let mut result = Vec::with_capacity(self.result.len());
+        for r in self.result {
+            result.push(r?);
+        }
+        Ok(result)
+    }
+}
+
+fn parser_builder(args: SplitWhitespace) -> ArgParser {
+    ArgParser::new(args)
 }
 
 fn parse_whois(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {

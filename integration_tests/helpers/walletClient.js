@@ -1,5 +1,5 @@
 const { Client } = require("wallet-grpc-client");
-const { byteArrayToHex, tryConnect } = require("./util");
+const { byteArrayToHex, tryConnect, convertStringToVec } = require("./util");
 
 function transactionStatus() {
   return [
@@ -387,6 +387,7 @@ class WalletClient {
       num_node_connections: +resp.num_node_connections,
     };
   }
+
   async cancelTransaction(tx_id) {
     try {
       const result = await this.client.cancelTransaction({
@@ -402,6 +403,29 @@ class WalletClient {
         failure_message: err,
       };
     }
+  }
+
+  async registerAsset(name) {
+    let public_key = await this.client.registerAsset({ name });
+    return public_key.public_key.toString("hex");
+  }
+
+  async getOwnedAssets() {
+    let assets = await this.client.getOwnedAssets();
+    return assets.assets;
+  }
+
+  async mintTokens(asset_public_key, names) {
+    let owner_commitments = await this.client.mintTokens({
+      asset_public_key,
+      unique_ids: names.map((name) => convertStringToVec(name)),
+    });
+    return owner_commitments.owner_commitments;
+  }
+
+  async getOwnedTokens(asset_public_key) {
+    let tokens = await this.client.getOwnedTokens({ asset_public_key });
+    return tokens.tokens;
   }
 }
 

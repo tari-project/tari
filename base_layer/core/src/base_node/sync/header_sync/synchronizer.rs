@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{
     convert::TryFrom,
     sync::Arc,
@@ -35,6 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
+use tari_utilities::{hex::Hex, Hashable};
 use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
@@ -48,7 +48,6 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
 

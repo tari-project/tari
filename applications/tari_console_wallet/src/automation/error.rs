@@ -24,13 +24,11 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use log::*;
 use tari_common::exit_codes::ExitCodes;
-use tari_core::{
-    tari_utilities::hex::HexError,
-    transactions::{
-        tari_amount::{MicroTariError, TariConversionError},
-        transaction::TransactionError,
-    },
+use tari_core::transactions::{
+    tari_amount::{MicroTariError, TariConversionError},
+    transaction::TransactionError,
 };
+use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::OutputManagerError,

@@ -31,7 +31,7 @@ mod test {
     use chrono::Utc;
     use rand::rngs::OsRng;
     use tari_common_types::{
-        transaction::{TransactionDirection, TransactionStatus},
+        transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
     use tari_comms_dht::event::DhtEvent;
@@ -171,7 +171,7 @@ mod test {
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut CompletedTransaction, _reason: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        match (*tx).tx_id {
+        match (*tx).tx_id.as_u64() {
             3 => lock.tx_cancellation_callback_called_inbound = true,
             4 => lock.tx_cancellation_callback_called_completed = true,
             5 => lock.tx_cancellation_callback_called_outbound = true,
@@ -209,7 +209,7 @@ mod test {
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
-            1u64,
+            1u64.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             rtp,
@@ -218,7 +218,7 @@ mod test {
             Utc::now().naive_utc(),
         );
         let completed_tx = CompletedTransaction::new(
-            2u64,
+            2u64.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             MicroTari::from(100),
@@ -238,7 +238,7 @@ mod test {
         );
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(
-            3u64,
+            3u64.into(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             22 * uT,
             23 * uT,
@@ -249,32 +249,32 @@ mod test {
             false,
         );
         let inbound_tx_cancelled = InboundTransaction {
-            tx_id: 4u64,
+            tx_id: 4u64.into(),
             ..inbound_tx.clone()
         };
         let completed_tx_cancelled = CompletedTransaction {
-            tx_id: 5u64,
+            tx_id: 5u64.into(),
             ..completed_tx.clone()
         };
 
         runtime
-            .block_on(db.add_pending_inbound_transaction(1u64, inbound_tx.clone()))
+            .block_on(db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone()))
             .unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(2u64, completed_tx.clone()))
+            .block_on(db.insert_completed_transaction(2u64.into(), completed_tx.clone()))
             .unwrap();
         runtime
-            .block_on(db.add_pending_inbound_transaction(4u64, inbound_tx_cancelled))
+            .block_on(db.add_pending_inbound_transaction(4u64.into(), inbound_tx_cancelled))
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(4u64)).unwrap();
+        runtime.block_on(db.cancel_pending_transaction(4u64.into())).unwrap();
         runtime
-            .block_on(db.insert_completed_transaction(5u64, completed_tx_cancelled.clone()))
+            .block_on(db.insert_completed_transaction(5u64.into(), completed_tx_cancelled.clone()))
             .unwrap();
-        runtime.block_on(db.reject_completed_transaction(5u64)).unwrap();
+        runtime.block_on(db.reject_completed_transaction(5u64.into())).unwrap();
         runtime
-            .block_on(db.add_pending_outbound_transaction(3u64, outbound_tx.clone()))
+            .block_on(db.add_pending_outbound_transaction(3u64.into(), outbound_tx.clone()))
             .unwrap();
-        runtime.block_on(db.cancel_pending_transaction(3u64)).unwrap();
+        runtime.block_on(db.cancel_pending_transaction(3u64.into())).unwrap();
 
         let (transaction_event_sender, transaction_event_receiver) = broadcast::channel(20);
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
@@ -330,7 +330,7 @@ mod test {
         // changed from an initial zero balance.
         // Balance updated should be detected with following event, total = 1 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64)))
+            .send(Arc::new(TransactionEvent::ReceivedTransaction(1u64.into())))
             .unwrap();
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -349,7 +349,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 2 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2u64)))
+            .send(Arc::new(TransactionEvent::ReceivedTransactionReply(2u64.into())))
             .unwrap();
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -368,7 +368,7 @@ mod test {
         mock_output_manager_service_state.set_balance(balance.clone());
         // Balance updated should be detected with following event, total = 3 times
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2u64)))
+            .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(2u64.into())))
             .unwrap();
         let start = Instant::now();
         while start.elapsed().as_secs() < 10 {
@@ -384,31 +384,35 @@ mod test {
         assert_eq!(callback_balance_updated, 3);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionBroadcast(2u64)))
+            .send(Arc::new(TransactionEvent::TransactionBroadcast(2u64.into())))
             .unwrap();
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionMined {
-                tx_id: 2u64,
+                tx_id: 2u64.into(),
                 is_valid: true,
             }))
             .unwrap();
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed {
-                tx_id: 2u64,
+                tx_id: 2u64.into(),
                 num_confirmations: 22u64,
                 is_valid: true,
             }))
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2u64, true)))
+            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(
+                2u64.into(),
+                true,
+            )))
             .unwrap();
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
-                2u64, true,
+                2u64.into(),
+                true,
             )))
             .unwrap();
 
@@ -417,7 +421,7 @@ mod test {
         // Balance updated should be detected with following event, total = 4 times
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
-                3u64,
+                3u64.into(),
                 TxRejection::UserCancelled,
             )))
             .unwrap();
@@ -436,14 +440,14 @@ mod test {
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
-                4u64,
+                4u64.into(),
                 TxRejection::UserCancelled,
             )))
             .unwrap();
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
-                5u64,
+                5u64.into(),
                 TxRejection::UserCancelled,
             )))
             .unwrap();
@@ -476,7 +480,9 @@ mod test {
         assert_eq!(callback_balance_updated, 5);
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(1u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
+                1u64.into(),
+            )))
             .unwrap();
 
         oms_event_sender
@@ -492,7 +498,9 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(2u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
+                2u64.into(),
+            )))
             .unwrap();
 
         oms_event_sender
@@ -508,7 +516,9 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(3u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
+                3u64.into(),
+            )))
             .unwrap();
 
         oms_event_sender
@@ -524,7 +534,9 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(4u64)))
+            .send(Arc::new(TransactionEvent::TransactionValidationStateChanged(
+                4u64.into(),
+            )))
             .unwrap();
 
         dht_event_sender

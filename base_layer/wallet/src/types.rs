@@ -20,10 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::PublicKey;
 use tari_crypto::common::Blake256;
+
+use crate::error::WalletError;
 
 /// Specify the Hash function used by the key manager
 pub type KeyDigest = Blake256;
 
 /// Specify the Hash function used when constructing challenges during transaction building
 pub type HashDigest = Blake256;
+
+pub(crate) trait PersistentKeyManager {
+    fn create_and_store_new(&mut self) -> Result<PublicKey, WalletError>;
+}

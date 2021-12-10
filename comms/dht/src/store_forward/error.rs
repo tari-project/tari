@@ -89,7 +89,7 @@ pub enum StoreAndForwardError {
     #[error("Received SAF messages that were not requested")]
     ReceivedUnrequestedSafMessages,
     #[error("SAF messages received from peer {peer} after deadline. Received after {0:.2?}")]
-    SafMessagesRecievedAfterDeadline { peer: NodeId, message_age: Duration },
+    SafMessagesReceivedAfterDeadline { peer: NodeId, message_age: Duration },
     #[error("Invalid SAF request: `stored_at` cannot be in the future")]
     StoredAtWasInFuture,
 }
