@@ -70,17 +70,6 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 
-use crate::helpers::{
-    block_builders::{
-        chain_block_with_coinbase,
-        chain_block_with_new_coinbase,
-        create_coinbase,
-        create_genesis_block_with_utxos,
-        find_header_with_achieved_difficulty,
-    },
-    test_blockchain::TestBlockchain,
-};
-
 mod helpers;
 
 #[test]

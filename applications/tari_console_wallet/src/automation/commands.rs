@@ -42,18 +42,15 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    tari_utilities::hex::Hex,
-    transactions::{
-        tari_amount::{uT, MicroTari, Tari},
-        transaction::{TransactionOutput, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari, Tari},
+    transaction::{TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
     tari_utilities::{ByteArray, Hashable},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::hex::Hex;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -204,11 +201,11 @@ pub async fn finalise_sha_atomic_swap(
         PublicKey(key) => Ok(key),
         _ => Err(CommandError::Argument),
     }?;
-    let (tx_id, fee, amount, tx) = output_service
+    let (tx_id, _fee, amount, tx) = output_service
         .create_claim_sha_atomic_swap_transaction(output, pre_image, MicroTari(25))
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC atomic swap".into())
+        .submit_transaction(tx_id, tx, amount, "Claimed HTLC atomic swap".into())
         .await?;
     Ok(tx_id)
 }
@@ -225,11 +222,11 @@ pub async fn claim_htlc_refund(
         _ => Err(CommandError::Argument),
     }?;
 
-    let (tx_id, fee, amount, tx) = output_service
+    let (tx_id, _fee, amount, tx) = output_service
         .create_htlc_refund_transaction(output, MicroTari(25))
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC refund".into())
+        .submit_transaction(tx_id, tx, amount, "Claimed HTLC refund".into())
         .await?;
     Ok(tx_id)
 }

@@ -24,14 +24,9 @@ use std::fmt;
 
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComSignature,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-    Signature,
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, ComSignature, HashOutput, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -61,7 +56,7 @@ use crate::{
         transaction_protocol::{
             build_challenge,
             recipient::{RecipientInfo, RecipientSignedMessage},
-            sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
+            transaction_initializer::SenderTransactionInitializer,
             TransactionMetadata,
             TransactionProtocolError as TPE,
         },
@@ -165,9 +160,9 @@ pub struct SenderTransactionProtocol {
 
 impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the
-    /// `SenderTransactionProtocolBuilder` builder function
-    pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionProtocolBuilder {
-        SenderTransactionProtocolBuilder::new(num_recipients, consensus_constants)
+    /// `SenderTransactionInitializer` builder function
+    pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
+        SenderTransactionInitializer::new(num_recipients, consensus_constants)
     }
 
     /// Convenience method to check whether we're receiving recipient data

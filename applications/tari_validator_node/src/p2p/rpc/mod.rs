@@ -22,8 +22,6 @@
 
 mod service_impl;
 pub use service_impl::ValidatorNodeRpcServiceImpl;
-#[cfg(test)]
-mod tests;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_dan_core::services::MempoolService;

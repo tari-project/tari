@@ -243,14 +243,14 @@ impl From<TransactionServiceProtocolError> for TransactionServiceError {
 }
 
 pub trait TransactionServiceProtocolErrorExt<TRes> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError>;
 }
 
 impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError> {
         match self {
             Ok(r) => Ok(r),
-            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+            Err(e) => Err(TransactionServiceProtocolError::new(id.into(), e.into())),
         }
     }
 }

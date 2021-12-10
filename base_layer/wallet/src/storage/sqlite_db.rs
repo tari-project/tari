@@ -740,12 +740,6 @@ mod test {
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
 
-    use crate::storage::{
-        database::{DbKey, DbValue, WalletBackend},
-        sqlite_db::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
-        sqlite_utilities::run_migration_and_create_sqlite_connection,
-    };
-
     #[test]
     fn test_unencrypted_secret_public_key_setting() {
         let db_name = format!("{}.sqlite3", string(8).as_str());

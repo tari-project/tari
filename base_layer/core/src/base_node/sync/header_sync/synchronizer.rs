@@ -25,24 +25,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{future, stream::FuturesUnordered, StreamExt, TryFutureExt};
-use log::*;
-use tari_common_types::types::HashOutput;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcHandshakeError},
-    PeerConnection,
-};
-use tari_utilities::{hex::Hex, Hashable};
-use tracing;
-
-use std::{
-    convert::TryFrom,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
 use futures::StreamExt;
 use log::*;
 use tari_common_types::types::HashOutput;
@@ -52,6 +34,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcHandshakeError},
     PeerConnection,
 };
+use tari_utilities::{hex::Hex, Hashable};
 use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};

@@ -1,7 +1,9 @@
+use std::ops::Range;
+
 use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_mmr::Hash;
 

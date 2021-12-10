@@ -21,14 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::cmp::Ordering;
 
-use std::cmp::Ordering;
-
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     script::TariScript,
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
+    tari_utilities::{
+        epoch_time::EpochTime,
+        hash::Hashable,
+        hex::{to_hex, Hex},
+    },
 };
 
 use crate::{
@@ -41,7 +44,6 @@ use crate::{
         ConsensusEncodingWrapper,
         ConsensusManager,
     },
-    crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::to_hex},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -480,6 +482,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     constants: &ConsensusConstants,
     body: &AggregateBody,
 ) -> Result<(), ValidationError> {
+    let mut unique_ids = Vec::new();
     let max_script_size = constants.get_max_script_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;

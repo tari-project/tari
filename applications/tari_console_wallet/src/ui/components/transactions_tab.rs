@@ -13,7 +13,7 @@ use tui::{
 };
 
 use crate::ui::{
-    components::{balance::Balance, Component},
+    components::{balance::Balance, styles, Component},
     state::{AppState, CompletedTransactionInfo},
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,

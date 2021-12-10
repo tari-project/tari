@@ -3850,10 +3850,11 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
                     (*dest_public_key).clone(),
                     MicroTari::from(amount),
+                    None,
                     MicroTari::from(fee_per_gram),
                     message_string,
                 )) {
-                Ok(tx_id) => tx_id,
+                Ok(tx_id) => tx_id.as_u64(),
                 Err(e) => {
                     error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -3868,10 +3869,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     (*dest_public_key).clone(),
                     MicroTari::from(amount),
                     None,
-            MicroTari::from(fee_per_gram),
-            message_string,
-        )) {
-        Ok(tx_id) => tx_id.as_u64(),
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                )) {
+                Ok(tx_id) => tx_id.as_u64(),
                 Err(e) => {
                     error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4760,7 +4761,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return 0;
             }
-            tx_id
+            tx_id.as_u64()
         },
         Err(e) => {
             error = LibWalletError::from(e).code;

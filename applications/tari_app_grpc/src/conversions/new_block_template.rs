@@ -27,6 +27,7 @@ use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
     proof_of_work::ProofOfWork,
 };
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 

@@ -414,42 +414,25 @@ mod test {
         models::{Committee, ConsensusWorkerState::*},
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
-            mocks::{
-                mock_base_node_client,
-                mock_events_publisher,
-                mock_payload_processor,
-                mock_signing_service,
-                mock_static_payload_provider,
-                MockCommitteeManager,
-                MockEventsPublisher,
-            },
+            mocks::{mock_events_publisher, MockCommitteeManager, MockEventsPublisher},
         },
     };
 
     fn start_replica(
-        inbound: MockInboundConnectionService<&'static str, &'static str>,
-        outbound: MockOutboundService<&'static str, &'static str>,
-        committee_manager: MockCommitteeManager,
-        node_id: &'static str,
-        shutdown_signal: ShutdownSignal,
-        events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
+        _inbound: MockInboundConnectionService<&'static str, &'static str>,
+        _outbound: MockOutboundService<&'static str, &'static str>,
+        _committee_manager: MockCommitteeManager,
+        _node_id: &'static str,
+        _shutdown_signal: ShutdownSignal,
+        _events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
-        let mut replica_a = ConsensusWorker::new(
-            inbound,
-            outbound,
-            committee_manager,
-            node_id,
-            mock_static_payload_provider("Hello"),
-            events_publisher,
-            mock_signing_service(),
-            mock_payload_processor(),
-            AssetDefinition::default(),
-            mock_base_node_client(),
-            Duration::from_secs(5),
-        );
-        tokio::spawn(async move {
-            let _res = replica_a.run(shutdown_signal, Some(2)).await;
-        })
+        todo!()
+        // let mut replica_a = ConsensusWorker::new(inbound, outbound, committee_manager, node_id,
+        // mock_static_payload_provider("Hello"), events_publisher, mock_signing_service(), mock_payload_processor(),
+        // AssetDefinition::default(), mock_base_node_client(), Duration::from_secs(5),                         
+        // , ); tokio::spawn(async move {
+        //     let _res = replica_a.run(shutdown_signal, Some(2)).await;
+        // })
     }
 
     #[tokio::test]

@@ -56,6 +56,7 @@ use tari_core::{
     txn_schema,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::Hashable;
 use tempfile::{tempdir, TempDir};
 
 use crate::helpers::{

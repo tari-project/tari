@@ -352,7 +352,7 @@ impl DanNode {
                 .chain(self.config.force_sync_peers.clone())
                 .collect(),
             dns_seeds: self.config.dns_seeds.clone(),
-            dns_seeds_name_server: self.config.dns_seeds_name_server,
+            dns_seeds_name_server: self.config.dns_seeds_name_server.clone(),
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
             auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
         }

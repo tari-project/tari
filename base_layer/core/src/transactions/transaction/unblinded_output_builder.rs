@@ -125,6 +125,7 @@ impl UnblindedOutputBuilder {
             metadata_signature: self
                 .metadata_signature
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
+            script_lock_height: 0,
         };
         Ok(ub)
     }

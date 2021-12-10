@@ -237,7 +237,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         .and_then(|c| c.grpc_address.as_ref())
     {
         let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(grpc, *grpc_address));
+        handle.spawn(run_grpc(grpc, grpc_address.clone()));
     }
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());

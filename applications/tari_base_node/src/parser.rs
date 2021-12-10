@@ -42,6 +42,11 @@ use tari_app_utilities::utilities::{
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
+use tari_utilities::{
+    hex,
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tokio::sync::Mutex;
 
 use super::LOG_TARGET;

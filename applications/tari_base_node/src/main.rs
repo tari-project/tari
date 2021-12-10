@@ -255,14 +255,13 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     })?;
 
     if let Some(ref base_node_config) = node_config.base_node_config {
-        if let Some(address) = base_node_config.grpc_address {
+        if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
-                .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
             task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
-        }
+    }
 
     // Run, node, run!
     let command_handler = Arc::new(Mutex::new(CommandHandler::new(runtime::Handle::current(), &ctx)));

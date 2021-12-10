@@ -31,18 +31,15 @@ use std::{
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Challenge, ComSignature, Commitment, CommitmentFactory, HashDigest, PublicKey};
-use tari_crypto::script::ScriptContext;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    script::{ExecutionStack, ScriptContext, StackItem, TariScript},
+    tari_utilities::{hex::Hex, ByteArray, Hashable},
+};
 
-use crate::{
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        script::{ExecutionStack, StackItem, TariScript},
-        tari_utilities::{hex::Hex, ByteArray, Hashable},
-    },
-    transactions::{
-        transaction,
-        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
-    },
+use crate::transactions::{
+    transaction,
+    transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
 };
 
 /// A transaction input.

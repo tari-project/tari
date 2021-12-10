@@ -30,8 +30,7 @@ use futures::StreamExt;
 use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer},
+    peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
     PeerConnection,
@@ -47,6 +46,7 @@ use tari_core::{
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::broadcast, time};
 
 use crate::{

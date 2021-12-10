@@ -36,6 +36,7 @@ use tari_comms::{
     utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
 use crate::identity_management::load_from_json;

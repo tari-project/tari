@@ -25,8 +25,19 @@
 
 #![allow(clippy::ptr_arg)]
 
-use std::{fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc, time::Instant};
+use std::{
+    fmt,
+    fmt::Formatter,
+    fs,
+    fs::File,
+    mem,
+    ops::{Deref, Range},
+    path::Path,
+    sync::Arc,
+    time::Instant,
+};
 
+use blake2::Digest;
 use croaring::Bitmap;
 use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
@@ -34,11 +45,12 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature, BLOCK_HASH_LENGTH},
+    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature, BLOCK_HASH_LENGTH},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_utilities::hex::to_hex;
 
 use crate::{
     blocks::{
@@ -416,7 +428,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 21] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 22] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -1142,9 +1154,7 @@ impl LMDBDatabase {
             ..
         } = data;
 
-        let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut kernel_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_kernel_set);
-        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
@@ -1155,6 +1165,21 @@ impl LMDBDatabase {
                 kernel.excess_sig.get_signature().to_hex()
             );
             self.insert_kernel(txn, &block_hash, &kernel, pos as u32)?;
+        }
+
+        let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
+        let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
+        for output in outputs {
+            output_mmr.push(output.hash())?;
+            witness_mmr.push(output.witness_hash())?;
+            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
+            self.insert_output(
+                txn,
+                &block_hash,
+                header.height,
+                &output,
+                (witness_mmr.get_leaf_count()? - 1) as u32,
+            )?;
         }
 
         // unique_id_index expects inputs to be inserted before outputs
@@ -1170,20 +1195,6 @@ impl LMDBDatabase {
             }
             debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
             self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
-        }
-
-        for output in outputs {
-            total_utxo_sum = &total_utxo_sum + &output.commitment;
-            output_mmr.push(output.hash())?;
-            witness_mmr.push(output.witness_hash())?;
-            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
-            self.insert_output(
-                txn,
-                &block_hash,
-                header.height,
-                &output,
-                (witness_mmr.get_leaf_count()? - 1) as u32,
-            )?;
         }
 
         // Merge current deletions with the tip bitmap
@@ -1294,8 +1305,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         block_hash: &BlockHash,
     ) -> Result<(), ChainStorageError> {
-        let inputs =
-            lmdb_delete_keys_starting_with::<TransactionInput>(txn, &self.inputs_db, block_hash.to_hex().as_str())?;
+        let inputs = lmdb_delete_keys_starting_with::<TransactionInput>(txn, &self.inputs_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} input(s)", inputs.len());
         Ok(())
     }
@@ -1394,6 +1404,63 @@ impl LMDBDatabase {
         debug!(target: LOG_TARGET, "Cleaned out {} stale bad blocks", num_deleted);
 
         Ok(())
+    }
+
+    fn fetch_output_in_txn(
+        &self,
+        txn: &ConstTransaction<'_>,
+        output_hash: &HashOutput,
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+        if let Some((index, key)) =
+            lmdb_get::<_, (u32, Vec<u8>)>(txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch output: {} Found ({}, {})",
+                output_hash.to_hex(),
+                index,
+                key.to_hex()
+            );
+            match lmdb_get::<_, TransactionOutputRowData>(txn, &self.utxos_db, &key)? {
+                Some(TransactionOutputRowData {
+                    output: Some(o),
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                    ..
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::NotPruned { output: o },
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                })),
+                Some(TransactionOutputRowData {
+                    output: None,
+                    mmr_position,
+                    mined_height,
+                    hash,
+                    witness_hash,
+                    header_hash,
+                    ..
+                }) => Ok(Some(UtxoMinedInfo {
+                    output: PrunedOutput::Pruned {
+                        output_hash: hash,
+                        witness_hash,
+                    },
+                    mmr_position,
+                    mined_height,
+                    header_hash,
+                })),
+                _ => Ok(None),
+            }
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch output: {} NOT found in index",
+                output_hash.to_hex()
+            );
+            Ok(None)
+        }
     }
 }
 
@@ -1706,11 +1773,10 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        let kernels = lmdb_fetch_keys_starting_with(header_hash.to_hex().as_str(), &txn, &self.kernels_db)?
+        Ok(lmdb_fetch_matching_after(&txn, &self.kernels_db, header_hash)?
             .into_iter()
             .map(|f: TransactionKernelRowData| f.kernel)
-            .collect();
-        Ok(kernels)
+            .collect())
     }
 
     fn fetch_kernel_by_excess(
@@ -1755,29 +1821,25 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let txn = self.read_transaction()?;
 
-        let utxos = lmdb_fetch_keys_starting_with::<TransactionOutputRowData>(
-            header_hash.to_hex().as_str(),
-            &txn,
-            &self.utxos_db,
-        )?
-        .into_iter()
-        .map(|row| {
-            if deleted.map(|b| b.contains(row.mmr_position)).unwrap_or(false) {
-                return PrunedOutput::Pruned {
-                    output_hash: row.hash,
-                    witness_hash: row.witness_hash,
-                };
-            }
-            if let Some(output) = row.output {
-                PrunedOutput::NotPruned { output }
-            } else {
-                PrunedOutput::Pruned {
-                    output_hash: row.hash,
-                    witness_hash: row.witness_hash,
+        let utxos = lmdb_fetch_matching_after::<TransactionOutputRowData>(&txn, &self.utxos_db, header_hash)?
+            .into_iter()
+            .map(|row| {
+                if deleted.map(|b| b.contains(row.mmr_position)).unwrap_or(false) {
+                    return PrunedOutput::Pruned {
+                        output_hash: row.hash,
+                        witness_hash: row.witness_hash,
+                    };
                 }
-            }
-        })
-        .collect();
+                if let Some(output) = row.output {
+                    PrunedOutput::NotPruned { output }
+                } else {
+                    PrunedOutput::Pruned {
+                        output_hash: row.hash,
+                        witness_hash: row.witness_hash,
+                    }
+                }
+            })
+            .collect();
 
         let height =
             self.fetch_height_from_hash(&txn, header_hash)?

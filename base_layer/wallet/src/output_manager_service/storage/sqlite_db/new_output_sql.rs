@@ -27,10 +27,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
-        storage::{
-            models::{DbUnblindedOutput, OutputStatus},
-            sqlite_db::OutputSql,
-        },
+        storage::{models::DbUnblindedOutput, sqlite_db::OutputSql, OutputStatus},
     },
     schema::outputs,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
@@ -53,7 +50,6 @@ pub struct NewOutputSql {
     pub script_private_key: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
-    pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
     pub sender_offset_public_key: Vec<u8>,
@@ -79,7 +75,7 @@ impl NewOutputSql {
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
             status: status as i32,
-            received_in_tx_id: received_in_tx_id.map(|i| i as i64),
+            received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: Some(output.hash),
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
@@ -91,11 +87,7 @@ impl NewOutputSql {
                 .mint_non_fungible
                 .clone()
                 .map(|a| a.asset_public_key.to_vec()),
-            features_mint_asset_owner_commitment: output
-                .unblinded_output
-                .features
-                .mint_non_fungible
-                .map(|a| a.asset_owner_commitment.to_vec()),
+
             features_parent_public_key: output.unblinded_output.features.parent_public_key.map(|a| a.to_vec()),
             features_unique_id: output.unblinded_output.features.unique_id,
             sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
@@ -153,7 +145,6 @@ impl From<OutputSql> for NewOutputSql {
             script_private_key: o.script_private_key,
             metadata: o.metadata,
             features_mint_asset_public_key: o.features_mint_asset_public_key,
-            features_mint_asset_owner_commitment: o.features_mint_asset_owner_commitment,
             features_parent_public_key: o.features_parent_public_key,
             features_unique_id: o.features_unique_id,
             sender_offset_public_key: o.sender_offset_public_key,

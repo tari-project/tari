@@ -32,6 +32,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{

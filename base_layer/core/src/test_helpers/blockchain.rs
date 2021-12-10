@@ -23,7 +23,7 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::Deref,
+    ops::{Deref, Range},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -32,15 +32,16 @@ use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
+use tari_utilities::Hashable;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_weatherwax_genesis_block,
+        genesis_block::get_dibbler_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -85,7 +86,7 @@ use crate::{
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_weatherwax_genesis_block();
+    let genesis = get_dibbler_genesis_block();
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis)

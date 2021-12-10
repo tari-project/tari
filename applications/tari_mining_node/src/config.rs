@@ -36,17 +36,17 @@
 //! All miner options configured under `[mining_node]` section of
 //! Tari's `config.toml`.
 
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::NetworkConfigPath;
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
+use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MinerConfig {
-    pub base_node_grpc_address: String,
-    pub wallet_grpc_address: String,
+    pub base_node_addr: Multiaddr,
+    pub wallet_addr: Multiaddr,
     pub num_mining_threads: usize,
     pub mine_on_tip_only: bool,
     pub proof_of_work_algo: ProofOfWork,
@@ -69,10 +69,9 @@ impl NetworkConfigPath for MinerConfig {
 
 impl Default for MinerConfig {
     fn default() -> Self {
-        todo!("use multiaddress_to_socket");
         Self {
-            base_node_grpc_address: "http://127.0.0.1:18142".to_string(),
-            wallet_grpc_address: "http://127.0.0.1:18143".to_string(),
+            base_node_addr: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18142").unwrap(),
+            wallet_addr: Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,

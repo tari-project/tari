@@ -54,7 +54,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -244,7 +244,7 @@ fn rewind_to_height() {
 #[ignore = "To be completed with pruned mode"]
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1213,7 +1213,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         MockValidator::new(true),
     );
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let rules = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let mut config = BlockchainDatabaseConfig::default();
     let block_hash: BlockHash;
@@ -1452,7 +1452,7 @@ fn orphan_cleanup_on_block_add() {
 #[ignore = "To be completed with pruned mode"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1810,7 +1810,7 @@ fn fails_validation() {
 #[test]
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_weatherwax_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),

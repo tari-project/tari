@@ -31,7 +31,7 @@ use chrono::{NaiveDateTime, Utc};
 use digest::Digest;
 use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
-use rand::{rngs::OsRng, RngCore};
+use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -56,7 +56,7 @@ use tari_core::{
 };
 use tari_crypto::{
     inputs,
-    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait},
+    keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
     script,
     tari_utilities::ByteArray,
 };
@@ -98,6 +98,7 @@ use crate::{
     types::HashDigest,
     util::watch::Watch,
     utxo_scanner_service::RECOVERY_KEY,
+    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -832,10 +833,10 @@ where
         fee_per_gram: MicroTari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+            JoinHandle<Result<TxId, TransactionServiceProtocolError>>,
         >,
     ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
-        let tx_id = OsRng.next_u64();
+        let tx_id = TxId::new_random();
         // this can be anything, so lets generate a random private key
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
@@ -849,7 +850,7 @@ where
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
-            .prepare_transaction_to_send(tx_id, amount, fee_per_gram, None, message.clone(), script.clone())
+            .prepare_transaction_to_send(tx_id, amount, None, fee_per_gram, None, message.clone(), script.clone())
             .await?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,

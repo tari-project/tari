@@ -26,7 +26,7 @@ use std::{
     collections::VecDeque,
     convert::TryFrom,
     mem,
-    ops::{Bound, RangeBounds},
+    ops::{Bound, Range, RangeBounds},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
@@ -35,10 +35,11 @@ use croaring::Bitmap;
 use log::*;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{

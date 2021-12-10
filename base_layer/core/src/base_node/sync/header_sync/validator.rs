@@ -25,11 +25,6 @@ use log::*;
 use tari_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
-use std::cmp::Ordering;
-
-use log::*;
-use tari_common_types::types::HashOutput;
-
 use crate::{
     base_node::sync::BlockHeaderSyncError,
     blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},

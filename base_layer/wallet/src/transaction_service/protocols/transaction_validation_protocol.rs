@@ -54,6 +54,7 @@ use crate::{
             sqlite_db::UnconfirmedTransactionInfo,
         },
     },
+    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_protocol";
@@ -211,7 +212,7 @@ where
             "Checking last mined transactions to see if the base node has re-orged (Operation ID: {})",
             self.operation_id
         );
-        let op_id = self.operation_id.as_u64();
+        let op_id = self.operation_id;
         while let Some(last_mined_transaction) = self.db.fetch_last_mined_transaction().await.for_protocol(op_id)? {
             let mined_height = last_mined_transaction
                 .mined_height
@@ -255,9 +256,7 @@ where
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
                     .await?;
-                self.publish_event(TransactionEvent::TransactionValidationStateChanged(
-                    last_mined_transaction.tx_id,
-                ));
+                self.publish_event(TransactionEvent::TransactionValidationStateChanged(op_id));
             } else {
                 info!(
                     target: LOG_TARGET,

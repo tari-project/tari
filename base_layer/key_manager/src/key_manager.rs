@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},

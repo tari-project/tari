@@ -65,7 +65,6 @@ use tari_wallet::{
             models::{CompletedTransaction, InboundTransaction},
         },
     },
-    OperationId,
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
@@ -260,7 +259,7 @@ where TBackend: TransactionBackend + 'static
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationStateChanged(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key);
+                                    self.transaction_validation_complete_event(request_key.as_u64());
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |

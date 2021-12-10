@@ -29,8 +29,6 @@ use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-use crate::tari_rpc as grpc;
-
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {
         Self {

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use aes_gcm::Aes256Gcm;
 use diesel::{prelude::*, sql_query, SqliteConnection};
@@ -29,27 +29,33 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        CryptoFactories,
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        UnblindedOutput,
     },
+    CryptoFactories,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 use crate::{
     output_manager_service::{
         error::OutputManagerStorageError,
         service::{Balance, UTXOSelectionStrategy},
         storage::{
-            models::{DbUnblindedOutput, OutputStatus},
-            sqlite_db::{NewOutputSql, UpdateOutput, UpdateOutputSql},
+            models::DbUnblindedOutput,
+            sqlite_db::{UpdateOutput, UpdateOutputSql},
+            OutputStatus,
         },
     },
     schema::outputs,
@@ -87,15 +93,14 @@ pub struct OutputSql {
     pub received_in_tx_id: Option<i64>,
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
-    pub script_lock_height: i64,
-    pub spend_priority: i32,
     pub metadata: Option<Vec<u8>>,
     pub features_mint_asset_public_key: Option<Vec<u8>>,
-    pub features_mint_asset_owner_commitment: Option<Vec<u8>>,
     pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
     pub features_sidechain_committee: Option<String>,
+    pub script_lock_height: i64,
+    pub spending_priority: i32,
     pub features_asset_json: Option<String>,
 }
 
@@ -364,8 +369,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(tx_id.as_u64() as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
             )
             .filter(outputs::status.eq(status as i32))
             .load(conn)?)
@@ -379,8 +384,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(Some(tx_id as i64))
-                    .or(outputs::spent_in_tx_id.eq(Some(tx_id as i64))),
+                    .eq(Some(tx_id.as_u64() as i64))
+                    .or(outputs::spent_in_tx_id.eq(Some(tx_id.as_u64() as i64))),
             )
             .filter(
                 outputs::status
@@ -484,10 +489,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         let mint_non_fungible = match o.features_mint_asset_public_key {
             Some(ref public_key) => Some(MintNonFungibleFeatures {
                 asset_public_key: PublicKey::from_bytes(public_key)?,
-                asset_owner_commitment: o
-                    .features_mint_asset_owner_commitment
-                    .map(|ao| Commitment::from_bytes(&ao))
-                    .unwrap()?,
+                asset_owner_commitment: o.commitment.clone().map(|ao| Commitment::from_bytes(&ao)).unwrap()?,
             }),
             None => None,
         };
@@ -527,9 +529,11 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
-           features,
+            features,
             TariScript::from_bytes(o.script.as_slice())?,
             ExecutionStack::from_bytes(o.input_data.as_slice())?,
             PrivateKey::from_vec(&o.script_private_key).map_err(|_| {
@@ -537,14 +541,18 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
             PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
-                OutputManagerStorageError::ConversionError
+                OutputManagerStorageError::ConversionError {
+                    reason: "PrivateKey could not be converted from bytes".to_string(),
+                }
             })?,
             ComSignature::new(
                 Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
@@ -552,21 +560,27 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
                 })?,
                 PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
                     );
-                    OutputManagerStorageError::ConversionError
+                    OutputManagerStorageError::ConversionError {
+                        reason: "PrivateKey could not be converted from bytes".to_string(),
+                    }
                 })?,
             ),
             o.script_lock_height as u64,
@@ -588,17 +602,18 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
-        let spend_priority = (o.spend_priority as u32).into();
+        let spending_priority = (o.spending_priority as u32).into();
         Ok(Self {
             commitment,
             unblinded_output,
             hash,
+            status: o.status.try_into()?,
             mined_height: o.mined_height.map(|mh| mh as u64),
             mined_in_block: o.mined_in_block,
             mined_mmr_position: o.mined_mmr_position.map(|mp| mp as u64),
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
-            spend_priority,
+            spending_priority,
         })
     }
 }

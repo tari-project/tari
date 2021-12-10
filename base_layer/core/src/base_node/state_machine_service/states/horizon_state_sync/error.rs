@@ -37,13 +37,6 @@ use crate::{
     validation::ValidationError,
 };
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
-    chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction::TransactionError,
-    validation::ValidationError,
-};
-
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
     #[error("Peer sent an invalid response: {0}")]

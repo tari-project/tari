@@ -7,15 +7,6 @@ use tari_core::transactions::CryptoFactories;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
-use std::{sync::Arc, time::Duration};
-
-use futures::future;
-use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity};
-use tari_core::transactions::CryptoFactories;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::sync::broadcast;
-
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},

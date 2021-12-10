@@ -1048,7 +1048,7 @@ fn test_htlc_send_and_claim() {
             .unwrap();
 
         bob_ts
-            .submit_transaction(tx_id_htlc, tx, htlc_fee, htlc_amount, "".to_string())
+            .submit_transaction(tx_id_htlc, tx, htlc_amount, "".to_string())
             .await
             .unwrap();
         assert_eq!(

@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     ui::{
-        components::{balance::Balance, Component, KeyHandled},
+        components::{balance::Balance, styles, Component, KeyHandled},
         state::{AppState, UiTransactionSendStatus},
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,

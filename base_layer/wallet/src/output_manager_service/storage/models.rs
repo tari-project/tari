@@ -29,8 +29,6 @@ use tari_utilities::hash::Hashable;
 
 use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 
-use crate::output_manager_service::error::OutputManagerStorageError;
-
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
@@ -42,7 +40,7 @@ pub struct DbUnblindedOutput {
     pub mined_mmr_position: Option<u64>,
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
-    pub spend_priority: SpendingPriority,
+    pub spending_priority: SpendingPriority,
 }
 
 impl DbUnblindedOutput {
@@ -62,7 +60,7 @@ impl DbUnblindedOutput {
             mined_mmr_position: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
-            spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
         })
     }
 
@@ -70,7 +68,7 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
         rewind_data: &RewindData,
-        spend_priority: Option<SpendingPriority>,
+        spending_priority: Option<SpendingPriority>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
         Ok(DbUnblindedOutput {
@@ -83,7 +81,7 @@ impl DbUnblindedOutput {
             mined_mmr_position: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
-            spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),
         })
     }
 }

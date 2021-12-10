@@ -23,19 +23,20 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+pub use asset_output_features::AssetOutputFeatures;
 use blake2::Digest;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
+pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
+pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
 use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
-pub use mint_non_fungible_features::MintNonFungibleFeatures;
-pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -330,7 +331,9 @@ mod test {
         let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx
+            .validate_internal_consistency(false, &factories, None, None, None)
+            .is_ok());
     }
 
     #[test]
@@ -343,7 +346,9 @@ mod test {
         assert_eq!(tx.body.kernels().len(), 1);
 
         let factories = CryptoFactories::default();
-        assert!(tx.validate_internal_consistency(false, &factories, None).is_ok());
+        assert!(tx
+            .validate_internal_consistency(false, &factories, None, None, None)
+            .is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
         let (tx2, _outputs, _) = test_helpers::spend_utxos(schema);
@@ -520,7 +525,7 @@ mod test {
             let data = [0x00u8, 0x00, 0x02];
             let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
             // Assert the flag data is preserved
-            assert_eq!(features.flags.bits & 0x02, 0x02);
+            assert_eq!(features.flags.bits() & 0x02, 0x02);
         }
 
         #[test]

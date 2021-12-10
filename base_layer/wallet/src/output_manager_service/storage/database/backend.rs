@@ -7,7 +7,7 @@ use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
-    service::Balance,
+    service::{Balance, UTXOSelectionStrategy},
     storage::{
         database::{DbKey, DbValue, WriteOperation},
         models::DbUnblindedOutput,
@@ -21,8 +21,6 @@ use crate::output_manager_service::{
 pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
-    /// Fetch outputs that can be spent
-    fn fetch_spendable_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
     fn fetch_with_features(&self, features: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Fetch outputs with specific features for a given asset public key
@@ -107,4 +105,12 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
+    /// Import unvalidated output
+    fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn fetch_unspent_outputs_for_spending(
+        &self,
+        strategy: UTXOSelectionStrategy,
+        amount: u64,
+        current_tip_height: Option<u64>,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 }

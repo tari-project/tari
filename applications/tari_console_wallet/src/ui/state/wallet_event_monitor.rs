@@ -33,7 +33,10 @@ use tari_wallet::{
 };
 use tokio::sync::{broadcast, RwLock};
 
-use crate::{notifier::Notifier, ui::state::AppStateInner};
+use crate::{
+    notifier::Notifier,
+    ui::state::{AppStateInner, EventListItem},
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 

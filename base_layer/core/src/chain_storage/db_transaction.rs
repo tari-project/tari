@@ -39,12 +39,6 @@ use crate::{
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
-use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{error::ChainStorageError, MmrTree},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
-};
-
 #[derive(Debug)]
 pub struct DbTransaction {
     operations: Vec<WriteOperation>,

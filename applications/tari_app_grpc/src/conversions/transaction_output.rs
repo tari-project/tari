@@ -29,8 +29,6 @@ use tari_utilities::{ByteArray, Hashable};
 
 use crate::tari_rpc as grpc;
 
-use crate::tari_rpc as grpc;
-
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
 

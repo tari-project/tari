@@ -23,7 +23,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{Commitment, PublicKey};
-
 use tari_core::transactions::transaction::{
     AssetOutputFeatures,
     MintNonFungibleFeatures,
@@ -33,8 +32,6 @@ use tari_core::transactions::transaction::{
     TemplateParameter,
 };
 use tari_crypto::tari_utilities::ByteArray;
-
-use crate::tari_rpc as grpc;
 
 use crate::tari_rpc as grpc;
 

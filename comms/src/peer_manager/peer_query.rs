@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::cmp::{min, Ordering};
+
 use tari_storage::{IterationResult, KeyValueStore};
 
 use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};

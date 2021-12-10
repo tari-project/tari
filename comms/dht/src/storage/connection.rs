@@ -31,8 +31,6 @@ use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
 
 use crate::storage::error::StorageError;
 
-use crate::storage::error::StorageError;
-
 const LOG_TARGET: &str = "comms::dht::storage::connection";
 const SQLITE_POOL_SIZE: usize = 16;
 

@@ -25,8 +25,6 @@ use tari_utilities::ByteArray;
 
 use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
 
-use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
-
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {
         let public_key = peer.public_key.to_vec();

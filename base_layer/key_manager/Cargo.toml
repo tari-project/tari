@@ -11,7 +11,7 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-tari_common_types = { version = "^0.13", path = "../../base_layer/common_types" }
+tari_common_types = { version = "^0.22", path = "../../base_layer/common_types" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 
 arrayvec = "0.7.1"

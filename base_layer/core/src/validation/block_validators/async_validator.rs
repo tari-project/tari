@@ -26,6 +26,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
+use tari_utilities::Hashable;
 use tokio::task;
 
 use super::LOG_TARGET;

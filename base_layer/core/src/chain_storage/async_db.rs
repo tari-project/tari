@@ -33,18 +33,7 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::epoch_time::EpochTime;
-
-use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
-
-use croaring::Bitmap;
-use log::*;
-use rand::{rngs::OsRng, RngCore};
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
-};
 
 use crate::{
     blocks::{

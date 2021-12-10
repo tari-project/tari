@@ -27,8 +27,6 @@ use tari_utilities::ByteArray;
 
 use crate::errors::{err_empty, MinerError};
 
-use crate::errors::{err_empty, MinerError};
-
 pub type Difficulty = u64;
 
 pub struct BlockHeaderSha3 {

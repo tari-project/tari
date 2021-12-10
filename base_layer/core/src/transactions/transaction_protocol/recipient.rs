@@ -23,7 +23,10 @@
 use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    transaction::TxId,
+    types::{MessageHash, PrivateKey, PublicKey, Signature},
+};
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,

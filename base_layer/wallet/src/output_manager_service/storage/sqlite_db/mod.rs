@@ -34,9 +34,9 @@ pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PrivateKey},
+    types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::transaction::TransactionOutput;
+use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{
@@ -53,10 +53,11 @@ use crate::{
         service::{Balance, UTXOSelectionStrategy},
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+            OutputStatus,
         },
     },
-    schema::{key_manager_states, known_one_sided_payment_scripts, outputs},
+    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, outputs::columns},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::{
         diesel_ext::ExpectedRowsExtension,
@@ -317,7 +318,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
         for o in outputs.iter_mut() {
             self.decrypt_if_necessary(o)?;
@@ -333,7 +334,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         &self,
         public_key: PublicKey,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
         let mut o: OutputSql = outputs::table
             .filter(columns::features_unique_id.eq(public_key.to_vec()))
             .filter(columns::features_parent_public_key.is_null())
@@ -1266,26 +1267,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 }
 
-impl TryFrom<i32> for OutputStatus {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(OutputStatus::Unspent),
-            1 => Ok(OutputStatus::Spent),
-            2 => Ok(OutputStatus::EncumberedToBeReceived),
-            3 => Ok(OutputStatus::EncumberedToBeSpent),
-            4 => Ok(OutputStatus::Invalid),
-            5 => Ok(OutputStatus::CancelledInbound),
-            6 => Ok(OutputStatus::UnspentMinedUnconfirmed),
-            7 => Ok(OutputStatus::SpentMinedUnconfirmed),
-            8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
-            9 => Ok(OutputStatus::ShortTermEncumberedToBeReceived),
-            _ => Err(OutputManagerStorageError::ConversionError),
-        }
-    }
-}
-
 /// These are the fields that can be updated for an Output
 #[derive(Default)]
 pub struct UpdateOutput {
@@ -1866,7 +1847,7 @@ mod test {
 
         let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
-        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None);
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
@@ -1984,12 +1965,12 @@ mod test {
 
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
-            let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None);
+            let output = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
             output.commit(&conn).unwrap();
 
             let (_, uo2) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories, None).unwrap();
-            let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None);
+            let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None, None).unwrap();
             output2.commit(&conn).unwrap();
         }
 

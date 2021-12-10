@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
@@ -47,13 +47,14 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::{BlockHash, Signature};
+use tari_common_types::types::{BlockHash, PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
 };
-use tari_crypto::tari_utilities::Hashable;
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
@@ -201,7 +202,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     output.hash().to_hex()
                 );
                 SendShaAtomicSwapResponse {
-                    transaction_id: tx_id,
+                    transaction_id: tx_id.as_u64(),
                     pre_image: pre_image.to_hex(),
                     output_hash: output.hash().to_hex(),
                     is_success: true,
@@ -242,12 +243,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .create_claim_sha_atomic_swap_transaction(output, pre_image, message.fee_per_gram.into())
             .await
         {
-            Ok((tx_id, fee, amount, tx)) => {
+            Ok((tx_id, _fee, amount, tx)) => {
                 match transaction_service
                     .submit_transaction(
                         tx_id,
                         tx,
-                        fee,
                         amount,
                         "Claiming HTLC transaction with pre-image".to_string(),
                     )
@@ -255,7 +255,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 {
                     Ok(()) => TransferResult {
                         address: Default::default(),
-                        transaction_id: tx_id,
+                        transaction_id: tx_id.as_u64(),
                         is_success: true,
                         failure_message: Default::default(),
                     },
@@ -298,14 +298,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .create_htlc_refund_transaction(output, message.fee_per_gram.into())
             .await
         {
-            Ok((tx_id, fee, amount, tx)) => {
+            Ok((tx_id, _fee, amount, tx)) => {
                 match transaction_service
-                    .submit_transaction(tx_id, tx, fee, amount, "Creating HTLC refund transaction".to_string())
+                    .submit_transaction(tx_id, tx, amount, "Creating HTLC refund transaction".to_string())
                     .await
                 {
                     Ok(()) => TransferResult {
                         address: Default::default(),
-                        transaction_id: tx_id,
+                        transaction_id: tx_id.as_u64(),
                         is_success: true,
                         failure_message: Default::default(),
                     },

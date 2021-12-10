@@ -30,10 +30,18 @@ use std::{
 
 use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction::OutputFlags,
+    transactions::transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        TemplateParameter,
+    },
 };
 
 /// Options for UTXO's

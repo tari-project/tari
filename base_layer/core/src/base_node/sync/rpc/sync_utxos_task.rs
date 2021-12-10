@@ -23,20 +23,12 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-
-use log::*;
 use tari_comms::{protocol::rpc::RpcStatus, utils};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
 
 use crate::{
     blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
-    proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},
-};
-
-use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{SyncUtxo, SyncUtxosRequest, SyncUtxosResponse},

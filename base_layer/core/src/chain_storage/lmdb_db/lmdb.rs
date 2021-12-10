@@ -39,7 +39,14 @@ use log::*;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_crypto::tari_utilities::hex::to_hex;
 
-use crate::chain_storage::{error::ChainStorageError, OrNotFound};
+use crate::chain_storage::{
+    error::ChainStorageError,
+    lmdb_db::{
+        helpers::{deserialize, serialize},
+        key_prefix_cursor::KeyPrefixCursor,
+    },
+    OrNotFound,
+};
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 

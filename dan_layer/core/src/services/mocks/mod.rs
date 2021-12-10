@@ -27,11 +27,23 @@ use std::{
 };
 
 use async_trait::async_trait;
+use tari_core::transactions::transaction::TemplateParameter;
 
 use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{BaseLayerMetadata, BaseLayerOutput, Committee, Event, Instruction, Payload, Signature},
+    models::{
+        AssetDefinition,
+        BaseLayerMetadata,
+        BaseLayerOutput,
+        Committee,
+        Event,
+        Instruction,
+        Payload,
+        Signature,
+        StateRoot,
+        TreeNodeHash,
+    },
     services::{
         base_node_client::BaseNodeClient,
         infrastructure_services::NodeAddressable,
@@ -41,6 +53,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
+    storage::state::StateDbUnitOfWork,
     types::PublicKey,
 };
 
@@ -59,17 +72,17 @@ impl MempoolService for MockMempoolService {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        instruction_hash: &[u8],
-        block_hash: Vec<u8>,
+        _instruction_hash: &[u8],
+        _block_hash: Vec<u8>,
     ) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn remove_all_in_block(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn release_reservations(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
@@ -213,7 +226,25 @@ pub struct MockPayloadProcessor {}
 
 #[async_trait]
 impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
-    async fn process_payload(&mut self, _payload: &TPayload) -> Result<(), DigitalAssetError> {
-        Ok(())
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _template_parameter: &TemplateParameter,
+        _asset_definition: &AssetDefinition,
+        _state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
+        &mut self,
+        _node_hash: TreeNodeHash,
+        _payload: &TPayload,
+        _unit_of_work: TUnitOfWork,
+    ) -> Result<StateRoot, DigitalAssetError> {
+        todo!()
+    }
+
+    async fn remove_payload_for_node(&mut self, _node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
+        todo!()
     }
 }

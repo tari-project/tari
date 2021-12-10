@@ -30,12 +30,6 @@ use rand::{distributions::Alphanumeric, Rng};
 use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
-use std::{iter, path::Path, sync::Arc};
-
-use rand::{distributions::Alphanumeric, Rng};
-use tari_common::configuration::Network;
-use tari_comms::PeerManager;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::Hashable;
 
 use crate::{

@@ -35,10 +35,6 @@ use tari_crypto::{
     },
 };
 
-mod bullet_rangeproofs;
-
-pub use bullet_rangeproofs::BulletRangeProof;
-
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 

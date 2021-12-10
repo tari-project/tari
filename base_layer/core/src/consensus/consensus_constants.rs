@@ -455,6 +455,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 

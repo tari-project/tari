@@ -39,7 +39,15 @@ use multiaddr::{Error, Multiaddr, Protocol};
 use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{
-    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, Network},
+    configuration::{
+        bootstrap::ApplicationType,
+        name_server::DnsNameServer,
+        BaseNodeConfig,
+        MergeMiningConfig,
+        Network,
+        ValidatorNodeConfig,
+        WalletConfig,
+    },
     ConfigurationError,
 };
 
@@ -76,10 +84,6 @@ pub struct GlobalConfig {
     pub core_threads: Option<usize>,
     pub base_node_identity_file: PathBuf,
     pub public_address: Option<Multiaddr>,
-    pub grpc_enabled: bool,
-    pub grpc_base_node_address: Multiaddr,
-    pub grpc_console_wallet_address: Multiaddr,
-    pub public_address: Multiaddr,
     pub base_node_config: Option<BaseNodeConfig>,
     pub wallet_config: Option<WalletConfig>,
     pub peer_seeds: Vec<String>,
@@ -122,11 +126,6 @@ pub struct GlobalConfig {
     pub wallet_base_node_service_request_max_age: u64,
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
-    pub monerod_url: Vec<String>,
-    pub monerod_username: String,
-    pub monerod_password: String,
-    pub monerod_use_auth: bool,
-    pub proxy_host_address: SocketAddr,
     pub transcoder_host_address: SocketAddr,
     pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
@@ -189,7 +188,7 @@ fn convert_node_config(
     let db_type = cfg
         .get_str(&key)
         .map(|s| s.to_lowercase())
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .unwrap_or_else(|_| "lmdb".to_string());
 
     let db_type = match db_type.as_str() {
         "memory" => Ok(DatabaseType::Memory),
@@ -263,24 +262,16 @@ fn convert_node_config(
     let db_config = LMDBConfig::new_from_mb(init_size_mb, grow_size_mb, resize_threshold_mb);
 
     let key = config_string("base_node", net_str, "orphan_storage_capacity");
-    let orphan_storage_capacity = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    let orphan_storage_capacity = cfg.get_int(&key).unwrap_or(720) as usize;
 
     let key = config_string("base_node", net_str, "orphan_db_clean_out_threshold");
-    let orphan_db_clean_out_threshold = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    let orphan_db_clean_out_threshold = cfg.get_int(&key).unwrap_or(0) as usize;
 
     let key = config_string("base_node", net_str, "pruning_horizon");
-    let pruning_horizon = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
+    let pruning_horizon = cfg.get_int(&key).unwrap_or(0) as u64;
 
     let key = config_string("base_node", net_str, "pruned_mode_cleanup_interval");
-    let pruned_mode_cleanup_interval = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
+    let pruned_mode_cleanup_interval = cfg.get_int(&key).unwrap_or(50) as u64;
 
     // Thread counts
     let key = config_string("base_node", net_str, "core_threads");
@@ -340,10 +331,10 @@ fn convert_node_config(
 
         bn_config.grpc_address = if grpc_enabled {
             let key = "base_node.grpc_address";
-            let addr = cfg.get_str(key).unwrap_or_else(|_| "127.0.0.1:18142".to_string());
+            let addr = cfg.get_str(key).unwrap_or_else(|_| "/tcp/127.0.0.1/18142".to_string());
 
             let grpc_address = addr
-                .parse::<SocketAddr>()
+                .parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
             Some(grpc_address)
@@ -363,10 +354,10 @@ fn convert_node_config(
 
         config.grpc_address = if grpc_enabled {
             let key = "wallet.grpc_address";
-            let addr = cfg.get_str(key).unwrap_or_else(|_| "127.0.0.1:18143".to_string());
+            let addr = cfg.get_str(key).unwrap_or_else(|_| "/tcp/127.0.0.1/18143".to_string());
 
             let grpc_address = addr
-                .parse::<SocketAddr>()
+                .parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
 
             Some(grpc_address)
@@ -389,18 +380,16 @@ fn convert_node_config(
     // TODO: dns resolver presets e.g. "cloudflare", "quad9", "custom" (maybe just in toml) and
     //       add support for multiple addresses
     let key = config_string("common", net_str, "dns_seeds_name_server");
-    let dns_seeds_name_server = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        .and_then(|s| {
-            s.parse::<DnsNameServer>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
-        })?;
+    let dns_seeds_name_server = optional(cfg.get_str(&key))
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or_else(|| "1.1.1.1:853/cloudfare-dns.com".to_string())
+        .parse::<DnsNameServer>()
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = config_string("common", net_str, "dns_seeds_use_dnssec");
-    let dns_seeds_use_dnssec = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let dns_seeds_use_dnssec = optional(cfg.get_bool(&key))
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or(true);
 
     let key = config_string("common", net_str, "dns_seeds");
     let dns_seeds = match cfg.get_array(&key) {
@@ -424,9 +413,9 @@ fn convert_node_config(
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
     let key = config_string("base_node", net_str, "flood_ban_max_msg_count");
-    let flood_ban_max_msg_count = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    let flood_ban_max_msg_count = optional(cfg.get_int(&key))
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or(1000) as usize;
 
     // block sync
     let key = config_string("base_node", net_str, "force_sync_peers");
@@ -448,7 +437,7 @@ fn convert_node_config(
 
     // blocks_behind_before_considered_lagging when a node should switch over from listening to lagging
     let key = config_string("base_node", net_str, "blocks_behind_before_considered_lagging");
-    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(0) as u64;
+    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(2) as u64;
 
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
@@ -641,23 +630,23 @@ fn convert_node_config(
             let key = "merge_mining_proxy.monerod_url";
             let mut monerod_url: Vec<String> = cfg
                 .get_array(key)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|v| {
-            v.into_str()
-                .map_err(|err| ConfigurationError::new(key, &err.to_string()))
-        })
-        .collect::<Result<_, _>>()?;
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| {
+                    v.into_str()
+                        .map_err(|err| ConfigurationError::new(key, &err.to_string()))
+                })
+                .collect::<Result<_, _>>()?;
 
-    // default to stagenet on empty
-    if monerod_url.is_empty() {
-        monerod_url = vec![
-            "http://stagenet.xmr-tw.org:38081".to_string(),
-            "http://singapore.node.xmr.pm:38081".to_string(),
-            "http://xmr-lux.boldsuck.org:38081".to_string(),
-            "http://monero-stagenet.exan.tech:38081".to_string(),
-        ];
-    }
+            // default to stagenet on empty
+            if monerod_url.is_empty() {
+                monerod_url = vec![
+                    "http://stagenet.xmr-tw.org:38081".to_string(),
+                    "http://singapore.node.xmr.pm:38081".to_string(),
+                    "http://xmr-lux.boldsuck.org:38081".to_string(),
+                    "http://monero-stagenet.exan.tech:38081".to_string(),
+                ];
+            }
 
             let key = "merge_mining_proxy.monerod_use_auth";
             let monerod_use_auth = cfg
@@ -688,7 +677,7 @@ fn convert_node_config(
                 .get_str(key)
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 .and_then(|addr| {
-                    addr.parse::<SocketAddr>()
+                    addr.parse::<Multiaddr>()
                         .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 })?;
 
@@ -697,7 +686,7 @@ fn convert_node_config(
                 .get_str(key)
                 .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 .and_then(|addr| {
-                    addr.parse::<SocketAddr>()
+                    addr.parse::<Multiaddr>()
                         .map_err(|e| ConfigurationError::new(key, &e.to_string()))
                 })?;
 
@@ -751,19 +740,17 @@ fn convert_node_config(
     });
 
     let key = config_string("common", net_str, "auto_update.dns_hosts");
-    let autoupdate_dns_hosts = cfg
-        .get_array(&key)
-        .and_then(|arr| arr.into_iter().map(|s| s.into_str()).collect::<Result<Vec<_>, _>>())
-        .or_else(|_| {
-            cfg.get_str(&key)
-                .map(|s| s.split(',').map(ToString::to_string).collect())
-        })?;
+    let autoupdate_dns_hosts = optional(cfg.get_array(&key))?
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| s.into_str())
+        .collect::<Result<Vec<_>, _>>()?;
 
     let key = config_string("common", net_str, "auto_update.hashes_url");
-    let autoupdate_hashes_url = cfg.get_str(&key)?;
+    let autoupdate_hashes_url = optional(cfg.get_str(&key))?.unwrap_or_default();
 
     let key = config_string("common", net_str, "auto_update.hashes_sig_url");
-    let autoupdate_hashes_sig_url = cfg.get_str(&key)?;
+    let autoupdate_hashes_sig_url = optional(cfg.get_str(&key))?.unwrap_or_default();
 
     let key = "mining_node.mining_pool_address";
     let mining_pool_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());

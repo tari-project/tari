@@ -44,6 +44,7 @@ use tari_common::{
     ConfigBootstrap,
     DefaultConfigLoader,
 };
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::blocks::BlockHeader;
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
 use tokio::{runtime::Runtime, time::sleep};
@@ -91,16 +92,6 @@ async fn main_inner() -> Result<(), ExitCodes> {
     config.mining_worker_name = global.mining_worker_name.clone();
     config.mining_wallet_address = global.mining_wallet_address.clone();
     config.mining_pool_address = global.mining_pool_address.clone();
-    if let Some(base_node_config) = global.base_node_config {
-        if let Some(grpc_address) = base_node_config.grpc_address {
-            config.base_node_grpc_address = format!("http://{}", grpc_address);
-        }
-    }
-    if let Some(wallet_config) = global.wallet_config {
-        if let Some(grpc_address) = wallet_config.grpc_address {
-            config.wallet_grpc_address = format!("http://{}", grpc_address);
-        }
-    }
     debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
 
@@ -175,13 +166,13 @@ async fn main_inner() -> Result<(), ExitCodes> {
 
         let mut blocks_found: u64 = 0;
         loop {
-            debug!(target: LOG_TARGET_FILE, "Starting new mining cycle");
+            debug!(target: LOG_TARGET, "Starting new mining cycle");
             match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &bootstrap).await {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
                     error!(target: LOG_TARGET, "Connection error: {:?}", err);
                     loop {
-                        debug!(target: LOG_TARGET_FILE, "Holding for {:?}", config.wait_timeout());
+                        info!(target: LOG_TARGET, "Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
                         match connect(&config).await {
                             Ok((nc, wc)) => {
@@ -197,24 +188,24 @@ async fn main_inner() -> Result<(), ExitCodes> {
                     }
                 },
                 Err(MinerError::MineUntilHeightReached(h)) => {
-                    info!(
+                    warn!(
                         target: LOG_TARGET,
                         "Prescribed blockchain height {} reached. Aborting ...", h
                     );
                     return Ok(());
                 },
                 Err(MinerError::MinerLostBlock(h)) => {
-                    info!(
+                    warn!(
                         target: LOG_TARGET,
                         "Height {} already mined by other node. Restarting ...", h
                     );
                 },
                 Err(err) => {
                     error!(target: LOG_TARGET, "Error: {:?}", err);
-                    debug!(target: LOG_TARGET_FILE, "Holding for {:?}", config.wait_timeout());
                     sleep(config.wait_timeout()).await;
                 },
                 Ok(submitted) => {
+                    info!(target: LOG_TARGET, "Found block");
                     if submitted {
                         blocks_found += 1;
                     }
@@ -230,12 +221,12 @@ async fn main_inner() -> Result<(), ExitCodes> {
 }
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
-    let base_node_addr = config.base_node_grpc_address.clone()?;
+    let base_node_addr = multiaddr_to_socketaddr(&config.base_node_addr)?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
-    let node_conn = BaseNodeClient::connect(base_node_addr).await?;
-    let wallet_addr = config.wallet_grpc_address.clone()?;
+    let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
+    let wallet_addr = multiaddr_to_socketaddr(&config.wallet_addr)?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
-    let wallet_conn = WalletClient::connect(wallet_addr).await?;
+    let wallet_conn = WalletClient::connect(format!("http://{}", wallet_addr)).await?;
 
     Ok((node_conn, wallet_conn))
 }
@@ -246,7 +237,7 @@ async fn mining_cycle(
     config: &MinerConfig,
     bootstrap: &ConfigBootstrap,
 ) -> Result<bool, MinerError> {
-    // 1. Receive new block template
+    debug!(target: LOG_TARGET, "Getting new block template");
     let template = node_conn
         .get_new_block_template(config.pow_algo_request())
         .await?
@@ -256,8 +247,11 @@ async fn mining_cycle(
         .clone()
         .ok_or_else(|| err_empty("new_block_template"))?;
 
-    // Validate that template is on tip
     if config.mine_on_tip_only {
+        debug!(
+            target: LOG_TARGET,
+            "Checking if base node is synced, because mine_on_tip_only is true"
+        );
         let height = block_template
             .header
             .as_ref()
@@ -266,7 +260,7 @@ async fn mining_cycle(
         validate_tip(node_conn, height, bootstrap.mine_until_height).await?;
     }
 
-    // 2. Get coinbase from wallet and add it to new block template body
+    debug!(target: LOG_TARGET, "Getting coinbase");
     let request = coinbase_request(&template)?;
     let coinbase = wallet_conn.get_coinbase(request).await?.into_inner();
     let (output, kernel) = extract_outputs_and_kernels(coinbase)?;
@@ -281,12 +275,12 @@ async fn mining_cycle(
         .ok_or_else(|| err_empty("miner_data"))?
         .target_difficulty;
 
-    // 3. Receive new block data
+    debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");
     let block_result = node_conn.get_new_block(block_template).await?.into_inner();
     let block = block_result.block.ok_or_else(|| err_empty("block"))?;
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
 
-    // 4. Initialize miner and start receiving mining statuses in the loop
+    debug!(target: LOG_TARGET, "Initializing miner");
     let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
@@ -316,12 +310,9 @@ async fn mining_cycle(
             if submit {
                 // Mined a block fitting the difficulty
                 let block_header = BlockHeader::try_from(header.clone()).map_err(MinerError::Conversion)?;
-                info!(
+                debug!(
                     target: LOG_TARGET,
-                    "Miner {} found block header {} with difficulty {:?}",
-                    report.miner,
-                    block_header,
-                    report.difficulty,
+                    "Miner found block header {} with difficulty {:?}", block_header, report.difficulty,
                 );
                 let mut mined_block = block.clone();
                 mined_block.header = Some(header);
@@ -347,8 +338,8 @@ async fn mining_cycle(
 
 async fn display_report(report: &MiningReport, config: &MinerConfig) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
-    debug!(
-        target: LOG_TARGET_FILE,
+    info!(
+        target: LOG_TARGET,
         "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,

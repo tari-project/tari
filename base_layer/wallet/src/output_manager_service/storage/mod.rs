@@ -24,4 +24,4 @@ pub mod database;
 pub mod models;
 mod output_status;
 pub mod sqlite_db;
-pub use output_status::*;
+pub use output_status::OutputStatus;

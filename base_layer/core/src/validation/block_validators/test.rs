@@ -210,6 +210,8 @@ async fn it_limits_the_script_byte_size() {
 }
 
 mod unique_id {
+    use tari_common_types::types::PublicKey;
+
     use super::*;
 
     pub fn create_block(

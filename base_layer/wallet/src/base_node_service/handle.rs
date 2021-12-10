@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
+
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
@@ -53,6 +54,9 @@ impl fmt::Display for BaseNodeEvent {
         match self {
             BaseNodeEvent::BaseNodeStateChanged(state) => {
                 write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
+            },
+            BaseNodeEvent::NewBlockDetected(s) => {
+                write!(f, "NewBlockDetected: {}", s)
             },
         }
     }

@@ -28,7 +28,10 @@ use std::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{BlindingFactor, HashOutput, PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, HashOutput, PrivateKey, PublicKey},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -71,7 +74,7 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
 /// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
-pub struct SenderTransactionProtocolBuilder {
+pub struct SenderTransactionInitializer {
     num_recipients: usize,
     amounts: FixedSet<MicroTari>,
     lock_height: Option<u64>,
@@ -100,7 +103,7 @@ pub struct SenderTransactionProtocolBuilder {
 }
 
 pub struct BuildError {
-    pub builder: SenderTransactionProtocolBuilder,
+    pub builder: SenderTransactionInitializer,
     pub message: String,
 }
 
@@ -110,7 +113,7 @@ impl Debug for BuildError {
     }
 }
 
-impl SenderTransactionProtocolBuilder {
+impl SenderTransactionInitializer {
     pub fn new(num_recipients: usize, consensus_constants: ConsensusConstants) -> Self {
         Self {
             fee: Fee::new(*consensus_constants.transaction_weight()),
@@ -667,7 +670,7 @@ mod test {
             transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
-                sender_transaction_protocol_builder::SenderTransactionProtocolBuilder,
+                transaction_initializer::SenderTransactionInitializer,
                 TransactionProtocolError,
             },
         },
@@ -680,7 +683,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Start the builder
-        let builder = SenderTransactionProtocolBuilder::new(0, create_consensus_constants(0));
+        let builder = SenderTransactionInitializer::new(0, create_consensus_constants(0));
         let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
@@ -755,7 +758,7 @@ mod test {
             MicroTari(500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionProtocolBuilder::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -806,7 +809,7 @@ mod test {
             ..Default::default()
         });
         // Start the builder
-        let mut builder = SenderTransactionProtocolBuilder::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -845,7 +848,7 @@ mod test {
         );
         let constants = create_consensus_constants(0);
         // Start the builder
-        let mut builder = SenderTransactionProtocolBuilder::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -873,7 +876,7 @@ mod test {
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(500));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocolBuilder::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -905,7 +908,7 @@ mod test {
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocolBuilder::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -940,7 +943,7 @@ mod test {
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocolBuilder::new(2, constants);
+        let mut builder = SenderTransactionInitializer::new(2, constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -995,7 +998,7 @@ mod test {
             MicroTari(1500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionProtocolBuilder::new(1, constants);
+        let mut builder = SenderTransactionInitializer::new(1, constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
@@ -1047,7 +1050,7 @@ mod test {
         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
         let fee_per_gram = MicroTari(6);
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocolBuilder::new(1, constants);
+        let mut builder = SenderTransactionInitializer::new(1, constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)

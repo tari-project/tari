@@ -388,76 +388,64 @@ where
 #[cfg(test)]
 mod test {
 
-    use std::sync::Arc;
-
-    use tokio::time::Duration;
-
-    use super::*;
-    use crate::{
-        models::ViewId,
-        services::{
-            infrastructure_services::mocks::mock_outbound,
-            mocks::{mock_payload_processor, mock_payload_provider, mock_signing_service},
-        },
-    };
-
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "missing implementations"]
     async fn basic_test_as_leader() {
-        // let mut inbound = mock_inbound();
-        // let mut sender = inbound.create_sender();
-        let locked_qc = QuorumCertificate::genesis("Hello world");
-        let mut state = Prepare::new("B", Arc::new(locked_qc));
-        let view = View {
-            view_id: ViewId(1),
-            is_leader: true,
-        };
-        let committee = Committee::new(vec!["A", "B", "C", "D"]);
-        let mut outbound = mock_outbound(committee.members.clone());
-        let mut outbound2 = outbound.clone();
-        let mut inbound = outbound.take_inbound(&"B").unwrap();
-        let payload_provider = mock_payload_provider();
-        let mut payload_processor = mock_payload_processor();
-        let signing = mock_signing_service();
-        let task = state.next_event(
-            &view,
-            Duration::from_secs(10),
-            &committee,
-            &mut inbound,
-            &mut outbound,
-            &payload_provider,
-            &signing,
-            &mut payload_processor,
-        );
-
-        outbound2
-            .send(
-                "A",
-                "B",
-                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-            )
-            .await
-            .unwrap();
-
-        outbound2
-            .send(
-                "C",
-                "B",
-                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-            )
-            .await
-            .unwrap();
-
-        outbound2
-            .send(
-                "D",
-                "B",
-                HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-            )
-            .await
-            .unwrap();
-
-        let event = task.await.unwrap();
-        assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
+        todo!()
+        // // let mut inbound = mock_inbound();
+        // // let mut sender = inbound.create_sender();
+        // let locked_qc = QuorumCertificate::genesis("Hello world");
+        // let mut state = Prepare::new("B", Arc::new(locked_qc));
+        // let view = View {
+        //     view_id: ViewId(1),
+        //     is_leader: true,
+        // };
+        // let committee = Committee::new(vec!["A", "B", "C", "D"]);
+        // let mut outbound = mock_outbound(committee.members.clone());
+        // let mut outbound2 = outbound.clone();
+        // let mut inbound = outbound.take_inbound(&"B").unwrap();
+        // let payload_provider = mock_payload_provider();
+        // let mut payload_processor = mock_payload_processor();
+        // let signing = mock_signing_service();
+        // let task = state.next_event(
+        //     &view,
+        //     Duration::from_secs(10),
+        //     &committee,
+        //     &mut inbound,
+        //     &mut outbound,
+        //     &payload_provider,
+        //     &signing,
+        //     &mut payload_processor,
+        // );
+        //
+        // outbound2
+        //     .send(
+        //         "A",
+        //         "B",
+        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+        //     )
+        //     .await
+        //     .unwrap();
+        //
+        // outbound2
+        //     .send(
+        //         "C",
+        //         "B",
+        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+        //     )
+        //     .await
+        //     .unwrap();
+        //
+        // outbound2
+        //     .send(
+        //         "D",
+        //         "B",
+        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
+        //     )
+        //     .await
+        //     .unwrap();
+        //
+        // let event = task.await.unwrap();
+        // assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
     }
 }

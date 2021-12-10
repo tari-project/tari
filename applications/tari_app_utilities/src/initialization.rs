@@ -9,9 +9,6 @@ use tari_common::{
     DatabaseType,
     GlobalConfig,
 };
-use tari_comms::multiaddr::Multiaddr;
-
-use crate::consts;
 
 use crate::consts;
 
@@ -62,19 +59,6 @@ pub fn init_configuration(
                 return Err(e.into());
             },
         }
-    }
-
-    if let Some(str) = bootstrap.wallet_grpc_address.clone() {
-        log::info!(
-            target: LOG_TARGET,
-            "{}",
-            format!("GRPC address specified in command parameters: {}", str)
-        );
-
-        let grpc_address = str
-            .parse::<Multiaddr>()
-            .map_err(|_| ExitCodes::InputError("GRPC address is not valid".to_string()))?;
-        global_config.grpc_console_wallet_address = grpc_address;
     }
 
     check_file_paths(&mut global_config, &bootstrap);

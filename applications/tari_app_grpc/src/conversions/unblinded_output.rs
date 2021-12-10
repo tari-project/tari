@@ -29,8 +29,6 @@ use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-use crate::tari_rpc as grpc;
-
 impl From<UnblindedOutput> for grpc::UnblindedOutput {
     fn from(output: UnblindedOutput) -> Self {
         grpc::UnblindedOutput {

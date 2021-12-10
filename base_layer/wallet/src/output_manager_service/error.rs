@@ -37,8 +37,6 @@ use thiserror::Error;
 
 use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 
-use crate::base_node_service::error::BaseNodeServiceError;
-
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
     #[error("Build error: `{0}`")]

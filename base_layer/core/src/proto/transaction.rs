@@ -29,6 +29,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, ByteArrayError},
 };
+use tari_utilities::convert::try_convert_all;
 
 use crate::{
     proto,

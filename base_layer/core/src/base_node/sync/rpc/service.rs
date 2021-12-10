@@ -32,27 +32,12 @@ use tari_comms::{
     utils,
 };
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
 };
 use tracing::{instrument, span, Instrument, Level};
-
-use crate::{
-    base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound},
-    iterators::NonOverlappingIntegerPairIter,
-    proto,
-    proto::base_node::{
-        FindChainSplitRequest,
-        FindChainSplitResponse,
-        SyncBlocksRequest,
-        SyncHeadersRequest,
-        SyncKernelsRequest,
-        SyncUtxosRequest,
-        SyncUtxosResponse,
-    },
-};
 
 use crate::{
     base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
@@ -68,7 +53,6 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    tari_utilities::Hashable,
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";

@@ -1080,7 +1080,9 @@ async fn test_txo_validation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1.into(), output1.clone(), None).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone(), None)
+        .await
+        .unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -1091,7 +1093,9 @@ async fn test_txo_validation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2.into(), output2.clone(), None).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone(), None)
+        .await
+        .unwrap();
 
     let output3_value = 4_000_000;
     let output3 = create_unblinded_output(
@@ -1101,7 +1105,9 @@ async fn test_txo_validation() {
         MicroTari::from(output3_value),
     );
 
-    oms.add_output_with_tx_id(3.into(), output3.clone(), None).await.unwrap();
+    oms.add_output_with_tx_id(3.into(), output3.clone(), None)
+        .await
+        .unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;
@@ -1575,7 +1581,9 @@ async fn test_txo_revalidation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.add_output_with_tx_id(1.into(), output1.clone(), None).await.unwrap();
+    oms.add_output_with_tx_id(1.into(), output1.clone(), None)
+        .await
+        .unwrap();
 
     let output2_value = 2_000_000;
     let output2 = create_unblinded_output(
@@ -1586,7 +1594,9 @@ async fn test_txo_revalidation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.add_output_with_tx_id(2.into(), output2.clone(), None).await.unwrap();
+    oms.add_output_with_tx_id(2.into(), output2.clone(), None)
+        .await
+        .unwrap();
 
     let mut block1_header = BlockHeader::new(1);
     block1_header.height = 1;

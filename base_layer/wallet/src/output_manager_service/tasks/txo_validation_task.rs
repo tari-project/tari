@@ -45,19 +45,6 @@ use crate::{
     },
 };
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        error::{OutputManagerError, OutputManagerProtocolError, OutputManagerProtocolErrorExt},
-        handle::{OutputManagerEvent, OutputManagerEventSender},
-        storage::{
-            database::{OutputManagerBackend, OutputManagerDatabase},
-            models::DbUnblindedOutput,
-        },
-    },
-};
-
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 
 pub struct TxoValidationTask<TBackend, TWalletConnectivity> {

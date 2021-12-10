@@ -34,10 +34,13 @@ use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use crate::transaction_service::{
-    error::TransactionServiceError,
-    protocols::TxRejection,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+use crate::{
+    transaction_service::{
+        error::TransactionServiceError,
+        protocols::TxRejection,
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+    },
+    OperationId,
 };
 
 /// API Request enum
@@ -195,7 +198,7 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
-    TransactionValidationStateChanged(u64),
+    TransactionValidationStateChanged(OperationId),
     Error(String),
 }
 
@@ -226,8 +229,8 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {
                 write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)
             },
-            TransactionEvent::TransactionCancelled(tx) => {
-                write!(f, "TransactionCancelled for {}", tx)
+            TransactionEvent::TransactionCancelled(tx, rejection) => {
+                write!(f, "TransactionCancelled for {}:{:?}", tx, rejection)
             },
             TransactionEvent::TransactionBroadcast(tx) => {
                 write!(f, "TransactionBroadcast for {}", tx)
@@ -252,23 +255,11 @@ impl fmt::Display for TransactionEvent {
                     tx_id, num_confirmations, is_valid
                 )
             },
-            TransactionEvent::TransactionValidationTimedOut(tx) => {
-                write!(f, "TransactionValidationTimedOut for {}", tx)
-            },
-            TransactionEvent::TransactionValidationSuccess(tx) => {
-                write!(f, "TransactionValidationSuccess for {}", tx)
-            },
-            TransactionEvent::TransactionValidationFailure(tx) => {
-                write!(f, "TransactionValidationFailure for {}", tx)
-            },
-            TransactionEvent::TransactionValidationAborted(tx) => {
-                write!(f, "TransactionValidationAborted for {}", tx)
-            },
-            TransactionEvent::TransactionValidationDelayed(tx) => {
-                write!(f, "TransactionValidationDelayed for {}", tx)
-            },
             TransactionEvent::Error(error) => {
                 write!(f, "Error:{}", error)
+            },
+            TransactionEvent::TransactionValidationStateChanged(operation_id) => {
+                write!(f, "Transaction validation state changed: {}", operation_id)
             },
         }
     }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, sync::Arc};
+use std::{fmt, fmt::Formatter, sync::Arc};
 
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
@@ -208,7 +208,7 @@ pub enum OutputManagerResponse {
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
-    ClaimHtlcTransaction((u64, MicroTari, MicroTari, Transaction)),
+    ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -559,7 +559,7 @@ impl OutputManagerHandle {
         &mut self,
         output: HashOutput,
         fee_per_gram: MicroTari,
-    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram))
@@ -575,7 +575,7 @@ impl OutputManagerHandle {
         output: HashOutput,
         pre_image: PublicKey,
         fee_per_gram: MicroTari,
-    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(

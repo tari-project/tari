@@ -914,7 +914,11 @@ where
             builder
                 .with_output(ub.clone(), sender_offset_private_key.clone())
                 .map_err(|e| OutputManagerError::BuildError(e.message))?;
-            db_outputs.push(DbUnblindedOutput::from_unblinded_output(ub, &self.resources.factories)?)
+            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
+                ub,
+                &self.resources.factories,
+                None,
+            )?)
         }
 
         // let mut change_keys = None;
@@ -938,7 +942,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories)
+            .build::<HashDigest>(&self.resources.factories, None, None)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -972,6 +976,7 @@ where
             db_outputs.push(DbUnblindedOutput::from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
+                None,
             )?);
         }
         let tx_id = stp.get_tx_id()?;
@@ -980,7 +985,7 @@ where
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)
             .await?;
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories)?;
+        stp.finalize(KernelFeatures::empty(), &self.resources.factories, None, None)?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1462,7 +1467,7 @@ where
         output: TransactionOutput,
         pre_image: PublicKey,
         fee_per_gram: MicroTari,
-    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let spending_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(
                 self.node_identity.as_ref().secret_key(),
@@ -1552,7 +1557,7 @@ where
         &mut self,
         output_hash: HashOutput,
         fee_per_gram: MicroTari,
-    ) -> Result<(u64, MicroTari, MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let output = self
             .resources
             .db
