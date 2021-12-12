@@ -60,9 +60,9 @@ use tari_core::{
             TransactionOutput as TransactionOutputProto,
         },
     },
-    tari_utilities::Hashable,
     transactions::transaction::{Transaction, TransactionOutput},
 };
+use tari_utilities::Hashable;
 use tokio::time::sleep;
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T

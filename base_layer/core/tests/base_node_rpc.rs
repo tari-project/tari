@@ -42,7 +42,6 @@ use tari_core::{
     },
     blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
-    crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -57,6 +56,7 @@ use tari_core::{
     txn_schema,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::Hashable;
 use tempfile::{tempdir, TempDir};
 
 use crate::helpers::{

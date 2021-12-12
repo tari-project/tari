@@ -125,6 +125,7 @@ class WalletProcess {
                 /(?=.*Tari Console Wallet running)(?=.*Command mode completed)/gim
               ))
         ) {
+          this.recoverWallet = false;
           resolve(ps);
         }
       });

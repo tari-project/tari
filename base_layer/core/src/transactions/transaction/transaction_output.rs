@@ -44,27 +44,25 @@ use tari_common_types::types::{
     RangeProof,
     RangeProofService,
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::RangeProofService as RangeProofServiceTrait,
+    ristretto::pedersen::PedersenCommitmentFactory,
+    script::TariScript,
+    tari_utilities::{hex::Hex, ByteArray, Hashable},
+};
 
-use crate::{
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        range_proof::RangeProofService as RangeProofServiceTrait,
-        ristretto::pedersen::PedersenCommitmentFactory,
-        script::TariScript,
-        tari_utilities::{hex::Hex, ByteArray, Hashable},
-    },
-    transactions::{
-        tari_amount::MicroTari,
-        transaction,
-        transaction::{
-            full_rewind_result::FullRewindResult,
-            rewind_result::RewindResult,
-            OutputFeatures,
-            OutputFlags,
-            TransactionError,
-            TransactionInput,
-        },
+use crate::transactions::{
+    tari_amount::MicroTari,
+    transaction,
+    transaction::{
+        full_rewind_result::FullRewindResult,
+        rewind_result::RewindResult,
+        OutputFeatures,
+        OutputFlags,
+        TransactionError,
+        TransactionInput,
     },
 };
 

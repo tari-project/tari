@@ -63,7 +63,8 @@ impl ReceiveTab {
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[1]);
-        let public_key = Paragraph::new(app_state.get_identity().public_key.as_str());
+        // Put a space in front of pub key so it's easy to select
+        let public_key = Paragraph::new(format!(" {}", app_state.get_identity().public_key));
         f.render_widget(public_key, label_layout[0]);
 
         // NodeId
@@ -87,7 +88,7 @@ impl ReceiveTab {
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[3]);
-        let public_address = Paragraph::new(app_state.get_identity().public_address.as_str());
+        let public_address = Paragraph::new(format!(" {}", app_state.get_identity().public_address));
         f.render_widget(public_address, label_layout[0]);
 
         // Emoji ID

@@ -27,9 +27,10 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
+use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -392,6 +393,66 @@ where T: BlockchainBackend + 'static
                 }
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
+            },
+            NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            } => {
+                debug!(target: LOG_TARGET, "Starting fetch tokens");
+                let mut outputs = vec![];
+                if unique_ids.is_empty() {
+                    // TODO: replace [0..1000] with parameters to allow paging
+                    for output in self
+                        .blockchain_db
+                        .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
+                        .await?
+                    {
+                        match output.output {
+                            PrunedOutput::Pruned { .. } => {
+                                // TODO: should we return this?
+                            },
+                            PrunedOutput::NotPruned { output } => outputs.push(output),
+                        }
+                    }
+                } else {
+                    for id in unique_ids {
+                        let output = self
+                            .blockchain_db
+                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
+                            .await?;
+                        if let Some(out) = output {
+                            match out.output {
+                                PrunedOutput::Pruned { .. } => {
+                                    // TODO: should we return this?
+                                },
+                                PrunedOutput::NotPruned { output } => outputs.push(output),
+                            }
+                        }
+                    }
+                }
+                Ok(NodeCommsResponse::FetchTokensResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetRegistrations { range } => {
+                let top_level_pubkey = PublicKey::default();
+                let exclusive_range = (*range.start())..(*range.end() + 1);
+                let outputs = self
+                    .blockchain_db
+                    .fetch_all_unspent_by_parent_public_key(top_level_pubkey, exclusive_range)
+                    .await?
+                    .into_iter()
+                    // TODO: should we return this?
+                    .filter(|o|!o.output.is_pruned())
+                    .collect();
+                Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
+                let output = self
+                    .blockchain_db
+                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
+                    .await?;
+                Ok(NodeCommsResponse::FetchAssetMetadataResponse {
+                    output: Box::new(output),
+                })
             },
         }
     }

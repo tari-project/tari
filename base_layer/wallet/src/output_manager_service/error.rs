@@ -32,6 +32,7 @@ use tari_core::transactions::{
 use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_utilities::hex::HexError;
 use thiserror::Error;
 
 use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
@@ -110,6 +111,8 @@ pub enum OutputManagerError {
     MasterSeedMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Token with unique id not found")]
+    TokenUniqueIdNotFound,
     #[error("Connectivity error: {source}")]
     ConnectivityError {
         #[from]
@@ -137,10 +140,12 @@ pub enum OutputManagerStorageError {
     OperationNotSupported,
     #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: {reason}")]
+    ConversionError { reason: String },
     #[error("Output has already been spent")]
     OutputAlreadySpent,
+    #[error("Output is already encumbered")]
+    OutputAlreadyEncumbered,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
     #[error("Diesel R2d2 error: `{0}`")]
@@ -163,6 +168,8 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Binary not stored as valid hex:{0}")]
+    HexError(#[from] HexError),
     #[error("Key Manager Error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
 }

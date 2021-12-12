@@ -27,8 +27,7 @@ use monero::{
     VarInt,
 };
 use tari_crypto::tari_utilities::ByteArray;
-
-use crate::crypto::tari_utilities::ByteArrayError;
+use tari_utilities::ByteArrayError;
 
 const MAX_ARR_SIZE: usize = 63;
 
@@ -136,9 +135,9 @@ impl Encodable for FixedByteArray {
 #[cfg(test)]
 mod test {
     use monero::consensus;
+    use tari_utilities::hex::Hex;
 
     use super::*;
-    use crate::crypto::tari_utilities::hex::Hex;
 
     #[test]
     fn assert_size() {

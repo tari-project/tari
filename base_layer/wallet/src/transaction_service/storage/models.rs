@@ -33,6 +33,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+use tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
@@ -185,6 +186,21 @@ impl CompletedTransaction {
             mined_height: None,
             mined_in_block: None,
         }
+    }
+
+    pub fn get_unique_id(&self) -> Option<String> {
+        let body = self.transaction.body();
+        for tx_input in body.inputs() {
+            if let Some(ref unique_id) = tx_input.features.unique_id {
+                return Some(unique_id.to_hex());
+            }
+        }
+        for tx_output in body.outputs() {
+            if let Some(ref unique_id) = tx_output.features.unique_id {
+                return Some(unique_id.to_hex());
+            }
+        }
+        None
     }
 
     pub fn is_coinbase(&self) -> bool {

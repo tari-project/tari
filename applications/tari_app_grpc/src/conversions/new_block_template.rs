@@ -25,9 +25,9 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::BlindingFactor;
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
-    crypto::tari_utilities::ByteArray,
     proof_of_work::ProofOfWork,
 };
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 

@@ -29,14 +29,12 @@ use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
-    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         PowAlgorithm,
     },
-    tari_utilities::Hashable,
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
@@ -59,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{inputs, script};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::helpers::{
     block_builders::{

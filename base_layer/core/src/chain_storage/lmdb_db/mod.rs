@@ -26,6 +26,8 @@ use tari_common_types::types::HashOutput;
 
 use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
 
+pub(crate) mod helpers;
+pub(crate) mod key_prefix_cursor;
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;

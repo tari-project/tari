@@ -35,7 +35,7 @@ use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
-use tari_service_framework::ServiceInitializationError;
+use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use thiserror::Error;
 
 use crate::{
@@ -49,6 +49,12 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum WalletError {
+    #[error("Argument supplied `{argument}` has an invalid value: {value}. {message}")]
+    ArgumentError {
+        argument: String,
+        value: String,
+        message: String,
+    },
     #[error("Comms initialization error: `{0}`")]
     CommsInitializationError(#[from] CommsInitializationError),
     #[error("Output manager error: `{0}`")]
@@ -89,6 +95,12 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+
+    #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
+    UnexpectedApiResponse { method: String, api: String },
 }
 
 pub const LOG_TARGET: &str = "tari::application";

@@ -10,6 +10,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch 
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
+tari_utilities = "0.3.0"
 
 config = { version = "0.9.3" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
@@ -21,15 +22,15 @@ rand = "0.8"
 tokio = { version = "1.11", features = ["signal"] }
 serde = "1.0.126"
 structopt = { version = "0.3.13", default_features = false }
-strum = "^0.19"
-strum_macros = "^0.19"
+strum = "^0.22"
+strum_macros = "^0.22"
 thiserror = "^1.0.26"
 tonic = "0.5.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
 default-features = false
-features = ["transactions"]
+features = ["transactions", "base_node_proto"]
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }

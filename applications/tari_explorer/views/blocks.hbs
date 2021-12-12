@@ -41,16 +41,24 @@
       <th>Commitment</th>
       <th>Flags</th>
       <th>Maturity</th>
+        <td>Parent PK</td>
+        <th>Unique Id</th>
+        <th>Other Features</th>
+        <th>Script</th>
     </tr>
   </thead>
   <tbody>
     {{#each this.block.body.outputs}}
-      <tr>
-        <td>{{hex hash}}</td>
-        <td>{{hex commitment}}</td>
-        <td>{{features.flags}}</td>
-        <td>{{features.maturity}}</td>
-      </tr>
+     <tr>
+         <td>{{hex hash}}</td>
+         <td>{{hex commitment}}</td>
+         <td>{{features.flags}}</td>
+         <td>{{features.maturity}}</td>
+         <td><a href="/assets/{{ hex features.parent_public_key }}">{{ hex features.parent_public_key }}</a></td>
+         <td>{{ hex features.unique_id}}</td>
+         <td>{{ json features }}</td>
+         <td>{{hex script}}</td>
+     </tr>
     {{/each}}
   </tbody>
 </table>

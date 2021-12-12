@@ -1,0 +1,14 @@
+.asset {
+  justify-self: center;
+  font-size: larger;
+  width: 100%;
+  text-align: center;
+}
+
+.asset:hover {
+  cursor: pointer;
+}
+
+.selected {
+  background-color: #79cc79;
+}

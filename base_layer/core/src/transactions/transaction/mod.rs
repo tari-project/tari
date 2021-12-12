@@ -23,32 +23,41 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+pub use asset_output_features::AssetOutputFeatures;
 use blake2::Digest;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
+pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
+pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
 use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
 pub use transaction_input::TransactionInput;
 pub use transaction_kernel::TransactionKernel;
 pub use transaction_output::TransactionOutput;
 pub use unblinded_output::UnblindedOutput;
+pub use unblinded_output_builder::UnblindedOutputBuilder;
 
+mod asset_output_features;
 mod error;
 mod full_rewind_result;
 mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
+mod mint_non_fungible_features;
 mod output_features;
 mod output_flags;
 mod rewind_result;
+mod side_chain_checkpoint_features;
+mod template_parameter;
 // TODO: in future, this module can be renamed
 #[allow(clippy::module_inception)]
 mod transaction;
@@ -57,6 +66,7 @@ mod transaction_input;
 mod transaction_kernel;
 mod transaction_output;
 mod unblinded_output;
+mod unblinded_output_builder;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -322,7 +332,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(tx
-            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .validate_internal_consistency(false, &factories, None, None, None)
             .is_ok());
     }
 
@@ -337,7 +347,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(tx
-            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .validate_internal_consistency(false, &factories, None, None, None)
             .is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);

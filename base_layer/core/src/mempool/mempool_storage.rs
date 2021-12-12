@@ -105,6 +105,10 @@ impl MempoolStorage {
                 warn!(target: LOG_TARGET, "Validation failed due to maturity error");
                 Ok(TxStorageResponse::NotStoredTimeLocked)
             },
+            Err(ValidationError::ConsensusError(msg)) => {
+                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
+                Ok(TxStorageResponse::NotStoredConsensus)
+            },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);
                 Ok(TxStorageResponse::NotStored)

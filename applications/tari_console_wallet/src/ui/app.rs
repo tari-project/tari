@@ -34,7 +34,9 @@ use crate::{
     notifier::Notifier,
     ui::{
         components::{
+            assets_tab::AssetsTab,
             base_node::BaseNode,
+            events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
             network_tab::NetworkTab,
@@ -42,6 +44,7 @@ use crate::{
             receive_tab::ReceiveTab,
             send_tab::SendTab,
             tabs_container::TabsContainer,
+            tokens_component::TokensComponent,
             transactions_tab::TransactionsTab,
             Component,
         },
@@ -89,6 +92,9 @@ impl<B: Backend> App<B> {
             .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
+            .add("Assets".into(), Box::new(AssetsTab::new()))
+            .add("Tokens".into(), Box::new(TokensComponent::new()))
+            .add("Events".into(), Box::new(EventsComponent::new()))
             .add("Log".into(), Box::new(LogTab::new()))
             .add("Notifications".into(), Box::new(NotificationTab::new()));
 
@@ -167,7 +173,7 @@ impl<B: Backend> App<B> {
             .split(max_width_layout[0]);
         let title_halves = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)].as_ref())
+            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
             .split(title_chunks[0]);
 
         self.tabs.draw_titles(f, title_halves[0], &self.app_state);

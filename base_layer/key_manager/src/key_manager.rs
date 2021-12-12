@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
@@ -30,7 +31,7 @@ use tari_crypto::{
 
 use crate::cipher_seed::CipherSeed;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DerivedKey<K>
 where K: SecretKey
 {
@@ -38,7 +39,7 @@ where K: SecretKey
     pub key_index: u64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
     seed: CipherSeed,
     pub branch_seed: String,

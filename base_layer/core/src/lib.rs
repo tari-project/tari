@@ -58,10 +58,6 @@ pub mod transactions;
 
 mod common;
 
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use crypto::tari_utilities;
-pub use tari_crypto as crypto;
-
 #[allow(clippy::ptr_offset_with_cast)]
 #[allow(clippy::assign_op_pattern)]
 #[allow(clippy::manual_range_contains)]

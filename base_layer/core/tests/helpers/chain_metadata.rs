@@ -25,11 +25,9 @@ use std::sync::Arc;
 use blake2::Digest;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
-use tari_core::{
-    base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata},
-    tari_utilities::ByteArray,
-};
+use tari_core::base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata};
 use tari_crypto::common::Blake256;
+use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
 /// Create a mock Chain Metadata stream.

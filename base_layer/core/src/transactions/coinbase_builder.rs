@@ -210,6 +210,7 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
         );
+        // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data)

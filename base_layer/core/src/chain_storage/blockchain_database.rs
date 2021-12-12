@@ -26,7 +26,7 @@ use std::{
     collections::VecDeque,
     convert::TryFrom,
     mem,
-    ops::{Bound, RangeBounds},
+    ops::{Bound, Range, RangeBounds},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
@@ -35,10 +35,11 @@ use croaring::Bitmap;
 use log::*;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashDigest, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_mmr::{pruned_hashset::PrunedHashSet, MerkleMountainRange, MutableMmr};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{
@@ -77,7 +78,6 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    tari_utilities::epoch_time::EpochTime,
     transactions::transaction::TransactionKernel,
     validation::{
         helpers::calc_median_timestamp,
@@ -250,7 +250,12 @@ where B: BlockchainBackend
     /// Returns a reference to the consensus cosntants at the current height
     pub fn consensus_constants(&self) -> Result<&ConsensusConstants, ChainStorageError> {
         let height = self.get_height()?;
-        Ok(self.consensus_manager.consensus_constants(height))
+        Ok(self.rules().consensus_constants(height))
+    }
+
+    /// Returns a reference to the consensus rules
+    pub fn rules(&self) -> &ConsensusManager {
+        &self.consensus_manager
     }
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
@@ -324,6 +329,25 @@ where B: BlockchainBackend
     ) -> Result<Option<HashOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_unspent_output_hash_by_commitment(commitment)
+    }
+
+    pub fn fetch_utxo_by_unique_id(
+        &self,
+        parent_public_key: Option<PublicKey>,
+        unique_id: HashOutput,
+        deleted_at: Option<u64>,
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_utxo_by_unique_id(parent_public_key.as_ref(), &unique_id, deleted_at)
+    }
+
+    pub fn fetch_all_unspent_by_parent_public_key(
+        &self,
+        parent_public_key: PublicKey,
+        range: Range<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_all_unspent_by_parent_public_key(&parent_public_key, range)
     }
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction

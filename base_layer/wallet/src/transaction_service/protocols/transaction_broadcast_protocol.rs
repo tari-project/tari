@@ -83,7 +83,7 @@ where
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         let mut shutdown = self.resources.shutdown_signal.clone();
         let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();

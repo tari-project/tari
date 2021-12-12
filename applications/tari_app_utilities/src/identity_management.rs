@@ -136,7 +136,7 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
     if !id.is_signed() {
         id.sign();
     }
-    info!(
+    debug!(
         "Node ID loaded with public key {} and Node id {}",
         id.public_key().to_hex(),
         id.node_id().to_hex()

@@ -30,6 +30,7 @@ use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, PeerConnection};
+use tari_utilities::{hex::Hex, Hashable};
 use tracing;
 
 use super::error::BlockSyncError;
@@ -41,7 +42,6 @@ use crate::{
     blocks::{Block, BlockValidationError, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto::base_node::SyncBlocksRequest,
-    tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
     validation::{BlockSyncBodyValidation, ValidationError},
 };

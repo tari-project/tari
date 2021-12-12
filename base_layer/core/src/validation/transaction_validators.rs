@@ -77,6 +77,8 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
 /// This validator will check the transaction against the current consensus rules.
 ///
 /// 1. The transaction weight should not exceed the maximum weight for 1 block
+/// 1. All of the outputs should have a unique asset id in the transaction
+/// 1. All of the outputs should have a unique asset id not already on chain
 #[derive(Clone)]
 pub struct TxConsensusValidator<B> {
     db: BlockchainDatabase<B>,

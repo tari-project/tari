@@ -33,7 +33,10 @@ use tari_wallet::{
 };
 use tokio::sync::{broadcast, RwLock};
 
-use crate::{notifier::Notifier, ui::state::AppStateInner};
+use crate::{
+    notifier::Notifier,
+    ui::state::{AppStateInner, EventListItem},
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 
@@ -84,6 +87,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet transaction service event {:?}", msg);
+                            self.app_state_inner.write().await.add_event(EventListItem{event_type: "TransactionEvent".to_string(), desc: (&*msg).to_string() });
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;

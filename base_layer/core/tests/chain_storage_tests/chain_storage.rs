@@ -22,7 +22,7 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, PublicKey};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -47,13 +47,14 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::{schema_to_transaction, spend_utxos},
+        transaction::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
     tx,
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -243,7 +244,7 @@ fn rewind_to_height() {
 #[ignore = "To be completed with pruned mode"]
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1038,6 +1039,131 @@ fn store_and_retrieve_blocks() {
 }
 
 #[test]
+#[allow(clippy::erasing_op)]
+fn asset_unique_id() {
+    let mut rng = rand::thread_rng();
+    let network = Network::LocalNet;
+    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let tx = txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
+    );
+
+    generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+    let unique_id1 = vec![1u8; 3];
+
+    // create a new NFT
+    let (_, asset) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(unique_id1.clone()),
+        ..Default::default()
+    };
+
+    // check the output is not stored in the db
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
+        .unwrap();
+    assert!(output_info.is_none());
+
+    // mint it to the chain
+    let tx = txn_schema!(
+        from: vec![outputs[1][0].clone()],
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
+    );
+
+    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+    assert!(result.is_added());
+
+    // check it is in the db
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
+
+    // attempt to mint the same unique id for the same asset
+    let tx = txn_schema!(
+        from: vec![outputs[1][1].clone()],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+
+    let err = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap_err();
+    assert!(matches!(err, ChainStorageError::ValidationError {
+        source: ValidationError::ContainsDuplicateUtxoUniqueID
+    }));
+
+    // new unique id, does not exist yet
+    let unique_id2 = vec![2u8; 3];
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset.clone()),
+        unique_id: Some(unique_id2.clone()),
+        ..Default::default()
+    };
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
+        .unwrap();
+    assert!(output_info.is_none());
+
+    // mint unique_id2
+    let tx = txn_schema!(
+        from: vec![outputs[1][2].clone()],
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
+    );
+    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+    assert!(result.is_added());
+
+    // check it is in the db
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
+
+    // same id for a different asset is fine
+    let (_, asset2) = PublicKey::random_keypair(&mut rng);
+    let features = OutputFeatures {
+        flags: OutputFlags::MINT_NON_FUNGIBLE,
+        parent_public_key: Some(asset2.clone()),
+        unique_id: Some(unique_id1.clone()),
+        ..Default::default()
+    };
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
+        .unwrap();
+    assert!(output_info.is_none());
+
+    // mint
+    let tx = txn_schema!(
+        from: vec![outputs[1][3].clone()],
+        to: vec![0 * T], fee: 20.into(), lock: 0, features: features
+    );
+    let result = generate_new_block(&mut db, &mut blocks, &mut outputs, vec![tx], &consensus_manager).unwrap();
+    assert!(result.is_added());
+
+    // check it is in the db
+    let output_info = db
+        .db_read_access()
+        .unwrap()
+        .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
+}
+
+#[test]
 #[ignore = "To be completed with pruned mode"]
 #[allow(clippy::identity_op)]
 fn store_and_retrieve_blocks_from_contents() {
@@ -1087,7 +1213,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         MockValidator::new(true),
     );
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let rules = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let mut config = BlockchainDatabaseConfig::default();
     let block_hash: BlockHash;
@@ -1326,7 +1452,7 @@ fn orphan_cleanup_on_block_add() {
 #[ignore = "To be completed with pruned mode"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -1684,7 +1810,7 @@ fn fails_validation() {
 #[test]
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_weatherwax_genesis_block();
+    let block0 = genesis_block::get_dibbler_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let validators = Validators::new(
         MockValidator::new(true),

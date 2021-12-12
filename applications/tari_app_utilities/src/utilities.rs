@@ -35,8 +35,8 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
 use crate::identity_management::load_from_json;
@@ -81,7 +81,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                     // If this fails, we can just use another address
                     load_from_json::<_, TorIdentity>(p).ok()
                 });
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Tor identity at path '{}' {:?}",
                 config.base_node_tor_identity_file.to_string_lossy(),

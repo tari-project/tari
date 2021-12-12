@@ -1,0 +1,16 @@
+
+syntax = "proto3";
+package tari.dan.tips.tip003;
+
+// Empty TIP for sidechains using base layer checkpoints
+service Tip003 {
+  rpc Init(InitRequest) returns (Empty);
+}
+
+message InitRequest {
+
+}
+
+message Empty {
+
+}
