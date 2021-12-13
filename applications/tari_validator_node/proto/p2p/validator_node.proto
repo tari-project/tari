@@ -26,6 +26,7 @@ package tari.p2p.validator_node;
 service ValidatorNode {
   rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
   rpc SubmitInstruction(SubmitInstructionRequest) returns (SubmitInstructionResponse);
+  rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
 }
 
 message GetTokenDataRequest {
@@ -51,4 +52,15 @@ enum Status {
 
 message SubmitInstructionResponse {
   Status status = 1;
+}
+
+message InvokeReadMethodRequest{
+  bytes asset_public_key = 1;
+  uint32 template_id = 2;
+  string method = 3;
+  bytes args = 4;
+}
+
+message InvokeReadMethodResponse {
+  optional bytes result = 1;
 }

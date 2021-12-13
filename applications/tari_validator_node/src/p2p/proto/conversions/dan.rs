@@ -22,22 +22,20 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{
-        CheckpointData,
-        HotStuffMessage,
-        HotStuffMessageType,
-        HotStuffTreeNode,
-        Instruction,
-        InstructionSet,
-        QuorumCertificate,
-        Signature,
-        TariDanPayload,
-        TreeNodeHash,
-        ViewId,
-    },
-    types::PublicKey,
+use tari_dan_core::models::{
+    CheckpointData,
+    HotStuffMessage,
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    Instruction,
+    InstructionSet,
+    QuorumCertificate,
+    Signature,
+    TariDanPayload,
+    TreeNodeHash,
+    ViewId,
 };
 
 use crate::p2p::proto::dan as dan_proto;
@@ -51,6 +49,7 @@ impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
             partial_sig: source.partial_sig().map(|s| s.clone().into()),
             view_number: source.view_number().as_u64(),
             node_hash: source.node_hash().map(|s| s.0.clone()),
+            asset_public_key: source.asset_public_key().to_vec(),
         }
     }
 }
@@ -127,6 +126,8 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
             value.node.map(|n| n.try_into()).transpose()?,
             value.node_hash.map(TreeNodeHash),
             value.partial_sig.map(|p| p.try_into()).transpose()?,
+            PublicKey::from_bytes(&value.asset_public_key)
+                .map_err(|err| format!("Not a valid asset public key:{}", err))?,
         ))
     }
 }

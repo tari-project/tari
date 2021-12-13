@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use tari_common_types::types::PublicKey;
 use tari_crypto::common::Blake256;
 
 use crate::models::{
@@ -41,6 +42,7 @@ pub struct HotStuffMessage<TPayload: Payload> {
     node: Option<HotStuffTreeNode<TPayload>>,
     node_hash: Option<TreeNodeHash>,
     partial_sig: Option<Signature>,
+    asset_public_key: PublicKey,
 }
 
 impl<TPayload: Payload> HotStuffMessage<TPayload> {
@@ -51,6 +53,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         node_hash: Option<TreeNodeHash>,
         partial_sig: Option<Signature>,
+        asset_public_key: PublicKey,
     ) -> Self {
         HotStuffMessage {
             view_number,
@@ -59,10 +62,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node,
             node_hash,
             partial_sig,
+            asset_public_key,
         }
     }
 
-    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId) -> Self {
+    pub fn new_view(prepare_qc: QuorumCertificate, view_number: ViewId, asset_public_key: PublicKey) -> Self {
         Self {
             message_type: HotStuffMessageType::NewView,
             view_number,
@@ -70,6 +74,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             node_hash: None,
+            asset_public_key,
         }
     }
 
@@ -77,6 +82,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         proposal: HotStuffTreeNode<TPayload>,
         high_qc: Option<QuorumCertificate>,
         view_number: ViewId,
+        asset_public_key: PublicKey,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::Prepare,
@@ -85,10 +91,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             partial_sig: None,
             node_hash: None,
+            asset_public_key,
         }
     }
 
-    pub fn vote_prepare(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+    pub fn vote_prepare(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
         Self {
             message_type: HotStuffMessageType::Prepare,
             node_hash: Some(node_hash),
@@ -96,6 +103,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
+            asset_public_key,
         }
     }
 
@@ -103,6 +111,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         prepare_qc: Option<QuorumCertificate>,
         view_number: ViewId,
+        asset_public_key: PublicKey,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::PreCommit,
@@ -111,10 +120,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             node_hash: None,
             partial_sig: None,
+            asset_public_key,
         }
     }
 
-    pub fn vote_pre_commit(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+    pub fn vote_pre_commit(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
         Self {
             message_type: HotStuffMessageType::PreCommit,
             node_hash: Some(node_hash),
@@ -122,6 +132,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
+            asset_public_key,
         }
     }
 
@@ -129,6 +140,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         pre_commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
+        asset_public_key: PublicKey,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
@@ -137,10 +149,11 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             partial_sig: None,
             node_hash: None,
+            asset_public_key,
         }
     }
 
-    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId) -> Self {
+    pub fn vote_commit(node_hash: TreeNodeHash, view_number: ViewId, asset_public_key: PublicKey) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
             node_hash: Some(node_hash),
@@ -148,6 +161,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             node: None,
             partial_sig: None,
             justify: None,
+            asset_public_key,
         }
     }
 
@@ -155,6 +169,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         node: Option<HotStuffTreeNode<TPayload>>,
         commit_qc: Option<QuorumCertificate>,
         view_number: ViewId,
+        asset_public_key: PublicKey,
     ) -> Self {
         Self {
             message_type: HotStuffMessageType::Commit,
@@ -163,6 +178,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             view_number,
             partial_sig: None,
             node_hash: None,
+            asset_public_key,
         }
     }
 
@@ -180,6 +196,10 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn view_number(&self) -> ViewId {
         self.view_number
+    }
+
+    pub fn asset_public_key(&self) -> &PublicKey {
+        &self.asset_public_key
     }
 
     pub fn node(&self) -> Option<&HotStuffTreeNode<TPayload>> {

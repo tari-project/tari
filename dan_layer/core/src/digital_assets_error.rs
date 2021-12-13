@@ -19,6 +19,8 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use thiserror::Error;
 
 use crate::storage::StorageError;
@@ -59,6 +61,16 @@ pub enum DigitalAssetError {
     NotFound { entity: &'static str, id: String },
     #[error("Not authorised: {0}")]
     NotAuthorised(String),
+    #[error("Database is missing or has not be created")]
+    MissingDatabase,
+    #[error("There was no committee for the asset")]
+    NoCommitteeForAsset,
+    #[error("None of the committee responded")]
+    NoResponsesFromCommittee,
+    #[error("Connectivity error:{0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("RpcError: {0}")]
+    RpcError(#[from] RpcError),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

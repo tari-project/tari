@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{BaseLayerMetadata, BaseLayerOutput},
-    types::PublicKey,
 };
 
 #[async_trait]

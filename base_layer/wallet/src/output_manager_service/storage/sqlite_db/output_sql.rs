@@ -131,6 +131,8 @@ impl OutputSql {
                 .filter(outputs::status.eq(OutputStatus::Unspent as i32))
                 .filter(outputs::script_lock_height.le(tip_height))
                 .filter(outputs::maturity.le(tip_height))
+                .filter(outputs::features_unique_id.is_null())
+                .filter(outputs::features_parent_public_key.is_null())
                 .order(outputs::value.desc())
                 .select(outputs::value)
                 .limit(1)
@@ -149,6 +151,8 @@ impl OutputSql {
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .filter(outputs::script_lock_height.le(tip_height))
             .filter(outputs::maturity.le(tip_height))
+            .filter(outputs::features_unique_id.is_null())
+            .filter(outputs::features_parent_public_key.is_null())
             .order_by(outputs::spending_priority.asc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {

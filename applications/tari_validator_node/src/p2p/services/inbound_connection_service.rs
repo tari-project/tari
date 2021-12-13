@@ -23,6 +23,7 @@ use std::{convert::TryInto, sync::Arc};
 
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
+use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_dan_core::{
     models::{HotStuffMessage, Payload, TariDanPayload},
@@ -39,14 +40,16 @@ pub struct TariCommsInboundConnectionService {
     // TODO: remove option
     receiver: Option<TariCommsInboundReceiver<TariDanPayload>>,
     sender: Sender<(CommsPublicKey, HotStuffMessage<TariDanPayload>)>,
+    asset_public_key: PublicKey,
 }
 
 impl TariCommsInboundConnectionService {
-    pub fn new() -> Self {
+    pub fn new(asset_public_key: PublicKey) -> Self {
         let (receiver, sender) = TariCommsInboundReceiver::new();
         Self {
             receiver: Some(receiver),
             sender,
+            asset_public_key,
         }
     }
 
@@ -69,7 +72,9 @@ impl TariCommsInboundConnectionService {
         loop {
             futures::select! {
                 message = inbound_stream.select_next_some() => {
-                    self.forward_message(message).await?;
+
+                        self.forward_message(message).await?;
+
                 }
                 complete => {
                     dbg!("Tari inbound connector shutting down");
@@ -87,10 +92,15 @@ impl TariCommsInboundConnectionService {
         // let from = message.authenticated_origin.as_ref().unwrap().clone();
         let from = message.source_peer.public_key.clone();
         let proto_message: proto::dan::HotStuffMessage = message.decode_message().unwrap();
-        let hot_stuff_message = proto_message
+        let hot_stuff_message: HotStuffMessage<TariDanPayload> = proto_message
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;
-        self.sender.send((from, hot_stuff_message)).await.unwrap();
+        if hot_stuff_message.asset_public_key() == &self.asset_public_key {
+            dbg!(&hot_stuff_message);
+            self.sender.send((from, hot_stuff_message)).await.unwrap();
+        } else {
+            dbg!("filtered");
+        }
         Ok(())
     }
 }

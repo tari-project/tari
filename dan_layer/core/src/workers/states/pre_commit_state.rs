@@ -23,6 +23,7 @@
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -47,6 +48,7 @@ where
     TSigningService: SigningService<TAddr>,
 {
     node_id: TAddr,
+    asset_public_key: PublicKey,
     committee: Committee<TAddr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
@@ -65,9 +67,10 @@ where
     TPayload: Payload,
     TSigningService: SigningService<TAddr>,
 {
-    pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
+    pub fn new(node_id: TAddr, committee: Committee<TAddr>, asset_public_key: PublicKey) -> Self {
         Self {
             node_id,
+            asset_public_key,
             committee,
             phantom_inbound: PhantomData,
             phantom_outbound: PhantomData,
@@ -177,7 +180,7 @@ where
         prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
+        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number, self.asset_public_key.clone());
         outbound
             .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
             .await
@@ -260,7 +263,7 @@ where
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number);
+        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number, self.asset_public_key.clone());
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

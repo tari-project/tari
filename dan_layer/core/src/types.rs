@@ -26,9 +26,6 @@ use tari_crypto::{
     tari_utilities::{ByteArray, ByteArrayError},
 };
 
-/// Define the explicit Public key implementation for the Tari base layer
-pub type PublicKey = RistrettoPublicKey;
-
 pub type ComSig = CommitmentSignature<RistrettoPublicKey, RistrettoSecretKey>;
 
 pub fn create_com_sig_from_bytes(_bytes: &[u8]) -> Result<ComSig, ByteArrayError> {

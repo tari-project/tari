@@ -21,10 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod service_impl;
+
 pub use service_impl::ValidatorNodeRpcServiceImpl;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
-use tari_dan_core::services::MempoolService;
+use tari_dan_core::{
+    services::{AssetProcessor, MempoolService},
+    storage::DbFactory,
+};
 
 use super::proto::validator_node as proto;
 
@@ -41,10 +45,26 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
         &self,
         request: Request<proto::SubmitInstructionRequest>,
     ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
+
+    #[rpc(method = 3)]
+    async fn invoke_read_method(
+        &self,
+        request: Request<proto::InvokeReadMethodRequest>,
+    ) -> Result<Response<proto::InvokeReadMethodResponse>, RpcStatus>;
 }
 
-pub fn create_validator_node_rpc_service<TMempoolService: MempoolService + Clone>(
+pub fn create_validator_node_rpc_service<
+    TMempoolService: MempoolService + Clone,
+    TDbFactory: DbFactory + Clone,
+    TAssetProcessor: AssetProcessor + Clone,
+>(
     mempool_service: TMempoolService,
-) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService>> {
-    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(mempool_service))
+    db_factory: TDbFactory,
+    asset_processor: TAssetProcessor,
+) -> ValidatorNodeRpcServer<ValidatorNodeRpcServiceImpl<TMempoolService, TDbFactory, TAssetProcessor>> {
+    ValidatorNodeRpcServer::new(ValidatorNodeRpcServiceImpl::new(
+        mempool_service,
+        db_factory,
+        asset_processor,
+    ))
 }

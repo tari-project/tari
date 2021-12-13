@@ -198,6 +198,7 @@ where
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
+        dbg!("starting consensus worker");
         let starting_view = self.current_view_id;
         loop {
             if let Some(max) = max_views_to_process {
@@ -247,10 +248,17 @@ where
                     .await
             },
             Prepare => {
-                let db = self.db_factory.create_chain_db()?;
+                let db = self
+                    .db_factory
+                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
-                let mut state_tx = self.db_factory.create_state_db()?.new_unit_of_work();
-                let mut p = states::Prepare::new(self.node_id.clone());
+                let mut state_tx = self
+                    .db_factory
+                    .get_state_db(&self.asset_definition.public_key)?
+                    .ok_or_else(|| DigitalAssetError::MissingDatabase)?
+                    .new_unit_of_work();
+
+                let mut p = states::Prepare::new(self.node_id.clone(), self.asset_definition.public_key.clone());
                 let res = p
                     .next_event(
                         &self.get_current_view()?,
@@ -272,11 +280,14 @@ where
                 Ok(res)
             },
             PreCommit => {
-                let db = self.db_factory.create_chain_db()?;
+                let db = self
+                    .db_factory
+                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
                     self.node_id.clone(),
                     self.committee_manager.current_committee()?.clone(),
+                    self.asset_definition.public_key.clone(),
                 );
                 let res = state
                     .next_event(
@@ -293,10 +304,13 @@ where
             },
 
             Commit => {
-                let db = self.db_factory.create_chain_db()?;
+                let db = self
+                    .db_factory
+                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
                     self.node_id.clone(),
+                    self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
                 let res = state
@@ -315,10 +329,13 @@ where
                 Ok(res)
             },
             Decide => {
-                let db = self.db_factory.create_chain_db()?;
+                let db = self
+                    .db_factory
+                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
                     self.node_id.clone(),
+                    self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
                 let res = state
@@ -359,6 +376,7 @@ where
                         &mut self.outbound_service,
                         self.committee_manager.current_committee()?,
                         self.node_id.clone(),
+                        &self.asset_definition,
                         shutdown,
                     )
                     .await
