@@ -28,7 +28,6 @@ use std::{
     io::{Read, Write},
 };
 
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_utilities::ByteArray;
@@ -179,8 +178,8 @@ impl OutputFeatures {
 
 impl ConsensusEncoding for OutputFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(Self::CONSENSUS_ENCODING_VERSION)?;
-        written += writer.write_varint(self.maturity)?;
+        let mut written = Self::CONSENSUS_ENCODING_VERSION.consensus_encode(writer)?;
+        written += self.maturity.consensus_encode(writer)?;
         written += self.flags.consensus_encode(writer)?;
         Ok(written)
     }
@@ -188,16 +187,16 @@ impl ConsensusEncoding for OutputFeatures {
 
 impl ConsensusEncodingSized for OutputFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
-        Self::CONSENSUS_ENCODING_VERSION.required_space() +
+        Self::CONSENSUS_ENCODING_VERSION.consensus_encode_exact_size() +
             self.flags.consensus_encode_exact_size() +
-            self.maturity.required_space()
+            self.maturity.consensus_encode_exact_size()
     }
 }
 
 impl ConsensusDecoding for OutputFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         // Changing the order of these operations is consensus breaking
-        let version = reader.read_varint::<u8>()?;
+        let version = u8::consensus_decode(reader)?;
         if version != Self::CONSENSUS_ENCODING_VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -208,8 +207,8 @@ impl ConsensusDecoding for OutputFeatures {
                 ),
             ));
         }
-        // Decode safety: read_varint will stop reading the varint after 10 bytes
-        let maturity = reader.read_varint()?;
+        // Decode safety: consensus_decode will stop reading the varint after 10 bytes
+        let maturity = u64::consensus_decode(reader)?;
         let flags = OutputFlags::consensus_decode(reader)?;
         Ok(Self {
             flags,

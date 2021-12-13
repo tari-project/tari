@@ -37,7 +37,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::ConsensusEncodingSized,
     transactions::{
         tari_amount::MicroTari,
         transaction,
@@ -191,8 +191,7 @@ impl UnblindedOutput {
     }
 
     pub fn metadata_byte_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
+        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size()
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not

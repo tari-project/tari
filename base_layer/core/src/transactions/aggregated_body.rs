@@ -45,7 +45,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::ConsensusEncodingSized,
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::MicroTari,
@@ -491,10 +491,7 @@ impl AggregateBody {
     pub fn sum_metadata_size(&self) -> usize {
         self.outputs
             .iter()
-            .map(|o| {
-                o.features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
-            })
+            .map(|o| o.features.consensus_encode_exact_size() + o.script.consensus_encode_exact_size())
             .sum()
     }
 
