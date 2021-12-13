@@ -429,7 +429,7 @@ mod test {
         todo!()
         // let mut replica_a = ConsensusWorker::new(inbound, outbound, committee_manager, node_id,
         // mock_static_payload_provider("Hello"), events_publisher, mock_signing_service(), mock_payload_processor(),
-        // AssetDefinition::default(), mock_base_node_client(), Duration::from_secs(5),                         
+        // AssetDefinition::default(), mock_base_node_client(), Duration::from_secs(5),
         // , ); tokio::spawn(async move {
         //     let _res = replica_a.run(shutdown_signal, Some(2)).await;
         // })
