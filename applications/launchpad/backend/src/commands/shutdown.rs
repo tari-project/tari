@@ -19,15 +19,27 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-mod base_node;
-mod combined;
-mod common;
-mod mining;
-mod wallet;
+use crate::commands::AppState;
+use log::*;
+use tauri::State;
 
-pub use base_node::BaseNodeOptions;
-pub use combined::InstallerOptions;
-pub use common::{InstallLocation, SourceLocation};
-pub use mining::{Miners, MiningOptions};
-pub use wallet::WalletOptions;
+#[tauri::command]
+// Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
+pub async fn shutdown(state: State<'_, AppState>) -> Result<String, ()> {
+    info!("Shutting down");
+    let docker = state.docker_handle().await;
+    let mut workspaces = state.workspaces.write().await;
+    let msg = match workspaces.shutdown(&docker).await {
+        Ok(()) => {
+            info!("Docker has shut down");
+            "Docker has shut down"
+        },
+        Err(e) => {
+            warn!("Docker may not have shut down gracefully. {}", e.chained_message());
+            "Docker was not cleanly shut down. See logs for details"
+        },
+    };
+    Ok(msg.to_string())
+}

@@ -19,31 +19,44 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::config::{InstallLocation, SourceLocation};
+use crate::docker::DockerWrapperError;
+use bollard::{image::CreateImageOptions, models::CreateImageInfo, Docker};
+use futures::{Stream, TryStreamExt};
 
-pub enum PoolStrategy {
-    Solo,
-    Pool,
+pub struct DockerWrapper {
+    handle: Docker,
 }
 
-pub enum Miners {
-    None,
-    Sha3Only(PoolStrategy),
-    MergeMineOnly(PoolStrategy),
-    Both {
-        sha3: PoolStrategy,
-        merge_mine: PoolStrategy,
-    },
-}
+impl DockerWrapper {
+    pub fn new() -> Result<Self, DockerWrapperError> {
+        let handle = Docker::connect_with_local_defaults()?;
+        Ok(Self { handle })
+    }
 
-pub struct MiningOptions {
-    source: SourceLocation,
-    install_location: InstallLocation,
-    miners: Miners,
-}
+    pub fn version(&self) -> String {
+        self.handle.client_version().to_string()
+    }
 
-pub struct XmRigOptions {
-    source: SourceLocation,
-    install_location: InstallLocation,
+    pub fn handle(&self) -> Docker {
+        self.handle.clone()
+    }
+
+    /// Pull an image from a repository.
+    ///
+    /// image_name: The fully qualified name of the image, {registry}/{name}:{tag}
+    /// To use the default registry and tag, you can call `Self::fully_qualified_image(image, registry, tag)`
+    /// to build a default full-qualified image name.
+    pub async fn pull_image(
+        &self,
+        image_name: String,
+    ) -> impl Stream<Item = Result<CreateImageInfo, DockerWrapperError>> {
+        let opts = Some(CreateImageOptions {
+            from_image: image_name,
+            ..Default::default()
+        });
+        let stream = self.handle.create_image(opts, None, None);
+        stream.map_err(DockerWrapperError::from)
+    }
 }

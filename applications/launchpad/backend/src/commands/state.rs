@@ -1,4 +1,5 @@
-// Copyright 2020. The Tari Project
+use bollard::Docker;
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,15 +20,28 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+use crate::docker::{DockerWrapper, Workspaces};
+use tauri::PackageInfo;
+use tokio::sync::RwLock as AsyncLock;
 
-pub mod identity_management;
-pub mod initialization;
-pub mod utilities;
-
-pub mod consts {
-    // Import the auto-generated const values from the Manifest and Git
-    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+pub struct AppState {
+    pub docker: AsyncLock<DockerWrapper>,
+    pub workspaces: AsyncLock<Workspaces>,
+    pub package_info: PackageInfo,
 }
 
-// Alias to common crate
-pub use tari_common as common;
+impl AppState {
+    pub fn new(docker: DockerWrapper, workspaces: Workspaces, package_info: PackageInfo) -> Self {
+        Self {
+            docker: AsyncLock::new(docker),
+            workspaces: AsyncLock::new(workspaces),
+            package_info,
+        }
+    }
+
+    pub async fn docker_handle(&self) -> Docker {
+        let wrapper = self.docker.read().await;
+        wrapper.handle()
+    }
+}

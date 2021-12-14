@@ -23,6 +23,7 @@
 
  #!/usr/local/bin/bash
 export DATA_FOLDER="/tmp/push_bundle"
+export TARI_NETWORK=weatherwax
 
 check_data_folder() {
   if [[ ! -d "$DATA_FOLDER" ]]; then

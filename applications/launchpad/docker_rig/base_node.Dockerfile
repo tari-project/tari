@@ -1,17 +1,19 @@
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-11-01 as builder
 
 WORKDIR /tari
 
 # Adding only necessary things up front and copying the entrypoint script last
 # to take advantage of layer caching in docker
-ADD Cargo.lock .
 ADD Cargo.toml .
 ADD applications applications
 ADD base_layer base_layer
+ADD clients clients
 ADD common common
+ADD common_sqlite common_sqlite
 ADD comms comms
 ADD infrastructure infrastructure
 ADD meta meta
+ADD Cargo.lock .
 ADD rust-toolchain.toml .
 
 ARG ARCH=native
@@ -50,6 +52,7 @@ RUN mkdir -p "/var/tari/base_node/weatherwax" \
     && mkdir -p "/var/tari/base_node/mainnet" \
     && chown -R tari.tari "/var/tari/base_node"
 
+RUN mkdir /blockchain && chown tari.tari /blockchain && chmod 777 /blockchain
 USER tari
 
 ENV APP_NAME=base_node APP_EXEC=tari_base_node

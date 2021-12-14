@@ -19,27 +19,38 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::config::common::{InstallLocation, SourceLocation};
+use std::error::Error;
+use tari_app_utilities::common::exit_codes::ExitCodes;
+use thiserror::Error;
 
-pub struct BaseNodeOptions {
-    // Where do we get the base node code from?
-    source: SourceLocation,
-    // Where do the base node and related files live?
-    install_location: InstallLocation,
-    // Tor setup
-    tor_options: TorOptions,
+#[derive(Debug, Error)]
+pub enum DockerWrapperError {
+    #[error("Something went wrong with the Docker API")]
+    DockerError(#[from] bollard::errors::Error),
+    #[error("Something went wrong on your filesystem")]
+    FileSystemError(#[from] std::io::Error),
+    #[error("The requested container id, {0} is not being managed by the wrapper")]
+    ContainerNotFound(String),
+    #[error("The designated syatem, {0}, already exists")]
+    SystemAlreadyExists(String),
+    #[error("The network is not supported")]
+    UnsupportedNetwork,
+    #[error("It should not be possible to be in this error state")]
+    UnexpectedError,
+    #[error("Could not create an identity file")]
+    IdentityError(#[from] ExitCodes),
 }
 
-pub enum TorLocation {
-    // Use the globally instaled system version of tor
-    System,
-    // Run Tor from a docker image
-    Docker,
-    // Install a new version of Tor in the base node executable folder
-    Local,
-}
-
-pub struct TorOptions {
-    location: TorLocation,
+impl DockerWrapperError {
+    pub fn chained_message(&self) -> String {
+        let mut messages = vec![self.to_string()];
+        let mut this = self as &dyn Error;
+        while let Some(next) = this.source() {
+            messages.push(next.to_string());
+            this = next;
+        }
+        messages.join(" caused by:\n")
+    }
 }

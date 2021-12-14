@@ -1,0 +1,285 @@
+[
+  {
+    "Id": "cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c",
+    "Created": "2021-11-03T20:27:34.3991434Z",
+    "Path": "start_tari_app.sh",
+    "Args": [
+      "-c",
+      "/var/tari/config/config.toml",
+      "-b",
+      "/var/tari/base_node"
+    ],
+    "State": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 137,
+      "Error": "",
+      "StartedAt": "2021-11-03T20:27:35.5080674Z",
+      "FinishedAt": "2021-11-03T22:33:41.4928233Z"
+    },
+    "Image": "sha256:4a8335e84b72d4474ad5bac4dab1a7f4c80097fe3adbd268947fa38c49eab507",
+    "ResolvConfPath": "/var/lib/docker/containers/cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c/resolv.conf",
+    "HostnamePath": "/var/lib/docker/containers/cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c/hostname",
+    "HostsPath": "/var/lib/docker/containers/cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c/hosts",
+    "LogPath": "/var/lib/docker/containers/cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c/cd8d427161f1f3bbfe770a8f6f7b44c8d2812c973da7073c68ab13d7d451d41c-json.log",
+    "Name": "/docker_rig-base_node-1",
+    "RestartCount": 0,
+    "Driver": "overlay2",
+    "Platform": "linux",
+    "MountLabel": "",
+    "ProcessLabel": "",
+    "AppArmorProfile": "",
+    "ExecIDs": null,
+    "HostConfig": {
+      "Binds": [],
+      "ContainerIDFile": "",
+      "LogConfig": {
+        "Type": "json-file",
+        "Config": {}
+      },
+      "NetworkMode": "docker_rig_default",
+      "PortBindings": {
+        "18142/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "18142"
+          }
+        ],
+        "18189/tcp": [
+          {
+            "HostIp": "",
+            "HostPort": "18189"
+          }
+        ]
+      },
+      "RestartPolicy": {
+        "Name": "",
+        "MaximumRetryCount": 0
+      },
+      "AutoRemove": false,
+      "VolumeDriver": "",
+      "VolumesFrom": null,
+      "CapAdd": null,
+      "CapDrop": null,
+      "CgroupnsMode": "host",
+      "Dns": [],
+      "DnsOptions": [],
+      "DnsSearch": [],
+      "ExtraHosts": null,
+      "GroupAdd": null,
+      "IpcMode": "private",
+      "Cgroup": "",
+      "Links": null,
+      "OomScoreAdj": 0,
+      "PidMode": "",
+      "Privileged": false,
+      "PublishAllPorts": false,
+      "ReadonlyRootfs": false,
+      "SecurityOpt": null,
+      "UTSMode": "",
+      "UsernsMode": "",
+      "ShmSize": 67108864,
+      "Runtime": "runc",
+      "ConsoleSize": [
+        0,
+        0
+      ],
+      "Isolation": "",
+      "CpuShares": 0,
+      "Memory": 0,
+      "NanoCpus": 0,
+      "CgroupParent": "",
+      "BlkioWeight": 0,
+      "BlkioWeightDevice": null,
+      "BlkioDeviceReadBps": null,
+      "BlkioDeviceWriteBps": null,
+      "BlkioDeviceReadIOps": null,
+      "BlkioDeviceWriteIOps": null,
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpuRealtimePeriod": 0,
+      "CpuRealtimeRuntime": 0,
+      "CpusetCpus": "",
+      "CpusetMems": "",
+      "Devices": null,
+      "DeviceCgroupRules": null,
+      "DeviceRequests": null,
+      "KernelMemory": 0,
+      "KernelMemoryTCP": 0,
+      "MemoryReservation": 0,
+      "MemorySwap": 0,
+      "MemorySwappiness": null,
+      "OomKillDisable": false,
+      "PidsLimit": null,
+      "Ulimits": null,
+      "CpuCount": 0,
+      "CpuPercent": 0,
+      "IOMaximumIOps": 0,
+      "IOMaximumBandwidth": 0,
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/tari1",
+          "Target": "/var/tari",
+          "BindOptions": {}
+        },
+        {
+          "Type": "volume",
+          "Source": "docker_rig_blockchain",
+          "Target": "/var/tari/base_node/weatherwax",
+          "VolumeOptions": {}
+        }
+      ],
+      "MaskedPaths": [
+        "/proc/asound",
+        "/proc/acpi",
+        "/proc/kcore",
+        "/proc/keys",
+        "/proc/latency_stats",
+        "/proc/timer_list",
+        "/proc/timer_stats",
+        "/proc/sched_debug",
+        "/proc/scsi",
+        "/sys/firmware"
+      ],
+      "ReadonlyPaths": [
+        "/proc/bus",
+        "/proc/fs",
+        "/proc/irq",
+        "/proc/sys",
+        "/proc/sysrq-trigger"
+      ]
+    },
+    "GraphDriver": {
+      "Data": {
+        "LowerDir": "/var/lib/docker/overlay2/95d4318cfa9a5769325f4190f8fb147b22eacb998b17fc18d79ef6c79d3097f3-init/diff:/var/lib/docker/overlay2/o7lauyofzxgsyuenx38p4hmnq/diff:/var/lib/docker/overlay2/s2exdrj9xm33nnhu4j57nptg7/diff:/var/lib/docker/overlay2/1rxpbzhvrgiikgawabld40vwu/diff:/var/lib/docker/overlay2/f43c61b71944fd32a79bc2efc139b473a4409468a86a8d6b7305d62398f5d788/diff",
+        "MergedDir": "/var/lib/docker/overlay2/95d4318cfa9a5769325f4190f8fb147b22eacb998b17fc18d79ef6c79d3097f3/merged",
+        "UpperDir": "/var/lib/docker/overlay2/95d4318cfa9a5769325f4190f8fb147b22eacb998b17fc18d79ef6c79d3097f3/diff",
+        "WorkDir": "/var/lib/docker/overlay2/95d4318cfa9a5769325f4190f8fb147b22eacb998b17fc18d79ef6c79d3097f3/work"
+      },
+      "Name": "overlay2"
+    },
+    "Mounts": [
+      {
+        "Type": "bind",
+        "Source": "/tmp/tari1",
+        "Destination": "/var/tari",
+        "Mode": "",
+        "RW": true,
+        "Propagation": "rprivate"
+      },
+      {
+        "Type": "volume",
+        "Name": "docker_rig_blockchain",
+        "Source": "/var/lib/docker/volumes/docker_rig_blockchain/_data",
+        "Destination": "/var/tari/base_node/weatherwax",
+        "Driver": "local",
+        "Mode": "z",
+        "RW": true,
+        "Propagation": ""
+      }
+    ],
+    "Config": {
+      "Hostname": "cd8d427161f1",
+      "Domainname": "",
+      "User": "",
+      "AttachStdin": false,
+      "AttachStdout": true,
+      "AttachStderr": true,
+      "ExposedPorts": {
+        "18142/tcp": {},
+        "18189/tcp": {}
+      },
+      "Tty": true,
+      "OpenStdin": true,
+      "StdinOnce": false,
+      "Env": [
+        "TARI_BASE_NODE__WEATHERWAX__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
+        "TARI_BASE_NODE__WEATHERWAX__TCP_LISTENER_ADDRESS=/dns4/base_node/tcp/18189",
+        "TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_AUTH=password=tari",
+        "APP_NAME=base_node",
+        "WAIT_FOR_TOR=0",
+        "TARI_LOG_CONFIGURATION=/var/tari/config/log4rs.yml",
+        "TARI_NETWORK=weatherwax",
+        "TARI_BASE_NODE__WEATHERWAX__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
+        "TARI_BASE_NODE__WEATHERWAX__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
+        "APP_EXEC=tari_base_node",
+        "TARI_BASE_NODE__WEATHERWAX__GRPC_ENABLED=1",
+        "TARI_BASE_NODE__WEATHERWAX__GRPC_BASE_NODE_ADDRESS=0.0.0.0:18142",
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "Cmd": null,
+      "Image": "quay.io/tarilabs/tari_base_node:latest",
+      "Volumes": {
+        "/var/tari": {},
+        "/var/tari/base_node/weatherwax": {}
+      },
+      "WorkingDir": "",
+      "Entrypoint": [
+        "start_tari_app.sh",
+        "-c",
+        "/var/tari/config/config.toml",
+        "-b",
+        "/var/tari/base_node"
+      ],
+      "OnBuild": null,
+      "Labels": {
+        "com.docker.compose.config-hash": "eca31f18aa74c2a5ca267096e4bbe838f2e44c2650a6de952d3f707240cb8ec5",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "tor",
+        "com.docker.compose.image": "sha256:4a8335e84b72d4474ad5bac4dab1a7f4c80097fe3adbd268947fa38c49eab507",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "docker_rig",
+        "com.docker.compose.project.config_files": "/Users/cayle/tari/tari/applications/launchpad/docker_rig/docker-compose.yml",
+        "com.docker.compose.project.working_dir": "/Users/cayle/tari/tari/applications/launchpad/docker_rig",
+        "com.docker.compose.service": "base_node",
+        "com.docker.compose.version": "2.0.0"
+      }
+    },
+    "NetworkSettings": {
+      "Bridge": "",
+      "SandboxID": "805cd4bc4e40aeab66aa3848e32b9218b3abf975a4802230ce68f5bc7c2ec3ee",
+      "HairpinMode": false,
+      "LinkLocalIPv6Address": "",
+      "LinkLocalIPv6PrefixLen": 0,
+      "Ports": {},
+      "SandboxKey": "/var/run/docker/netns/805cd4bc4e40",
+      "SecondaryIPAddresses": null,
+      "SecondaryIPv6Addresses": null,
+      "EndpointID": "",
+      "Gateway": "",
+      "GlobalIPv6Address": "",
+      "GlobalIPv6PrefixLen": 0,
+      "IPAddress": "",
+      "IPPrefixLen": 0,
+      "IPv6Gateway": "",
+      "MacAddress": "",
+      "Networks": {
+        "docker_rig_default": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": [
+            "docker_rig-base_node-1",
+            "base_node",
+            "cd8d427161f1"
+          ],
+          "NetworkID": "263102f391151cfe26c28fa378532493402f10d52f5e038d0e225fe1bb34451d",
+          "EndpointID": "",
+          "Gateway": "",
+          "IPAddress": "",
+          "IPPrefixLen": 0,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "MacAddress": "",
+          "DriverOpts": null
+        }
+      }
+    }
+  }
+]

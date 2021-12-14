@@ -19,12 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::config::{InstallLocation, SourceLocation};
-
-pub struct WalletOptions {
-    // Where to pull the wallet source or binary from
-    source: SourceLocation,
-    // Where the wallet and its data will live. SQLite installation will follow the settings chosen here.
-    install_location: InstallLocation,
-}
+pub mod commands;
+pub mod docker;
+pub mod error;

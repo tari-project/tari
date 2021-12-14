@@ -1,0 +1,452 @@
+// Copyright 2021. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+
+use crate::docker::{
+    models::{ContainerId, ContainerState},
+    DockerWrapperError,
+    ImageType,
+    LaunchpadConfig,
+    LogMessage,
+};
+use bollard::{
+    container::{Config, CreateContainerOptions, LogsOptions, StopContainerOptions},
+    models::{ContainerCreateResponse, HostConfig, Network},
+    network::{CreateNetworkOptions, InspectNetworkOptions},
+    volume::CreateVolumeOptions,
+    Docker,
+};
+use futures::{Stream, StreamExt};
+use log::*;
+use std::collections::HashMap;
+use bollard::container::NetworkingConfig;
+use bollard::models::{EndpointSettings};
+use bollard::network::ConnectNetworkOptions;
+use strum::IntoEnumIterator;
+use tari_app_utilities::identity_management::setup_node_identity;
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+
+static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
+static DEFAULT_TAG: &str = "latest";
+
+pub static DEFAULT_IMAGES: [ImageType; 5] = [
+    ImageType::BaseNode,
+    ImageType::Wallet,
+    ImageType::Sha3Miner,
+    ImageType::Tor,
+    ImageType::MmProxy,
+];
+
+pub struct Workspaces {
+    workspaces: HashMap<String, TariWorkspace>,
+}
+
+impl Workspaces {
+    pub fn new() -> Self {
+        Self {
+            workspaces: HashMap::new(),
+        }
+    }
+
+    pub fn get_workspace_mut(&mut self, name: &str) -> Option<&mut TariWorkspace> {
+        self.workspaces.get_mut(name)
+    }
+
+    pub fn workspace_exists(&self, name: &str) -> bool {
+        self.workspaces.contains_key(name)
+    }
+
+    /// Create a new Tari workspace. It must not previously exist
+    pub fn create_workspace(&mut self, name: &str, config: LaunchpadConfig) -> Result<(), DockerWrapperError> {
+        if self.workspaces.contains_key(name) {
+            return Err(DockerWrapperError::SystemAlreadyExists(name.to_string()));
+        }
+        let new_system = TariWorkspace::new(name, config);
+        self.workspaces.insert(name.to_string(), new_system);
+        Ok(())
+    }
+
+    /// Gracefully shut down the docker images and delete them
+    /// The volumes are kept, since if we restart, we don't want to re-sync the entire blockchain again
+    pub async fn shutdown(&mut self, docker: &Docker) -> Result<(), DockerWrapperError> {
+        for (name, system) in &mut self.workspaces {
+            info!("Shutting down {}", name);
+            system.stop_containers(true, docker).await;
+        }
+        Ok(())
+    }
+}
+
+pub struct TariWorkspace {
+    name: String,
+    config: LaunchpadConfig,
+    containers: HashMap<ContainerId, ContainerState>,
+}
+
+impl TariWorkspace {
+    /// Create a new Tari system using the provided configuration
+    pub fn new(name: &str, config: LaunchpadConfig) -> Self {
+        Self {
+            name: name.to_string(),
+            config,
+            containers: HashMap::new(),
+        }
+    }
+
+    /// Returns the name of this system, which is generally used as the workspace name when running multiple Tari
+    /// systems
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
+        let reg = registry.unwrap_or(DEFAULT_REGISTRY);
+        let tag = tag.unwrap_or(DEFAULT_TAG);
+        format!("{}/{}:{}", reg, image.image_name(), tag)
+    }
+
+    pub async fn start(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
+        // Create or load identities
+        let _ids = self.create_identities()?;
+        // Set up the local network
+        if !self.network_exists(&docker).await? {
+            self.create_network(&docker).await?;
+        }
+        // Create or restart the volume
+
+
+        let registry = self.config.registry.clone();
+        let tag = self.config.tag.clone();
+        for image in self.images_to_start() {
+            let args = self.config.command(image);
+            // Start each container
+            let id = self
+                .start_service(image, registry.clone(), tag.clone(), args, docker.clone())
+                .await?;
+            info!("Docker container {} ({}) successfully started", image.image_name(), id);
+            // Connect the container to the network
+            // self.connect_to_network(&id, image, &docker).await?;
+        }
+
+        // Create the stats streams
+        // Create the log streams
+        // Create the kill hooks
+        // Happy mining
+        Ok(())
+    }
+
+    pub fn create_identity(
+        &self,
+        root_path: &str,
+        image: ImageType,
+    ) -> Result<Option<NodeIdentity>, DockerWrapperError> {
+        if let Some(id_file_path) = self.config.id_path(root_path, image) {
+            debug!("Loading or creating identity file {}", id_file_path.to_string_lossy());
+            let id = setup_node_identity(id_file_path, &None, true, PeerFeatures::COMMUNICATION_NODE)?
+                .as_ref()
+                .clone();
+            // TODO - remove this log line since it prints a secret key
+            debug!("Identity: {}", id);
+            Ok(Some(id))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn create_identities(&self) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
+        let root_path = self.config.data_directory.to_string_lossy().to_string();
+        let mut ids = HashMap::new();
+        for image in ImageType::iter() {
+            if let Some(id) = self.create_identity(root_path.as_str(), image)? {
+                let _ = ids.insert(image, id);
+            }
+        }
+        Ok(ids)
+    }
+
+    pub fn logs(
+        &self,
+        docker: Docker,
+    ) -> HashMap<ContainerId, impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
+        self.containers
+            .iter()
+            .map(|(id, _state)| {
+                let options = LogsOptions::<String> {
+                    follow: true,
+                    stdout: true,
+                    stderr: true,
+                    ..Default::default()
+                };
+                (
+                    id.clone(),
+                    docker
+                        .logs(id.as_str(), Some(options))
+                        .map(|log| log.map(LogMessage::from).map_err(DockerWrapperError::from)),
+                )
+            })
+            .collect()
+    }
+
+    /// Create and run the container described by `{registry}/image:tag`.
+    ///
+    /// ## Arguments
+    /// * `image`: The name of the image to run. e.g. "tari_base_node"
+    /// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
+    /// * `tag`: The image tag to use. The default is `latest`.
+    /// * `args`: The command-line arguments to pass on to the entrypoint. The default is ""
+    ///
+    /// ## Return
+    ///
+    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container id on
+    /// success.
+    ///
+    /// `start_service` creates a new docker container and runs it. As part of this process,
+    /// * it pulls configuration data from the [`LaunchConfig`] instance attached to this [`DockerWRapper`] to construct
+    ///   the Environment, Volume configuration, and exposed Port configuration.
+    /// * creates a new container
+    /// * starts the container
+    /// * adds the container reference to the current list of containers being managed
+    /// * Returns the container id
+    pub async fn start_service(
+        &mut self,
+        image: ImageType,
+        registry: Option<String>,
+        tag: Option<String>,
+        args: Vec<String>,
+        docker: Docker,
+    ) -> Result<ContainerId, DockerWrapperError> {
+        let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
+        let options = Some(CreateContainerOptions {
+            name: format!("{}_{}", self.name, image.image_name()),
+        });
+        let envars = self.config.environment(image);
+        let volumes = self.config.volumes(image);
+        let ports = self.config.ports(image);
+        let port_map = self.config.port_map(image);
+        let mounts = self.config.mounts(image, self.tari_blockchain_volume_name());
+        let mut endpoints= HashMap::new();
+        let endpoint = EndpointSettings {
+            aliases: Some(vec![image.container_name().to_string()]),
+            .. Default::default()
+        };
+        endpoints.insert(self.network_name(), endpoint);
+        let config = Config::<String> {
+            image: Some(image_name.clone()),
+            attach_stdin: Some(false),
+            attach_stdout: Some(false),
+            attach_stderr: Some(false),
+            exposed_ports: Some(ports),
+            open_stdin: Some(true),
+            stdin_once: Some(false),
+            tty: Some(true),
+            env: Some(envars),
+            volumes: Some(volumes),
+            cmd: Some(args),
+            host_config: Some(HostConfig {
+                binds: Some(vec![]),
+                network_mode: Some("bridge".to_string()),
+                port_bindings: Some(port_map),
+                mounts: Some(mounts),
+                ..Default::default()
+            }),
+            networking_config: Some(NetworkingConfig {
+                endpoints_config: endpoints
+            }),
+            ..Default::default()
+        };
+        info!("Creating {}", image_name);
+        debug!("{} has configuration object: {:#?}", image_name, config);
+        let container = docker.create_container(options, config).await?;
+        let name = image.image_name().to_string();
+        let id = self.add_container(name, container);
+        info!("{} created.", image_name);
+        info!("Starting {}.", image_name);
+        docker.start_container::<String>(id.as_str(), None).await?;
+        self.mark_container_running(&id)?;
+        info!("{} started with id {}", image_name, id);
+
+        Ok(id)
+    }
+
+    fn images_to_start(&self) -> Vec<ImageType> {
+        let mut images = Vec::with_capacity(6);
+        // Always use Tor for now
+        images.push(ImageType::Tor);
+        if self.config.base_node.is_some() {
+            images.push(ImageType::BaseNode);
+        }
+        if self.config.wallet.is_some() {
+            images.push(ImageType::Wallet);
+        }
+        if self.config.xmrig.is_some() {
+            images.push(ImageType::XmRig);
+        }
+        if self.config.sha3_miner.is_some() {
+            images.push(ImageType::Sha3Miner);
+        }
+        if self.config.mm_proxy.is_some() {
+            images.push(ImageType::MmProxy);
+        }
+        // TODO - add monerod support
+        images
+    }
+
+    /// Returns a reference to the set of managed containers
+    pub fn managed_containers(&self) -> &HashMap<ContainerId, ContainerState> {
+        &self.containers
+    }
+
+    /// Add the container info to the list of containers the wrapper is managing
+    fn add_container(&mut self, name: String, container: ContainerCreateResponse) -> ContainerId {
+        let id = ContainerId::from(container.id.clone());
+        let state = ContainerState::new(name, container);
+        self.containers.insert(id.clone(), state);
+        id
+    }
+
+    /// Tag the container with id `id` as Running
+    fn mark_container_running(&mut self, id: &ContainerId) -> Result<(), DockerWrapperError> {
+        if let Some(container) = self.containers.get_mut(id) {
+            container.running();
+            Ok(())
+        } else {
+            Err(DockerWrapperError::ContainerNotFound(id.as_ref().to_string()))
+        }
+    }
+
+    /// Stop all running containers and optionally delete them
+    pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
+        for (id, container) in &mut self.containers {
+            // Stop the container immediately
+            let options = StopContainerOptions { t: 0 };
+            match docker.stop_container(id.as_str(), Some(options)).await {
+                Ok(_res) => {
+                    info!("Container {} stopped", id);
+                    container.set_stop();
+                    if delete {
+                        match docker.remove_container(id.as_str(), None).await {
+                            Ok(()) => {
+                                info!("Container {} deleted", id);
+                                container.set_deleted();
+                            },
+                            Err(err) => {
+                                warn!("Could not delete container {} due to: {}", id, err.to_string())
+                            },
+                        }
+                    }
+                },
+                Err(err) => {
+                    warn!("Could not stop container {} due to {}", id, err.to_string());
+                },
+            }
+        }
+    }
+
+    pub fn network_name(&self) -> String {
+        format!("{}_network", self.name)
+    }
+
+    pub fn tari_blockchain_volume_name(&self) -> String {
+        format!("{}_{}_volume", self.name, self.config.tari_network.lower_case())
+    }
+
+    /// Checks if the network for this docker configuration exists
+    pub async fn network_exists(&self, docker: &Docker) -> Result<bool, DockerWrapperError> {
+        let name = self.network_name();
+        let options = InspectNetworkOptions {
+            verbose: false,
+            scope: "local",
+        };
+        let network = docker.inspect_network(name.as_str(), Some(options)).await;
+        // hardcore pattern matching yo!
+        if let Ok(Network {
+            name: Some(name),
+            id: Some(id),
+            ..
+        }) = network
+        {
+            info!("Network {} (id:{}) exists", name, id);
+            Ok(true)
+        } else {
+            info!("Network {} does not exist", name);
+            Ok(false)
+        }
+    }
+
+    pub async fn create_network(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
+        let name = self.network_name();
+        let options = CreateNetworkOptions {
+            name: name.as_str(),
+            check_duplicate: true,
+            driver: "bridge",
+            internal: false,
+            attachable: false,
+            ingress: false,
+            ipam: Default::default(),
+            enable_ipv6: false,
+            options: Default::default(),
+            labels: Default::default(),
+        };
+        let res = docker.create_network(options).await?;
+        if let Some(id) = &res.id {
+            info!("Network {} (id:{}) created", name, id);
+        }
+        if let Some(warn) = res.warning {
+            warn!("Creating {} network had warnings: {}", name, warn);
+        }
+        Ok(())
+    }
+
+    pub async fn volume_exists(&self, docker: &Docker) -> Result<bool, DockerWrapperError> {
+        let name = self.tari_blockchain_volume_name();
+        let volume = docker.inspect_volume(name.as_str()).await?;
+        debug!("Volume {} exists at {}", name, volume.mountpoint);
+        Ok(true)
+    }
+
+    pub async fn create_volume(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
+        let name = self.tari_blockchain_volume_name();
+        let config = CreateVolumeOptions {
+            name,
+            driver: "local".to_string(),
+            ..Default::default()
+        };
+        let volume = docker.create_volume(config).await?;
+        info!("Docker volume {} created at {}", volume.name, volume.mountpoint);
+        Ok(())
+    }
+
+    pub async fn connect_to_network(&self, id: &ContainerId, image: ImageType, docker: &Docker) -> Result<(), DockerWrapperError> {
+        let network = self.network_name();
+        let options = ConnectNetworkOptions {
+            container: id.as_str(),
+            endpoint_config: EndpointSettings {
+                aliases: Some(vec![image.container_name().to_string()]),
+                .. Default::default()
+            }
+        };
+        info!("Connecting container {} ({}) to network {}...", image.image_name(), id, network);
+        docker.connect_network(network.as_str(), options).await?;
+        info!("Docker container {} ({}) connected to network {}", image.image_name(), id, network);
+        Ok(())
+    }
+}

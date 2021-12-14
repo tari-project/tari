@@ -19,62 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use std::path::PathBuf;
+use rand::distributions::{Alphanumeric, Distribution};
 
-#[cfg(target_os = "windows")]
-const TARI_FOLDER: &str = "tari";
-#[cfg(any(target_os = "macos", target_os = "unix"))]
-const TARI_FOLDER: &str = ".tari";
-
-pub enum SourceLocation {
-    SourceCode(SourceCodeOptions),
-    Docker(DockerOptions),
-}
-
-pub struct SourceCodeOptions {}
-
-pub struct DockerOptions {}
-
-pub struct InstallLocation {
-    config_folder: PathBuf,
-    executable_folder: PathBuf,
-    data_folder: PathBuf,
-}
-
-impl Default for InstallLocation {
-    fn default() -> Self {
-        let mut home = dirs::home_dir().expect("No default home folder");
-        let mut bin: PathBuf;
-        let data = dirs::data_dir().expect("No default data folder");
-        #[cfg(target_os = "windows")]
-        {
-            home.push(TARI_FOLDER);
-            bin = PathBuf::from("C:\\Program Files");
-        }
-        #[cfg(any(target_os = "macos", target_os = "unix"))]
-        {
-            bin = dirs::home_dir().expect("No default home folder");
-            bin.push("bin");
-            home.push(TARI_FOLDER);
-        }
-
-        Self {
-            config_folder: home,
-            executable_folder: bin,
-            data_folder: data,
-        }
-    }
-}
-
-pub enum TariConfig {
-    Default,
-    Supplied(PathBuf),
-    Inline(String),
-}
-
-pub enum Network {
-    Stibbons,
-    Weatherwax,
-    Mainnet,
+pub fn create_password(len: usize) -> String {
+    let mut rng = rand::thread_rng();
+    Alphanumeric.sample_iter(&mut rng).take(len).map(char::from).collect()
 }

@@ -59,6 +59,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             None => Ok(Arc::new(id)),
         },
         Err(e) => {
+            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
                 if !prompt {
@@ -77,8 +78,6 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     )));
                 };
             }
-
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
 
             match create_new_identity(&identity_file, public_address.clone(), peer_features) {
                 Ok(id) => {

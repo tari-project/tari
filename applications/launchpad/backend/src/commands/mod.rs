@@ -19,23 +19,16 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-use crate::config::{
-    common::{Network, TariConfig},
-    BaseNodeOptions,
-    MiningOptions,
-    WalletOptions,
-};
+mod create_workspace;
+mod launch_docker;
+mod pull_images;
+mod shutdown;
+mod state;
 
-pub struct InstallerOptions {
-    // Selects the netowrk to run
-    network: Network,
-    // A way of getting at the tari global configuration files
-    tari_config: TariConfig,
-    // Installer options for a base node
-    base_node_options: Option<BaseNodeOptions>,
-    // Installer options for the console wallet
-    wallet_options: Option<WalletOptions>,
-    // Installer options for mining
-    mining_options: Option<MiningOptions>,
-}
+pub use create_workspace::create_new_workspace;
+pub use launch_docker::launch_docker;
+pub use pull_images::{image_list, pull_images};
+pub use shutdown::shutdown;
+pub use state::AppState;

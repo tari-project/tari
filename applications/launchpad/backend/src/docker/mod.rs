@@ -19,5 +19,30 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
+mod error;
+mod filesystem;
+mod models;
+mod settings;
+mod workspace;
+mod wrapper;
 
+pub mod helpers;
+
+pub use error::DockerWrapperError;
+pub use filesystem::create_workspace;
+pub use models::{ContainerId, ContainerState, ContainerStatus, LogMessage};
+pub use settings::{
+    BaseNodeConfig,
+    ImageType,
+    LaunchpadConfig,
+    MmProxyConfig,
+    Sha3MinerConfig,
+    TariNetwork,
+    WalletConfig,
+    XmRigConfig,
+    DEFAULT_MINING_ADDRESS,
+};
+pub use workspace::{TariWorkspace, Workspaces, DEFAULT_IMAGES};
+pub use wrapper::DockerWrapper;
