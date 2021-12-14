@@ -28,7 +28,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures::{future, FutureExt};
@@ -383,7 +383,8 @@ where
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
-        let noise_socket = time::timeout(
+        let timer = Instant::now();
+        let mut noise_socket = time::timeout(
             Duration::from_secs(30),
             noise_config.upgrade_socket(socket, CONNECTION_DIRECTION),
         )
@@ -394,21 +395,23 @@ where
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
-        // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
-
-        let mut muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
-            .await
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
-
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'",
+            "Noise socket upgrade completed in {:.2?} with public key '{}'",
+            timer.elapsed(),
             authenticated_public_key
         );
 
+        // Check if we know the peer and if it is banned
+        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
+        );
+
         let peer_identity = common::perform_identity_exchange(
-            &mut muxer,
+            &mut noise_socket,
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
@@ -441,6 +444,9 @@ where
             node_identity.node_id().short_str(),
             peer_node_id.short_str()
         );
+
+        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
+            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         peer_connection::create(
             muxer,

@@ -124,7 +124,7 @@ impl CommsBuilder {
     }
 
     /// Set a network major and minor version as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
-    pub fn with_node_version(mut self, major_version: u32, minor_version: u32) -> Self {
+    pub fn with_node_version(mut self, major_version: u8, minor_version: u8) -> Self {
         self.connection_manager_config.network_info.major_version = major_version;
         self.connection_manager_config.network_info.minor_version = minor_version;
         self
