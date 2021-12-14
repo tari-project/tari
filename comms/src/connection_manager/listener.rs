@@ -33,7 +33,6 @@ use std::{
 
 use futures::{future, FutureExt};
 use log::*;
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -286,18 +285,14 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    // TODO: This call is expensive and only added for the benefit of improved logging and may lead to
-                    // TODO: DoS attacks. Remove later when not needed anymore or make it optional with a config file
-                    // TODO: setting.
-                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' ({}) sent invalid wire format byte. Expected {:x?} got: {:x?} ",
+                        "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
-                        public_key,
                         config.network_info.network_byte,
                         byte,
                     );
+                    let _ = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
@@ -337,33 +332,6 @@ where
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node
         self.bounded_executor.spawn(inbound_fut).await;
-    }
-
-    async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
-        let noise_socket = time::timeout(
-            Duration::from_secs(30),
-            noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
-        )
-        .await;
-
-        let public_key = match noise_socket {
-            Ok(Ok(mut noise_socket)) => {
-                let pk = noise_socket.get_remote_public_key();
-                if let Err(err) = noise_socket.shutdown().await {
-                    debug!(
-                        target: LOG_TARGET,
-                        "IO error when closing socket after invalid wire format: {}", err
-                    );
-                }
-                pk
-            },
-            _ => None,
-        };
-
-        match public_key {
-            None => "public key not known".to_string(),
-            Some(pk) => pk.to_hex(),
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
