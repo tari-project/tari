@@ -1,0 +1,81 @@
+// Copyright 2021. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::hash::Hash;
+
+use tari_crypto::common::Blake256;
+use tari_mmr::MerkleMountainRange;
+
+use crate::models::{ConsensusHash, Instruction};
+
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct InstructionSetHash(Vec<u8>);
+
+impl InstructionSetHash {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+// TODO: Implement hash properly
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Clone, Debug)]
+pub struct InstructionSet {
+    hash: InstructionSetHash,
+    instructions: Vec<Instruction>,
+}
+
+impl InstructionSet {
+    pub fn empty() -> Self {
+        Self::from_slice(&[])
+    }
+
+    pub fn from_slice(instructions: &[Instruction]) -> Self {
+        let ins = Vec::from(instructions);
+        let mut result = Self {
+            instructions: ins,
+            hash: InstructionSetHash(vec![]),
+        };
+        result.hash = result.calculate_hash();
+        result
+    }
+
+    pub fn calculate_hash(&self) -> InstructionSetHash {
+        let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
+        // assume instructions are sorted
+        for instruction in &self.instructions {
+            mmr.push(instruction.calculate_hash()).unwrap();
+        }
+
+        InstructionSetHash(mmr.get_merkle_root().unwrap())
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        self.instructions.as_slice()
+    }
+}
+
+impl ConsensusHash for InstructionSet {
+    fn consensus_hash(&self) -> &[u8] {
+        self.hash.as_bytes()
+    }
+}

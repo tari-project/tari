@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::middleware::DhtHandlerMiddleware;
-use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
 use std::sync::Arc;
+
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
+
+use super::middleware::DhtHandlerMiddleware;
+use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
 
 pub struct DhtHandlerLayer {
     peer_manager: Arc<PeerManager>,

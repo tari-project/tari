@@ -78,11 +78,12 @@ macro_rules! panic_context {
 
 #[cfg(test)]
 mod test {
+    use std::task::Poll;
+
     use futures::{
         future::{self, FutureExt},
         task::Context,
     };
-    use std::task::Poll;
 
     #[test]
     fn counter_context() {

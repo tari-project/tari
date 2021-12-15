@@ -20,16 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::HashOutput;
 use thiserror::Error;
 use tokio::task;
-
-use tari_common_types::types::HashOutput;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
 };
 
 #[derive(Debug, Error)]
@@ -57,10 +56,18 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
-    #[error("Transaction contains already outputs that already exist")]
+    #[error("Transaction contains outputs that already exist")]
     ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
+    #[error("Transaction contains an output unique_id that already exists")]
+    ContainsDuplicateUtxoUniqueID,
+    #[error("Unique ID in input is not present in outputs")]
+    UniqueIdInInputNotPresentInOutputs,
+    #[error("Unique ID was present in more than one output")]
+    DuplicateUniqueIdInOutputs,
+    #[error("Unique ID was marked as burned, but was present in a new output")]
+    UniqueIdBurnedButPresentInOutputs,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]
@@ -89,6 +96,15 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
     AsyncTaskFailed(#[from] task::JoinError),
+    #[error("Bad block with hash {hash} found")]
+    BadBlockFound { hash: String },
+    #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
+    TariScriptExceedsMaxSize {
+        max_script_size: usize,
+        actual_script_size: usize,
+    },
+    #[error("Consensus Error: {0}")]
+    ConsensusError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, stream, Future};
 use std::{error::Error, pin::Pin, sync::Arc};
+
+use futures::{future, stream, Future};
 use trust_dns_client::{
     op::{Message, Query},
     proto::{

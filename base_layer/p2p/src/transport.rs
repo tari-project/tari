@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::fmt;
+
 use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
 
 #[derive(Debug, Clone)]

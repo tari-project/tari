@@ -1,4 +1,3 @@
-use crate::ui::state::AppState;
 use tui::{
     backend::Backend,
     layout::Rect,
@@ -6,6 +5,8 @@ use tui::{
     text::{Span, Spans},
     Frame,
 };
+
+use crate::ui::state::AppState;
 
 pub trait Component<B: Backend> {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState);

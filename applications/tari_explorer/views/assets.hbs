@@ -1,0 +1,19 @@
+<h1>{{this.title}}</h1>
+
+<h2>Tokens</h2>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Unique ID</th>
+        <th>Owner commitment</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{#each this.tokens}}
+            <tr>
+                <td>{{hex unique_id}}</td>
+                <td>{{hex owner_commitment}}</td>
+            </tr>
+        {{/each}}
+    </tbody>
+</table>

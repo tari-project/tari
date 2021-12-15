@@ -21,16 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
-use super::error::SocksError;
-use data_encoding::BASE32;
-use multiaddr::{Multiaddr, Protocol};
 use std::{
     borrow::Cow,
     fmt,
     fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
 };
+
+use data_encoding::BASE32;
+use multiaddr::{Multiaddr, Protocol};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use super::error::SocksError;
 
 pub type Result<T> = std::result::Result<T, SocksError>;
 
@@ -104,7 +106,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Connects to a address through a SOCKS5 proxy and returns the 'upgraded' socket. This consumes the
     /// `Socks5Client` as once connected, the socks protocol does not recognise any further commands.
-    #[tracing::instrument(name = "socks::connect", skip(self))]
+    #[tracing::instrument(level = "trace", name = "socks::connect", skip(self))]
     pub async fn connect(mut self, address: &Multiaddr) -> Result<(TSocket, Multiaddr)> {
         let address = self.execute_command(Command::Connect, address).await?;
         Ok((self.protocol.socket, address))

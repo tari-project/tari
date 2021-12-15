@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::response::ResponseLine;
 use thiserror::Error;
+
+use super::response::ResponseLine;
 
 #[derive(Debug, Error)]
 pub enum ControlEventError {

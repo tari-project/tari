@@ -19,16 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{cmp, cmp::Ordering, convert::TryInto, thread, time::Instant};
+
+use async_trait::async_trait;
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::*;
+use tari_common_types::types::{Commitment, HashOutput, PublicKey};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
+use tari_utilities::Hashable;
+use tokio::task;
+
 use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
-    crypto::tari_utilities::Hashable,
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_entities::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelSum,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -38,13 +54,6 @@ use crate::{
         ValidationError,
     },
 };
-use async_trait::async_trait;
-use futures::{stream::FuturesUnordered, StreamExt};
-use log::*;
-use std::{cmp, cmp::Ordering, convert::TryInto, thread, time::Instant};
-use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
-use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.
 /// It implements two validators: one for the `BlockHeader` and one for `Block`. The `Block` validator ONLY validates
@@ -93,6 +102,22 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         if !helpers::is_all_unique_and_sorted(&outputs) {
             return Err(ValidationError::UnsortedOrDuplicateOutput);
         }
+
+        // Check that unique_ids are unique in this block
+        let mut unique_ids = Vec::new();
+        for output in &outputs {
+            if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) {
+                if let Some(unique_id) = output.features.unique_asset_id() {
+                    let parent_public_key = output.features.parent_public_key.as_ref();
+                    let asset_tuple = (parent_public_key, unique_id);
+                    if unique_ids.contains(&asset_tuple) {
+                        return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                    }
+                    unique_ids.push(asset_tuple);
+                }
+            }
+        }
+
         let outputs_task = self.start_output_validation(&valid_header, outputs);
 
         // Wait for them to complete
@@ -324,6 +349,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
+                let max_script_size = self.rules.consensus_constants(height).get_max_script_byte_size();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
@@ -350,6 +376,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             // We should not count the coinbase tx here
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
+
+                        helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
 
                         output.verify_metadata_signature()?;
                         if !bypass_range_proof_verification {

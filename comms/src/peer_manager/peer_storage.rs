@@ -20,24 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, time::Duration};
+
+use chrono::Utc;
+use log::*;
+use multiaddr::Multiaddr;
+use rand::{rngs::OsRng, seq::SliceRandom};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_storage::{IterationResult, KeyValueStore};
+
 use crate::{
     peer_manager::{
-        node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::{generate_peer_key, PeerId},
+        NodeDistance,
+        NodeId,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
+        PeerQuerySortBy,
     },
     protocol::ProtocolId,
     types::{CommsDatabase, CommsPublicKey},
 };
-use log::*;
-use multiaddr::Multiaddr;
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{collections::HashMap, time::Duration};
-use tari_crypto::tari_utilities::ByteArray;
-use tari_storage::{IterationResult, KeyValueStore};
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// The maximum number of peers to return from the flood_identities method in peer manager
@@ -218,7 +223,7 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     pub fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
-        if partial.is_empty() || partial.len() > NodeId::BYTE_SIZE {
+        if partial.is_empty() || partial.len() > NodeId::byte_size() {
             return Ok(Vec::new());
         }
 
@@ -325,25 +330,17 @@ where DS: KeyValueStore<PeerId, Peer>
             return Ok(Vec::new());
         }
 
-        let mut distances = Vec::new();
-        self.peer_db
-            .for_each_ok(|(_, peer)| {
-                if features.map(|f| peer.features == f).unwrap_or(true) &&
+        let query = PeerQuery::new()
+            .select_where(|peer| {
+                features.map(|f| peer.features == f).unwrap_or(true) &&
                     !peer.is_banned() &&
                     !peer.is_offline() &&
                     !excluded_peers.contains(&peer.node_id)
-                {
-                    let dist = node_id.distance(&peer.node_id);
-                    distances.push((peer, dist));
-                }
-                IterationResult::Continue
             })
-            .map_err(PeerManagerError::DatabaseError)?;
+            .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
+            .limit(n);
 
-        distances.sort_by(|(_, dist_a), (_, dist_b)| dist_a.cmp(dist_b));
-        distances.truncate(n);
-
-        Ok(distances.into_iter().map(|(peer, _)| peer).collect())
+        self.perform_query(query)
     }
 
     /// Compile a random list of communication node peers of size _n_ that are not banned or offline
@@ -546,6 +543,16 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?;
         Ok(result)
     }
+
+    pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        let mut peer = self.find_by_node_id(node_id)?;
+        peer.last_seen = Some(Utc::now().naive_utc());
+        peer.set_offline(false);
+        self.peer_db
+            .insert(peer.id(), peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(())
+    }
 }
 
 #[allow(clippy::from_over_into)]
@@ -557,14 +564,16 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 
 #[cfg(test)]
 mod test {
+    use std::iter::repeat_with;
+
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::HashmapDatabase;
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
-    use std::iter::repeat_with;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
 
     #[test]
     fn test_restore() {

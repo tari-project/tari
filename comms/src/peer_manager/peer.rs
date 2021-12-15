@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
+
+use bitflags::bitflags;
+use chrono::{NaiveDateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
+use tari_crypto::tari_utilities::hex::serialize_to_hex;
+
 use super::{
     connection_stats::PeerConnectionStats,
     node_id::{deserialize_node_id_from_hex, NodeId},
@@ -32,17 +45,6 @@ use crate::{
     types::CommsPublicKey,
     utils::datetime::safe_future_datetime_from_duration,
 };
-use bitflags::bitflags;
-use chrono::{DateTime, NaiveDateTime, Utc};
-use multiaddr::Multiaddr;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    hash::{Hash, Hasher},
-    time::Duration,
-};
-use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
     #[derive(Default, Deserialize, Serialize)]
@@ -77,6 +79,7 @@ pub struct Peer {
     pub banned_until: Option<NaiveDateTime>,
     pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
+    pub last_seen: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
     /// Connection statics for the peer
@@ -114,6 +117,7 @@ impl Peer {
             banned_until: None,
             banned_reason: "".to_string(),
             offline_at: None,
+            last_seen: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols,
@@ -206,8 +210,14 @@ impl Peer {
     }
 
     /// Provides that date time of the last successful interaction with the peer
-    pub fn last_seen(&self) -> Option<DateTime<Utc>> {
-        self.addresses.last_seen()
+    pub fn last_seen(&self) -> Option<NaiveDateTime> {
+        self.last_seen
+    }
+
+    /// Provides that length of time since the last successful interaction with the peer
+    pub fn last_seen_since(&self) -> Option<Duration> {
+        self.last_seen()
+            .and_then(|dt| Utc::now().naive_utc().signed_duration_since(dt).to_std().ok())
     }
 
     /// Returns true if this peer has the given feature, otherwise false
@@ -340,6 +350,13 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    use serde_json::Value;
+    use tari_crypto::{
+        keys::PublicKey,
+        ristretto::RistrettoPublicKey,
+        tari_utilities::{hex::Hex, message_format::MessageFormat},
+    };
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
@@ -347,12 +364,6 @@ mod test {
         protocol,
         test_utils::node_identity::build_node_identity,
         types::CommsPublicKey,
-    };
-    use serde_json::Value;
-    use tari_crypto::{
-        keys::PublicKey,
-        ristretto::RistrettoPublicKey,
-        tari_utilities::{hex::Hex, message_format::MessageFormat},
     };
 
     #[test]

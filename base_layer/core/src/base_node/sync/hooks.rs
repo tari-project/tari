@@ -22,9 +22,11 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::blocks::ChainBlock;
 use std::sync::Arc;
+
 use tari_comms::peer_manager::NodeId;
+
+use crate::blocks::ChainBlock;
 
 #[derive(Default)]
 pub(super) struct Hooks {

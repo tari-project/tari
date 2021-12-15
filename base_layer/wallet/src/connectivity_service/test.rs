@@ -20,14 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::service::WalletConnectivityService;
-use crate::{
-    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    util::watch::Watch,
-};
 use core::convert;
-use futures::future;
 use std::{iter, sync::Arc};
+
+use futures::future;
 use tari_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{
@@ -44,6 +40,12 @@ use tari_test_utils::runtime::spawn_until_shutdown;
 use tokio::{
     sync::{mpsc, Barrier},
     task,
+};
+
+use super::service::WalletConnectivityService;
+use crate::{
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
+    util::watch::Watch,
 };
 
 async fn setup() -> (

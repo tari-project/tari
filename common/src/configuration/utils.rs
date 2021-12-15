@@ -1,3 +1,9 @@
+use std::{fs, fs::File, io::Write, path::Path};
+
+use config::Config;
+use log::{debug, info};
+use multiaddr::{Multiaddr, Protocol};
+
 use crate::{
     configuration::bootstrap::ApplicationType,
     dir_utils::default_subdir,
@@ -5,10 +11,6 @@ use crate::{
     ConfigError,
     LOG_TARGET,
 };
-use config::Config;
-use log::{debug, info};
-use multiaddr::{Multiaddr, Protocol};
-use std::{fs, fs::File, io::Write, path::Path};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
@@ -45,8 +47,13 @@ pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), st
         MiningNode => include_str!("../../config/presets/mining_node.toml"),
         MergeMiningProxy => include_str!("../../config/presets/merge_mining_proxy.toml"),
         StratumTranscoder => include_str!("../../config/presets/stratum_transcoder.toml"),
+        ValidatorNode => include_str!("../../config/presets/validator_node.toml"),
     };
-    let source = [common, app].join("\n");
+    let add = match app_type {
+        MiningNode => include_str!("../../config/presets/validator_node.toml"),
+        _ => "",
+    };
+    let source = [common, app, add].join("\n");
 
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
@@ -83,7 +90,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
-    cfg.set_default("wallet.grpc_address", "127.0.0.1:18040").unwrap();
+    cfg.set_default("wallet.grpc_address", "127.0.0.1:18043").unwrap();
     cfg.set_default(
         "wallet.wallet_db_file",
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
@@ -170,7 +177,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.weatherwax.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 1000)
+    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 10000)
         .unwrap();
     cfg.set_default("base_node.weatherwax.peer_seeds", Vec::<String>::new())
         .unwrap();
@@ -215,7 +222,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 1000).unwrap();
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 10000)
+        .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
@@ -281,6 +289,8 @@ fn set_stratum_transcoder_defaults(cfg: &mut Config) {
     .unwrap();
     cfg.set_default("stratum_transcoder.igor.transcoder_host_address", "127.0.0.1:7879")
         .unwrap();
+    cfg.set_default("stratum_transcoder.dibbler.transcoder_host_address", "127.0.0.1:7879")
+        .unwrap();
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
@@ -330,6 +340,18 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.proxy_submit_to_origin", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_password", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 
@@ -426,6 +448,24 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         cfg.set_default(&format!("{}.igor.socks5_proxy_address", app), "/ip4/0.0.0.0/tcp/9150")?;
 
         cfg.set_default(&format!("{}.igor.socks5_auth", app), "none")?;
+
+        // dibbler
+        cfg.set_default(&format!("{}.dibbler.transport", app), "tor")?;
+
+        cfg.set_default(
+            &format!("{}.dibbler.tor_control_address", app),
+            "/ip4/127.0.0.1/tcp/9051",
+        )?;
+        cfg.set_default(&format!("{}.dibbler.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.dibbler.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
+        cfg.set_default(&format!("{}.dibbler.tor_onion_port", app), "18141")?;
+
+        cfg.set_default(
+            &format!("{}.dibbler.socks5_proxy_address", app),
+            "/ip4/0.0.0.0/tcp/9150",
+        )?;
+
+        cfg.set_default(&format!("{}.dibbler.socks5_auth", app), "none")?;
     }
     Ok(())
 }

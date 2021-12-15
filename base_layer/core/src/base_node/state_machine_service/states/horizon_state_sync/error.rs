@@ -22,19 +22,18 @@
 
 use std::num::TryFromIntError;
 
-use thiserror::Error;
-use tokio::task;
-
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_mmr::error::MerkleMountainRangeError;
+use thiserror::Error;
+use tokio::task;
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
     chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
     validation::ValidationError,
 };
 
@@ -71,8 +70,10 @@ pub enum HorizonSyncError {
     ConversionError(String),
     #[error("MerkleMountainRangeError: {0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
-    #[error("Connectivity Error: {0}")]
+    #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Validation error: {0}")]
+    ValidationError(#[from] ValidationError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

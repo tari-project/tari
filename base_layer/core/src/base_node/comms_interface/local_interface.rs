@@ -22,13 +22,12 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use tokio::sync::broadcast;
-
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
 
 use crate::{
     base_node::comms_interface::{
@@ -40,11 +39,9 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::UtxoMinedInfo,
     proof_of_work::PowAlgorithm,
-    transactions::transaction_entities::{
-        transaction_kernel::TransactionKernel,
-        transaction_output::TransactionOutput,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
@@ -273,6 +270,52 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_tokens(
+        &mut self,
+        asset_public_key: PublicKey,
+        unique_ids: Vec<Vec<u8>>,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchTokensResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_asset_registrations(
+        &mut self,
+        range: RangeInclusive<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetRegistrations { range })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetRegistrationsResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_asset_metadata(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetMetadata { asset_public_key })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(*output),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

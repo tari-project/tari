@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
+
 use tari_core::proof_of_work::{PowAlgorithm, ProofOfWork};
+
+use crate::tari_rpc as grpc;
 
 impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
     type Error = String;

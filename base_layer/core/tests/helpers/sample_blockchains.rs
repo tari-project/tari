@@ -29,7 +29,7 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
         tari_amount::{uT, T},
-        transaction_entities::UnblindedOutput,
+        transaction::UnblindedOutput,
         CryptoFactories,
     },
     txn_schema,

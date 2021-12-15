@@ -24,10 +24,9 @@ use core::iter;
 use std::path::Path;
 
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use tempfile::{tempdir, TempDir};
-
 use tari_common::configuration::Network;
 use tari_core::consensus::{ConsensusConstants, ConsensusManager};
+use tempfile::{tempdir, TempDir};
 
 use crate::storage::sqlite_utilities::{
     run_migration_and_create_sqlite_connection,

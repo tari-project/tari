@@ -24,6 +24,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tokio::sync::broadcast;

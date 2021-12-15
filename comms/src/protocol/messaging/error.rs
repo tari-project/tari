@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
+use thiserror::Error;
+use tokio::sync::mpsc;
+
 use crate::{
     connection_manager::PeerConnectionError,
     connectivity::ConnectivityError,
@@ -27,9 +32,6 @@ use crate::{
     peer_manager::PeerManagerError,
     protocol::ProtocolError,
 };
-use std::io;
-use thiserror::Error;
-use tokio::sync::mpsc;
 
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {

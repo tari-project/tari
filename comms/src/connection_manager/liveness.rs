@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::StreamExt;
 use std::future::Future;
+
+use futures::StreamExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Framed, LinesCodec, LinesCodecError};
 
@@ -49,11 +50,12 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{memsocket::MemorySocket, runtime};
     use futures::SinkExt;
     use tokio::{time, time::Duration};
     use tokio_stream::StreamExt;
+
+    use super::*;
+    use crate::{memsocket::MemorySocket, runtime};
 
     #[runtime::test]
     async fn echos() {

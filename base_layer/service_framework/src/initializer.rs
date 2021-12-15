@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::context::ServiceInitializerContext;
 use async_trait::async_trait;
+
+use crate::context::ServiceInitializerContext;
 
 pub type ServiceInitializationError = anyhow::Error;
 
@@ -41,7 +42,7 @@ pub trait ServiceInitializer {
 /// ```edition2018
 /// # use tari_service_framework::ServiceInitializerContext;
 /// # use tokio::runtime;
-/// let my_initializer = |executor: runtime::Handle, context: ServiceInitializerContext| {
+/// let my_initializer = |context: ServiceInitializerContext| {
 ///     // initialization code
 ///     futures::future::ready(Result::<_, ()>::Ok(()))
 /// };

@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+
+use futures::{future, future::Either, pin_mut, StreamExt};
+use log::*;
+use tari_shutdown::OptionalShutdownSignal;
+use thiserror::Error;
+use tokio::{sync::broadcast, time};
+
 use crate::{
     multiaddr::Multiaddr,
     runtime::task,
@@ -41,12 +49,6 @@ use crate::{
     transports::{SocksConfig, SocksTransport},
     utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr},
 };
-use futures::{future, future::Either, pin_mut, StreamExt};
-use log::*;
-use std::{net::SocketAddr, sync::Arc, time::Duration};
-use tari_shutdown::OptionalShutdownSignal;
-use thiserror::Error;
-use tokio::{sync::broadcast, time};
 
 const LOG_TARGET: &str = "comms::tor::hidden_service_controller";
 

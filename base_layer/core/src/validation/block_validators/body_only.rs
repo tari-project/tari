@@ -20,24 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_utilities::hex::Hex;
+
 use super::LOG_TARGET;
 use crate::{
     blocks::ChainBlock,
     chain_storage,
     chain_storage::BlockchainBackend,
-    crypto::tari_utilities::hex::Hex,
+    consensus::ConsensusManager,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
-use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
 
 /// This validator tests whether a candidate block is internally consistent.
 /// This does not check that the orphan block has the correct mined height of utxos
 
 /// This validator checks whether a block satisfies *all* consensus rules. If a block passes this validator, it is the
 /// next block on the blockchain.
-#[derive(Default)]
-pub struct BodyOnlyValidator;
+pub struct BodyOnlyValidator {
+    rules: ConsensusManager,
+}
+
+impl BodyOnlyValidator {
+    pub fn new(rules: ConsensusManager) -> Self {
+        Self { rules }
+    }
+}
 
 impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
@@ -66,7 +75,11 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
 
         let block_id = format!("block #{} ({})", block.header().height, block.hash().to_hex());
         helpers::check_inputs_are_utxos(backend, &block.block().body)?;
-        helpers::check_not_duplicate_txos(backend, &block.block().body)?;
+        helpers::check_outputs(
+            backend,
+            self.rules.consensus_constants(block.height()),
+            &block.block().body,
+        )?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
@@ -74,6 +87,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
         );
         let mmr_roots = chain_storage::calculate_mmr_roots(backend, block.block())?;
         helpers::check_mmr_roots(block.header(), &mmr_roots)?;
+        helpers::check_not_bad_block(backend, block.hash())?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",

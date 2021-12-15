@@ -19,6 +19,19 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
+
+use log::*;
+use tari_common_types::types::BlockHash;
+use tari_comms::protocol::rpc::RpcError::RequestFailed;
+use tari_core::{
+    base_node::rpc::BaseNodeWalletRpcClient,
+    blocks::BlockHeader,
+    proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
+};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_shutdown::ShutdownSignal;
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{
@@ -31,17 +44,6 @@ use crate::{
         },
     },
 };
-use log::*;
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
-use tari_common_types::types::BlockHash;
-use tari_comms::protocol::rpc::RpcError::RequestFailed;
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcClient,
-    blocks::BlockHeader,
-    proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
-};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet::output_service::txo_validation_task";
 

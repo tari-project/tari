@@ -22,51 +22,75 @@
 
 use std::sync::Arc;
 
-use tari_common::configuration::Network;
+use rand::rngs::OsRng;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_test_utils::unpack_enum;
+use tari_utilities::Hashable;
 
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
-    consensus::ConsensusManager,
-    proof_of_work::Difficulty,
-    tari_utilities::Hashable,
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{
-        blockchain::{create_new_blockchain, TempDatabase},
+        blockchain::{create_new_blockchain, create_store_with_consensus_and_validators, TempDatabase},
         create_block,
         BlockSpec,
     },
     transactions::{
         tari_amount::T,
-        transaction_entities::{transaction::Transaction, unblinded_output::UnblindedOutput},
+        test_helpers::{schema_to_transaction, TransactionSchema},
+        transaction::{OutputFeatures, Transaction, UnblindedOutput},
     },
+    txn_schema,
 };
 
 fn setup() -> BlockchainDatabase<TempDatabase> {
     create_new_blockchain()
 }
 
-fn create_next_block(prev_block: &Block, transactions: Vec<Arc<Transaction>>) -> (Arc<Block>, UnblindedOutput) {
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+fn create_next_block(
+    db: &BlockchainDatabase<TempDatabase>,
+    prev_block: &Block,
+    transactions: Vec<Arc<Transaction>>,
+) -> (Arc<Block>, UnblindedOutput) {
+    let rules = db.rules();
     let (block, output) = create_block(
-        &rules,
+        rules,
         prev_block,
         BlockSpec::new()
             .with_transactions(transactions.into_iter().map(|t| (&*t).clone()).collect())
             .finish(),
     );
+    let block = apply_mmr_to_block(db, block);
     (Arc::new(block), output)
+}
+
+fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
+    let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
+    block.header.input_mr = mmr_roots.input_mr;
+    block.header.witness_mr = mmr_roots.witness_mr;
+    block.header.output_mr = mmr_roots.output_mr;
+    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.kernel_mr = mmr_roots.kernel_mr;
+    block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
+    block
 }
 
 fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
 ) -> (Vec<Arc<Block>>, Vec<UnblindedOutput>) {
-    let mut prev_block = Arc::new(db.fetch_block(0).unwrap().try_into_block().unwrap());
+    let last_header = db.fetch_last_header().unwrap();
+    let mut prev_block = db
+        .fetch_block(last_header.height)
+        .unwrap()
+        .try_into_block()
+        .map(Arc::new)
+        .unwrap();
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size as u64 {
-        let (block, coinbase_utxo) = create_next_block(&prev_block, vec![]);
+        let (block, coinbase_utxo) = create_next_block(db, &prev_block, vec![]);
         db.add_block(block.clone()).unwrap().assert_added();
         prev_block = block.clone();
         blocks.push(block);
@@ -239,8 +263,6 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
-    use crate::chain_storage::ChainStorageError;
-
     use super::*;
 
     #[test]
@@ -353,21 +375,13 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use crate::{
-        chain_storage::ChainStorageError,
-        crypto::tari_utilities::hex::Hex,
-        transactions::{
-            tari_amount::T,
-            test_helpers::{schema_to_transaction, TransactionSchema},
-            transaction_entities::output_features::OutputFeatures,
-        },
-        txn_schema,
-    };
+    use tari_common_types::types::PublicKey;
 
     use super::*;
+    use crate::{transactions::transaction::OutputFlags, validation::ValidationError};
 
     #[test]
-    fn it_does_not_allow_duplicate_commitments_in_the_utxo_set() {
+    fn it_rejects_duplicate_commitments_in_the_utxo_set() {
         let db = setup();
         let (blocks, outputs) = add_many_chained_blocks(5, &db);
 
@@ -377,11 +391,10 @@ mod add_block {
             schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![500 * T])]);
         let mut prev_utxo = tx_outputs[0].clone();
 
-        let (block, _) = create_next_block(prev_block, txns);
+        let (block, _) = create_next_block(&db, prev_block, txns);
         db.add_block(block.clone()).unwrap().assert_added();
 
         let prev_block = block;
-        let prev_output = prev_utxo.as_transaction_output(&Default::default()).unwrap();
 
         let (txns, _) = schema_to_transaction(&[TransactionSchema {
             from: vec![outputs[1].clone()],
@@ -394,14 +407,19 @@ mod add_block {
             input_data: None,
         }]);
 
-        let (block, _) = create_next_block(&prev_block, txns);
-        let err = db.add_block(block).unwrap_err();
-        unpack_enum!(ChainStorageError::KeyExists { key, table_name } = err);
-        assert_eq!(table_name, "utxo_commitment_index");
-        assert_eq!(key, prev_output.commitment.to_hex());
+        let (block, _) = create_next_block(&db, &prev_block, txns);
+        let err = db.add_block(block.clone()).unwrap_err();
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsTxO
+            } = err
+        );
+        // Check rollback
+        let header = db.fetch_header(block.header.height).unwrap();
+        assert!(header.is_none());
 
         let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![prev_utxo.clone()], to: vec![50 * T])]);
-        let (block, _) = create_next_block(&prev_block, txns);
+        let (block, _) = create_next_block(&db, &prev_block, txns);
         let block = db.add_block(block).unwrap().assert_added();
         let prev_block = block.to_arc_block();
 
@@ -419,8 +437,131 @@ mod add_block {
             input_data: None,
         }]);
 
-        let (block, _) = create_next_block(&prev_block, txns);
+        let (block, _) = create_next_block(&db, &prev_block, txns);
         db.add_block(block).unwrap().assert_added();
+    }
+
+    #[test]
+    fn it_allows_distinct_unique_ids_belonging_to_same_parent() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(2, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
+        let unique_id = vec![1; 3];
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (mut transactions, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T],
+            features: features
+        )]);
+
+        let unique_id = vec![2; 3];
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[1].clone()],
+            to: vec![2 * T],
+            features: features
+        )]);
+
+        transactions.extend(txns);
+
+        let (block, _) = create_next_block(&db, prev_block, transactions);
+        db.add_block(block).unwrap().assert_added();
+    }
+
+    #[test]
+    fn it_rejects_duplicate_mint_or_burn_transactions_per_unique_id() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
+        let unique_id = vec![1u8; 3];
+        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T, 10 * T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, prev_block, txns);
+        let err = db.add_block(block).unwrap_err();
+
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
+
+        let features = OutputFeatures {
+            flags: OutputFlags::BURN_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        };
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T, 10 * T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, prev_block, txns);
+        let err = db.add_block(block).unwrap_err();
+
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
+    }
+
+    #[test]
+    fn it_rejects_duplicate_mint_or_burn_transactions_in_blockchain() {
+        let db = setup();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let prev_block = blocks.last().unwrap();
+
+        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
+        let unique_id = vec![1u8; 3];
+        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
+        let (txns, outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![10 * T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, prev_block, txns);
+        db.add_block(block.clone()).unwrap().assert_added();
+
+        let features = OutputFeatures::for_minting(asset_pk, Default::default(), unique_id, None);
+        let (txns, _) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![T],
+            features: features
+        )]);
+
+        let (block, _) = create_next_block(&db, &block, txns);
+        let err = db.add_block(block).unwrap_err();
+
+        unpack_enum!(
+            ChainStorageError::ValidationError {
+                source: ValidationError::ContainsDuplicateUtxoUniqueID
+            } = err
+        );
     }
 }
 
@@ -439,11 +580,14 @@ mod fetch_total_size_stats {
     use super::*;
 
     #[test]
-    fn it_works_when_db_is_empty() {
+    fn it_measures_the_number_of_entries() {
         let db = setup();
+        let _ = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
-        // Returns one per db
-        assert_eq!(stats.sizes().len(), 20);
+        assert_eq!(
+            stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
+            2
+        );
     }
 }
 
@@ -482,5 +626,281 @@ mod prepare_new_block {
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
+    }
+}
+
+mod fetch_header_containing_utxo_mmr {
+    use super::*;
+
+    #[test]
+    fn it_returns_genesis() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        assert_eq!(genesis.block().body.outputs().len(), 1);
+        // let mut mmr_position = 0;
+        // genesis.block().body.outputs().iter().for_each(|_| {
+        //     let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
+        //     assert_eq!(header.height(), 0);
+        //     mmr_position += 1;
+        // });
+        let err = db.fetch_header_containing_utxo_mmr(2).unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+
+    #[test]
+    fn it_returns_corresponding_header() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let _ = add_many_chained_blocks(5, &db);
+        let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
+
+        for i in 1..=5 {
+            let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs + i).unwrap();
+            assert_eq!(header.height(), i);
+        }
+        let err = db
+            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5 + 1)
+            .unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+}
+
+mod fetch_header_containing_kernel_mmr {
+    use super::*;
+
+    #[test]
+    fn it_returns_genesis() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        assert_eq!(genesis.block().body.kernels().len(), 1);
+        // let mut mmr_position = 0;
+        // genesis.block().body.kernels().iter().for_each(|_| {
+        //     let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
+        //     assert_eq!(header.height(), 0);
+        //     mmr_position += 1;
+        // });
+        let err = db.fetch_header_containing_kernel_mmr(2).unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+
+    #[test]
+    fn it_returns_corresponding_header() {
+        let db = setup();
+        let genesis = db.fetch_block(0).unwrap();
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+        let num_genesis_kernels = genesis.block().body.kernels().len() as u64;
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![50 * T])]);
+
+        let (block, _) = create_next_block(&db, &blocks[0], txns);
+        db.add_block(block).unwrap();
+        let _ = add_many_chained_blocks(3, &db);
+
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        assert_eq!(header.height(), 0);
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + 1).unwrap();
+        assert_eq!(header.height(), 1);
+
+        for i in 2..=3 {
+            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
+            assert_eq!(header.height(), 2);
+        }
+        for i in 4..=6 {
+            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
+            assert_eq!(header.height(), i - 1);
+        }
+
+        let err = db
+            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6 + 1)
+            .unwrap_err();
+        matches!(err, ChainStorageError::ValueNotFound { .. });
+    }
+}
+
+mod clear_all_pending_headers {
+    use super::*;
+
+    #[test]
+    fn it_clears_no_headers() {
+        let db = setup();
+        assert_eq!(db.clear_all_pending_headers().unwrap(), 0);
+        let _ = add_many_chained_blocks(2, &db);
+        db.clear_all_pending_headers().unwrap();
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 2);
+    }
+
+    #[test]
+    fn it_clears_headers_after_tip() {
+        let db = setup();
+        let _ = add_many_chained_blocks(2, &db);
+        let prev_block = db.fetch_block(2).unwrap();
+        let mut prev_accum = prev_block.accumulated_data.clone();
+        let mut prev_block = Arc::new(prev_block.try_into_block().unwrap());
+        let headers = (0..5)
+            .map(|_| {
+                let (block, _) = create_next_block(&db, &prev_block, vec![]);
+                let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
+                    .with_hash(block.hash())
+                    .with_achieved_target_difficulty(
+                        AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, 0.into(), 0.into()).unwrap(),
+                    )
+                    .with_total_kernel_offset(Default::default())
+                    .build()
+                    .unwrap();
+
+                let header = ChainHeader::try_construct(block.header.clone(), accum.clone()).unwrap();
+
+                prev_block = block;
+                prev_accum = accum;
+                header
+            })
+            .collect();
+        db.insert_valid_headers(headers).unwrap();
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 7);
+        let num_deleted = db.clear_all_pending_headers().unwrap();
+        assert_eq!(num_deleted, 5);
+        let last_header = db.fetch_last_header().unwrap();
+        assert_eq!(last_header.height, 2);
+    }
+}
+
+mod fetch_utxo_by_unique_id {
+    use tari_common_types::types::CommitmentFactory;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
+
+    use super::*;
+    use crate::transactions::transaction::OutputFlags;
+
+    #[test]
+    fn it_returns_none_if_empty() {
+        let db = setup();
+        let asset_pk = RistrettoPublicKey::default();
+        let result = db.fetch_utxo_by_unique_id(Some(asset_pk), vec![1, 2, 3], None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn it_finds_the_utxo_by_unique_id_at_deleted_height() {
+        let db = setup();
+        let unique_id = vec![1u8; 3];
+        let (_, asset_pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
+
+        // Height 1
+        let (blocks, outputs) = add_many_chained_blocks(1, &db);
+
+        let features = OutputFeatures {
+            flags: OutputFlags::MINT_NON_FUNGIBLE,
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![500 * T],
+            fee: 5.into(),
+            lock: 0,
+            features: features
+        )]);
+
+        let asset_utxo1 = tx_outputs.iter().find(|o| o.features == features).unwrap();
+
+        // Height 2 - mint
+        let (block, _) = create_next_block(&db, blocks.last().unwrap(), txns);
+        assert!(db.add_block(block).unwrap().is_added());
+
+        // Height 4
+        let (blocks, _) = add_many_chained_blocks(2, &db);
+
+        let info = db
+            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(info.output.as_transaction_output().unwrap().features, features);
+        let expected_commitment =
+            CommitmentFactory::default().commit_value(&asset_utxo1.spending_key, asset_utxo1.value.as_u64());
+        assert_eq!(
+            info.output.as_transaction_output().unwrap().commitment,
+            expected_commitment
+        );
+
+        let features = OutputFeatures {
+            flags: OutputFlags::empty(),
+            parent_public_key: Some(asset_pk.clone()),
+            unique_id: Some(unique_id.clone()),
+            ..Default::default()
+        };
+        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![asset_utxo1.clone()],
+            to: vec![50 * T],
+            fee: 5.into(),
+            lock: 0,
+            features: features
+        )]);
+
+        let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
+
+        // Height 5 - spend
+        let (block, _) = create_next_block(&db, blocks.last().unwrap(), txns);
+        assert!(db.add_block(block).unwrap().is_added());
+
+        // Height 10
+        let (blocks, _) = add_many_chained_blocks(5, &db);
+
+        // Current UTXO
+        let info = db
+            .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), None)
+            .unwrap()
+            .unwrap();
+        let expected_commitment =
+            CommitmentFactory::default().commit_value(&asset_utxo2.spending_key, asset_utxo2.value.as_u64());
+        assert_eq!(
+            info.output.as_transaction_output().unwrap().commitment,
+            expected_commitment
+        );
+
+        let assert_utxo_not_found = |deleted_height: Option<u64>| {
+            let info = db
+                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .unwrap();
+            assert!(info.is_none());
+        };
+
+        let assert_utxo_found = |utxo: &UnblindedOutput, deleted_height: Option<u64>| {
+            let info = db
+                .fetch_utxo_by_unique_id(Some(asset_pk.clone()), unique_id.clone(), deleted_height)
+                .unwrap()
+                .ok_or_else(|| format!("was none at deleted height {:?}", deleted_height))
+                .unwrap();
+
+            let expected_commitment =
+                CommitmentFactory::default().commit_value(&utxo.spending_key, utxo.value.as_u64());
+            assert_eq!(
+                info.output.as_transaction_output().unwrap().commitment,
+                expected_commitment
+            );
+        };
+
+        (0..=4).for_each(|i| {
+            assert_utxo_not_found(Some(i));
+        });
+        (5..=10).for_each(|i| {
+            assert_utxo_found(asset_utxo1, Some(i));
+        });
+
+        let (txns, _) = schema_to_transaction(&[txn_schema!(from: vec![asset_utxo2.clone()], to: vec![T])]);
+
+        // Height 11 - burn
+        let (block, _) = create_next_block(&db, blocks.last().unwrap(), txns);
+        assert!(db.add_block(block).unwrap().is_added());
+
+        assert_utxo_found(asset_utxo2, None);
+        (0..=4).for_each(|i| {
+            assert_utxo_not_found(Some(i));
+        });
+        (5..=10).for_each(|i| {
+            assert_utxo_found(asset_utxo1, Some(i));
+        });
+        assert_utxo_found(asset_utxo2, Some(11));
     }
 }

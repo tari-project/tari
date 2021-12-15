@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.21.2"
+version = "0.22.0"
 edition = "2018"
 
 [dependencies]
@@ -16,10 +16,11 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_mmr = { path = "../../base_layer/mmr" }
+tari_mmr = { path = "../../base_layer/mmr", features=["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_utilities = "0.3.0"
 
 anyhow = "1.0.32"
 bincode = "1.3.1"
@@ -33,8 +34,8 @@ num_cpus = "1"
 regex = "1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
-strum = "^0.19"
-strum_macros = "0.18.0"
+strum = "^0.22"
+strum_macros = "^0.22"
 thiserror = "^1.0.26"
 tokio = { version = "1.11", features = ["signal"] }
 tonic = "0.5.2"

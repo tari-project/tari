@@ -20,27 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use futures::future::Either;
 use log::*;
-use std::sync::Arc;
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
-use tari_common_types::types::BlockHash;
+use tari_common_types::{emoji::EmojiId, types::BlockHash};
 use tari_comms::{
     peer_manager::NodeId,
     socks,
     tor,
     tor::TorIdentity,
-    transports::SocksConfig,
+    transports::{predicate::FalsePredicate, SocksConfig},
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_utilities::hex::Hex;
 use tokio::{runtime, runtime::Runtime};
 
 use crate::identity_management::load_from_json;
-use tari_common_types::emoji::EmojiId;
-use tari_comms::transports::predicate::FalsePredicate;
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -82,7 +81,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                     // If this fails, we can just use another address
                     load_from_json::<_, TorIdentity>(p).ok()
                 });
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Tor identity at path '{}' {:?}",
                 config.base_node_tor_identity_file.to_string_lossy(),

@@ -11,3 +11,7 @@ See README.md in wallet_ffi crate
 ## Setup (Windows)
 
 See README.md in wallet_ffi crate
+
+
+## Running migrations:
+`diesel migration run --database-url test.sqlite3`

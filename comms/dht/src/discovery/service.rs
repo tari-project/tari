@@ -20,16 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
-    envelope::{DhtMessageType, NodeDestination},
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
-    proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
-    DhtConfig,
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
+
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, sync::Arc, time::Instant};
 use tari_comms::{
     log_if_error,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
@@ -41,6 +35,14 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{mpsc, oneshot},
     task,
+};
+
+use crate::{
+    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
+    envelope::{DhtMessageType, NodeDestination},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+    proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -102,7 +104,7 @@ impl DhtDiscoveryService {
     }
 
     pub async fn run(mut self) {
-        info!(target: LOG_TARGET, "Dht discovery service started");
+        debug!(target: LOG_TARGET, "Dht discovery service started");
         loop {
             tokio::select! {
                 biased;
@@ -346,15 +348,17 @@ impl DhtDiscoveryService {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use tari_comms::runtime;
+    use tari_shutdown::Shutdown;
+
     use super::*;
     use crate::{
         discovery::DhtDiscoveryRequester,
         outbound::mock::create_outbound_service_mock,
         test_utils::{build_peer_manager, make_node_identity},
     };
-    use std::time::Duration;
-    use tari_comms::runtime;
-    use tari_shutdown::Shutdown;
 
     #[runtime::test]
     async fn send_discovery() {

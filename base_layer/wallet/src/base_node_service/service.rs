@@ -20,6 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use chrono::NaiveDateTime;
+use futures::{future, StreamExt};
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_service_framework::reply_channel::Receiver;
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::RwLock;
+
 use super::{
     config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
@@ -30,14 +40,6 @@ use crate::{
     connectivity_service::WalletConnectivityHandle,
     storage::database::{WalletBackend, WalletDatabase},
 };
-use chrono::NaiveDateTime;
-use futures::{future, StreamExt};
-use log::*;
-use std::{sync::Arc, time::Duration};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "wallet::base_node_service::service";
 
@@ -100,7 +102,7 @@ where T: WalletBackend + 'static
             .expect("Wallet Base Node Service initialized without request_stream")
             .take_until(self.shutdown_signal.clone());
 
-        info!(target: LOG_TARGET, "Wallet Base Node Service started");
+        debug!(target: LOG_TARGET, "Wallet Base Node Service started");
         while let Some(request_context) = request_stream.next().await {
             // Incoming requests
             let (request, reply_tx) = request_context.split();

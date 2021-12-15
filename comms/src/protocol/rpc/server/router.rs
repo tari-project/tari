@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use futures::{
+    future::BoxFuture,
+    task::{Context, Poll},
+    FutureExt,
+};
+use tokio::sync::mpsc;
+use tower::{make::MakeService, Service};
+
 use super::RpcServerError;
 use crate::{
     protocol::{
@@ -44,15 +54,6 @@ use crate::{
     Bytes,
     Substream,
 };
-use futures::{
-    future::BoxFuture,
-    task::{Context, Poll},
-    FutureExt,
-};
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tower::Service;
-use tower_make::MakeService;
 
 /// Allows service factories of different types to be composed into a single service that resolves a given `ProtocolId`
 pub struct Router<A, B> {
@@ -270,12 +271,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::runtime;
     use futures::{future, StreamExt};
     use prost::Message;
     use tari_test_utils::unpack_enum;
     use tower::util::BoxService;
+
+    use super::*;
+    use crate::runtime;
 
     #[derive(Clone)]
     struct HelloService;

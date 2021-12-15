@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+        RwLock,
+    },
+    task::{Context, Poll},
+};
+
+use bytes::Bytes;
+use futures::future;
+use tower::{util::BoxService, Service};
+
 use crate::{
     message::MessageExt,
     protocol::{
@@ -41,17 +54,6 @@ use crate::{
         test_node::build_peer_manager,
     },
 };
-use bytes::Bytes;
-use futures::future;
-use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-        RwLock,
-    },
-    task::{Context, Poll},
-};
-use tower::{util::BoxService, Service};
 
 #[derive(Clone, Default)]
 pub struct MockRpcService {

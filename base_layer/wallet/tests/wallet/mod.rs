@@ -20,16 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
 use std::{panic, path::Path, sync::Arc, time::Duration};
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-};
-use tempfile::tempdir;
-use tokio::runtime::Runtime;
 
+use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{PrivateKey, PublicKey},
@@ -43,8 +36,13 @@ use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     test_helpers::{create_unblinded_output, TestParams},
-    transaction_entities::OutputFeatures,
+    transaction::OutputFeatures,
     CryptoFactories,
+};
+use tari_crypto::{
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
@@ -73,7 +71,8 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
-use tokio::time::sleep;
+use tempfile::tempdir;
+use tokio::{runtime::Runtime, time::sleep};
 
 use crate::support::{comms_and_services::get_next_memory_address, utils::make_input};
 
@@ -247,6 +246,7 @@ async fn test_wallet() {
         .send_transaction(
             bob_identity.public_key().clone(),
             value,
+            None,
             MicroTari::from(20),
             "".to_string(),
         )
@@ -583,6 +583,7 @@ fn test_store_and_forward_send_tx() {
         .block_on(alice_wallet.transaction_service.send_transaction(
             carol_identity.public_key().clone(),
             value,
+            None,
             MicroTari::from(20),
             "Store and Forward!".to_string(),
         ))

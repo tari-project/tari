@@ -20,13 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::crypto::tari_utilities::ByteArrayError;
+use std::{convert::TryFrom, io, ops::Deref};
+
 use monero::{
     consensus::{encode, Decodable, Encodable},
     VarInt,
 };
-use std::{convert::TryFrom, io, ops::Deref};
 use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArrayError;
 
 const MAX_ARR_SIZE: usize = 63;
 
@@ -133,9 +134,10 @@ impl Encodable for FixedByteArray {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::crypto::tari_utilities::hex::Hex;
     use monero::consensus;
+    use tari_utilities::hex::Hex;
+
+    use super::*;
 
     #[test]
     fn assert_size() {

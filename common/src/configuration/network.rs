@@ -20,12 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ConfigurationError;
 use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
+use crate::ConfigurationError;
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
@@ -36,8 +37,9 @@ pub enum Network {
     LocalNet = 0x10,
     Ridcully = 0x21,
     Stibbons = 0x22,
-    Weatherwax = 0x23,
+    Weatherwax = 0xa3,
     Igor = 0x24,
+    Dibbler = 0x25,
 }
 
 impl Network {
@@ -53,6 +55,7 @@ impl Network {
             Stibbons => "stibbons",
             Weatherwax => "weatherwax",
             Igor => "igor",
+            Dibbler => "dibbler",
             LocalNet => "localnet",
         }
     }
@@ -76,6 +79,7 @@ impl FromStr for Network {
             "mainnet" => Ok(MainNet),
             "localnet" => Ok(LocalNet),
             "igor" => Ok(Igor),
+            "dibbler" => Ok(Dibbler),
             invalid => Err(ConfigurationError::new(
                 "network",
                 &format!("Invalid network option: {}", invalid),

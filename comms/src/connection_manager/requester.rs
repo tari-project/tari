@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tokio::sync::{broadcast, mpsc, oneshot};
+
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection};
 use crate::{
     connection_manager::manager::{ConnectionManagerEvent, ListenerInfo},
     peer_manager::NodeId,
 };
-use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, oneshot};
 
 /// Requests which are handled by the ConnectionManagerService
 #[derive(Debug)]
@@ -73,7 +75,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Attempt to connect to a remote peer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.send_dial_peer(node_id, Some(reply_tx)).await?;
@@ -92,7 +94,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer and return the result on the given oneshot
-    #[tracing::instrument(skip(self, reply_tx))]
+    #[tracing::instrument(level = "trace", skip(self, reply_tx))]
     pub(crate) async fn send_dial_peer(
         &mut self,
         node_id: NodeId,
@@ -106,7 +108,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
         self.send_dial_peer(node_id, None).await?;
         Ok(())

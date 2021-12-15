@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.22.0](https://github.com/tari-project/tari/compare/v0.21.2...v0.22.0) (2021-12-07)
+
+
+### ⚠ BREAKING CHANGES
+
+Base node users should delete their node databases and resync
+
+* **consensus:** add tari script byte size limit check to validation (#3640)
+* **pruned mode:** prune inputs, allow horizon sync resume and other fixes (#3521)
+* sending one-sided transactions in wallet_ffi (#3634)
+* multiple monerod addresses in tari merge mining proxy (#3628)
+* separate peer seeds to common.network (#3635)
+* console wallet grpc_console_wallet_addresss config (#3619)
+* add tcp bypass settings for tor in wallet_ffi (#3615)
+* expose reason for transaction cancellation for callback in wallet_ffi (#3601)
+
+### Features
+
+* add ban peers metric ([#3605](https://github.com/tari-project/tari/issues/3605)) ([65157b0](https://github.com/tari-project/tari/commit/65157b00237a7cd6b3b68d84f958ed33da3a7297))
+* add bulletproof rewind profiling ([#3618](https://github.com/tari-project/tari/issues/3618)) ([5790a9d](https://github.com/tari-project/tari/commit/5790a9d776c954efd0dcc603839c91cba5907c69))
+* add page for detailed mempool in explorer ([#3613](https://github.com/tari-project/tari/issues/3613)) ([970f811](https://github.com/tari-project/tari/commit/970f8113c495688aee47a3bce1eaebe067547c52))
+* add tcp bypass settings for tor in wallet_ffi ([#3615](https://github.com/tari-project/tari/issues/3615)) ([1003f91](https://github.com/tari-project/tari/commit/1003f918c5f7b46a94cb07620b82afc411917a05))
+* bad block list for invalid blocks after sync ([#3637](https://github.com/tari-project/tari/issues/3637)) ([5969723](https://github.com/tari-project/tari/commit/5969723ffd3a3315c3af5d5d235f7ed550ef23a8))
+* **consensus:** add tari script byte size limit check to validation ([#3640](https://github.com/tari-project/tari/issues/3640)) ([53a5174](https://github.com/tari-project/tari/commit/53a517438cef23d1ae2960a8d8e46d9ea993a276))
+* display network for console wallet ([#3611](https://github.com/tari-project/tari/issues/3611)) ([7432c62](https://github.com/tari-project/tari/commit/7432c628e5f9cc4d0806a1327da92188f450f750))
+* expose reason for transaction cancellation for callback in wallet_ffi ([#3601](https://github.com/tari-project/tari/issues/3601)) ([3b3da21](https://github.com/tari-project/tari/commit/3b3da21830fc098b8038b30b1d947e98f9198ede))
+* implement dht pooled db connection ([#3596](https://github.com/tari-project/tari/issues/3596)) ([2ac0757](https://github.com/tari-project/tari/commit/2ac07577a4c0d0f2454484f625285a07b2cd0b98))
+* improve wallet responsiveness ([#3625](https://github.com/tari-project/tari/issues/3625)) ([73d862f](https://github.com/tari-project/tari/commit/73d862fb4380f606af27101374f94bad53c65dc5))
+* language detection for mnemonic seed words ([#3590](https://github.com/tari-project/tari/issues/3590)) ([57f51bc](https://github.com/tari-project/tari/commit/57f51bc8fd23e8380307d210bdc247cf570bc083))
+* only trigger UTXO scanning when a new block event is received ([#3620](https://github.com/tari-project/tari/issues/3620)) ([df1be7e](https://github.com/tari-project/tari/commit/df1be7e4249d6e3e0701c837bedbdc2ad6c9ff65))
+* prevent banning of connected base node in wallet ([#3642](https://github.com/tari-project/tari/issues/3642)) ([363b254](https://github.com/tari-project/tari/commit/363b254cac7ac19f5547a986b46af53458788a0f))
+* removed transaction validation redundant events ([#3630](https://github.com/tari-project/tari/issues/3630)) ([c3dbdc9](https://github.com/tari-project/tari/commit/c3dbdc9726d647ebf1f8fe5a7e50743b12576093))
+* sending one-sided transactions in wallet_ffi ([#3634](https://github.com/tari-project/tari/issues/3634)) ([e501aa0](https://github.com/tari-project/tari/commit/e501aa09baf21cba6dbed940fbdf4432399cf2cc))
+* standardize output hash for unblinded output, transaction output and transaction input ([#3592](https://github.com/tari-project/tari/issues/3592)) ([2ba437b](https://github.com/tari-project/tari/commit/2ba437b4a7eed2022a7555bb72a8838eb2e608a2))
+* track ping failures and disconnect ([#3597](https://github.com/tari-project/tari/issues/3597)) ([91fe921](https://github.com/tari-project/tari/commit/91fe921092991df59f65fbe4f448fba85b42e30b))
+* use CipherSeed wallet birthday for recovery start point ([#3602](https://github.com/tari-project/tari/issues/3602)) ([befa621](https://github.com/tari-project/tari/commit/befa6215741c37c3c40f7088cdccb4221750a033))
+
+
+### Bug Fixes
+
+* allow bullet proof value only rewinding in atomic swaps ([#3586](https://github.com/tari-project/tari/issues/3586)) ([889796a](https://github.com/tari-project/tari/commit/889796a45875d72c4a2bc670b96846d22e359fe1))
+* allow bullet proof value only rewinding off one-sided transaction ([#3587](https://github.com/tari-project/tari/issues/3587)) ([f32a38f](https://github.com/tari-project/tari/commit/f32a38f409bb342e0ab507af5336abe60eaca2a8))
+* be more permissive of responses for the incorrect request_id ([#3588](https://github.com/tari-project/tari/issues/3588)) ([c0d625c](https://github.com/tari-project/tari/commit/c0d625c1630da1b1b25414ecdc99bd78eccf8bba))
+* console wallet grpc_console_wallet_addresss config ([#3619](https://github.com/tari-project/tari/issues/3619)) ([b09acd1](https://github.com/tari-project/tari/commit/b09acd1442ff6d0ff58530df0698eaa0934a2b61))
+* get-peer command works with public key again ([#3636](https://github.com/tari-project/tari/issues/3636)) ([2e1500b](https://github.com/tari-project/tari/commit/2e1500b857ab9cc5d08b8d394de09c2400686f5f))
+* improve handling of old base nodes and reorgs in wallet recovery ([#3608](https://github.com/tari-project/tari/issues/3608)) ([bb94ea2](https://github.com/tari-project/tari/commit/bb94ea23ad72d7bddac9a105b5f254c91f2a0386))
+* minor improvements to available neighbouring peer search ([#3598](https://github.com/tari-project/tari/issues/3598)) ([e59d194](https://github.com/tari-project/tari/commit/e59d194a213370bd316f4330267cf8a72e1adee1))
+* multiple monerod addresses in tari merge mining proxy ([#3628](https://github.com/tari-project/tari/issues/3628)) ([ddb9268](https://github.com/tari-project/tari/commit/ddb926872e97070cf49314720509d6f46c2b260c))
+* **pruned mode:** prune inputs, allow horizon sync resume and other fixes ([#3521](https://github.com/tari-project/tari/issues/3521)) ([a4341a0](https://github.com/tari-project/tari/commit/a4341a03afedd9df9a29cd09219b2ed9b5cf7a5a))
+* remove delay from last request latency call ([eb8b815](https://github.com/tari-project/tari/commit/eb8b8152ecc4cd9ccf49a7fe23fe0e2c77ff2c63))
+* remove delay from last request latency call ([#3579](https://github.com/tari-project/tari/issues/3579)) ([c82a8ca](https://github.com/tari-project/tari/commit/c82a8ca3de531d2994031472cff88025e229b884))
+* seed word parsing ([#3607](https://github.com/tari-project/tari/issues/3607)) ([fff45db](https://github.com/tari-project/tari/commit/fff45db4bd1a6fa436ad3525e96ae08f26a856e8))
+* separate peer seeds to common.network ([#3635](https://github.com/tari-project/tari/issues/3635)) ([326579b](https://github.com/tari-project/tari/commit/326579bf1d933b93f421a5876221a281b0f6e178))
+* update daily test start times and seed phrase ([#3584](https://github.com/tari-project/tari/issues/3584)) ([8e271d7](https://github.com/tari-project/tari/commit/8e271d769b7fc540bd78e326f0e0e8155e9de88f))
+* use json 5 for tor identity (regression) ([#3624](https://github.com/tari-project/tari/issues/3624)) ([7d49fa4](https://github.com/tari-project/tari/commit/7d49fa4c092f5d7e0a373f3f0c91d9007534e575))
 
 ### [0.21.2](https://github.com/tari-project/tari/compare/v0.21.1...v0.21.2) (2021-11-19)
 

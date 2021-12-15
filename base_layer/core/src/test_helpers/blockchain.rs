@@ -23,24 +23,25 @@
 use std::{
     collections::HashMap,
     fs,
-    ops::Deref,
+    ops::{Deref, Range},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use croaring::Bitmap;
-
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, Signature},
+    types::{Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
+use tari_utilities::Hashable;
 
+use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_weatherwax_genesis_block,
+        genesis_block::get_dibbler_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -68,15 +69,10 @@ use crate::{
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
-    crypto::tari_utilities::Hashable,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
-        transaction_entities::{
-            transaction_input::TransactionInput,
-            transaction_kernel::TransactionKernel,
-            unblinded_output::UnblindedOutput,
-        },
+        transaction::{TransactionInput, TransactionKernel, UnblindedOutput},
         CryptoFactories,
     },
     validation::{
@@ -86,13 +82,11 @@ use crate::{
     },
 };
 
-use super::{create_block, mine_to_difficulty};
-
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_weatherwax_genesis_block();
+    let genesis = get_dibbler_genesis_block();
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis)
@@ -138,7 +132,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
 pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         MockValidator::new(true),
         OrphanBlockValidator::new(rules.clone(), false, factories),
     );
@@ -268,20 +262,12 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
-    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_kernels_by_mmr_position(start, end)
-    }
-
-    fn fetch_utxos_by_mmr_position(
+    fn fetch_utxos_in_block(
         &self,
-        start: u64,
-        end: u64,
-        deleted: &Bitmap,
+        header_hash: &HashOutput,
+        deleted: Option<&Bitmap>,
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_utxos_by_mmr_position(start, end, deleted)
+        self.db.as_ref().unwrap().fetch_utxos_in_block(header_hash, deleted)
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
@@ -296,6 +282,29 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_unspent_output_hash_by_commitment(commitment)
+    }
+
+    fn fetch_utxo_by_unique_id(
+        &self,
+        parent_public_key: Option<&PublicKey>,
+        unique_id: &[u8],
+        deleted_at: Option<u64>,
+    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_utxo_by_unique_id(parent_public_key, unique_id, deleted_at)
+    }
+
+    fn fetch_all_unspent_by_parent_public_key(
+        &self,
+        parent_public_key: &PublicKey,
+        range: Range<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_all_unspent_by_parent_public_key(parent_public_key, range)
     }
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
@@ -320,6 +329,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_last_header()
+    }
+
+    fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {
+        self.db.as_ref().unwrap().clear_all_pending_headers()
     }
 
     fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
@@ -393,6 +406,10 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
+    }
+
+    fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
+        self.db.as_ref().unwrap().bad_block_exists(block_hash)
     }
 }
 

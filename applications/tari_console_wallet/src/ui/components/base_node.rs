@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{components::Component, state::AppState};
 use tari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
 use tui::{
     backend::Backend,
@@ -30,6 +29,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct BaseNode {}
 
@@ -80,9 +81,9 @@ impl<B: Backend> Component<B> for BaseNode {
                         Span::raw(" "),
                         Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
                         Span::raw("  "),
-                        Span::styled(sync_text.to_string(), Style::default().fg(Color::DarkGray)),
+                        Span::styled(sync_text.to_string(), Style::default().fg(Color::White)),
                         Span::raw("  "),
-                        Span::styled("Latency", Style::default().fg(Color::DarkGray)),
+                        Span::styled("Latency", Style::default().fg(Color::White)),
                         Span::raw(" "),
                         Span::styled(latency.to_string(), Style::default().fg(latency_color)),
                         Span::styled(" ms", Style::default().fg(Color::DarkGray)),

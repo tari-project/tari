@@ -19,6 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::cmp::Ordering;
+
+use log::*;
+use tari_common_types::types::HashOutput;
+use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 use crate::{
     base_node::sync::BlockHeaderSyncError,
@@ -27,17 +32,14 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
     validation::helpers::{
         check_header_timestamp_greater_than_median,
+        check_not_bad_block,
         check_pow_data,
         check_target_difficulty,
         check_timestamp_ftl,
     },
 };
-use log::*;
-use std::cmp::Ordering;
-use tari_common_types::types::HashOutput;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -138,7 +140,13 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         );
         let achieved_target = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
 
-        check_pow_data(&header, &self.consensus_rules, &*self.db.inner().db_read_access()?)?;
+        let block_hash = header.hash();
+
+        {
+            let txn = self.db.inner().db_read_access()?;
+            check_not_bad_block(&*txn, &block_hash)?;
+            check_pow_data(&header, &self.consensus_rules, &*txn)?;
+        }
 
         // Header is valid, add this header onto the validation state for the next round
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
@@ -159,7 +167,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         state.target_difficulties.add_back(&header, target_difficulty);
 
         let accumulated_data = BlockHeaderAccumulatedData::builder(&state.previous_accum)
-            .with_hash(header.hash())
+            .with_hash(block_hash)
             .with_achieved_target_difficulty(achieved_target)
             .with_total_kernel_offset(header.total_kernel_offset.clone())
             .build()?;
@@ -220,17 +228,17 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::{
         blocks::{BlockHeader, BlockHeaderAccumulatedData},
         chain_storage::async_db::AsyncBlockchainDb,
         consensus::ConsensusManager,
-        crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
 
     fn setup() -> (BlockHeaderSyncValidator<TempDatabase>, AsyncBlockchainDb<TempDatabase>) {
         let rules = ConsensusManager::builder(Network::LocalNet).build();

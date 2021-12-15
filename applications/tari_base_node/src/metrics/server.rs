@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
 use std::{convert::Infallible, net::SocketAddr, string::FromUtf8Error};
+
+use log::*;
 use tari_metrics::{Encoder, Registry, TextEncoder};
 use tokio::{task, task::JoinError};
 use warp::{reject::Reject, Filter, Rejection, Reply};

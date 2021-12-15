@@ -27,6 +27,35 @@ mod tests;
 
 mod metrics;
 
+use std::{
+    borrow::Cow,
+    convert::TryFrom,
+    fmt,
+    future::Future,
+    marker::PhantomData,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use bytes::Bytes;
+use futures::{
+    future::{BoxFuture, Either},
+    task::{Context, Poll},
+    FutureExt,
+    SinkExt,
+    StreamExt,
+};
+use log::*;
+use prost::Message;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{mpsc, oneshot, watch, Mutex},
+    time,
+};
+use tower::{Service, ServiceExt};
+use tracing::{event, span, Instrument, Level};
+
 use super::message::RpcMethod;
 use crate::{
     framing::CanonicalFraming,
@@ -51,33 +80,6 @@ use crate::{
     stream_id,
     stream_id::StreamId,
 };
-use bytes::Bytes;
-use futures::{
-    future::{BoxFuture, Either},
-    task::{Context, Poll},
-    FutureExt,
-    SinkExt,
-    StreamExt,
-};
-use log::*;
-use prost::Message;
-use std::{
-    borrow::Cow,
-    convert::TryFrom,
-    fmt,
-    future::Future,
-    marker::PhantomData,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot, watch, Mutex},
-    time,
-};
-use tower::{Service, ServiceExt};
-use tracing::{event, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::rpc::client";
 

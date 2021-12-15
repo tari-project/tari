@@ -26,14 +26,13 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-
 use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
     validation::{
         error::ValidationError,
         BlockSyncBodyValidation,

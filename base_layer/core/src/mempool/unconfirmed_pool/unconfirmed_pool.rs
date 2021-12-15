@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{HashOutput, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+
 use crate::{
     blocks::Block,
     mempool::{
@@ -27,16 +37,8 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction_entities::Transaction, weight::TransactionWeight},
+    transactions::{transaction::Transaction, weight::TransactionWeight},
 };
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tari_common_types::types::{HashOutput, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -479,6 +481,9 @@ impl UnconfirmedPool {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::HashDigest;
+
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
@@ -487,15 +492,13 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction_entities::KernelFeatures,
+            transaction::KernelFeatures,
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
         },
         tx,
     };
-    use tari_common::configuration::Network;
-    use tari_common_types::types::HashDigest;
 
     #[test]
     fn test_find_duplicate_input() {

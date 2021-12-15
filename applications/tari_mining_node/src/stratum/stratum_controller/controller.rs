@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use crate::{
-    stratum,
-    stratum::{stratum_miner::miner::StratumMiner, stratum_statistics::stats, stratum_types as types},
-};
-use log::*;
 use std::{
     self,
     sync::{mpsc, Arc, RwLock},
     thread,
     time::{Duration, SystemTime},
+};
+
+use log::*;
+
+use crate::{
+    stratum,
+    stratum::{stratum_miner::miner::StratumMiner, stratum_statistics::stats, stratum_types as types},
 };
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
@@ -70,7 +72,6 @@ impl Controller {
 
     fn display_stats(&mut self, elapsed: Duration) {
         let mut stats = self.stats.write().unwrap();
-        debug!(target: LOG_TARGET_FILE, "{:?}", stats.mining_stats);
         info!(
             target: LOG_TARGET,
             "{}",

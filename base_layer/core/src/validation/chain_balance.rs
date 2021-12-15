@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use log::*;
+use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::{
@@ -31,7 +32,6 @@ use crate::{
     transactions::{tari_amount::MicroTari, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
-use tari_common_types::types::{Commitment, PrivateKey};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync::chain_balance";
 

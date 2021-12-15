@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 use tari_comms::{
     connectivity::ConnectivityError,
     protocol::rpc::{RpcError, RpcStatus},
 };
+
+use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
@@ -34,8 +35,6 @@ pub enum BlockSyncError {
     RpcRequestError(#[from] RpcStatus),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent invalid block body: {0}")]
-    ReceivedInvalidBlockBody(String),
     #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
     PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
     #[error("Connectivity Error: {0}")]
@@ -48,4 +47,6 @@ pub enum BlockSyncError {
     FailedToBan(ConnectivityError),
     #[error("Failed to construct valid chain block")]
     FailedToConstructChainBlock,
+    #[error("Peer violated the block sync protocol: {0}")]
+    ProtocolViolation(String),
 }

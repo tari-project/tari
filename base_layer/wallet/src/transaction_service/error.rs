@@ -23,16 +23,15 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_crypto::tari_utilities::ByteArrayError;
-use thiserror::Error;
-use tokio::sync::broadcast::error::RecvError;
-
 use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction_entities::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
+use tokio::sync::broadcast::error::RecvError;
 
 use crate::{
     error::WalletStorageError,
@@ -226,13 +225,14 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
+    // TODO: Replace with T or something to account for OperationId or TxId
     pub id: u64,
     pub error: TransactionServiceError,
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new(id: u64, error: TransactionServiceError) -> Self {
-        Self { id, error }
+    pub fn new<T: Into<u64>>(id: T, error: TransactionServiceError) -> Self {
+        Self { id: id.into(), error }
     }
 }
 
@@ -243,14 +243,14 @@ impl From<TransactionServiceProtocolError> for TransactionServiceError {
 }
 
 pub trait TransactionServiceProtocolErrorExt<TRes> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError>;
 }
 
 impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError> {
         match self {
             Ok(r) => Ok(r),
-            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+            Err(e) => Err(TransactionServiceProtocolError::new(id.into(), e.into())),
         }
     }
 }

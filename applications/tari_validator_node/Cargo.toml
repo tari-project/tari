@@ -1,0 +1,53 @@
+[package]
+name = "tari_validator_node"
+authors = ["The Tari Development Community"]
+description = "The Tari validator node implementation"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.10.1"
+edition = "2018"
+
+[dependencies]
+tari_app_utilities = { path = "../tari_app_utilities" }
+tari_app_grpc = {path = "../tari_app_grpc" }
+tari_common = { path = "../../common" }
+tari_comms = { path = "../../comms" }
+tari_comms_dht = { path = "../../comms/dht" }
+tari_comms_rpc_macros = { path = "../../comms/rpc_macros" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_mmr = { path = "../../base_layer/mmr" }
+tari_p2p = { path = "../../base_layer/p2p" }
+tari_service_framework = { path = "../../base_layer/service_framework" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_storage = { path = "../../infrastructure/storage" }
+tari_core = {path = "../../base_layer/core"}
+tari_dan_core = {path = "../../dan_layer/core"}
+tari_dan_storage_sqlite = {path = "../../dan_layer/storage_sqlite"}
+
+anyhow = "1.0.32"
+async-trait = "0.1.50"
+blake2 = "0.9.2"
+clap = "2.33.3"
+digest = "0.9.0"
+futures = { version = "^0.3.1" }
+log = { version = "0.4.8", features = ["std"] }
+lmdb-zero = "0.4.4"
+prost = "0.8"
+prost-types = "0.8"
+serde = "1.0.126"
+thiserror = "^1.0.20"
+tokio = { version="1.10", features = ["macros", "time"]}
+tokio-stream = { version = "0.1.7", features = ["sync"] }
+tonic = "0.5.2"
+
+# saving of patricia tree
+patricia_tree = { version = "0.3.0", features = ["binary-format"] }
+bytecodec = { version = "0.4.14", features = ["bincode_codec"] }
+serde_json = "1.0.64"
+
+[dev-dependencies]
+tari_test_utils = "0.8.1"
+
+[build-dependencies]
+tonic-build = "0.5.2"
+tari_common = { path = "../../common", features = ["build"] }

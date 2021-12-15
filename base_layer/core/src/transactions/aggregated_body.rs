@@ -19,31 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroTari,
-        transaction_entities::{
-            KernelFeatures,
-            KernelSum,
-            OutputFlags,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
-    },
-};
-use log::*;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::max,
     convert::TryInto,
     fmt::{Display, Error, Formatter},
 };
+
+use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
     BlindingFactor,
     Commitment,
@@ -59,6 +42,25 @@ use tari_crypto::{
     ristretto::pedersen::PedersenCommitment,
     script::ScriptContext,
     tari_utilities::hex::Hex,
+};
+
+use crate::{
+    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelFeatures,
+            KernelSum,
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -462,11 +464,7 @@ impl AggregateBody {
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
-            if !o.verify_range_proof(range_proof_service)? {
-                return Err(TransactionError::ValidationError(
-                    "Range proof could not be verified".into(),
-                ));
-            }
+            o.verify_range_proof(range_proof_service)?;
         }
         Ok(())
     }

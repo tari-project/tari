@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
-use chrono::{DateTime, Utc};
-use log::*;
 use std::{
     cmp,
     fs::File,
@@ -32,6 +28,9 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use chrono::{DateTime, Utc};
+use log::*;
 use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
@@ -56,18 +55,21 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_p2p::{
     auto_update::SoftwareUpdaterHandle,
     services::liveness::{LivenessEvent, LivenessHandle},
 };
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use tokio::{
     runtime,
     sync::{broadcast, watch},
     time,
 };
+
+use super::LOG_TARGET;
+use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
 
 pub enum StatusOutput {
     Log,
@@ -494,6 +496,7 @@ impl CommandHandler {
                                 s.push(format!(
                                     "LAST_SEEN = {}",
                                     Utc::now()
+                                        .naive_utc()
                                         .signed_duration_since(dt)
                                         .to_std()
                                         .map(format_duration_basic)

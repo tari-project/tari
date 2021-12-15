@@ -20,6 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use chrono::Utc;
+use futures::FutureExt;
+use log::*;
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
+};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{OutboundEncryption, SendMessageResponse},
+};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::KernelFeatures,
+    transaction_protocol::{
+        proto::protocol as proto,
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
+    },
+    SenderTransactionProtocol,
+};
+use tari_crypto::script;
+use tari_p2p::tari_message::TariMessageType;
+use tokio::{
+    sync::{mpsc::Receiver, oneshot},
+    time::sleep,
+};
+
 use crate::{
     connectivity_service::WalletConnectivityInterface,
     transaction_service::{
@@ -40,31 +71,6 @@ use crate::{
         utc::utc_duration_since,
     },
 };
-use chrono::Utc;
-use futures::FutureExt;
-use log::*;
-use std::sync::Arc;
-use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus},
-    types::HashOutput,
-};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{OutboundEncryption, SendMessageResponse},
-};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_entities::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
-    SenderTransactionProtocol,
-};
-use tari_crypto::script;
-use tari_p2p::tari_message::TariMessageType;
-use tokio::{
-    sync::{mpsc::Receiver, oneshot},
-    time::sleep,
-};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 
@@ -75,9 +81,10 @@ pub enum TransactionSendProtocolStage {
 }
 
 pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
-    id: u64,
+    id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
+    unique_id: Option<Vec<u8>>,
     fee_per_gram: MicroTari,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
@@ -96,12 +103,13 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: MicroTari,
         message: String,
         service_request_reply_channel: Option<
@@ -118,6 +126,7 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
+            unique_id,
             fee_per_gram,
             message,
             service_request_reply_channel,
@@ -128,7 +137,7 @@ where
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -169,6 +178,7 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
+                self.unique_id.clone(),
                 self.fee_per_gram,
                 None,
                 self.message.clone(),
@@ -244,6 +254,7 @@ where
                 tx_id,
                 self.dest_pubkey.clone(),
                 self.amount,
+                // TODO: put value in here
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,

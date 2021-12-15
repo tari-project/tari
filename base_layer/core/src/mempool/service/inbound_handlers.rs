@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
-
-use tari_comms::peer_manager::NodeId;
 
 use crate::{
     base_node::comms_interface::BlockEvent,
@@ -38,7 +37,7 @@ use crate::{
         MempoolStateEvent,
         TxStorageResponse,
     },
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
 };
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";

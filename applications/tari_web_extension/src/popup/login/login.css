@@ -1,0 +1,37 @@
+.login {
+  display: grid;
+  grid-template-columns: auto;
+  row-gap: 10px;
+}
+
+.logo {
+  justify-self: center;
+}
+
+.editbox {
+  justify-self: right;
+}
+
+.submit {
+  text-align: center;
+  width: 100%;
+  border: 1px solid #AAAAAA;
+  border-radius: 5px;
+  background-color: #CCCCCC;
+  transition-duration: 0.1s;
+  font-size: larger;
+}
+
+.submit:hover {
+  border: 1px solid #CCCCCC;
+  cursor: pointer;
+  background-color: #EEEEEE;
+  ;
+}
+
+.form {
+  display: grid;
+  column-gap: 10px;
+  row-gap: 10px;
+  grid-template-columns: auto auto;
+}

@@ -20,6 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use futures::{
+    future,
+    future::{BoxFuture, Either, FusedFuture},
+    pin_mut,
+    stream::FuturesUnordered,
+    FutureExt,
+};
+use log::*;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{self, span, Instrument, Level};
+
 use super::{error::ConnectionManagerError, peer_connection::PeerConnection, types::ConnectionDirection};
 use crate::{
     backoff::Backoff,
@@ -39,24 +59,6 @@ use crate::{
     transports::Transport,
     types::CommsPublicKey,
 };
-use futures::{
-    future,
-    future::{BoxFuture, Either, FusedFuture},
-    pin_mut,
-    stream::FuturesUnordered,
-    FutureExt,
-};
-use log::*;
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
@@ -257,7 +259,7 @@ where
             });
     }
 
-    #[tracing::instrument(skip(self, pending_dials, reply_tx))]
+    #[tracing::instrument(level = "trace", skip(self, pending_dials, reply_tx))]
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
@@ -343,7 +345,10 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal))]
+    #[tracing::instrument(
+        level = "trace",
+        skip(peer_manager, socket, conn_man_notifier, config, cancel_signal)
+    )]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -427,7 +432,7 @@ where
         )
     }
 
-    #[tracing::instrument(skip(dial_state, noise_config, transport, backoff, config))]
+    #[tracing::instrument(level = "trace", skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,
@@ -435,7 +440,7 @@ where
         backoff: Arc<TBackoff>,
         config: &ConnectionManagerConfig,
     ) -> (DialState, DialResult<TTransport::Output>) {
-        // Container for dial state
+        // Container for dial
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
 

@@ -20,6 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
+
+use futures::{future, stream::FuturesUnordered, Stream};
+use log::*;
+use tokio::{
+    sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
+    time,
+};
+use tracing;
+
 use super::{
     connection_pool::PeerConnectionState,
     error::ConnectivityError,
@@ -31,17 +44,6 @@ use crate::{
     peer_manager::NodeId,
     PeerConnection,
 };
-use futures::{future, stream::FuturesUnordered, Stream};
-use log::*;
-use std::{
-    fmt,
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
-    time,
-};
-use tracing;
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
@@ -99,6 +101,8 @@ pub enum ConnectivityRequest {
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
     GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
+    AddPeerToAllowList(NodeId),
+    RemovePeerFromAllowList(NodeId),
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +125,7 @@ impl ConnectivityRequester {
     }
 
     /// Dial a single peer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
@@ -151,7 +155,7 @@ impl ConnectivityRequester {
     }
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
-    #[tracing::instrument(skip(self, peers))]
+    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
@@ -163,7 +167,7 @@ impl ConnectivityRequester {
     }
 
     /// Send a request to dial many peers without waiting for the response.
-    #[tracing::instrument(skip(self, peers))]
+    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {
@@ -241,6 +245,22 @@ impl ConnectivityRequester {
     pub async fn ban_peer(&mut self, node_id: NodeId, reason: String) -> Result<(), ConnectivityError> {
         self.ban_peer_until(node_id, Duration::from_secs(u64::MAX), reason)
             .await
+    }
+
+    pub async fn add_peer_to_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
+        self.sender
+            .send(ConnectivityRequest::AddPeerToAllowList(node_id))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        Ok(())
+    }
+
+    pub async fn remove_peer_from_allow_list(&mut self, node_id: NodeId) -> Result<(), ConnectivityError> {
+        self.sender
+            .send(ConnectivityRequest::RemovePeerFromAllowList(node_id))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        Ok(())
     }
 
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {

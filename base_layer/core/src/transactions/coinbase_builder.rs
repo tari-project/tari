@@ -22,6 +22,7 @@
 //
 
 use rand::rngs::OsRng;
+use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     inputs,
@@ -39,7 +40,7 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
-        transaction_entities::{
+        transaction::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -51,7 +52,6 @@ use crate::{
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     },
 };
-use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
@@ -210,6 +210,7 @@ impl CoinbaseBuilder {
             metadata_sig,
             0,
         );
+        // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data)
@@ -244,6 +245,11 @@ impl CoinbaseBuilder {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_common::configuration::Network;
+    use tari_common_types::types::{BlindingFactor, PrivateKey};
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
+
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
         transactions::{
@@ -251,15 +257,11 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction_entities::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
     };
-    use rand::rngs::OsRng;
-    use tari_common::configuration::Network;
-    use tari_common_types::types::{BlindingFactor, PrivateKey};
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -324,7 +326,7 @@ mod test {
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
-        assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
+        utxo.verify_range_proof(&factories.range_proof).unwrap();
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
         assert_eq!(
             tx.body.check_coinbase_output(

@@ -21,10 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod helpers;
-use helpers::create_comms;
+use std::time::Duration;
 
 use futures::{future, SinkExt, StreamExt};
-use std::time::Duration;
+use helpers::create_comms;
 use tari_comms::{
     framing,
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},

@@ -1,0 +1,20 @@
+{
+  "name": "@tari/validator-node-grpc-client",
+  "version": "0.0.1",
+  "description": "GRPC client for Tari Base Node",
+  "main": "./src/index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "author": "Tari development community",
+  "dependencies": {
+    "@grpc/grpc-js": "^1.2.3",
+    "@grpc/proto-loader": "^0.5.5",
+    "grpc-promise": "^1.4.0"
+  },
+  "devDependencies": {
+    "jest": "^27.1.1",
+    "md5": "^2.3.0",
+    "node-fetch": "^2.6.1"
+  }
+}

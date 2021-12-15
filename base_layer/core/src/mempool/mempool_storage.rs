@@ -23,9 +23,8 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-
 use tari_common_types::types::Signature;
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,
@@ -39,7 +38,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction_entities::transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction::Transaction, weight::TransactionWeight},
     validation::{MempoolTransactionValidation, ValidationError},
 };
 
@@ -105,6 +104,10 @@ impl MempoolStorage {
             Err(ValidationError::MaturityError) => {
                 warn!(target: LOG_TARGET, "Validation failed due to maturity error");
                 Ok(TxStorageResponse::NotStoredTimeLocked)
+            },
+            Err(ValidationError::ConsensusError(msg)) => {
+                warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
+                Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);

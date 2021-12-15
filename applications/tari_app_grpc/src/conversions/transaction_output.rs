@@ -23,13 +23,9 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
-use tari_core::{
-    crypto::{
-        script::TariScript,
-        tari_utilities::{ByteArray, Hashable},
-    },
-    transactions::transaction_entities::TransactionOutput,
-};
+use tari_core::transactions::transaction::TransactionOutput;
+use tari_crypto::script::TariScript;
+use tari_utilities::{ByteArray, Hashable};
 
 use crate::tari_rpc as grpc;
 
@@ -72,10 +68,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
         let hash = output.hash();
         grpc::TransactionOutput {
             hash,
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-            }),
+            features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),

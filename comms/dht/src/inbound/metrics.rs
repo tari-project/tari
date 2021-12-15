@@ -20,12 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::connectivity::MetricsCollectorHandle;
+use std::task::Poll;
+
 use futures::task::Context;
 use log::*;
-use std::task::Poll;
 use tari_comms::message::InboundMessage;
 use tower::{layer::Layer, Service};
+
+use crate::connectivity::MetricsCollectorHandle;
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 

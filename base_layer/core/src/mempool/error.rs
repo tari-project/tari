@@ -20,14 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use thiserror::Error;
-
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
 use crate::{
     chain_storage::ChainStorageError,
     mempool::{reorg_pool::ReorgPoolError, unconfirmed_pool::UnconfirmedPoolError},
-    transactions::transaction_entities::error::TransactionError,
+    transactions::transaction::TransactionError,
 };
 
 #[derive(Debug, Error)]

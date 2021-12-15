@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::peer_message::PeerMessage;
-use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
+use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
+
 use futures::{future, Stream, StreamExt};
 use log::*;
-use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
 use tari_comms::rate_limit::RateLimit;
 use tokio::{
     sync::{broadcast, mpsc},
     task,
 };
 use tokio_stream::wrappers;
+
+use super::peer_message::PeerMessage;
+use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
@@ -167,10 +169,12 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use futures::stream;
     use std::time::Duration;
+
+    use futures::stream;
     use tari_test_utils::collect_stream;
+
+    use super::*;
 
     #[tokio::test]
     async fn topic_pub_sub() {

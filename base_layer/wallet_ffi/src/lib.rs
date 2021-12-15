@@ -90,6 +90,7 @@ use std::{
     time::Duration,
 };
 
+use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
 use log4rs::{
@@ -105,19 +106,9 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    tari_utilities::ByteArray,
-};
-use tari_utilities::{hex, hex::Hex};
-use tokio::runtime::Runtime;
-
-use error::LibWalletError;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -129,7 +120,13 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, transaction_entities::OutputFeatures, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_crypto::{
+    inputs,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
+    tari_utilities::ByteArray,
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
@@ -137,6 +134,7 @@ use tari_p2p::{
     DEFAULT_DNS_NAME_SERVER,
 };
 use tari_shutdown::Shutdown;
+use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
@@ -158,6 +156,7 @@ use tari_wallet::{
     WalletConfig,
     WalletSqlite,
 };
+use tokio::runtime::Runtime;
 
 use crate::{
     callback_handler::CallbackHandler,
@@ -181,7 +180,7 @@ pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
-pub type TariTransactionKernel = tari_core::transactions::transaction_entities::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -1668,7 +1667,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariCompletedTransaction
@@ -2077,7 +2076,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariPendingOutboundTransaction
@@ -2311,7 +2310,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the source TariPublicKey of a TariPendingInboundTransaction
@@ -3801,6 +3800,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
     amount: c_ulonglong,
     fee_per_gram: c_ulonglong,
     message: *const c_char,
+    one_sided: bool,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3843,19 +3843,42 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .to_owned();
     };
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.send_transaction(
-            (*dest_public_key).clone(),
-            MicroTari::from(amount),
-            MicroTari::from(fee_per_gram),
-            message_string,
-        )) {
-        Ok(tx_id) => tx_id,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            0
+    match one_sided {
+        true => {
+            match (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    None,
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                )) {
+                Ok(tx_id) => tx_id.as_u64(),
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    0
+                },
+            }
+        },
+        false => {
+            match (*wallet)
+                .runtime
+                .block_on((*wallet).wallet.transaction_service.send_transaction(
+                    (*dest_public_key).clone(),
+                    MicroTari::from(amount),
+                    None,
+                    MicroTari::from(fee_per_gram),
+                    message_string,
+                )) {
+                Ok(tx_id) => tx_id.as_u64(),
+                Err(e) => {
+                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    0
+                },
+            }
         },
     }
 }
@@ -4333,7 +4356,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&transaction_id) {
+            if let Some(tx) = completed_transactions.get(&TxId::from(transaction_id)) {
                 if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
                     let completed = tx.clone();
                     return Box::into_raw(Box::new(completed));
@@ -4373,6 +4396,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4446,6 +4470,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4520,6 +4545,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4735,7 +4761,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return 0;
             }
-            tx_id
+            tx_id.as_u64()
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4772,10 +4798,12 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
         return false;
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.cancel_transaction(transaction_id))
-    {
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .cancel_transaction(TxId::from(transaction_id)),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -4874,7 +4902,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         .runtime
         .block_on((*wallet).wallet.transaction_service.validate_transactions())
     {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4986,7 +5014,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         message,
         Some(lock_height),
     )) {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -5720,12 +5748,11 @@ mod test {
     };
 
     use libc::{c_char, c_uchar, c_uint};
-    use tempfile::tempdir;
-
     use tari_common_types::{emoji, transaction::TransactionStatus};
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
+    use tempfile::tempdir;
 
     use crate::*;
 

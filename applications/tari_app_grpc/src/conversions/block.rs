@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_core::blocks::Block;
+
+use crate::tari_rpc as grpc;
 
 impl From<tari_core::blocks::Block> for grpc::Block {
     fn from(block: Block) -> Self {

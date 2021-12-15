@@ -24,8 +24,9 @@ mod builder;
 mod push;
 mod server;
 
-use builder::MetricsBuilder;
 use std::collections::HashMap;
+
+use builder::MetricsBuilder;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::NodeIdentity;
 use tari_metrics::Registry;

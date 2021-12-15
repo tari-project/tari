@@ -20,15 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    proto::rpc::GetCloserPeersRequest,
-    rpc::{DhtRpcService, DhtRpcServiceImpl},
-    test_utils::build_peer_manager,
-};
-use futures::StreamExt;
 use std::{convert::TryInto, sync::Arc, time::Duration};
+
+use futures::StreamExt;
 use tari_comms::{
-    peer_manager::{node_id::NodeDistance, NodeId, Peer, PeerFeatures},
+    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
     runtime,
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
@@ -36,6 +32,12 @@ use tari_comms::{
 };
 use tari_test_utils::collect_recv;
 use tari_utilities::ByteArray;
+
+use crate::{
+    proto::rpc::GetCloserPeersRequest,
+    rpc::{DhtRpcService, DhtRpcServiceImpl},
+    test_utils::build_peer_manager,
+};
 
 fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
     let peer_manager = build_peer_manager();
@@ -164,10 +166,12 @@ mod get_closer_peers {
 }
 
 mod get_peers {
+    use std::time::Duration;
+
+    use tari_comms::{peer_manager::Peer, test_utils::node_identity::build_many_node_identities};
+
     use super::*;
     use crate::proto::rpc::GetPeersRequest;
-    use std::time::Duration;
-    use tari_comms::{peer_manager::Peer, test_utils::node_identity::build_many_node_identities};
 
     #[runtime::test]
     async fn it_returns_empty_peer_stream() {

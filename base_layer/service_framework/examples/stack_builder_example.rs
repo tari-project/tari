@@ -21,11 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 pub mod services;
 
-use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, ServiceBInitializer};
 use std::time::Duration;
+
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
 use tokio::time::sleep;
+
+use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, ServiceBInitializer};
 
 #[tokio::main]
 async fn main() {

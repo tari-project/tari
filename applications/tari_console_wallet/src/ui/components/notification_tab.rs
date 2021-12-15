@@ -8,7 +8,6 @@
 // TODO: add interaction with the notifications, e.g. if I have a pending transaction
 //       notification, the UI should go there if I click on it.
 
-use crate::ui::{components::Component, state::AppState};
 use tari_comms::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -18,6 +17,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct NotificationTab {}
 

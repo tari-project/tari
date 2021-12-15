@@ -13,7 +13,10 @@ appenders:
   stdout:
     kind: console
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {h({l}):5} {m}{n}"
+      pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
+    filters:
+      - kind: threshold
+        level: info
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   mining_node:
     kind: rolling_file
@@ -33,8 +36,9 @@ appenders:
 
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
-  level: warn
+  level: info
   appenders:
+    - mining_node
     - stdout
 
 loggers:
@@ -43,15 +47,8 @@ loggers:
     level: debug
     appenders:
       - mining_node
-    additive: false
-  tari_mining_node::logging:
+  tari_mining_node:
     level: debug
     appenders:
       - mining_node
-    additive: false
-  tari_mining_node::miner:
-    level: info
-    appenders:
-      - stdout
-    additive: false
 

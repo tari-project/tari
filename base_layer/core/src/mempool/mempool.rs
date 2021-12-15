@@ -35,13 +35,13 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction_entities::transaction::Transaction,
+    transactions::transaction::Transaction,
     validation::MempoolTransactionValidation,
 };
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
-/// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
-/// that have recently been included in a block.
+/// for managing and maintaining all unconfirmed transactions that have not yet been included in a block, and
+/// transactions that have recently been included in a block.
 #[derive(Clone)]
 pub struct Mempool {
     pool_storage: Arc<RwLock<MempoolStorage>>,

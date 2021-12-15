@@ -20,20 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
 use digest::Digest;
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_crypto::{
-    common::Blake256,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
 };
-
-use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -47,11 +42,19 @@ use tari_core::{
     consensus::NetworkConsensus,
     transactions::{
         tari_amount::MicroTari,
-        transaction_entities::{OutputFeatures, UnblindedOutput},
+        transaction::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
-use tari_key_manager::key_manager::KeyManager;
+use tari_crypto::{
+    common::Blake256,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -62,6 +65,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -74,6 +78,7 @@ use crate::{
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
@@ -82,8 +87,6 @@ use crate::{
     types::KeyDigest,
     utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
-use tari_common_types::transaction::TxId;
-use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -101,6 +104,8 @@ pub struct Wallet<T, U, V, W> {
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
+    pub asset_manager: AssetManagerHandle,
+    pub token_manager: TokenManagerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
@@ -167,7 +172,7 @@ where
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
-                output_manager_backend,
+                output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
                 master_seed,
@@ -191,7 +196,9 @@ where
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            ));
+            ))
+            .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
+            .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
         let stack = match config.updater_config {
@@ -222,6 +229,8 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+        let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
+        let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
         let updater_handle = config
             .updater_config
@@ -257,6 +266,10 @@ where
             wallet_connectivity,
             db: wallet_database,
             factories,
+            asset_manager: asset_manager_handle,
+            token_manager: token_manager_handle,
+            #[cfg(feature = "test_harness")]
+            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -293,8 +306,14 @@ where
         );
 
         self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.wallet_connectivity.set_base_node(peer);
-
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+            self.comms
+                .connectivity()
+                .remove_peer_from_allow_list(current_node)
+                .await?;
+        }
+        self.wallet_connectivity.set_base_node(peer.clone());
+        self.comms.connectivity().add_peer_to_allow_list(peer.node_id).await?;
         Ok(())
     }
 
@@ -461,10 +480,10 @@ where
             .await;
 
         match coin_split_tx {
-            Ok((tx_id, split_tx, amount, fee)) => {
+            Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, fee, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, message)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),

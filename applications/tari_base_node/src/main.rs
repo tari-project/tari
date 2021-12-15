@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -98,12 +99,6 @@ mod utils;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-use crate::command_handler::{CommandHandler, StatusOutput};
-use futures::{pin_mut, FutureExt};
-use log::*;
-use opentelemetry::{self, global, KeyValue};
-use parser::Parser;
-use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{
     env,
     net::SocketAddr,
@@ -111,6 +106,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use futures::{pin_mut, FutureExt};
+use log::*;
+use opentelemetry::{self, global, KeyValue};
+use parser::Parser;
+use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -134,7 +135,10 @@ use tokio::{
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
+use crate::command_handler::{CommandHandler, StatusOutput};
+
 const LOG_TARGET: &str = "base_node::app";
+
 /// Application entry point
 fn main() {
     if let Err(exit_code) = main_inner() {
@@ -250,12 +254,13 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         ExitCodes::UnknownError(err.to_string())
     })?;
 
-    if node_config.grpc_enabled {
-        // Go, GRPC, go go
-        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
-            .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
-        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
+    if let Some(ref base_node_config) = node_config.base_node_config {
+        if let Some(ref address) = base_node_config.grpc_address {
+            // Go, GRPC, go go
+            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+            task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
+        }
     }
 
     // Run, node, run!

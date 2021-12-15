@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    cmp::{max, min},
+    convert::TryInto,
+    iter::IntoIterator,
+    marker::PhantomData,
+};
+
+use digest::Digest;
+
 use crate::{
     backend::ArrayLike,
     common::{
@@ -35,13 +44,6 @@ use crate::{
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
     Hash,
-};
-use digest::Digest;
-use std::{
-    cmp::{max, min},
-    convert::TryInto,
-    iter::IntoIterator,
-    marker::PhantomData,
 };
 
 /// An implementation of a Merkle Mountain Range (MMR). The MMR is append-only and immutable. Only the hashes are

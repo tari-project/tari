@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
-use rand::rngs::OsRng;
 use std::{path::Path, sync::Arc, time::Duration};
+
+use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -65,6 +65,8 @@ use tari_p2p::{
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
+
+use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {

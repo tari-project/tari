@@ -22,9 +22,8 @@
 
 use std::sync::Arc;
 
-use thiserror::Error;
-
 use tari_common::configuration::Network;
+use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::{
@@ -40,7 +39,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroTari, transaction_entities::transaction_kernel::TransactionKernel},
+    transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
 };
 
 #[derive(Debug, Error)]

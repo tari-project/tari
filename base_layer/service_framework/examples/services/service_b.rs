@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 use futures::{pin_mut, StreamExt};
-use std::time::Duration;
 use tari_service_framework::{
     reply_channel,
     reply_channel::SenderService,

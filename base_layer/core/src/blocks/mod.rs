@@ -30,6 +30,7 @@ pub use accumulated_data::{
     ChainHeader,
     CompleteDeletedBitmap,
     DeletedBitmap,
+    UpdateBlockAccumulatedData,
 };
 
 mod error;

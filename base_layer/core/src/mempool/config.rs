@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{consts, reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 use tari_common::{configuration::seconds, NetworkConfigPath};
+
+use crate::mempool::{consts, reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
 /// Configuration for the Mempool.
 #[derive(Clone, Copy, Deserialize, Serialize, Default)]
@@ -69,12 +71,13 @@ impl NetworkConfigPath for MempoolServiceConfig {
 
 #[cfg(test)]
 mod test {
+    use config::Config;
+    use tari_common::DefaultConfigLoader;
+
     use super::{
         consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
         MempoolConfig,
     };
-    use config::Config;
-    use tari_common::DefaultConfigLoader;
 
     #[test]
     pub fn test_mempool() {

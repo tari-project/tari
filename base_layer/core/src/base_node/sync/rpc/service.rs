@@ -20,9 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    cmp,
+    sync::{Arc, Weak},
+};
+
+use log::*;
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
+};
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::Hashable;
+use tokio::{
+    sync::{mpsc, RwLock},
+    task,
+};
+use tracing::{instrument, span, Instrument, Level};
+
 use crate::{
     base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -35,22 +54,6 @@ use crate::{
         SyncUtxosResponse,
     },
 };
-use log::*;
-use std::{
-    cmp,
-    sync::{Arc, Weak},
-};
-use tari_comms::{
-    peer_manager::NodeId,
-    protocol::rpc::{Request, Response, RpcStatus, Streaming},
-    utils,
-};
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{
-    sync::{mpsc, RwLock},
-    task,
-};
-use tracing::{instrument, span, Instrument, Level};
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
@@ -91,7 +94,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
-    #[instrument(name = "sync_rpc::sync_blocks", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -204,7 +207,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
-    #[instrument(name = "sync_rpc::sync_headers", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_headers", skip(self), err)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
@@ -387,47 +390,57 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
         let req = request.into_message();
-        const BATCH_SIZE: usize = 1000;
-        let (tx, rx) = mpsc::channel(BATCH_SIZE);
+        let (tx, rx) = mpsc::channel(100);
         let db = self.db();
 
-        task::spawn(async move {
-            let end = match db
-                .fetch_chain_header_by_block_hash(req.end_header_hash.clone())
-                .await
-                .or_not_found("BlockHeader", "hash", req.end_header_hash.to_hex())
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
-            {
-                Ok(header) => {
-                    if header.header().kernel_mmr_size < req.start {
-                        let _ = tx
-                            .send(Err(RpcStatus::bad_request("Start mmr position after requested header")))
-                            .await;
-                        return;
-                    }
+        let start_header = db
+            .fetch_header_containing_kernel_mmr(req.start + 1)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .into_header();
 
-                    header.header().kernel_mmr_size
-                },
-                Err(err) => {
-                    let _ = tx.send(Err(err)).await;
-                    return;
-                },
-            };
-            let iter = NonOverlappingIntegerPairIter::new(req.start, end, BATCH_SIZE);
-            for (start, end) in iter {
+        let end_header = db
+            .fetch_header_by_block_hash(req.end_header_hash.clone())
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Unknown end header"))?;
+
+        let mut current_height = start_header.height;
+        let end_height = end_header.height;
+        let mut current_mmr_position = start_header.kernel_mmr_size;
+        let mut current_header_hash = start_header.hash();
+
+        if current_height > end_height {
+            return Err(RpcStatus::bad_request("start header height is after end header"));
+        }
+
+        task::spawn(async move {
+            while current_height <= end_height {
                 if tx.is_closed() {
                     break;
                 }
-                debug!(target: LOG_TARGET, "Streaming kernels {} to {}", start, end);
                 let res = db
-                    .fetch_kernels_by_mmr_position(start, end)
+                    .fetch_kernels_in_block(current_header_hash.clone())
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
                 match res {
                     Ok(kernels) if kernels.is_empty() => {
+                        let _ = tx
+                            .send(Err(RpcStatus::general(format!(
+                                "No kernels in block {}",
+                                current_header_hash.to_hex()
+                            ))))
+                            .await;
                         break;
                     },
                     Ok(kernels) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Streaming kernels {} to {}",
+                            current_mmr_position,
+                            current_mmr_position + kernels.len() as u64
+                        );
+                        current_mmr_position += kernels.len() as u64;
                         let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
                         // Ensure task stops if the peer prematurely stops their RPC session
                         if utils::mpsc::send_all(&tx, kernels).await.is_err() {
@@ -438,6 +451,36 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         let _ = tx.send(Err(err)).await;
                         break;
                     },
+                }
+
+                current_height += 1;
+
+                if current_height <= end_height {
+                    let res = db
+                        .fetch_header(current_height)
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                    match res {
+                        Ok(Some(header)) => {
+                            current_header_hash = header.hash();
+                        },
+                        Ok(None) => {
+                            let _ = tx
+                                .send(Err(RpcStatus::not_found(format!(
+                                    "Could not find header #{} while streaming UTXOs after position {}",
+                                    current_height, current_mmr_position
+                                ))))
+                                .await;
+                            break;
+                        },
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "DB error while streaming kernels: {}", err);
+                            let _ = tx
+                                .send(Err(RpcStatus::general("DB error while streaming kernels")))
+                                .await;
+                            break;
+                        },
+                    }
                 }
             }
         });
@@ -450,15 +493,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let peer = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
-            "Received sync_utxos request from {} (start = {}, include_pruned_utxos = {}, include_deleted_bitmaps = {})",
+            "Received sync_utxos request from header {} to {} (start = {}, include_pruned_utxos = {}, \
+             include_deleted_bitmaps = {})",
             peer,
             req.start,
+            req.end_header_hash.to_hex(),
             req.include_pruned_utxos,
             req.include_deleted_bitmaps
         );
 
         let (tx, rx) = mpsc::channel(200);
-        task::spawn(SyncUtxosTask::new(self.db(), request.into_message()).run(tx));
+        let task = SyncUtxosTask::new(self.db());
+        task.run(request.into_message(), tx).await?;
 
         Ok(Streaming::new(rx))
     }

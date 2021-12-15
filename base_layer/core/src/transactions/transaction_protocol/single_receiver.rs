@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
@@ -27,11 +28,9 @@ use tari_crypto::{
     tari_utilities::byte_array::ByteArray,
 };
 
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
-
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_entities::{output_features::OutputFeatures, transaction_output::TransactionOutput},
+    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -81,7 +80,7 @@ impl SingleReceiverTransactionProtocol {
 
     /// Validates the sender info
     fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
-        if sender_info.amount == 0.into() {
+        if sender_info.amount == 0.into() && sender_info.features.unique_id.is_none() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
@@ -137,18 +136,17 @@ impl SingleReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
         script::TariScript,
     };
 
-    use tari_common_types::types::{PrivateKey, PublicKey};
-
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction_entities::output_features::OutputFeatures,
+        transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -195,7 +193,7 @@ mod test {
         let public_commitment_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
         let script = TariScript::default();
         let info = SingleRoundSenderData {
-            tx_id: 500,
+            tx_id: 500.into(),
             amount: MicroTari(1500),
             public_excess: pub_xs,
             public_nonce: pub_rs.clone(),
@@ -207,7 +205,7 @@ mod test {
             public_commitment_nonce,
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
-        assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
+        assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
         let e = build_challenge(&(&pub_rs + &pubnonce), &m);
@@ -221,10 +219,7 @@ mod test {
             factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
             "Output commitment is invalid"
         );
-        assert!(
-            out.verify_range_proof(&factories.range_proof).unwrap(),
-            "Range proof is invalid"
-        );
+        out.verify_range_proof(&factories.range_proof).unwrap();
         assert!(out.features.flags.is_empty(), "Output features flags have changed");
     }
 }

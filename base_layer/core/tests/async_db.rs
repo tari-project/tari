@@ -23,8 +23,6 @@
 
 use std::ops::Deref;
 
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::Hashable};
-
 use helpers::{
     block_builders::chain_block_with_new_coinbase,
     database::create_orphan_block,
@@ -38,11 +36,12 @@ use tari_core::{
     transactions::{
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_entities::{TransactionOutput, UnblindedOutput},
+        transaction::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
 };
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::Hashable};
 use tari_test_utils::runtime::test_async;
 
 #[allow(dead_code)]

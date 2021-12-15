@@ -20,10 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
-    util::watch::Watch,
-};
 use tari_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
@@ -31,6 +27,11 @@ use tari_comms::{
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::watch::Receiver;
+
+use crate::{
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
+    util::watch::Watch,
+};
 
 pub fn create() -> WalletConnectivityMock {
     WalletConnectivityMock::new()

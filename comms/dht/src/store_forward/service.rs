@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, sync::Arc, time::Duration};
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use log::*;
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
+    peer_manager::{NodeId, PeerFeatures},
+    types::CommsPublicKey,
+    PeerManager,
+};
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+    time::MissedTickBehavior,
+};
+
 use super::{
     database::{NewStoredMessage, StoreAndForwardDatabase, StoredMessage},
     message::StoredMessagePriority,
@@ -35,22 +53,6 @@ use crate::{
     storage::{DbConnection, DhtMetadataKey},
     store_forward::{local_state::SafLocalState, SafConfig},
     DhtRequester,
-};
-use chrono::{DateTime, NaiveDateTime, Utc};
-use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{NodeId, PeerFeatures},
-    types::CommsPublicKey,
-    PeerManager,
-};
-use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{mpsc, oneshot},
-    task,
-    time,
-    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
@@ -220,7 +222,7 @@ impl StoreAndForwardService {
     }
 
     pub fn spawn(self) {
-        info!(target: LOG_TARGET, "Store and forward service started");
+        debug!(target: LOG_TARGET, "Store and forward service started");
         task::spawn(self.run());
     }
 

@@ -20,18 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::state::AppStateInner;
-use log::*;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use log::*;
 use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 use tokio::{
     sync::{broadcast, RwLock},
     time,
     time::MissedTickBehavior,
 };
+
+use crate::ui::state::AppStateInner;
 
 const LOG_TARGET: &str = "wallet::console_wallet::debouncer";
 

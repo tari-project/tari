@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
-use prost::DecodeError;
 use std::time::Duration;
+
+use prost::DecodeError;
 use tari_comms::{
     message::MessageError,
     peer_manager::{NodeId, PeerManagerError},
 };
 use tari_utilities::{byte_array::ByteArrayError, ciphers::cipher::CipherError};
 use thiserror::Error;
+
+use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
 
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
@@ -87,7 +89,7 @@ pub enum StoreAndForwardError {
     #[error("Received SAF messages that were not requested")]
     ReceivedUnrequestedSafMessages,
     #[error("SAF messages received from peer {peer} after deadline. Received after {0:.2?}")]
-    SafMessagesRecievedAfterDeadline { peer: NodeId, message_age: Duration },
+    SafMessagesReceivedAfterDeadline { peer: NodeId, message_age: Duration },
     #[error("Invalid SAF request: `stored_at` cannot be in the future")]
     StoredAtWasInFuture,
 }

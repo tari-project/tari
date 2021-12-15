@@ -23,12 +23,14 @@
 use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
-
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::{
+    transaction::TxId,
+    types::{MessageHash, PrivateKey, PublicKey, Signature},
+};
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_entities::{output_features::OutputFeatures, transaction_output::TransactionOutput},
+    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -82,7 +84,7 @@ pub(super) struct MultiRecipientInfo {
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecipientSignedMessage {
-    pub tx_id: u64,
+    pub tx_id: TxId,
     pub output: TransactionOutput,
     pub public_spend_key: PublicKey,
     pub partial_signature: Signature,
@@ -208,28 +210,25 @@ impl ReceiverTransactionProtocol {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
+        script::TariScript,
     };
 
-    use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-
-    use crate::{
-        crypto::script::TariScript,
-        transactions::{
-            crypto_factories::CryptoFactories,
-            tari_amount::*,
-            test_helpers::TestParams,
-            transaction_entities::output_features::OutputFeatures,
-            transaction_protocol::{
-                build_challenge,
-                sender::{SingleRoundSenderData, TransactionSenderMessage},
-                RewindData,
-                TransactionMetadata,
-            },
-            ReceiverTransactionProtocol,
+    use crate::transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::*,
+        test_helpers::TestParams,
+        transaction::OutputFeatures,
+        transaction_protocol::{
+            build_challenge,
+            sender::{SingleRoundSenderData, TransactionSenderMessage},
+            RewindData,
+            TransactionMetadata,
         },
+        ReceiverTransactionProtocol,
     };
 
     #[test]
@@ -244,7 +243,7 @@ mod test {
         let features = OutputFeatures::default();
         let amount = MicroTari(500);
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
@@ -261,12 +260,12 @@ mod test {
             ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
-        assert_eq!(data.tx_id, 15);
+        assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
             .commitment
             .open_value(&p.spend_key, 500, &data.output.commitment));
-        assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
+        data.output.verify_range_proof(&factories.range_proof).unwrap();
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
@@ -291,7 +290,7 @@ mod test {
         let script = TariScript::default();
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
-            tx_id: 15,
+            tx_id: 15.into(),
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{borrow::Cow, fmt, num::NonZeroU16};
+
 use crate::tor::control_client::{
     commands::TorCommand,
     error::TorClientError,
@@ -28,7 +30,6 @@ use crate::tor::control_client::{
     response::ResponseLine,
     types::{KeyBlob, KeyType, PortMapping, PrivateKey},
 };
-use std::{borrow::Cow, fmt, num::NonZeroU16};
 
 #[derive(Debug, Copy, Clone)]
 pub enum AddOnionFlag {

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
+
 use crate::{
     base_node::{
         state_machine_service::{
@@ -30,7 +32,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-use log::*;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 
@@ -56,17 +57,28 @@ impl DecideNextSync {
         );
 
         if shared.config.pruning_horizon > 0 {
-            // Filter sync peers that claim to be able to provide full blocks up until our pruned height
+            let last_header = match shared.db.fetch_last_header().await {
+                Ok(h) => h,
+                Err(err) => return err.into(),
+            };
+
+            let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+            // Filter sync peers that claim to be able to provide blocks up until our pruned height
             let sync_peers_iter = self.sync_peers.iter().filter(|sync_peer| {
-                let chain_metadata = sync_peer.claimed_chain_metadata();
-                let our_pruned_height_from_peer =
-                    local_metadata.horizon_block(chain_metadata.height_of_longest_chain());
-                let their_pruned_height = chain_metadata.pruned_height();
-                our_pruned_height_from_peer >= their_pruned_height
+                let remote_metadata = sync_peer.claimed_chain_metadata();
+                remote_metadata.height_of_longest_chain() >= horizon_sync_height
             });
 
             match find_best_latency(sync_peers_iter) {
-                Some(sync_peer) => ProceedToHorizonSync(sync_peer),
+                Some(sync_peer) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Proceeding to horizon sync with sync peer {} with a latency of {:.2?}",
+                        sync_peer.node_id(),
+                        sync_peer.latency()
+                    );
+                    ProceedToHorizonSync(sync_peer)
+                },
                 None => Continue,
             }
         } else {
@@ -76,7 +88,15 @@ impl DecideNextSync {
             });
 
             match find_best_latency(sync_peers_iter) {
-                Some(sync_peer) => ProceedToBlockSync(sync_peer),
+                Some(sync_peer) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Proceeding to block sync with sync peer {} with a latency of {:.2?}",
+                        sync_peer.node_id(),
+                        sync_peer.latency()
+                    );
+                    ProceedToBlockSync(sync_peer)
+                },
                 None => Continue,
             }
         }
@@ -108,9 +128,10 @@ impl From<HeaderSync> for DecideNextSync {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rand::{rngs::OsRng, seq::SliceRandom};
     use tari_common_types::chain_metadata::ChainMetadata;
+
+    use super::*;
 
     mod find_best_latency {
         use super::*;

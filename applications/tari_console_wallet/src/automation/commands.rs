@@ -20,11 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::CommandError;
-use chrono::Utc;
-use digest::Digest;
-use log::*;
-use sha2::Sha256;
 use std::{
     convert::TryFrom,
     fs::File,
@@ -32,16 +27,13 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
+use chrono::Utc;
+use digest::Digest;
 use futures::FutureExt;
+use log::*;
+use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
-
-use crate::{
-    automation::command_parser::{ParsedArgument, ParsedCommand},
-    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-};
 use tari_common::GlobalConfig;
 use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
@@ -50,13 +42,16 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::{
-    tari_utilities::hex::Hex,
-    transactions::{
-        tari_amount::{uT, MicroTari, Tari},
-        transaction_entities::{TransactionOutput, UnblindedOutput},
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari, Tari},
+    transaction::{TransactionOutput, UnblindedOutput},
 };
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitmentFactory,
+    tari_utilities::{ByteArray, Hashable},
+};
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
@@ -65,6 +60,12 @@ use tari_wallet::{
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep, timeout},
+};
+
+use super::error::CommandError;
+use crate::{
+    automation::command_parser::{ParsedArgument, ParsedCommand},
+    utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -89,6 +90,9 @@ pub enum WalletCommand {
     InitShaAtomicSwap,
     FinaliseShaAtomicSwap,
     ClaimShaAtomicSwapRefund,
+    RegisterAsset,
+    MintTokens,
+    CreateInitialCheckpoint,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -162,7 +166,7 @@ pub async fn send_tari(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -197,11 +201,11 @@ pub async fn finalise_sha_atomic_swap(
         PublicKey(key) => Ok(key),
         _ => Err(CommandError::Argument),
     }?;
-    let (tx_id, fee, amount, tx) = output_service
+    let (tx_id, _fee, amount, tx) = output_service
         .create_claim_sha_atomic_swap_transaction(output, pre_image, MicroTari(25))
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC atomic swap".into())
+        .submit_transaction(tx_id, tx, amount, "Claimed HTLC atomic swap".into())
         .await?;
     Ok(tx_id)
 }
@@ -218,11 +222,11 @@ pub async fn claim_htlc_refund(
         _ => Err(CommandError::Argument),
     }?;
 
-    let (tx_id, fee, amount, tx) = output_service
+    let (tx_id, _fee, amount, tx) = output_service
         .create_htlc_refund_transaction(output, MicroTari(25))
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Claimed HTLC refund".into())
+        .submit_transaction(tx_id, tx, amount, "Claimed HTLC refund".into())
         .await?;
     Ok(tx_id)
 }
@@ -234,7 +238,7 @@ pub async fn send_one_sided(
 ) -> Result<TxId, CommandError> {
     let (fee_per_gram, amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram, message)
+        .send_one_sided_transaction(dest_pubkey, amount, None, fee_per_gram, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -255,11 +259,11 @@ pub async fn coin_split(
         _ => Err(CommandError::Argument),
     }?;
 
-    let (tx_id, tx, fee, amount) = output_service
+    let (tx_id, tx, amount) = output_service
         .create_coin_split(amount_per_split, num_splits as usize, MicroTari(100), None)
         .await?;
     transaction_service
-        .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+        .submit_transaction(tx_id, tx, amount, "Coin split".into())
         .await?;
 
     Ok(tx_id)
@@ -635,7 +639,7 @@ pub async fn command_runner(
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 
-    let transaction_service = wallet.transaction_service.clone();
+    let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
     let dht_service = wallet.dht_service.discovery_service_requester().clone();
     let connectivity_requester = wallet.comms.connectivity();
@@ -785,6 +789,100 @@ pub async fn command_runner(
                 let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(), parsed.args).await?;
                 debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                 tx_ids.push(tx_id);
+            },
+            RegisterAsset => {
+                println!("Registering asset.");
+                let name = parsed.args[0].to_string();
+                let message = format!("Register asset: {}", name);
+                let mut manager = wallet.asset_manager.clone();
+                // todo: key manager
+                let mut rng = rand::thread_rng();
+                let (_, public_key) = PublicKey::random_keypair(&mut rng);
+                let (tx_id, transaction) = manager
+                    .create_registration_transaction(name, public_key, vec![], None, None, vec![])
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
+            MintTokens => {
+                println!("Minting tokens for asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let unique_ids: Vec<Vec<u8>> = parsed.args[1..]
+                    .iter()
+                    .map(|arg| {
+                        let s = arg.to_string();
+                        if let Some(s) = s.strip_prefix("0x") {
+                            let r: Vec<u8> = Hex::from_hex(s).unwrap();
+                            r
+                        } else {
+                            s.into_bytes()
+                        }
+                    })
+                    .collect();
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
+                println!("Asset name: {}", asset.name());
+
+                let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
+                let (tx_id, transaction) = asset_manager
+                    .create_minting_transaction(
+                        &public_key,
+                        asset.owner_commitment(),
+                        unique_ids.into_iter().map(|id| (id, None)).collect(),
+                    )
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
+            CreateInitialCheckpoint => {
+                println!("Creating Initial Checkpoint for Asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let merkle_root = match parsed.args[1] {
+                    ParsedArgument::Text(ref root) => {
+                        let s = root.to_string();
+                        match &s[0..2] {
+                            "0x" => {
+                                let s = s[2..].to_string();
+                                let r: Vec<u8> = Hex::from_hex(&s).unwrap();
+                                Ok(r)
+                            },
+                            _ => Ok(s.into_bytes()),
+                        }
+                    },
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let committee: Vec<PublicKey> = parsed.args[2..]
+                    .iter()
+                    .map(|pk| match pk {
+                        ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                        _ => Err(CommandError::Argument),
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_initial_asset_checkpoint(&public_key, &merkle_root, &committee)
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(
+                        tx_id,
+                        transaction,
+                        0.into(),
+                        "test initial asset checkpoint transaction".to_string(),
+                    )
+                    .await?;
             },
         }
     }

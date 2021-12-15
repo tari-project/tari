@@ -19,13 +19,12 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-use crate::{
-    blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    tari_utilities::Hashable,
-    transactions::aggregated_body::AggregateBody,
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    sync::Arc,
 };
+
 use croaring::Bitmap;
 use log::*;
 use num_format::{Locale, ToFormattedString};
@@ -38,14 +37,16 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-    sync::Arc,
-};
 use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
+use tari_utilities::Hashable;
+
+use crate::{
+    blocks::{error::BlockError, Block, BlockHeader},
+    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    transactions::aggregated_body::AggregateBody,
+};
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
@@ -53,8 +54,8 @@ const LOG_TARGET: &str = "c::bn::acc_data";
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) outputs: PrunedHashSet,
+    pub(crate) witness: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
-    pub(crate) range_proofs: PrunedHashSet,
     pub(crate) kernel_sum: Commitment,
 }
 
@@ -62,14 +63,14 @@ impl BlockAccumulatedData {
     pub fn new(
         kernels: PrunedHashSet,
         outputs: PrunedHashSet,
-        range_proofs: PrunedHashSet,
+        witness: PrunedHashSet,
         deleted: Bitmap,
         total_kernel_sum: Commitment,
     ) -> Self {
         Self {
             kernels,
             outputs,
-            range_proofs,
+            witness,
             deleted: DeletedBitmap { deleted },
             kernel_sum: total_kernel_sum,
         }
@@ -79,8 +80,13 @@ impl BlockAccumulatedData {
         &self.deleted.deleted
     }
 
+    pub fn set_deleted(&mut self, deleted: DeletedBitmap) -> &mut Self {
+        self.deleted = deleted;
+        self
+    }
+
     pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.range_proofs, self.deleted.deleted)
+        (self.kernels, self.outputs, self.witness, self.deleted.deleted)
     }
 
     pub fn kernel_sum(&self) -> &Commitment {
@@ -96,7 +102,7 @@ impl Default for BlockAccumulatedData {
             deleted: DeletedBitmap {
                 deleted: Bitmap::create(),
             },
-            range_proofs: Default::default(),
+            witness: Default::default(),
             kernel_sum: Default::default(),
         }
     }
@@ -110,9 +116,18 @@ impl Display for BlockAccumulatedData {
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
             self.kernels.len().unwrap_or(0),
-            self.range_proofs.len().unwrap_or(0)
+            self.witness.len().unwrap_or(0)
         )
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateBlockAccumulatedData {
+    pub kernel_hash_set: Option<PrunedHashSet>,
+    pub utxo_hash_set: Option<PrunedHashSet>,
+    pub witness_hash_set: Option<PrunedHashSet>,
+    pub deleted_diff: Option<DeletedBitmap>,
+    pub kernel_sum: Option<Commitment>,
 }
 
 /// Wrapper struct to serialize and deserialize Bitmap
@@ -486,14 +501,14 @@ impl ChainBlock {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blocks::genesis_block::get_weatherwax_genesis_block;
 
     mod chain_block {
         use super::*;
+        use crate::blocks::genesis_block::get_dibbler_genesis_block;
 
         #[test]
         fn it_converts_to_a_chain_header() {
-            let genesis = get_weatherwax_genesis_block();
+            let genesis = get_dibbler_genesis_block();
             let header = genesis.to_chain_header();
             assert_eq!(header.header(), genesis.header());
             assert_eq!(header.accumulated_data(), genesis.accumulated_data());
@@ -501,7 +516,7 @@ mod test {
 
         #[test]
         fn it_provides_guarantees_about_data_integrity() {
-            let mut genesis = get_weatherwax_genesis_block();
+            let mut genesis = get_dibbler_genesis_block();
             // Mess with the header, only possible using the non-public fields
             genesis.block = Arc::new({
                 let mut b = (*genesis.block).clone();

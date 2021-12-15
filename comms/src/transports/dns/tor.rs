@@ -20,15 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{io, net::SocketAddr};
+
+use futures::future::BoxFuture;
+use log::*;
+
 use super::{DnsResolver, DnsResolverError};
 use crate::{
     multiaddr::Multiaddr,
     socks::Socks5Client,
     transports::{dns::common, SocksConfig, SocksTransport, TcpTransport, Transport},
 };
-use futures::future::BoxFuture;
-use log::*;
-use std::{io, net::SocketAddr};
 
 const LOG_TARGET: &str = "comms::dns::tor_resolver";
 
@@ -85,9 +87,10 @@ impl DnsResolver for TorDnsResolver {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use super::*;
     use crate::transports::predicate::FalsePredicate;
-    use std::sync::Arc;
 
     // This only works when a tor proxy is running
     #[ignore]

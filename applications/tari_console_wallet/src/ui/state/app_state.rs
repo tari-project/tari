@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -30,13 +30,6 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
-use tokio::{
-    sync::{watch, RwLock},
-    task,
-};
-
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_common_types::{
     emoji::EmojiId,
@@ -54,14 +47,22 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     weight::TransactionWeight,
 };
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    assets::Asset,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::WalletConnectivityHandle,
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
+    tokens::Token,
     transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
     WalletSqlite,
+};
+use tokio::{
+    sync::{watch, RwLock},
+    task,
 };
 
 use crate::{
@@ -130,6 +131,10 @@ impl AppState {
         tokio::spawn(event_monitor.run(notifier));
     }
 
+    pub fn get_all_events(&self) -> VecDeque<EventListItem> {
+        self.cached_data.all_events.to_owned()
+    }
+
     pub async fn start_balance_enquiry_debouncer(&self) -> Result<(), UiError> {
         tokio::spawn(self.balance_enquiry_debouncer.clone().run());
         let _ = self
@@ -162,6 +167,24 @@ impl AppState {
         inner.refresh_connected_peers_state().await?;
         drop(inner);
         self.update_cache().await;
+        Ok(())
+    }
+
+    pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_assets_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
+        Ok(())
+    }
+
+    pub async fn refresh_tokens_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_tokens_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
         Ok(())
     }
 
@@ -237,6 +260,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -252,6 +276,7 @@ impl AppState {
         tokio::spawn(send_transaction_task(
             public_key,
             MicroTari::from(amount),
+            unique_id,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -265,6 +290,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        unique_id: Option<Vec<u8>>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -280,6 +306,7 @@ impl AppState {
         tokio::spawn(send_one_sided_transaction_task(
             public_key,
             MicroTari::from(amount),
+            unique_id,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -296,12 +323,27 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn rebroadcast_all(&mut self) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service = inner.wallet.transaction_service.clone();
+        tx_service.restart_broadcast_protocols().await?;
+        Ok(())
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
 
-    pub fn get_contacts(&self) -> &Vec<UiContact> {
-        &self.cached_data.contacts
+    pub fn get_owned_assets(&self) -> &[Asset] {
+        self.cached_data.owned_assets.as_slice()
+    }
+
+    pub fn get_owned_tokens(&self) -> &[Token] {
+        self.cached_data.owned_tokens.as_slice()
+    }
+
+    pub fn get_contacts(&self) -> &[UiContact] {
+        self.cached_data.contacts.as_slice()
     }
 
     pub fn get_contact(&self, index: usize) -> Option<&UiContact> {
@@ -465,12 +507,8 @@ impl AppState {
         use Network::*;
         // TODO: TBD
         match self.node_config.network {
-            MainNet => MicroTari(5),
-            LocalNet => MicroTari(5),
-            Ridcully => MicroTari(25),
-            Stibbons => MicroTari(25),
-            Weatherwax => MicroTari(25),
-            Igor => MicroTari(5),
+            MainNet | LocalNet | Igor | Dibbler => MicroTari(5),
+            Ridcully | Stibbons | Weatherwax => MicroTari(25),
         }
     }
 
@@ -499,6 +537,14 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn add_event(&mut self, event: EventListItem) {
+        if self.data.all_events.len() > 30 {
+            self.data.all_events.pop_back();
+        }
+        self.data.all_events.push_front(event);
+        self.updated = true;
     }
 
     /// If there has been an update to the state since the last call to this function it will provide a cloned snapshot
@@ -602,7 +648,7 @@ impl AppStateInner {
 
         match found {
             None => {
-                // In its not in the backend then make sure it is not left behind in the AppState
+                // If it's not in the backend then remove it from AppState
                 let _: Option<CompletedTransaction> = self
                     .data
                     .pending_txs
@@ -656,6 +702,8 @@ impl AppStateInner {
                 });
             },
         }
+        self.refresh_assets_state().await?;
+        self.refresh_tokens_state().await?;
         self.updated = true;
         Ok(())
     }
@@ -693,6 +741,20 @@ impl AppStateInner {
         }
 
         self.data.connected_peers = peers;
+        self.updated = true;
+        Ok(())
+    }
+
+    pub async fn refresh_assets_state(&mut self) -> Result<(), UiError> {
+        let asset_utxos = self.wallet.asset_manager.list_owned_assets().await?;
+        self.data.owned_assets = asset_utxos;
+        self.updated = true;
+        Ok(())
+    }
+
+    pub async fn refresh_tokens_state(&mut self) -> Result<(), UiError> {
+        let token_utxos = self.wallet.token_manager.list_owned_tokens().await?;
+        self.data.owned_tokens = token_utxos;
         self.updated = true;
         Ok(())
     }
@@ -895,6 +957,23 @@ pub struct CompletedTransactionInfo {
     pub weight: u64,
     pub inputs_count: usize,
     pub outputs_count: usize,
+    pub unique_id: String,
+}
+
+fn first_unique_id(tx: &CompletedTransaction) -> String {
+    let body = tx.transaction.body();
+    for input in body.inputs() {
+        if let Some(ref unique_id) = input.features.unique_id {
+            return unique_id.to_hex();
+        }
+    }
+    for output in body.outputs() {
+        if let Some(ref unique_id) = output.features.unique_id {
+            return unique_id.to_hex();
+        }
+    }
+
+    String::new()
 }
 
 impl CompletedTransactionInfo {
@@ -908,6 +987,8 @@ impl CompletedTransactionInfo {
         let weight = tx.transaction.calculate_weight(transaction_weighting);
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
+        let unique_id = first_unique_id(&tx);
+
         Self {
             tx_id: tx.tx_id,
             source_public_key: tx.source_public_key.clone(),
@@ -933,12 +1014,15 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
+            unique_id,
         }
     }
 }
 
 #[derive(Clone)]
 struct AppStateData {
+    owned_assets: Vec<Asset>,
+    owned_tokens: Vec<Token>,
     pending_txs: Vec<CompletedTransactionInfo>,
     completed_txs: Vec<CompletedTransactionInfo>,
     confirmations: HashMap<TxId, u64>,
@@ -951,8 +1035,15 @@ struct AppStateData {
     base_node_previous: Peer,
     base_node_list: Vec<(String, Peer)>,
     base_node_peer_custom: Option<Peer>,
+    all_events: VecDeque<EventListItem>,
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
+}
+
+#[derive(Clone)]
+pub struct EventListItem {
+    pub event_type: String,
+    pub desc: String,
 }
 
 impl AppStateData {
@@ -1005,6 +1096,8 @@ impl AppStateData {
         }
 
         AppStateData {
+            owned_assets: Vec::new(),
+            owned_tokens: Vec::new(),
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
             confirmations: HashMap::new(),
@@ -1017,6 +1110,7 @@ impl AppStateData {
             base_node_previous,
             base_node_list,
             base_node_peer_custom: base_node_config.base_node_custom,
+            all_events: VecDeque::new(),
             notifications: Vec::new(),
             new_notification_count: 0,
         }

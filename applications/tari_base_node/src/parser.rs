@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::command_handler::{CommandHandler, Format, StatusOutput};
+use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+
 use futures::future::Either;
 use log::*;
 use rustyline::{
@@ -32,7 +32,6 @@ use rustyline::{
     Context,
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_utilities::utilities::{
@@ -41,14 +40,17 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_core::{
-    crypto::tari_utilities::hex::from_hex,
-    proof_of_work::PowAlgorithm,
-    tari_utilities::{hex::Hex, ByteArray},
-};
-use tari_crypto::tari_utilities::hex;
+use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
+use tari_utilities::{
+    hex,
+    hex::{from_hex, Hex},
+    ByteArray,
+};
 use tokio::sync::Mutex;
+
+use super::LOG_TARGET;
+use crate::command_handler::{CommandHandler, Format, StatusOutput};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]

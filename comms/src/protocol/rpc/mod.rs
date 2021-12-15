@@ -90,6 +90,10 @@ mod not_found;
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro
 pub mod __macro_reexports {
+    pub use futures::{future, future::BoxFuture};
+    pub use tokio::io::{AsyncRead, AsyncWrite};
+    pub use tower::Service;
+
     pub use crate::{
         framing::CanonicalFraming,
         protocol::{
@@ -110,7 +114,4 @@ pub mod __macro_reexports {
         stream_id::StreamId,
         Bytes,
     };
-    pub use futures::{future, future::BoxFuture};
-    pub use tokio::io::{AsyncRead, AsyncWrite};
-    pub use tower::Service;
 }

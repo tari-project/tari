@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
+use tari_common_types::types::BlindingFactor;
+use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
+
 use crate::{
     conversions::{datetime_to_timestamp, timestamp_to_datetime},
     tari_rpc as grpc,
 };
-use std::convert::TryFrom;
-use tari_common_types::types::BlindingFactor;
-use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl From<BlockHeader> for grpc::BlockHeader {
     fn from(h: BlockHeader) -> Self {

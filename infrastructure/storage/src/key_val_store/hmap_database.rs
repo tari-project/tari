@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, hash::Hash, sync::RwLock};
+
 use crate::key_val_store::{
     error::KeyValStoreError,
     key_val_store::{IterationResult, KeyValueStore},
 };
-use std::{collections::HashMap, hash::Hash, sync::RwLock};
 
 ///  The HMapDatabase mimics the behaviour of LMDBDatabase without keeping a persistent copy of the key-value records.
 /// It allows key-value pairs to be inserted, retrieved and removed in a thread-safe manner.
@@ -150,8 +151,9 @@ impl<K: Clone + Eq + Hash, V: Clone> KeyValueStore<K, V> for HashmapDatabase<K, 
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use serde::{Deserialize, Serialize};
+
+    use super::*;
 
     #[test]
     fn test_hmap_kvstore() {

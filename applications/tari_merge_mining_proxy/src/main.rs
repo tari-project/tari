@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -36,21 +37,29 @@ mod proxy;
 #[cfg(test)]
 mod test;
 
-use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
+use std::convert::{Infallible, TryFrom};
+
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use std::convert::{Infallible, TryFrom};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 
+use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
-    let config = MergeMiningProxyConfig::try_from(config)?;
+    let config = match MergeMiningProxyConfig::try_from(config) {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("Invalid config: {}", msg);
+            return Ok(());
+        },
+    };
     let addr = config.proxy_host_address;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))

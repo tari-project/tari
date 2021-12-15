@@ -22,7 +22,7 @@
 
 use crate::{
     proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroTari, transaction_entities::transaction::Transaction},
+    transactions::{tari_amount::MicroTari, transaction::Transaction},
 };
 
 pub struct BlockSpecs {
@@ -97,6 +97,10 @@ macro_rules! block_spec {
         $spec = $spec.with_reward($reward.into());
         $crate::block_spec!(@ { spec } $($tail)*)
     };
+    (@ { $spec: ident } transactions: $transactions:expr, $($tail:tt)*) => {
+        $spec = $spec.with_transactions($transactions.into());
+        $crate::block_spec!(@ { spec } $($tail)*)
+    };
 
     (@ { $spec: ident } $k:ident: $v:expr $(,)?) => { $crate::block_spec!(@ { $spec } $k: $v,) };
 
@@ -153,7 +157,6 @@ macro_rules! block_specs {
 pub struct BlockSpec {
     pub name: &'static str,
     pub prev_block: &'static str,
-    pub version: u16,
     pub difficulty: Difficulty,
     pub block_time: u64,
     pub reward_override: Option<MicroTari>,
@@ -226,7 +229,6 @@ impl Default for BlockSpec {
         Self {
             name: "<unnamed>",
             prev_block: "",
-            version: 0,
             difficulty: 1.into(),
             block_time: 120,
             height_override: None,

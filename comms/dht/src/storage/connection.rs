@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::error::StorageError;
+use std::{io, path::PathBuf, time::Duration};
+
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
 use log::*;
-use std::{io, path::PathBuf, time::Duration};
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+
+use crate::storage::error::StorageError;
 
 const LOG_TARGET: &str = "comms::dht::storage::connection";
 const SQLITE_POOL_SIZE: usize = 16;
@@ -85,7 +87,7 @@ impl DbConnection {
     pub fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate()?;
-        info!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+        debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
         Ok(conn)
     }
 
@@ -110,10 +112,11 @@ impl DbConnection {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use diesel::{expression::sql_literal::sql, sql_types::Integer, RunQueryDsl};
     use tari_comms::runtime;
     use tari_test_utils::random;
+
+    use super::*;
 
     #[runtime::test]
     async fn connect_and_migrate() {

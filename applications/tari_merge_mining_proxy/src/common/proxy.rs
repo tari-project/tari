@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::MmProxyError;
+use std::convert::TryInto;
+
 use bytes::BytesMut;
 use futures::StreamExt;
 use hyper::{header, header::HeaderValue, http::response, Body, Response, StatusCode, Version};
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use std::convert::TryInto;
+
+use crate::error::MmProxyError;
 
 pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,

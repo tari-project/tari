@@ -20,13 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Error, Formatter},
+};
+
+use digest::Digest;
+use log::*;
+use rand::rngs::OsRng;
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, HashOutput, PrivateKey, PublicKey},
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    ristretto::pedersen::PedersenCommitmentFactory,
+    script::{ExecutionStack, TariScript},
+    tari_utilities::fixed_set::FixedSet,
+};
+
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction_entities::{
+        transaction::{
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -42,32 +62,17 @@ use crate::{
         },
     },
 };
-use digest::Digest;
-use log::*;
-use rand::rngs::OsRng;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-};
-use tari_common_types::types::{BlindingFactor, HashOutput, PrivateKey, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
-};
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
-/// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
+/// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
 /// # use crate::SenderTransactionProtocol;
 /// SenderTransactionProtocol::new(1);
 /// ```
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
-/// methods, you can call `build()` which will return a [SenderTransactionProtocol]
+/// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer {
     num_recipients: usize,
@@ -93,7 +98,7 @@ pub struct SenderTransactionInitializer {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
-    tx_id: Option<u64>,
+    tx_id: Option<TxId>,
     fee: Fee,
 }
 
@@ -342,7 +347,7 @@ impl SenderTransactionInitializer {
                 let change_amount = v.checked_sub(extra_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
-
+                // TODO: Add unique id if needed
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -391,7 +396,7 @@ impl SenderTransactionInitializer {
     }
 
     /// Specify the tx_id of this transaction, if not provided it will be calculated on build
-    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+    pub fn with_tx_id(&mut self, tx_id: TxId) -> &mut Self {
         self.tx_id = Some(tx_id);
         self
     }
@@ -476,7 +481,9 @@ impl SenderTransactionInitializer {
         if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
+
         // Create transaction outputs
+
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
@@ -505,6 +512,7 @@ impl SenderTransactionInitializer {
 
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
+                // TODO: Should proof be verified?
                 match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
                     Ok(o) => o,
                     Err(e) => {
@@ -512,6 +520,7 @@ impl SenderTransactionInitializer {
                     },
                 }
             } else {
+                // TODO: Should proof be verified?
                 match change_unblinded_output.as_transaction_output(factories) {
                     Ok(o) => o,
                     Err(e) => {
@@ -568,10 +577,15 @@ impl SenderTransactionInitializer {
             None => calculate_tx_id::<D>(&public_nonce, 0),
         };
 
+        let recipient_output_features = self.recipient_output_features.clone().into_vec();
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
-        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
+        // Don't care about the fees when we are sending token.
+        if self.amounts.size() > 0 &&
+            total_fee > self.calculate_amount_to_others() &&
+            recipient_output_features[0].unique_id.is_none()
+        {
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
@@ -595,7 +609,7 @@ impl SenderTransactionInitializer {
             amount_to_self,
             tx_id,
             amounts: self.amounts.into_vec(),
-            recipient_output_features: self.recipient_output_features.into_vec(),
+            recipient_output_features,
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
             private_commitment_nonces: self.private_commitment_nonces.into_vec(),
@@ -638,6 +652,7 @@ impl SenderTransactionInitializer {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::PrivateKey;
     use tari_crypto::{
         common::Blake256,
         keys::SecretKey,
@@ -652,7 +667,7 @@ mod test {
             fee::Fee,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
-            transaction_entities::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
                 transaction_initializer::SenderTransactionInitializer,
@@ -660,7 +675,6 @@ mod test {
             },
         },
     };
-    use tari_common_types::types::PrivateKey;
 
     /// One input, 2 outputs
     #[test]

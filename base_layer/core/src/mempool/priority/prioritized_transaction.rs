@@ -22,13 +22,12 @@
 
 use std::sync::Arc;
 
-use tari_crypto::tari_utilities::message_format::MessageFormat;
-
 use tari_common_types::types::HashOutput;
+use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 use crate::{
     mempool::priority::PriorityError,
-    transactions::{transaction_entities::transaction::Transaction, weight::TransactionWeight},
+    transactions::{transaction::Transaction, weight::TransactionWeight},
 };
 
 /// Create a unique unspent transaction priority based on the transaction fee, maturity of the oldest input UTXO and the

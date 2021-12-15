@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{proto::mempool::StateResponse as ProtoStateResponse, StateResponse};
 use std::convert::{TryFrom, TryInto};
-// use crate::transactions::proto::types::Signature as ProtoSignature;
-use crate::mempool::proto::mempool::Signature as ProtoSignature;
+
 use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+
+use crate::mempool::{
+    proto::mempool::{Signature as ProtoSignature, StateResponse as ProtoStateResponse},
+    StateResponse,
+};
 
 //---------------------------------- Signature --------------------------------------------//
 // TODO: Remove duplicate Signature, transaction also has a Signature.

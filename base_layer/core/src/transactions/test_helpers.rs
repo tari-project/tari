@@ -20,13 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use rand::rngs::OsRng;
+use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
+    script,
+    script::{ExecutionStack, TariScript},
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::MicroTari,
-        transaction_entities::{
+        transaction::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -40,19 +55,6 @@ use crate::{
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
-};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
 };
 
 pub fn create_test_input(
@@ -283,7 +285,7 @@ macro_rules! txn_schema {
             to_outputs: vec![],
             fee: $fee,
             lock_height: $lock,
-            features: $features,
+            features: $features.clone(),
             script: tari_crypto::script![Nop],
             input_data: None,
         }
@@ -295,17 +297,25 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
+            features: $features.clone()
+        )
+    }};
+   (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock: 0,
             features: $features
         )
     }};
-
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
         txn_schema!(
             from: $input,
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction_entities::OutputFeatures::default()
+            features: $crate::transactions::transaction::OutputFeatures::default()
         )
     };
 
@@ -534,7 +544,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
-        schema.features,
+        OutputFeatures::default(),
         script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key

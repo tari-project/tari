@@ -19,6 +19,23 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::StreamExt;
+use log::*;
+use tari_common_types::types::HashOutput;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcError, RpcHandshakeError},
+    PeerConnection,
+};
+use tari_utilities::{hex::Hex, Hashable};
+use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
@@ -31,24 +48,8 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::StreamExt;
-use log::*;
-use std::{
-    convert::TryFrom,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common_types::types::HashOutput;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcHandshakeError},
-    PeerConnection,
-};
-use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -114,7 +115,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Attempting to synchronize headers with `{}`", node_id
             );
-            match self.attempt_sync(sync_peer, peer_conn).await {
+            match self.attempt_sync(sync_peer, peer_conn.clone()).await {
                 Ok(()) => return Ok(sync_peer.clone()),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {

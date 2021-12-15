@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
-use tokio::sync::{broadcast, watch};
-
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::{broadcast, watch};
 
 use crate::{
     base_node::{
@@ -107,7 +106,7 @@ where B: BlockchainBackend + 'static
                 rules.clone(),
                 factories,
                 config.bypass_range_proof_verification,
-                config.block_sync_validation_concurrency,
+                config.sync_validation_concurrency,
             );
             let max_randomx_vms = config.max_randomx_vms;
 

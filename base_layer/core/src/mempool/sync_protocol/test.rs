@@ -23,12 +23,6 @@
 use std::{fmt, io, iter::repeat_with, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use tari_crypto::tari_utilities::ByteArray;
-use tokio::{
-    sync::{broadcast, mpsc},
-    task,
-};
-
 use tari_common::configuration::Network;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventTx},
@@ -41,6 +35,11 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
+use tari_crypto::tari_utilities::ByteArray;
+use tokio::{
+    sync::{broadcast, mpsc},
+    task,
+};
 
 use crate::{
     consensus::ConsensusManager,
@@ -50,7 +49,7 @@ use crate::{
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{tari_amount::uT, test_helpers::create_tx, transaction_entities::transaction::Transaction},
+    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
     validation::mocks::MockValidator,
 };
 

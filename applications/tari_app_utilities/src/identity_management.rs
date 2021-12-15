@@ -20,19 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
+
 use log::*;
 use rand::rngs::OsRng;
-use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
+use serde::{de::DeserializeOwned, Serialize};
 use tari_common::{
     configuration::{bootstrap::prompt, utils::get_local_ip},
     exit_codes::ExitCodes,
 };
 use tari_common_types::types::PrivateKey;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_crypto::{
-    keys::SecretKey,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
-};
+use tari_crypto::{keys::SecretKey, tari_utilities::hex::Hex};
 
 pub const LOG_TARGET: &str = "tari_application";
 
@@ -133,7 +132,7 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
             e.to_string()
         )
     })?;
-    info!(
+    debug!(
         "Node ID loaded with public key {} and Node id {}",
         id.public_key().to_hex(),
         id.node_id().to_hex()
@@ -194,7 +193,7 @@ pub fn recover_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, String> {
     if !path.as_ref().exists() {
         return Err(format!(
             "Identity file, {}, does not exist.",
@@ -203,7 +202,7 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
     }
 
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let object = T::from_json(&contents).map_err(|err| err.to_string())?;
+    let object = json5::from_str(&contents).map_err(|err| err.to_string())?;
     Ok(object)
 }
 
@@ -214,8 +213,8 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
 ///
 /// ## Returns
 /// Result to check if successful or not, string will indicate reason on error
-pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
-    let json = object.to_json().unwrap();
+pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), String> {
+    let json = json5::to_string(object).unwrap();
     if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
             fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;

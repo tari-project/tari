@@ -20,6 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt,
+    sync::Arc,
+    time::Duration,
+};
+
+use bytes::Bytes;
+use log::*;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use thiserror::Error;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
+
 use super::error::MessagingProtocolError;
 use crate::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -34,21 +51,6 @@ use crate::{
     },
     runtime::task,
 };
-use bytes::Bytes;
-use log::*;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt,
-    sync::Arc,
-    time::Duration,
-};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use thiserror::Error;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
-};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"t/msg/0.1");

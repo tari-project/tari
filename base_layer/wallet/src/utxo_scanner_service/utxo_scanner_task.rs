@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::Utc;
-use futures::StreamExt;
-use log::*;
-
 use std::{
     convert::TryFrom,
     time::{Duration, Instant},
 };
+
+use chrono::Utc;
+use futures::StreamExt;
+use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{
     peer_manager::NodeId,
@@ -38,16 +38,15 @@ use tari_comms::{
 use tari_core::{
     base_node::sync::rpc::BaseNodeSyncRpcClient,
     blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
     proto,
     proto::base_node::{FindChainSplitRequest, SyncUtxosRequest},
-    tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction_entities::{TransactionOutput, UnblindedOutput},
+        transaction::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::broadcast, time};
 
 use crate::{
