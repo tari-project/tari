@@ -94,12 +94,12 @@ async fn main_inner() -> Result<(), ExitCodes> {
     config.mining_pool_address = global.mining_pool_address.clone();
     if let Some(base_node_config) = global.base_node_config {
         if let Some(grpc_address) = base_node_config.grpc_address {
-            config.base_node_addr = grpc_address.clone();
+            config.base_node_addr = grpc_address;
         }
     }
     if let Some(wallet_config) = global.wallet_config {
         if let Some(grpc_address) = wallet_config.grpc_address {
-            config.wallet_addr = grpc_address.clone();
+            config.wallet_addr = grpc_address;
         }
     }
     debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);

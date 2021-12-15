@@ -41,7 +41,7 @@ use tari_utilities::Hashable;
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::{get_dibbler_genesis_block, get_igor_genesis_block},
+        genesis_block::get_igor_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
