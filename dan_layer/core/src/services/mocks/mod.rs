@@ -27,6 +27,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction::TemplateParameter;
 
 use super::CommitteeManager;
@@ -54,7 +55,6 @@ use crate::{
         SigningService,
     },
     storage::state::StateDbUnitOfWork,
-    types::PublicKey,
 };
 
 #[derive(Debug, Clone)]

@@ -454,6 +454,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
