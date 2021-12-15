@@ -20,36 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fs,
-    fs::File,
-    io::BufReader,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{fs, fs::File, io::BufReader, path::Path, sync::Arc, time::Duration};
 
 use futures::future::try_join_all;
 use log::*;
-use tari_app_utilities::{
-    identity_management,
-    identity_management::{load_from_json, setup_node_identity},
-    utilities::convert_socks_authentication,
-};
-use tari_common::{configuration::ValidatorNodeConfig, CommsTransport, GlobalConfig, TorControlAuthentication};
-use tari_comms::{
-    peer_manager::PeerFeatures,
-    protocol::rpc::RpcServer,
-    socks,
-    tor,
-    tor::TorIdentity,
-    transports::{predicate::FalsePredicate, SocksConfig},
-    types::CommsPublicKey,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    NodeIdentity,
-    UnspawnedCommsNode,
-};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_common::{configuration::ValidatorNodeConfig, GlobalConfig};
+use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms_dht::Dht;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
     models::{AssetDefinition, Committee},
@@ -63,28 +40,20 @@ use tari_dan_core::{
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::{DbFactory, LmdbAssetStore},
+    storage::DbFactory,
     workers::ConsensusWorker,
 };
-use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
-use tari_p2p::{
-    comms_connector::{pubsub_connector, SubscriptionFactory},
-    initialization::{spawn_comms_using_transport, P2pConfig, P2pInitializer},
-    tari_message::TariMessageType,
-    transport::{TorConfig, TransportType},
-};
-use tari_service_framework::{ServiceHandles, StackBuilder};
+use tari_dan_storage_sqlite::SqliteStorageService;
+use tari_p2p::{comms_connector::SubscriptionFactory, tari_message::TariMessageType};
+use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::{task, try_join};
+use tokio::task;
 
 use crate::{
     grpc::services::base_node_client::GrpcBaseNodeClient,
-    p2p::{
-        create_validator_node_rpc_service,
-        services::{
-            inbound_connection_service::TariCommsInboundConnectionService,
-            outbound_connection_service::TariCommsOutboundService,
-        },
+    p2p::services::{
+        inbound_connection_service::TariCommsInboundConnectionService,
+        outbound_connection_service::TariCommsOutboundService,
     },
     ExitCodes,
 };
@@ -126,7 +95,6 @@ impl DanNode {
 
         let mut tasks = vec![];
         for asset in asset_definitions {
-            let data_dir = self.config.data_dir.clone();
             let node_identitiy = node_identity.as_ref().clone();
             let mempool = mempool_service.clone();
             let handles = handles.clone();
@@ -137,7 +105,6 @@ impl DanNode {
 
             tasks.push(task::spawn(async move {
                 DanNode::start_asset_worker(
-                    data_dir,
                     asset,
                     node_identitiy,
                     mempool,
@@ -206,7 +173,6 @@ impl DanNode {
         TMempoolService: MempoolService + Clone,
         TDbFactory: DbFactory + Clone + Send + Sync,
     >(
-        data_dir: PathBuf,
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
         mempool_service: TMempoolService,

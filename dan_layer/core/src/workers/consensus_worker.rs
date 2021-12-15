@@ -255,7 +255,7 @@ where
                 let mut state_tx = self
                     .db_factory
                     .get_state_db(&self.asset_definition.public_key)?
-                    .ok_or_else(|| DigitalAssetError::MissingDatabase)?
+                    .ok_or(DigitalAssetError::MissingDatabase)?
                     .new_unit_of_work();
 
                 let mut p = states::Prepare::new(self.node_id.clone(), self.asset_definition.public_key.clone());

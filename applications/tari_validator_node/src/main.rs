@@ -37,15 +37,10 @@ use std::{
 use futures::FutureExt;
 use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
-use tari_app_utilities::{
-    identity_management,
-    identity_management::{load_from_json, setup_node_identity},
-    initialization::init_configuration,
-    utilities::convert_socks_authentication,
-};
+use tari_app_utilities::{identity_management::setup_node_identity, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{Dht, DhtDiscoveryRequester};
+use tari_comms_dht::Dht;
 use tari_dan_core::{
     services::{
         AssetProcessor,

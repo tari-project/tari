@@ -28,16 +28,16 @@ use tari_comms::{
     peer_manager::NodeId,
     PeerConnection,
 };
-use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::TemplateId,
-    services::{BaseNodeClient, ValidatorNodeClientFactory, ValidatorNodeRpcClient},
+    services::{ValidatorNodeClientFactory, ValidatorNodeRpcClient},
     DigitalAssetError,
 };
 
 use crate::p2p::{proto::validator_node as proto, rpc};
-const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
+// const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
     connectivity: ConnectivityRequester,

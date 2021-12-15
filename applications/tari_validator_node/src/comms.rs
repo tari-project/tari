@@ -77,9 +77,9 @@ pub async fn build_service_and_comms_stack(
         .take_handle::<UnspawnedCommsNode>()
         .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
-    let comms = setup_p2p_rpc(&config, comms, &handles, mempool, db_factory, asset_processor);
+    let comms = setup_p2p_rpc(config, comms, &handles, mempool, db_factory, asset_processor);
 
-    let comms = spawn_comms_using_transport(comms, create_transport_type(&config))
+    let comms = spawn_comms_using_transport(comms, create_transport_type(config))
         .await
         .map_err(|e| ExitCodes::ConfigError(format!("Could not spawn using transport:{}", e)))?;
 

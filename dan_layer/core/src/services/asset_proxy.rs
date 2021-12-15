@@ -89,6 +89,7 @@ impl<
         TValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = PublicKey> + Sync,
     > AssetProxy for ConcreteAssetProxy<TBaseNodeClient, TValidatorNodeClientFactory>
 {
+    #[allow(clippy::for_loops_over_fallibles)]
     async fn invoke_read_method(
         &self,
         asset_public_key: &PublicKey,
@@ -130,6 +131,7 @@ impl<
                     args.clone(),
                 ));
             }
+
             for result in tasks.next().await {
                 match result {
                     Ok(data) => return Ok(data),

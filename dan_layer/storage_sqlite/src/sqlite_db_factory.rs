@@ -76,7 +76,7 @@ impl DbFactory for SqliteDbFactory {
     ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
         let database_url = self.database_url_for(asset_public_key);
         create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
-            .map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
+            .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection
             .execute("PRAGMA foreign_keys = ON;")
@@ -119,7 +119,7 @@ impl DbFactory for SqliteDbFactory {
     ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
         let database_url = self.database_url_for(asset_public_key);
         create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
-            .map_err(|e| StorageError::FileSystemPathDoesNotExist)?;
+            .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
 
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection
