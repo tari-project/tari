@@ -53,8 +53,8 @@ impl ValidatorNodeConfig {
     pub fn convert_if_present(cfg: Config) -> Result<Option<ValidatorNodeConfig>, ConfigurationError> {
         let section: Self = match cfg.get("validator_node") {
             Ok(s) => s,
-            Err(e) => {
-                dbg!(e);
+            Err(_e) => {
+                // dbg!(e);
                 return Ok(None);
             },
         };
