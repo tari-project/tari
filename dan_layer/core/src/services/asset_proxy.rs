@@ -76,7 +76,7 @@ impl<TBaseNodeClient: BaseNodeClient, TValidatorNodeClientFactory: ValidatorNode
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        let client = self.validator_node_client_factory.create_client(member);
+        let mut client = self.validator_node_client_factory.create_client(member);
         client
             .invoke_read_method(asset_public_key, template_id, method, args)
             .await

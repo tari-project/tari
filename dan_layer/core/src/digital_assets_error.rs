@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
+use tari_comms_dht::DhtDiscoveryError;
 use thiserror::Error;
 
 use crate::storage::StorageError;
@@ -71,6 +72,8 @@ pub enum DigitalAssetError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("RpcError: {0}")]
     RpcError(#[from] RpcError),
+    #[error("Dht Discovery error: {0}")]
+    DhtDiscoveryError(#[from] DhtDiscoveryError),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

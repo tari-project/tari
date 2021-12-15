@@ -22,8 +22,13 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
-use tari_comms_dht::Dht;
+use tari_comms::{
+    connection_manager::ConnectionManagerError,
+    connectivity::{ConnectivityError, ConnectivityRequester},
+    peer_manager::NodeId,
+    PeerConnection,
+};
+use tari_comms_dht::{envelope::NodeDestination, Dht, DhtDiscoveryRequester};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::TemplateId,
@@ -35,19 +40,65 @@ use crate::p2p::{proto::validator_node as proto, rpc};
 
 pub struct TariCommsValidatorNodeRpcClient {
     connectivity: ConnectivityRequester,
+    dht_discovery: DhtDiscoveryRequester,
     address: PublicKey,
+}
+
+impl TariCommsValidatorNodeRpcClient {
+    async fn create_connection(&mut self) -> Result<PeerConnection, DigitalAssetError> {
+        if let Some(conn) = self
+            .connectivity
+            .get_connection(NodeId::from(self.address.clone()))
+            .await?
+        {
+            return Ok(conn);
+        }
+        match self.connectivity.dial_peer(NodeId::from(self.address.clone())).await {
+            Ok(connection) => Ok(connection),
+            Err(connectivity_error) => {
+                dbg!(connectivity_error);
+                match connectivity_error {
+                    ConnectivityError::ConnectionFailed(err) => {
+                        match err {
+                            ConnectionManagerError::PeerConnectionError(_) |
+                            ConnectionManagerError::DialConnectFailedAllAddresses |
+                            ConnectionManagerError::PeerIdentityNoValidAddresses => {
+                                // Try discover, then dial again
+                                self.dht_discovery
+                                    .discover_peer(
+                                        Box::new(self.address.clone()),
+                                        NodeDestination::PublicKey(Box::new(self.address.clone())),
+                                    )
+                                    .await?;
+                                if let Some(conn) = self
+                                    .connectivity
+                                    .get_connection(NodeId::from(self.address.clone()))
+                                    .await?
+                                {
+                                    return Ok(conn);
+                                }
+                                Ok(self.connectivity.dial_peer(NodeId::from(self.address.clone())).await?)
+                            },
+                            _ => Err(connectivity_error.into()),
+                        }
+                    },
+                    _ => Err(connectivity_error.into()),
+                }
+            },
+        }
+    }
 }
 
 #[async_trait]
 impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
     async fn invoke_read_method(
-        &self,
+        &mut self,
         asset_public_key: &PublicKey,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        let mut connection = self.connectivity.dial_peer(NodeId::from(self.address.clone())).await?;
+        let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeReadMethodRequest {
             asset_public_key: asset_public_key.to_vec(),

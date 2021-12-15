@@ -34,7 +34,7 @@ pub trait ValidatorNodeClientFactory {
 #[async_trait]
 pub trait ValidatorNodeRpcClient {
     async fn invoke_read_method(
-        &self,
+        &mut self,
         asset_public_key: &PublicKey,
         template_id: TemplateId,
         method: String,
