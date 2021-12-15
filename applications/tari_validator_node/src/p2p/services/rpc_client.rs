@@ -37,6 +37,7 @@ use tari_dan_core::{
 };
 
 use crate::p2p::{proto::validator_node as proto, rpc};
+const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
     connectivity: ConnectivityRequester,
@@ -56,8 +57,8 @@ impl TariCommsValidatorNodeRpcClient {
         match self.connectivity.dial_peer(NodeId::from(self.address.clone())).await {
             Ok(connection) => Ok(connection),
             Err(connectivity_error) => {
-                dbg!(connectivity_error);
-                match connectivity_error {
+                dbg!(&connectivity_error);
+                match &connectivity_error {
                     ConnectivityError::ConnectionFailed(err) => {
                         match err {
                             ConnectionManagerError::PeerConnectionError(_) |
@@ -114,11 +115,15 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 #[derive()]
 pub struct TariCommsValidatorNodeClientFactory {
     connectivity_requester: ConnectivityRequester,
+    dht_discovery: DhtDiscoveryRequester,
 }
 
 impl TariCommsValidatorNodeClientFactory {
-    pub fn new(connectivity_requester: ConnectivityRequester) -> Self {
-        Self { connectivity_requester }
+    pub fn new(connectivity_requester: ConnectivityRequester, dht_discovery: DhtDiscoveryRequester) -> Self {
+        Self {
+            connectivity_requester,
+            dht_discovery,
+        }
     }
 }
 
@@ -129,6 +134,7 @@ impl ValidatorNodeClientFactory for TariCommsValidatorNodeClientFactory {
     fn create_client(&self, address: &Self::Addr) -> Self::Client {
         TariCommsValidatorNodeRpcClient {
             connectivity: self.connectivity_requester.clone(),
+            dht_discovery: self.dht_discovery.clone(),
             address: address.clone(),
         }
     }

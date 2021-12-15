@@ -45,6 +45,7 @@ use tari_app_utilities::{
 };
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms_dht::{Dht, DhtDiscoveryRequester};
 use tari_dan_core::{
     services::{
         AssetProcessor,
@@ -127,8 +128,10 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
     .await?;
 
     let asset_processor = ConcreteAssetProcessor::default();
-    let validator_node_client_factory =
-        TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<ConnectivityRequester>());
+    let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(
+        handles.expect_handle::<ConnectivityRequester>(),
+        handles.expect_handle::<Dht>().discovery_service_requester(),
+    );
     let asset_proxy = ConcreteAssetProxy::new(
         GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
         validator_node_client_factory,
