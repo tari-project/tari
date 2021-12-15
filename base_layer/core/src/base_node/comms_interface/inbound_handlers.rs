@@ -407,6 +407,15 @@ where T: BlockchainBackend + 'static
     ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
 
+        if self.blockchain_db.inner().is_add_block_locked() {
+            info!(
+                target: LOG_TARGET,
+                "Ignoring block message ({}) because add_block is locked",
+                block_hash.to_hex()
+            );
+            return Ok(());
+        }
+
         // Only a single block request can complete at a time.
         // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for
         // the same full block. The first request that succeeds will stop the node from requesting the block from any

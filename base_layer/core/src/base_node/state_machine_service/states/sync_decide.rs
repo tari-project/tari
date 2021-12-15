@@ -25,7 +25,7 @@ use log::*;
 use crate::{
     base_node::{
         state_machine_service::{
-            states::{HeaderSync, StateEvent},
+            states::{HeaderSyncState, StateEvent},
             BaseNodeStateMachine,
         },
         sync::SyncPeer,
@@ -118,8 +118,8 @@ fn find_best_latency<'a, I: IntoIterator<Item = &'a SyncPeer>>(iter: I) -> Optio
         .cloned()
 }
 
-impl From<HeaderSync> for DecideNextSync {
-    fn from(sync: HeaderSync) -> Self {
+impl From<HeaderSyncState> for DecideNextSync {
+    fn from(sync: HeaderSyncState) -> Self {
         Self {
             sync_peers: sync.into_sync_peers(),
         }

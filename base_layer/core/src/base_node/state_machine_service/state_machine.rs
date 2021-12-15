@@ -34,7 +34,16 @@ use crate::{
         comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
             states,
-            states::{BaseNodeState, HorizonSyncConfig, StateEvent, StateInfo, StatusInfo, SyncPeerConfig, SyncStatus},
+            states::{
+                BaseNodeState,
+                HeaderSyncState,
+                HorizonSyncConfig,
+                StateEvent,
+                StateInfo,
+                StatusInfo,
+                SyncPeerConfig,
+                SyncStatus,
+            },
         },
         sync::{BlockSyncConfig, SyncValidators},
     },
@@ -137,22 +146,51 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
+        let db = self.db.inner();
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
-            (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
-            (HeaderSync(s), Continue | NetworkSilence) => Listening(s.into()),
+            (
+                Listening(_),
+                FallenBehind(Lagging {
+                    local: local_metadata,
+                    sync_peers,
+                    ..
+                }),
+            ) => {
+                db.set_add_block_lock_flag();
+                HeaderSync(HeaderSyncState::new(sync_peers, local_metadata))
+            },
+            (HeaderSync(s), HeaderSyncFailed) => {
+                db.clear_add_block_lock_flag();
+                Waiting(s.into())
+            },
+            (HeaderSync(s), Continue | NetworkSilence) => {
+                db.clear_add_block_lock_flag();
+                Listening(s.into())
+            },
             (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
 
             (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
-            (DecideNextSync(s), Continue) => Listening(s.into()),
+            (DecideNextSync(s), Continue) => {
+                db.clear_add_block_lock_flag();
+                Listening(s.into())
+            },
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
-            (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
+            (HorizonStateSync(s), HorizonStateSyncFailure) => {
+                db.clear_add_block_lock_flag();
+                Waiting(s.into())
+            },
 
             (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
-            (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
+            (BlockSync(s), BlocksSynchronized) => {
+                db.clear_add_block_lock_flag();
+                Listening(s.into())
+            },
+            (BlockSync(s), BlockSyncFailed) => {
+                db.clear_add_block_lock_flag();
+                Waiting(s.into())
+            },
 
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),

@@ -38,6 +38,7 @@ use tari_comms_rpc_macros::tari_rpc;
 #[cfg(feature = "base_node")]
 use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
 use crate::{
+    base_node::LocalNodeCommsInterface,
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -98,6 +99,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 #[cfg(feature = "base_node")]
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
+    base_node_service: LocalNodeCommsInterface,
 ) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db))
+    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db, base_node_service))
 }

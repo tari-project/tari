@@ -27,7 +27,7 @@ use std::{
     convert::TryFrom,
     mem,
     ops::{Bound, RangeBounds},
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
 
@@ -185,6 +185,7 @@ pub struct BlockchainDatabase<B> {
     config: BlockchainDatabaseConfig,
     consensus_manager: ConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
+    add_block_lock_flag: Arc<AtomicBool>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -208,6 +209,7 @@ where B: BlockchainBackend
             config,
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
+            add_block_lock_flag: Arc::new(AtomicBool::new(false)),
         };
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
@@ -284,6 +286,18 @@ where B: BlockchainBackend
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
+    }
+
+    pub(crate) fn is_add_block_locked(&self) -> bool {
+        self.add_block_lock_flag.load(atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn set_add_block_lock_flag(&self) {
+        self.add_block_lock_flag.store(true, atomic::Ordering::Release);
+    }
+
+    pub(crate) fn clear_add_block_lock_flag(&self) {
+        self.add_block_lock_flag.store(false, atomic::Ordering::Release);
     }
 
     pub fn write(&self, transaction: DbTransaction) -> Result<(), ChainStorageError> {
@@ -806,6 +820,16 @@ where B: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
+        if self.add_block_lock_flag.load(atomic::Ordering::Acquire) {
+            warn!(
+                target: LOG_TARGET,
+                "add_block called while locked with block #{} ({})",
+                block.header.height,
+                block.hash().to_hex()
+            );
+            return Err(ChainStorageError::AddBlockOperationLocked);
+        }
+
         let new_height = block.header.height;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
@@ -2175,6 +2199,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             config: self.config,
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
+            add_block_lock_flag: self.add_block_lock_flag.clone(),
         }
     }
 }

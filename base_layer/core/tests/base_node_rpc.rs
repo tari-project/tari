@@ -27,7 +27,7 @@ use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
-        comms_interface::Broadcast,
+        comms_interface::{Broadcast, LocalNodeCommsInterface},
         proto::wallet_rpc::{
             TxLocation,
             TxQueryBatchResponse,
@@ -57,7 +57,9 @@ use tari_core::{
     txn_schema,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_service_framework::reply_channel;
 use tempfile::{tempdir, TempDir};
+use tokio::sync::broadcast;
 
 use crate::helpers::{
     block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
@@ -104,7 +106,11 @@ async fn setup() -> (
         base_node.mempool_handle.clone(),
         base_node.state_machine_handle.clone(),
     );
-    let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into());
+    let (req_tx, _) = reply_channel::unbounded();
+    let (block_tx, _) = reply_channel::unbounded();
+    let (block_event_tx, _) = broadcast::channel(1);
+    let local_nci = LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx);
+    let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into(), local_nci);
     (
         wallet_service,
         base_node_service,

@@ -99,6 +99,13 @@ impl RpcStatus {
         }
     }
 
+    pub fn conflict<T: ToString>(details: T) -> Self {
+        Self {
+            code: RpcStatusCode::Conflict,
+            details: details.to_string(),
+        }
+    }
+
     /// Returns a closure that logs the given error and returns a generic general error that does not leak any
     /// potentially sensitive error information. Use this function with map_err to catch "miscellaneous" errors.
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
@@ -197,6 +204,8 @@ pub enum RpcStatusCode {
     ProtocolError = 8,
     /// RPC forbidden error
     Forbidden = 9,
+    /// RPC conflict error
+    Conflict = 10,
     // The following status represents anything that is not recognised (i.e not one of the above codes).
     /// Unrecognised RPC status code
     InvalidRpcStatusCode,
@@ -238,6 +247,7 @@ impl From<u32> for RpcStatusCode {
             7 => NotFound,
             8 => ProtocolError,
             9 => Forbidden,
+            10 => Conflict,
             _ => InvalidRpcStatusCode,
         }
     }
@@ -261,6 +271,7 @@ mod test {
         assert_eq!(RpcStatusCode::from(InvalidRpcStatusCode as u32), InvalidRpcStatusCode);
         assert_eq!(RpcStatusCode::from(ProtocolError as u32), ProtocolError);
         assert_eq!(RpcStatusCode::from(Forbidden as u32), Forbidden);
+        assert_eq!(RpcStatusCode::from(Conflict as u32), Forbidden);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
     }
 }
