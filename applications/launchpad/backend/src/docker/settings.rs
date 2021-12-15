@@ -131,33 +131,45 @@ impl ImageType {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BaseNodeConfig {
+    /// The time delay before starting the container and running the base node executable
     pub delay: Duration,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct WalletConfig {
+    /// The time delay before starting the container and running the wallet executable
     pub delay: Duration,
+    /// The password to de/en-crypt the wallet database
     pub password: String,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct XmRigConfig {
+    /// The time delay before starting the container and running the monero miner executable
     pub delay: Duration,
+    /// The address that will accept Monero mining rewards
     pub monero_mining_address: String,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Sha3MinerConfig {
+    /// The time delay before starting the container and running the SHA3 CPU miner executable
     pub delay: Duration,
+    /// The number of threads to employ for SHA3 mining
     pub num_mining_threads: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MmProxyConfig {
+    /// The time delay before starting the container and running the proxy executable
     pub delay: Duration,
+    /// A URL specifying the Monero daemon to connect to
     pub monerod_url: String,
+    /// If required, the monero username for the monero daemon
     pub monero_username: String,
+    /// If required, the password needed to access the monero deamon
     pub monero_password: String,
+    /// If true, provide the monero username and password to the daemon. Otherwise those strings are ignored.
     pub monero_use_auth: bool,
 }
 

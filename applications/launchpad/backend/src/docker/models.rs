@@ -67,14 +67,16 @@ pub enum ContainerStatus {
 
 pub struct ContainerState {
     name: String,
+    id: ContainerId,
     info: ContainerCreateResponse,
     status: ContainerStatus,
 }
 
 impl ContainerState {
-    pub fn new(name: String, info: ContainerCreateResponse) -> Self {
+    pub fn new(name: String, id: ContainerId, info: ContainerCreateResponse) -> Self {
         Self {
             name,
+            id,
             info,
             status: ContainerStatus::Created,
         }
@@ -98,6 +100,10 @@ impl ContainerState {
 
     pub fn info(&self) -> &ContainerCreateResponse {
         &self.info
+    }
+
+    pub fn id(&self) -> &ContainerId {
+        &self.id
     }
 
     pub fn status(&self) -> ContainerStatus {

@@ -35,10 +35,10 @@ use bollard::{
     volume::CreateVolumeOptions,
     Docker,
 };
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use log::*;
 use std::collections::HashMap;
-use bollard::container::NetworkingConfig;
+use bollard::container::{NetworkingConfig, Stats, StatsOptions};
 use bollard::models::{EndpointSettings};
 use bollard::network::ConnectNetworkOptions;
 use strum::IntoEnumIterator;
@@ -99,7 +99,7 @@ impl Workspaces {
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,
-    containers: HashMap<ContainerId, ContainerState>,
+    containers: HashMap<String, ContainerState>,
 }
 
 impl TariWorkspace {
@@ -206,6 +206,22 @@ impl TariWorkspace {
             .collect()
     }
 
+    /// Returns a stream of resource stats for the container `name`, if it exists
+    pub async fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
+        if let Some(container) = self.containers.get(&name) {
+            let options = StatsOptions {
+                stream: true,
+                one_shot: false
+            };
+            let id = container.id();
+            let stream = docker.stats(id.as_str(), Some(options))
+                .map_err(DockerWrapperError::from);
+            Some(stream)
+        } else {
+            None
+        }
+    }
+
     /// Create and run the container described by `{registry}/image:tag`.
     ///
     /// ## Arguments
@@ -225,7 +241,7 @@ impl TariWorkspace {
     /// * creates a new container
     /// * starts the container
     /// * adds the container reference to the current list of containers being managed
-    /// * Returns the container id
+    /// * Returns the container name
     pub async fn start_service(
         &mut self,
         image: ImageType,
@@ -233,7 +249,7 @@ impl TariWorkspace {
         tag: Option<String>,
         args: Vec<String>,
         docker: Docker,
-    ) -> Result<ContainerId, DockerWrapperError> {
+    ) -> Result<String, DockerWrapperError> {
         let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
         let options = Some(CreateContainerOptions {
             name: format!("{}_{}", self.name, image.image_name()),
@@ -276,15 +292,15 @@ impl TariWorkspace {
         info!("Creating {}", image_name);
         debug!("{} has configuration object: {:#?}", image_name, config);
         let container = docker.create_container(options, config).await?;
-        let name = image.image_name().to_string();
+        let name = image.container_name();
         let id = self.add_container(name, container);
         info!("{} created.", image_name);
         info!("Starting {}.", image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
-        self.mark_container_running(&id)?;
+        self.mark_container_running(name)?;
         info!("{} started with id {}", image_name, id);
 
-        Ok(id)
+        Ok(name.to_string())
     }
 
     fn images_to_start(&self) -> Vec<ImageType> {
@@ -311,25 +327,24 @@ impl TariWorkspace {
     }
 
     /// Returns a reference to the set of managed containers
-    pub fn managed_containers(&self) -> &HashMap<ContainerId, ContainerState> {
+    pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
         &self.containers
     }
 
     /// Add the container info to the list of containers the wrapper is managing
-    fn add_container(&mut self, name: String, container: ContainerCreateResponse) -> ContainerId {
+    fn add_container(&mut self, name: &str, container: ContainerCreateResponse) {
         let id = ContainerId::from(container.id.clone());
-        let state = ContainerState::new(name, container);
-        self.containers.insert(id.clone(), state);
-        id
+        let state = ContainerState::new(name.to_string(), id, container);
+        self.containers.insert(name.to_string(), state);
     }
 
     /// Tag the container with id `id` as Running
-    fn mark_container_running(&mut self, id: &ContainerId) -> Result<(), DockerWrapperError> {
-        if let Some(container) = self.containers.get_mut(id) {
+    fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
+        if let Some(container) = self.containers.get_mut(name) {
             container.running();
             Ok(())
         } else {
-            Err(DockerWrapperError::ContainerNotFound(id.as_ref().to_string()))
+            Err(DockerWrapperError::ContainerNotFound(name.to_string()))
         }
     }
 
@@ -342,21 +357,22 @@ impl TariWorkspace {
                 Ok(_res) => {
                     info!("Container {} stopped", id);
                     container.set_stop();
-                    if delete {
-                        match docker.remove_container(id.as_str(), None).await {
-                            Ok(()) => {
-                                info!("Container {} deleted", id);
-                                container.set_deleted();
-                            },
-                            Err(err) => {
-                                warn!("Could not delete container {} due to: {}", id, err.to_string())
-                            },
-                        }
-                    }
                 },
                 Err(err) => {
                     warn!("Could not stop container {} due to {}", id, err.to_string());
                 },
+            }
+            // Even if stopping failed (maybe it was already stopped), try and delete it
+            if delete {
+                match docker.remove_container(id.as_str(), None).await {
+                    Ok(()) => {
+                        info!("Container {} deleted", id);
+                        container.set_deleted();
+                    },
+                    Err(err) => {
+                        warn!("Could not delete container {} due to: {}", id, err.to_string())
+                    },
+                }
             }
         }
     }
