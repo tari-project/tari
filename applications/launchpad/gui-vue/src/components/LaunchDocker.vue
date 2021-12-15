@@ -22,98 +22,98 @@
 <!-- -->
 
 <template>
-  <h1>Workspace</h1>
-  <input v-model="workspaceName" placeholder="MyWorkspace"/>
-  <button @click="createWorkspace">Create workspace</button>
-  <button @click="openWorkspace">Open workspace</button>
-  <p>
-    <b>Workspace status:</b><span>{{ workspaceStatus }}</span>
-  </p>
-  <h2>Identity</h2>
-  <div v-for="(id, image) in ids" v-bind:key="image">
-    <h3>{{image}}</h3>
-  <ul>
-    <li><b>Node Id:</b> {{ id.node_id }}</li>
-    <li><b>public_key: </b> {{ id.public_key }}</li>
-    <li><b>features: </b> {{ id.features }}</li>
-    <li><b>secret_key: </b> {{ id.secret_key }}</li>
-    <li><b>public_address: </b> {{ id.public_address }}</li>
-  </ul>
-  </div>
-  <hr/>
-  <div>
-    <h1>Options</h1>
-    <div>
-      <div id="v-model-select">
-        <select v-model="options.tari_network">
-          <option disabled value="">Please select one</option>
-          <option value="weatherwax">Weatherwax</option>
-          <option value="mainnet">Mainnet</option>
-        </select>
-        <span>Selected: {{ options.tari_network }}</span>
+  <o-tabs v-model="activeTab">
+    <o-tab-item value="0" label="Setup">
+      <div>
+        <h1>Workspace</h1>
+        <input v-model="workspaceName" placeholder="MyWorkspace"/>
+        <button @click="createWorkspace">Create workspace</button>
+        <button @click="openWorkspace">Open workspace</button>
+        <p>
+          <b>Workspace status:</b><span>{{ workspaceStatus }}</span>
+        </p>
       </div>
-      <ul>
-        <li>Wait for Tor: <input v-model.number="options.wait_for_tor" placeholder="Value in seconds"/> seconds</li>
-        <li>Docker registry: <input v-model="options.docker_registry" placeholder="Docker registry"/></li>
-        <li>Docker tag: <input v-model="options.docker_tag" placeholder="Docker tag"/></li>
-      </ul>
-    </div>
-
-    <div>
-      <input type="checkbox" id="base_node" v-model="options.has_base_node"/>
-      <label for="base_node">Spin up a Base Node</label>
-    </div>
-
-    <div>
-      <input type="checkbox" id="wallet" v-model="options.has_wallet"/>
-      <label for="wallet">Spin up a wallet</label>
-      <div v-if="options.has_wallet">
-        <input v-model="options.wallet_password" placeholder="password"/>
-      </div>
-    </div>
-
-
-    <div>
-      <input type="checkbox" id="sha3_miner" v-model="options.has_sha3_miner"/>
-      <label for="sha3_miner">Spin up a SHA3 miner</label>
-      <div v-if="options.has_sha3_miner">
-        <input v-model.number="options.sha3_mining_threads" placeholder="# SHA3 mining threads"/>
-      </div>
-    </div>
-
-    <div>
-      <input type="checkbox" id="mm_proxy" v-model="options.has_mm_proxy"/>
-      <label for="mm_proxy">Spin up a Monero Miner</label>
-      <div v-if="options.has_mm_proxy">
-        <ul>
-          <li><input v-model="options.monerod_url" placeholder="Monerod URL"/></li>
-          <li><input v-model="options.monero_mining_address" placeholder="Monero address"/></li>
-          <li><input type="checkbox" id="monero_use_auth" v-model="options.monero_use_auth"/>
-            <label for="monero_use_auth">Monerod requires Auth URL</label></li>
-          <div v-if="options.monero_use_auth">
-            <li><input v-model="options.monero_username" placeholder="Monerod username"/></li>
-            <li><input v-model="options.monero_password" placeholder="Monerod password"/></li>
+      <hr/>
+      <div>
+        <h1>Options</h1>
+        <div>
+          <div id="v-model-select">
+            <select v-model="options.tari_network">
+              <option disabled value="">Please select one</option>
+              <option value="weatherwax">Weatherwax</option>
+              <option value="mainnet">Mainnet</option>
+            </select>
+            <span>Selected: {{ options.tari_network }}</span>
           </div>
-        </ul>
+          <ul>
+            <li>Wait for Tor: <input v-model.number="options.wait_for_tor" placeholder="Value in seconds"/> seconds</li>
+            <li>Docker registry: <input v-model="options.docker_registry" placeholder="Docker registry"/></li>
+            <li>Docker tag: <input v-model="options.docker_tag" placeholder="Docker tag"/></li>
+          </ul>
+        </div>
+
+        <div>
+          <input type="checkbox" id="base_node" v-model="options.has_base_node"/>
+          <label for="base_node">Spin up a Base Node</label>
+        </div>
+
+        <div>
+          <input type="checkbox" id="wallet" v-model="options.has_wallet"/>
+          <label for="wallet">Spin up a wallet</label>
+          <div v-if="options.has_wallet">
+            <input v-model="options.wallet_password" placeholder="password"/>
+          </div>
+        </div>
+
+
+        <div>
+          <input type="checkbox" id="sha3_miner" v-model="options.has_sha3_miner"/>
+          <label for="sha3_miner">Spin up a SHA3 miner</label>
+          <div v-if="options.has_sha3_miner">
+            <input v-model.number="options.sha3_mining_threads" placeholder="# SHA3 mining threads"/>
+          </div>
+        </div>
+
+        <div>
+          <input type="checkbox" id="mm_proxy" v-model="options.has_mm_proxy"/>
+          <label for="mm_proxy">Spin up a Monero Miner</label>
+          <div v-if="options.has_mm_proxy">
+            <ul>
+              <li><input v-model="options.monerod_url" placeholder="Monerod URL"/></li>
+              <li><input v-model="options.monero_mining_address" placeholder="Monero address"/></li>
+              <li><input type="checkbox" id="monero_use_auth" v-model="options.monero_use_auth"/>
+                <label for="monero_use_auth">Monerod requires Auth URL</label></li>
+              <div v-if="options.monero_use_auth">
+                <li><input v-model="options.monero_username" placeholder="Monerod username"/></li>
+                <li><input v-model="options.monero_password" placeholder="Monerod password"/></li>
+              </div>
+            </ul>
+          </div>
+        </div>
+
+        <input type="checkbox" id="xmrig" v-model="options.has_xmrig"/>
+        <label for="xmrig">Spin up XMRig</label>
       </div>
-    </div>
+      <o-button size="large" icon-left="check" @click="launch">Launch!</o-button>
 
-    <input type="checkbox" id="xmrig" v-model="options.has_xmrig"/>
-    <label for="xmrig">Spin up XMRig</label>
-  </div>
+    </o-tab-item>
 
-  <button @click="launch">Launch!</button>
+    <o-tab-item value="3" label="Logs">
+      <div class="logs">
+        <hr/>
+        <h2>Logs</h2>
+        <table>
+          <tr v-for="(log, index) in logs" v-bind:key="index">
+            <td>{{ log }}</td>
+          </tr>
+        </table>
+        <hr/>
+      </div>
+    </o-tab-item>
+  </o-tabs>
 
-  <div class="logs">
-    <hr/>
-    <h2>Logs</h2>
-    <table>
-      <tr v-for="(log, index) in logs" v-bind:key="index">
-        <td>{{ log }}</td>
-      </tr>
-    </table>
-    <hr/>
-  </div>
+
+
 </template>
 
 <script>
@@ -207,6 +207,9 @@ export default {
       docker_registry: null,
       docker_tag: null,
     };
+    const tabs = {
+      activeTab: '0',
+    };
     const ids = {
       base_node: {
         node_id: "none",
@@ -228,7 +231,8 @@ export default {
       workspaceName: "MyWorkspace",
       logs: ["Logs go here"],
       options,
-      ids
+      ids,
+      tabs
     }
   },
   methods: {
@@ -241,28 +245,28 @@ export default {
 </script>
 
 <style scoped>
-  .logs {
-    margin-top: 10px;
-    padding: 20px;
-    max-height: 600px;
-    width: 90%;
-    overflow: scroll;
-    color: black;
-    font-family: "Courier New", monospace;
-    font-size: 10pt;
-    text-align: left;
-  }
+.logs {
+  margin-top: 10px;
+  padding: 20px;
+  max-height: 600px;
+  width: 90%;
+  overflow: scroll;
+  color: black;
+  font-family: "Courier New", monospace;
+  font-size: 10pt;
+  text-align: left;
+}
 
-  div.logs>table {
-    border-collapse: collapse;
-    border: #5c6773;
-  }
+div.logs > table {
+  border-collapse: collapse;
+  border: #5c6773;
+}
 
-  div.logs td {
-    border: 1px solid slategrey;
-  }
+div.logs td {
+  border: 1px solid slategrey;
+}
 
-  div.logs tr:nth-child(even) {
-    background-color: #9aa4ae;
-  }
+div.logs tr:nth-child(even) {
+  background-color: #9aa4ae;
+}
 </style>
