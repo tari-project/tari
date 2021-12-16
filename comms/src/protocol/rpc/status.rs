@@ -271,7 +271,7 @@ mod test {
         assert_eq!(RpcStatusCode::from(InvalidRpcStatusCode as u32), InvalidRpcStatusCode);
         assert_eq!(RpcStatusCode::from(ProtocolError as u32), ProtocolError);
         assert_eq!(RpcStatusCode::from(Forbidden as u32), Forbidden);
-        assert_eq!(RpcStatusCode::from(Conflict as u32), Forbidden);
+        assert_eq!(RpcStatusCode::from(Conflict as u32), Conflict);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
     }
 }

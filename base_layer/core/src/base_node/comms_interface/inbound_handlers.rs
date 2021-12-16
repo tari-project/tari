@@ -407,7 +407,7 @@ where T: BlockchainBackend + 'static
     ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
 
-        if self.blockchain_db.inner().is_add_block_locked() {
+        if self.blockchain_db.inner().is_add_block_disabled() {
             info!(
                 target: LOG_TARGET,
                 "Ignoring block message ({}) because add_block is locked",

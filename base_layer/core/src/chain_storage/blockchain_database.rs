@@ -185,7 +185,7 @@ pub struct BlockchainDatabase<B> {
     config: BlockchainDatabaseConfig,
     consensus_manager: ConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
-    add_block_lock_flag: Arc<AtomicBool>,
+    disable_add_block_flag: Arc<AtomicBool>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -209,7 +209,7 @@ where B: BlockchainBackend
             config,
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
-            add_block_lock_flag: Arc::new(AtomicBool::new(false)),
+            disable_add_block_flag: Arc::new(AtomicBool::new(false)),
         };
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
@@ -288,16 +288,16 @@ where B: BlockchainBackend
         })
     }
 
-    pub(crate) fn is_add_block_locked(&self) -> bool {
-        self.add_block_lock_flag.load(atomic::Ordering::Acquire)
+    pub(crate) fn is_add_block_disabled(&self) -> bool {
+        self.disable_add_block_flag.load(atomic::Ordering::Acquire)
     }
 
-    pub(crate) fn set_add_block_lock_flag(&self) {
-        self.add_block_lock_flag.store(true, atomic::Ordering::Release);
+    pub(crate) fn set_disable_add_block_flag(&self) {
+        self.disable_add_block_flag.store(true, atomic::Ordering::Release);
     }
 
-    pub(crate) fn clear_add_block_lock_flag(&self) {
-        self.add_block_lock_flag.store(false, atomic::Ordering::Release);
+    pub(crate) fn clear_disable_add_block_flag(&self) {
+        self.disable_add_block_flag.store(false, atomic::Ordering::Release);
     }
 
     pub fn write(&self, transaction: DbTransaction) -> Result<(), ChainStorageError> {
@@ -820,10 +820,10 @@ where B: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
-        if self.add_block_lock_flag.load(atomic::Ordering::Acquire) {
+        if self.is_add_block_disabled() {
             warn!(
                 target: LOG_TARGET,
-                "add_block called while locked with block #{} ({})",
+                "add_block is disabled. Ignoring candidate block #{} ({})",
                 block.header.height,
                 block.hash().to_hex()
             );
@@ -2199,7 +2199,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             config: self.config,
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
-            add_block_lock_flag: self.add_block_lock_flag.clone(),
+            disable_add_block_flag: self.disable_add_block_flag.clone(),
         }
     }
 }

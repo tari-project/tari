@@ -158,37 +158,37 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                     ..
                 }),
             ) => {
-                db.set_add_block_lock_flag();
+                db.set_disable_add_block_flag();
                 HeaderSync(HeaderSyncState::new(sync_peers, local_metadata))
             },
             (HeaderSync(s), HeaderSyncFailed) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
             (HeaderSync(s), Continue | NetworkSilence) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Listening(s.into())
             },
             (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
 
             (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
             (DecideNextSync(s), Continue) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Listening(s.into())
             },
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
 
             (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
             (BlockSync(s), BlocksSynchronized) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Listening(s.into())
             },
             (BlockSync(s), BlockSyncFailed) => {
-                db.clear_add_block_lock_flag();
+                db.clear_disable_add_block_flag();
                 Waiting(s.into())
             },
 
