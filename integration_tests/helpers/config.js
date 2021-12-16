@@ -149,11 +149,11 @@ function createEnv(
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
   const configEnvs = {
-    [`TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    [`TARI_WALLET__GRPC_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
+    [`TARI_BASE_NODE__GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
+    [`TARI_WALLET__GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
 
-    ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `${walletGrpcAddress}:${walletGrpcPort}`,
+    ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
+    ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
 
     [`TARI_BASE_NODE__${network}__TRANSPORT`]: "tcp",
