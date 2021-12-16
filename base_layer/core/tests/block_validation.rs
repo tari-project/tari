@@ -226,7 +226,8 @@ async fn inputs_are_not_malleable() {
         value: spent_output.value,
         script: spent_output.script.clone(),
         input_data: Some(inputs![malicious_script_public_key]),
-        output_features: spent_output.features,
+        features: spent_output.features,
+        ..Default::default()
     });
 
     let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
@@ -281,19 +282,19 @@ fn test_orphan_validator() {
     .unwrap();
     // we have created the blockchain, lets create a second valid block
 
-    let (tx01, _, _) = spend_utxos(
+    let (tx01, _) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (tx02, _, _) = spend_utxos(
+    let (tx02, _) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (tx03, _, _) = spend_utxos(
+    let (tx03, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (tx04, _, _) = spend_utxos(
+    let (tx04, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features:
 OutputFeatures::default()),
     );
@@ -401,11 +402,11 @@ fn test_orphan_body_validation() {
     .unwrap();
     // we have created the blockchain, lets create a second valid block
 
-    let (tx01, _, _) = spend_utxos(
+    let (tx01, _) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (tx02, _, _) = spend_utxos(
+    let (tx02, _) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
@@ -597,11 +598,11 @@ fn test_header_validation() {
     .unwrap();
     // we have created the blockchain, lets create a second valid block
 
-    let (tx01, _, _) = spend_utxos(
+    let (tx01, _) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features:
 OutputFeatures::default()),
     );
-    let (tx02, _, _) = spend_utxos(
+    let (tx02, _) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features:
 OutputFeatures::default()),
     );
@@ -709,16 +710,16 @@ async fn test_block_sync_body_validator() {
 
     // we have created the blockchain, lets create a second valid block
 
-    let (tx01, _, _) = spend_utxos(
+    let (tx01, _) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx02, _, _) = spend_utxos(
+    let (tx02, _) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx03, _, _) = spend_utxos(
+    let (tx03, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx04, _, _) = spend_utxos(
+    let (tx04, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![50_000 * uT], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
     );
     let (template, _) = chain_block_with_new_coinbase(&genesis, vec![tx01.clone(), tx02.clone()], &rules, &factories);

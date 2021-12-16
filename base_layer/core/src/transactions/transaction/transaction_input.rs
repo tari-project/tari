@@ -37,9 +37,13 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::{
-    transaction,
-    transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
+use crate::{
+    consensus::ToConsensusBytes,
+    covenants::Covenant,
+    transactions::{
+        transaction,
+        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
+    },
 };
 
 /// A transaction input.
@@ -51,10 +55,12 @@ pub struct TransactionInput {
     pub features: OutputFeatures,
     /// The commitment referencing the output being spent.
     pub commitment: Commitment,
-    /// The serialised script
+    /// The transaction script
     pub script: TariScript,
     /// The script input data, if any
     pub input_data: ExecutionStack,
+    /// The transaction covenant
+    pub covenant: Covenant,
     /// A signature with k_s, signing the script, input data, and mined height
     pub script_signature: ComSignature,
     /// The offset public key, K_O
@@ -68,21 +74,23 @@ impl TransactionInput {
         features: OutputFeatures,
         commitment: Commitment,
         script: TariScript,
+        covenant: Covenant,
         input_data: ExecutionStack,
         script_signature: ComSignature,
         sender_offset_public_key: PublicKey,
-    ) -> TransactionInput {
-        TransactionInput {
+    ) -> Self {
+        Self {
             features,
             commitment,
             script,
+            covenant,
             input_data,
             script_signature,
             sender_offset_public_key,
         }
     }
 
-    pub fn build_script_challenge(
+    pub(super) fn build_script_challenge(
         nonce_commitment: &Commitment,
         script: &TariScript,
         input_data: &ExecutionStack,
@@ -171,7 +179,7 @@ impl TransactionInput {
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
-        transaction::hash_output(&self.features, &self.commitment, &self.script)
+        transaction::hash_output(&self.features, &self.commitment, &self.script, &self.covenant)
     }
 }
 
@@ -179,14 +187,15 @@ impl TransactionInput {
 impl Hashable for TransactionInput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
-            .chain(self.features.to_v1_bytes())
-            .chain(self.commitment.as_bytes())
+            .chain(self.features.to_consensus_bytes())
+            .chain(self.commitment.to_consensus_bytes())
             .chain(self.script.as_bytes())
-            .chain(self.sender_offset_public_key.as_bytes())
-            .chain(self.script_signature.u().as_bytes())
-            .chain(self.script_signature.v().as_bytes())
-            .chain(self.script_signature.public_nonce().as_bytes())
+            .chain(self.sender_offset_public_key.to_consensus_bytes())
+            .chain(self.script_signature.u().to_consensus_bytes())
+            .chain(self.script_signature.v().to_consensus_bytes())
+            .chain(self.script_signature.public_nonce().to_consensus_bytes())
             .chain(self.input_data.as_bytes())
+            .chain(self.covenant.to_consensus_bytes())
             .finalize()
             .to_vec()
     }
@@ -196,7 +205,7 @@ impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
             fmt,
-            "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+            "{} [{:?}], Script: ({}), Offset_Pubkey: ({})",
             self.commitment.to_hex(),
             self.features,
             self.script,

@@ -34,6 +34,7 @@ use tari_core::{
     },
     chain_storage::{BlockchainDatabaseConfig, DbTransaction, Validators},
     consensus::ConsensusManager,
+    covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
@@ -187,6 +188,7 @@ async fn inbound_fetch_utxos() {
         &factories,
         Default::default(),
         &TariScript::default(),
+        &Covenant::default(),
     );
     let hash_2 = utxo_2.hash();
 
@@ -226,18 +228,21 @@ async fn inbound_fetch_txos() {
         &factories,
         Default::default(),
         &TariScript::default(),
+        &Covenant::default(),
     );
     let (pruned_utxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
         Default::default(),
         &TariScript::default(),
+        &Covenant::default(),
     );
     let (stxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
         Default::default(),
         &TariScript::default(),
+        &Covenant::default(),
     );
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
@@ -338,13 +343,20 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         outbound_nci,
     );
     let script = script!(Nop);
-    let (utxo, key, offset) = create_utxo(MicroTari(10_000), &factories, Default::default(), &script);
+    let (utxo, key, offset) = create_utxo(
+        MicroTari(10_000),
+        &factories,
+        Default::default(),
+        &script,
+        &Covenant::default(),
+    );
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
         &MicroTari(10_000),
         &key,
         &script,
         &OutputFeatures::default(),
         &offset,
+        &Covenant::default(),
     )
     .unwrap();
     let unblinded_output = UnblindedOutput::new(
@@ -357,6 +369,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         PublicKey::from_secret_key(&offset),
         metadata_signature,
         0,
+        Covenant::default(),
     );
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone(), block0.hash().clone(), 0, 4002);
@@ -366,7 +379,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         from: vec![unblinded_output],
         to: vec![MicroTari(5_000), MicroTari(4_000)]
     );
-    let (txn, _, _) = spend_utxos(txn);
+    let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&store, &block0, vec![txn], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();

@@ -23,7 +23,11 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_core::transactions::transaction::TransactionInput;
+use tari_core::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
+    transactions::transaction::TransactionInput,
+};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{ByteArray, Hashable},
@@ -53,6 +57,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
         let script = TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?;
         let input_data = ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?;
+        let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
 
         Ok(Self {
             features,
@@ -61,6 +66,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             input_data,
             script_signature,
             sender_offset_public_key,
+            covenant,
         })
     }
 }
@@ -80,6 +86,7 @@ impl From<TransactionInput> for grpc::TransactionInput {
                 signature_v: Vec::from(input.script_signature.v().as_bytes()),
             }),
             sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
+            covenant: input.covenant.to_consensus_bytes(),
         }
     }
 }

@@ -29,6 +29,7 @@ use std::{
 };
 
 use blake2::Digest;
+use digest::FixedOutput;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -38,7 +39,6 @@ use tari_common_types::types::{
     Commitment,
     CommitmentFactory,
     HashDigest,
-    MessageHash,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -53,16 +53,20 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::{
-    tari_amount::MicroTari,
-    transaction,
-    transaction::{
-        full_rewind_result::FullRewindResult,
-        rewind_result::RewindResult,
-        OutputFeatures,
-        OutputFlags,
-        TransactionError,
-        TransactionInput,
+use crate::{
+    consensus::ToConsensusBytes,
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction,
+        transaction::{
+            full_rewind_result::FullRewindResult,
+            rewind_result::RewindResult,
+            OutputFeatures,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+        },
     },
 };
 
@@ -83,6 +87,8 @@ pub struct TransactionOutput {
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
+    /// The script that will be executed when spending this output
+    pub covenant: Covenant,
 }
 
 /// An output for a transaction, includes a range proof and Tari script metadata
@@ -95,14 +101,16 @@ impl TransactionOutput {
         script: TariScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
-    ) -> TransactionOutput {
-        TransactionOutput {
+        covenant: Covenant,
+    ) -> Self {
+        Self {
             features,
             commitment,
             proof,
             script,
             sender_offset_public_key,
             metadata_signature,
+            covenant,
         }
     }
 
@@ -135,10 +143,11 @@ impl TransactionOutput {
             &self.sender_offset_public_key,
             self.metadata_signature.public_nonce(),
             &self.commitment,
+            &self.covenant,
         );
         if !self.metadata_signature.verify_challenge(
             &(&self.commitment + &self.sender_offset_public_key),
-            &challenge,
+            &challenge.finalize_fixed(),
             &PedersenCommitmentFactory::default(),
         ) {
             return Err(TransactionError::InvalidSignatureError(
@@ -190,7 +199,7 @@ impl TransactionOutput {
     }
 
     /// Convenience function that returns the challenge for the metadata commitment signature
-    pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> MessageHash {
+    pub fn get_metadata_signature_challenge(&self, partial_commitment_nonce: Option<&PublicKey>) -> Challenge {
         let nonce_commitment = match partial_commitment_nonce {
             None => self.metadata_signature.public_nonce().clone(),
             Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
@@ -201,6 +210,7 @@ impl TransactionOutput {
             &self.sender_offset_public_key,
             &nonce_commitment,
             &self.commitment,
+            &self.covenant,
         )
     }
 
@@ -211,19 +221,19 @@ impl TransactionOutput {
         sender_offset_public_key: &PublicKey,
         public_commitment_nonce: &Commitment,
         commitment: &Commitment,
-    ) -> MessageHash {
+        covenant: &Covenant,
+    ) -> Challenge {
         Challenge::new()
-            .chain(public_commitment_nonce.as_bytes())
+            .chain(public_commitment_nonce.to_consensus_bytes())
             .chain(script.as_bytes())
-            // TODO: Use consensus encoded bytes #testnet_reset
-            .chain(features.to_v1_bytes())
-            .chain(sender_offset_public_key.as_bytes())
-            .chain(commitment.as_bytes())
-            .finalize()
-            .to_vec()
+            .chain(covenant.to_consensus_bytes())
+            .chain(features.to_consensus_bytes())
+            .chain(sender_offset_public_key.to_consensus_bytes())
+            .chain(commitment.to_consensus_bytes())
     }
 
     // Create commitment signature for the metadata
+    #[allow(clippy::too_many_arguments)]
     fn create_metadata_signature(
         value: &MicroTari,
         spending_key: &BlindingFactor,
@@ -232,6 +242,7 @@ impl TransactionOutput {
         sender_offset_public_key: &PublicKey,
         partial_commitment_nonce: Option<&PublicKey>,
         sender_offset_private_key: Option<&PrivateKey>,
+        covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         let nonce_a = PrivateKey::random(&mut OsRng);
         let nonce_b = PrivateKey::random(&mut OsRng);
@@ -248,17 +259,18 @@ impl TransactionOutput {
             sender_offset_public_key,
             &nonce_commitment,
             &commitment,
+            covenant,
         );
         let secret_x = match sender_offset_private_key {
             None => spending_key.clone(),
-            Some(key) => &spending_key.clone() + key,
+            Some(key) => spending_key + key,
         };
         Ok(ComSignature::sign(
             value,
             secret_x,
             nonce_a,
             nonce_b,
-            &e,
+            &e.finalize_fixed(),
             &PedersenCommitmentFactory::default(),
         )?)
     }
@@ -271,6 +283,7 @@ impl TransactionOutput {
         output_features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
         partial_commitment_nonce: &PublicKey,
+        covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
             value,
@@ -280,6 +293,7 @@ impl TransactionOutput {
             sender_offset_public_key,
             Some(partial_commitment_nonce),
             None,
+            covenant,
         )
     }
 
@@ -290,6 +304,7 @@ impl TransactionOutput {
         script: &TariScript,
         output_features: &OutputFeatures,
         sender_offset_private_key: &PrivateKey,
+        covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
@@ -300,6 +315,7 @@ impl TransactionOutput {
             &sender_offset_public_key,
             None,
             Some(sender_offset_private_key),
+            covenant,
         )
     }
 
@@ -317,7 +333,7 @@ impl TransactionOutput {
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        transaction::hash_output(&self.features, &self.commitment, &self.script)
+        transaction::hash_output(&self.features, &self.commitment, &self.script, &self.covenant)
     }
 }
 
@@ -330,6 +346,7 @@ impl Default for TransactionOutput {
             TariScript::default(),
             PublicKey::default(),
             ComSignature::default(),
+            Covenant::default(),
         )
     }
 }

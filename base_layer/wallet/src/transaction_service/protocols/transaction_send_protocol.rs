@@ -34,15 +34,18 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::KernelFeatures,
-    transaction_protocol::{
-        proto::protocol as proto,
-        recipient::RecipientSignedMessage,
-        sender::SingleRoundSenderData,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::KernelFeatures,
+        transaction_protocol::{
+            proto::protocol as proto,
+            recipient::RecipientSignedMessage,
+            sender::SingleRoundSenderData,
+        },
+        SenderTransactionProtocol,
     },
-    SenderTransactionProtocol,
 };
 use tari_crypto::script;
 use tari_p2p::tari_message::TariMessageType;
@@ -187,6 +190,7 @@ where
                 None,
                 self.message.clone(),
                 script!(Nop),
+                Covenant::default(),
             )
             .await
         {
@@ -480,7 +484,7 @@ where
                 KernelFeatures::empty(),
                 &self.resources.factories,
                 self.prev_header.clone(),
-                self.height,
+                self.height.unwrap_or(u64::MAX),
             )
             .map_err(|e| {
                 error!(

@@ -169,6 +169,8 @@ message TransactionInput {
     ComSignature script_signature = 7;
     // The offset public key, K_O
     bytes sender_offset_public_key = 8;
+    // Covenant
+    bytes covenant = 9;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -190,7 +192,8 @@ message TransactionOutput {
     // Metadata signature with the homomorphic commitment private values (amount and blinding factor) and the sender
     // offset private key
     ComSignature metadata_signature = 7;
-    // Tari script offset pubkey, K_O
+    // Covenant
+    bytes covenant = 8;
 }
 
 // Options for UTXO's
@@ -326,6 +329,8 @@ message UnblindedOutput {
     ComSignature metadata_signature = 9;
     // The minimum height the script allows this output to be spent
     uint64 script_lock_height = 10;
+    // Covenant
+    bytes covenant = 11;
 }
 
 // ----------------------------- Network Types ----------------------------- //

@@ -375,7 +375,7 @@ where
                     &self.resources.factories,
                     None,
                     self.prev_header.clone(),
-                    self.height,
+                    self.height.unwrap_or(u64::MAX),
                 )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 

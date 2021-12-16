@@ -42,6 +42,8 @@ message TransactionInput {
     ComSignature script_signature = 6;
     // The offset pubkey, K_O
     bytes sender_offset_public_key = 7;
+    // The serialised covenant
+    bytes covenant = 8;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -60,8 +62,8 @@ message TransactionOutput {
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 6;
-    // Numbering 7-8 taken
-
+    // The serialised covenant
+    bytes covenant = 7;
 }
 
 // Options for UTXO's

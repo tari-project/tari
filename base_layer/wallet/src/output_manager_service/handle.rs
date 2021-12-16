@@ -27,12 +27,15 @@ use tari_common_types::{
     transaction::TxId,
     types::{HashOutput, PublicKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
-    transaction_protocol::sender::TransactionSenderMessage,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
 use tari_crypto::{script::TariScript, tari_utilities::hex::Hex};
 use tari_service_framework::reply_channel::SenderService;
@@ -65,6 +68,7 @@ pub enum OutputManagerRequest {
         lock_height: Option<u64>,
         message: String,
         script: TariScript,
+        covenant: Covenant,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -428,6 +432,7 @@ impl OutputManagerHandle {
         lock_height: Option<u64>,
         message: String,
         script: TariScript,
+        covenant: Covenant,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -440,6 +445,7 @@ impl OutputManagerHandle {
                 lock_height,
                 message,
                 script,
+                covenant,
             })
             .await??
         {

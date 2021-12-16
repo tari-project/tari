@@ -27,6 +27,7 @@ use tokio::task;
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
+    covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction::TransactionError,
 };
@@ -105,6 +106,8 @@ pub enum ValidationError {
     },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
+    #[error("Covenant failed to validate: {0}")]
+    CovenantError(#[from] CovenantError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

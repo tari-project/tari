@@ -599,11 +599,9 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder
-            .build::<HashDigest>(&factories, None, Some(u64::MAX))
-            .unwrap();
+        let mut stx_protocol = stx_builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
         stx_protocol
-            .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+            .finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
             .unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();

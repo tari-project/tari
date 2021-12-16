@@ -132,6 +132,12 @@ mod test {
     };
 
     #[test]
+    fn it_immediately_ends_iterator_given_empty_bytes() {
+        let buf = &[] as &[u8; 0];
+        assert!(CovenantTokenDecoder::new(&mut &buf[..]).next().is_none());
+    }
+
+    #[test]
     fn it_decodes_from_well_formed_bytes() {
         let hash = from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut hash_buf = [0u8; 32];

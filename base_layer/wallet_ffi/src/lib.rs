@@ -120,7 +120,10 @@ use tari_comms::{
     types::CommsSecretKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_core::{
+    covenants::Covenant,
+    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+};
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -4741,6 +4744,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*spending_key).clone(),
         &Default::default(),
         0,
+        Covenant::default(),
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)

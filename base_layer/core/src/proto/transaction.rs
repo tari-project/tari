@@ -32,6 +32,8 @@ use tari_crypto::{
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
     proto,
     transactions::{
         aggregated_body::AggregateBody,
@@ -128,6 +130,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
             script_signature,
             sender_offset_public_key,
+            covenant: Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
         })
     }
 }
@@ -141,6 +144,7 @@ impl From<TransactionInput> for proto::types::TransactionInput {
             input_data: input.input_data.as_bytes(),
             script_signature: Some(input.script_signature.into()),
             sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
+            covenant: input.covenant.to_consensus_bytes(),
         }
     }
 }
@@ -173,6 +177,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
+        let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
+
         Ok(Self {
             features,
             commitment,
@@ -180,6 +186,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             script,
             sender_offset_public_key,
             metadata_signature,
+            covenant,
         })
     }
 }
@@ -193,6 +200,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.as_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
+            covenant: output.covenant.to_consensus_bytes(),
         }
     }
 }

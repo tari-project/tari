@@ -188,7 +188,7 @@ fn test_checkpoints() {
         from: vec![outputs[0][0].clone()],
         to: vec![MicroTari(5_000), MicroTari(6_000)]
     );
-    let (txn, _, _) = spend_utxos(txn);
+    let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, 1.into()).unwrap();
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
@@ -961,7 +961,7 @@ fn handle_reorg_failure_recovery() {
         let mut txns = Vec::new();
         let mut block_utxos = Vec::new();
         for schema in schemas {
-            let (tx, mut utxos, _) = spend_utxos(schema);
+            let (tx, mut utxos) = spend_utxos(schema);
             txns.push(tx);
             block_utxos.append(&mut utxos);
         }
