@@ -17,7 +17,8 @@
     "@oruga-ui/oruga-next": "^0.4.8",
     "@tauri-apps/api": "^1.0.0-beta.8",
     "core-js": "^3.6.5",
-    "vue": "^3.0.0"
+    "vue": "^3.0.0",
+    "vuex": "^4.0.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-beta.10",

@@ -23,12 +23,17 @@
 
 <template>
   <o-tabs v-model="activeTab">
-    <o-tab-item value="0" label="Setup">
+    <o-tab-item value="0" label="Images">
+      <suspense>
+        <Containers></Containers>
+      </suspense>
+    </o-tab-item>
+    <o-tab-item value="1" label="Setup">
       <div>
         <h1>Workspace</h1>
-        <input v-model="workspaceName" placeholder="MyWorkspace"/>
-        <button @click="createWorkspace">Create workspace</button>
-        <button @click="openWorkspace">Open workspace</button>
+        <o-input v-model="workspaceName" placeholder="MyWorkspace"></o-input>
+        <o-button @click="createWorkspace">Create workspace</o-button>
+        <o-button @click="openWorkspace">Open workspace</o-button>
         <p>
           <b>Workspace status:</b><span>{{ workspaceStatus }}</span>
         </p>
@@ -53,30 +58,34 @@
         </div>
 
         <div>
-          <input type="checkbox" id="base_node" v-model="options.has_base_node"/>
-          <label for="base_node">Spin up a Base Node</label>
-        </div>
-
-        <div>
-          <input type="checkbox" id="wallet" v-model="options.has_wallet"/>
-          <label for="wallet">Spin up a wallet</label>
-          <div v-if="options.has_wallet">
-            <input v-model="options.wallet_password" placeholder="password"/>
+          <div class="field">
+            <o-checkbox id="base_node" v-model="options.has_base_node">
+              Spin up a Base Node
+            </o-checkbox>
           </div>
-        </div>
-
-
-        <div>
-          <input type="checkbox" id="sha3_miner" v-model="options.has_sha3_miner"/>
-          <label for="sha3_miner">Spin up a SHA3 miner</label>
-          <div v-if="options.has_sha3_miner">
-            <input v-model.number="options.sha3_mining_threads" placeholder="# SHA3 mining threads"/>
+          <div class="field">
+            <o-checkbox v-model="options.has_wallet">
+              Spin up a wallet
+            </o-checkbox>
           </div>
-        </div>
-
-        <div>
-          <input type="checkbox" id="mm_proxy" v-model="options.has_mm_proxy"/>
-          <label for="mm_proxy">Spin up a Monero Miner</label>
+          <div class="field">
+            <div v-if="options.has_wallet">
+              <input v-model="options.wallet_password" placeholder="password"/>
+            </div>
+          </div>
+          <div class="field">
+            <o-checkbox v-model="options.has_sha3_miner">
+              Spin up a SHA3 miner
+            </o-checkbox>
+            <div v-if="options.has_sha3_miner">
+              <input v-model.number="options.sha3_mining_threads" placeholder="# SHA3 mining threads"/>
+            </div>
+          </div>
+          <div class="field">
+            <o-checkbox v-model="options.has_mm_proxy">
+              Spin up a Monero Miner
+            </o-checkbox>
+          </div>
           <div v-if="options.has_mm_proxy">
             <ul>
               <li><input v-model="options.monerod_url" placeholder="Monerod URL"/></li>
@@ -98,20 +107,26 @@
 
     </o-tab-item>
 
-    <o-tab-item value="3" label="Logs">
-      <div class="logs">
-        <hr/>
-        <h2>Logs</h2>
-        <table>
-          <tr v-for="(log, index) in logs" v-bind:key="index">
-            <td>{{ log }}</td>
-          </tr>
-        </table>
-        <hr/>
-      </div>
+    <o-tab-item value="2" label="Tor">
+      <service name="Tor"></service>
+    </o-tab-item>
+
+    <o-tab-item value="3" label="Base Node">
+      <service name="Base Node"></service>
+    </o-tab-item>
+
+    <o-tab-item value="4" label="Wallet">
+      <service name="Wallet"></service>
+    </o-tab-item>
+
+    <o-tab-item value="5" label="SHA3 Miner">
+      <service name="SHA3 miner"></service>
+    </o-tab-item>
+
+    <o-tab-item value="6" label="Merged miner">
+      <service name="Merged Miner"></service>
     </o-tab-item>
   </o-tabs>
-
 
 
 </template>
@@ -120,6 +135,8 @@
 import {invoke} from '@tauri-apps/api/tauri'
 import {save, open} from '@tauri-apps/api/dialog'
 import {listen} from "@tauri-apps/api/event";
+import {defineAsyncComponent} from "vue";
+import service from "@/components/Service";
 
 const imageNames = [
   "tor",
@@ -187,6 +204,10 @@ async function launch() {
 
 export default {
   name: "LaunchDocker",
+  components: {
+    Containers: defineAsyncComponent(() => import("@/components/Containers")),
+    service
+  },
   data() {
     const options = {
       root_folder: "/tmp/tari",

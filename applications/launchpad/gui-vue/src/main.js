@@ -35,10 +35,13 @@ library.add(
     faCaretUp
 );
 
+import store from "./store";
+
 createApp(App)
     .component('vue-fontawesome', FontAwesomeIcon)
     .use(Oruga, {
         iconComponent: 'vue-fontawesome',
         iconPack: 'fas'
     })
+    .use(store)
     .mount('#app')

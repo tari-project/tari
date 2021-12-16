@@ -1,7 +1,7 @@
 <template>
   <div class="containers">
     <h1>Containers</h1>
-    <button @click="pullImages">Pull images</button>
+    <o-button @click="pullImages">Pull images</o-button>
     <ul>
       <li v-for="(image, i) of imageList" :key="i"><b>{{ image }}</b>:{{ ' ' }}{{ info[image].status }} /
         {{ info[image].progress }}%
@@ -15,7 +15,6 @@
 <script>
 import {invoke} from '@tauri-apps/api/tauri'
 import {listen} from '@tauri-apps/api/event'
-import { ref } from 'vue';
 
 async function pullImages() {
   console.log("Pulling images");
@@ -41,11 +40,12 @@ export default {
   name: 'containers',
   async setup() {
     console.log("Getting image list");
-    let imageList = ref(['foo', 'bar']);
+    let imageList = [];
     try {
       imageList.value = await invoke("image_list");
     } catch (err) {
       console.log(err);
+      console.log("Using default image list");
     }
     return {imageList}
   },
@@ -55,7 +55,7 @@ export default {
     const errors = "None";
     console.log("ImageList:", this.imageList);
     this.imageList.forEach(p => info[p] = {status: "Unknown", progress: 0});
-    return {info, errors }
+    return {info, errors}
   },
   methods: {pullImages}
 }
@@ -70,7 +70,7 @@ ul {
 }
 
 li {
-  text-align: left ;
+  text-align: left;
   margin: 0 10px;
 }
 
