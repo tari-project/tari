@@ -335,10 +335,7 @@ impl CommandHandler {
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Block not found for utxo commitment {}",
-                        commitment.to_hex()
-                    ),
+                    _ => println!("Block not found for utxo commitment {}", commitment.to_hex()),
                 },
             };
         });
