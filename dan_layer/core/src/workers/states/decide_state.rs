@@ -23,6 +23,7 @@
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
 
@@ -48,6 +49,7 @@ where
     TOutboundService: OutboundService<TAddr, TPayload>,
 {
     node_id: TAddr,
+    asset_public_key: PublicKey,
     committee: Committee<TAddr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
@@ -64,9 +66,10 @@ where
     TAddr: NodeAddressable,
     TPayload: Payload,
 {
-    pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
+    pub fn new(node_id: TAddr, asset_public_key: PublicKey, committee: Committee<TAddr>) -> Self {
         Self {
             node_id,
+            asset_public_key,
             committee,
             phantom_inbound: PhantomData,
             phantom_outbound: PhantomData,
@@ -172,7 +175,7 @@ where
         commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
+        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.asset_public_key.clone());
         outbound
             .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
             .await

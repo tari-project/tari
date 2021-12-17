@@ -23,6 +23,7 @@
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -68,6 +69,7 @@ pub struct Prepare<
     TPayloadProcessor: PayloadProcessor<TPayload>,
 {
     node_id: TAddr,
+    asset_public_key: PublicKey,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
     phantom: PhantomData<TInboundConnectionService>,
@@ -105,9 +107,10 @@ where
     TPayloadProvider: PayloadProvider<TPayload>,
     TPayloadProcessor: PayloadProcessor<TPayload>,
 {
-    pub fn new(node_id: TAddr) -> Self {
+    pub fn new(node_id: TAddr, asset_public_key: PublicKey) -> Self {
         Self {
             node_id,
+            asset_public_key,
             phantom: PhantomData,
             phantom_payload_provider: PhantomData,
             phantom_outbound: PhantomData,
@@ -350,7 +353,7 @@ where
         high_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number);
+        let message = HotStuffMessage::prepare(proposal, Some(high_qc), view_number, self.asset_public_key.clone());
         outbound
             .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
             .await
@@ -379,7 +382,7 @@ where
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
         // TODO: Only send node hash, not the full node
-        let mut message = HotStuffMessage::vote_prepare(node, view_number);
+        let mut message = HotStuffMessage::vote_prepare(node, view_number, self.asset_public_key.clone());
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

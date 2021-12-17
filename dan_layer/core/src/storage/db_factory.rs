@@ -20,15 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::PublicKey;
+
 use crate::storage::{
     chain::{ChainDb, ChainDbBackendAdapter},
     state::{StateDb, StateDbBackendAdapter},
     StorageError,
 };
 
-pub trait DbFactory {
+pub trait DbFactory: Sync + Send + 'static {
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type StateDbBackendAdapter: StateDbBackendAdapter;
-    fn create_chain_db(&self) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
-    fn create_state_db(&self) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
+    fn get_or_create_chain_db(
+        &self,
+        asset_public_key: &PublicKey,
+    ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
+    fn get_state_db(
+        &self,
+        asset_public_key: &PublicKey,
+    ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
+    fn get_or_create_state_db(
+        &self,
+        asset_public_key: &PublicKey,
+    ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
 }
