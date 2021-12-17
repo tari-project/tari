@@ -72,9 +72,7 @@ impl TariCommsInboundConnectionService {
         loop {
             futures::select! {
                 message = inbound_stream.select_next_some() => {
-
-                        self.forward_message(message).await?;
-
+                    self.forward_message(message).await?;
                 }
                 complete => {
                     dbg!("Tari inbound connector shutting down");

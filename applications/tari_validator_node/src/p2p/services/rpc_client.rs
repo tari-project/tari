@@ -47,13 +47,6 @@ pub struct TariCommsValidatorNodeRpcClient {
 
 impl TariCommsValidatorNodeRpcClient {
     async fn create_connection(&mut self) -> Result<PeerConnection, DigitalAssetError> {
-        if let Some(conn) = self
-            .connectivity
-            .get_connection(NodeId::from(self.address.clone()))
-            .await?
-        {
-            return Ok(conn);
-        }
         match self.connectivity.dial_peer(NodeId::from(self.address.clone())).await {
             Ok(connection) => Ok(connection),
             Err(connectivity_error) => {
@@ -65,6 +58,7 @@ impl TariCommsValidatorNodeRpcClient {
                             ConnectionManagerError::DialConnectFailedAllAddresses |
                             ConnectionManagerError::PeerIdentityNoValidAddresses => {
                                 // Try discover, then dial again
+                                // TODO: Should make discovery and connect the responsibility of the DHT layer
                                 self.dht_discovery
                                     .discover_peer(
                                         Box::new(self.address.clone()),
