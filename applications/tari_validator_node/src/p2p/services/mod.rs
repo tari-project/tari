@@ -22,3 +22,4 @@
 
 pub mod inbound_connection_service;
 pub mod outbound_connection_service;
+pub mod rpc_client;

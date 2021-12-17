@@ -72,7 +72,7 @@
 //! # args.init = true;
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("weatherwax".into())).unwrap();
+//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("dibbler".into())).unwrap();
 //! assert_eq!(global.network, Network::Dibbler);
 //! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
