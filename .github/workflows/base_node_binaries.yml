@@ -17,6 +17,7 @@ on:
 
 env:
   TBN_FILENAME: "tari_base_node"
+  PROTOC: protoc
 
 jobs:
   builds:

@@ -23,10 +23,9 @@
 use std::{fmt, marker::PhantomData};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
-
-use crate::types::PublicKey;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]

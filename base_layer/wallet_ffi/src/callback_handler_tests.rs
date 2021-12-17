@@ -31,7 +31,7 @@ mod test {
     use chrono::Utc;
     use rand::rngs::OsRng;
     use tari_common_types::{
-        transaction::{TransactionDirection, TransactionStatus, TxId},
+        transaction::{TransactionDirection, TransactionStatus},
         types::{BlindingFactor, PrivateKey, PublicKey},
     };
     use tari_comms_dht::event::DhtEvent;

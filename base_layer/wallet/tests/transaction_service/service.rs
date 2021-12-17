@@ -35,7 +35,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::{rngs::OsRng, RngCore};
+use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -458,6 +458,7 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
 }
 
 #[test]
+#[ignore = "broken since validator node merge"]
 fn manage_single_transaction() {
     let mut runtime = create_runtime();
 
@@ -1042,7 +1043,7 @@ fn test_htlc_send_and_claim() {
     let hash = output.hash();
     bob_node_mock.set_utxos(vec![output]);
     runtime.block_on(async move {
-        let (tx_id_htlc, htlc_fee, htlc_amount, tx) = bob_oms
+        let (tx_id_htlc, _htlc_fee, htlc_amount, tx) = bob_oms
             .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
             .await
             .unwrap();

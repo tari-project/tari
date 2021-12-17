@@ -22,29 +22,48 @@
 
 #![allow(clippy::too_many_arguments)]
 mod cmd_args;
+mod comms;
 mod dan_node;
 mod grpc;
 mod p2p;
+
 use std::{
+    fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     process,
+    sync::Arc,
 };
 
 use futures::FutureExt;
 use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
-use tari_app_utilities::initialization::init_configuration;
+use tari_app_utilities::{identity_management::setup_node_identity, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms_dht::Dht;
 use tari_dan_core::{
-    services::{AssetProcessor, ConcreteAssetProcessor, MempoolService, MempoolServiceHandle},
+    services::{
+        AssetProcessor,
+        AssetProxy,
+        ConcreteAssetProcessor,
+        ConcreteAssetProxy,
+        MempoolService,
+        MempoolServiceHandle,
+    },
     storage::DbFactory,
 };
 use tari_dan_storage_sqlite::SqliteDbFactory;
+use tari_p2p::comms_connector::SubscriptionFactory;
+use tari_service_framework::ServiceHandles;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
 
-use crate::{dan_node::DanNode, grpc::validator_node_grpc_server::ValidatorNodeGrpcServer};
+use crate::{
+    dan_node::DanNode,
+    grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
+    p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
+};
 
 const LOG_TARGET: &str = "tari::validator_node::app";
 
@@ -62,31 +81,77 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let (_bootstrap, config, _) = init_configuration(ApplicationType::ValidatorNode)?;
+    let (bootstrap, config, _) = init_configuration(ApplicationType::ValidatorNode)?;
 
     // let _operation_mode = cmd_args::get_operation_mode();
     // match operation_mode {
     //     OperationMode::Run => {
     let runtime = build_runtime()?;
-    runtime.block_on(run_node(config))?;
+    runtime.block_on(run_node(config, bootstrap.create_id))?;
     // }
     // }
 
     Ok(())
 }
 
-async fn run_node(config: GlobalConfig) -> Result<(), ExitCodes> {
+async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes> {
     let shutdown = Shutdown::new();
 
-    let mempool_service = MempoolServiceHandle::default();
+    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    let node_identity = setup_node_identity(
+        &config.base_node_identity_file,
+        &config.public_address,
+        create_id,
+        PeerFeatures::NONE,
+    )?;
     let db_factory = SqliteDbFactory::new(&config);
-    let asset_processor = ConcreteAssetProcessor::default();
+    let mempool_service = MempoolServiceHandle::default();
+    info!(
+        target: LOG_TARGET,
+        "Node starting with pub key: {}, node_id: {}",
+        node_identity.public_key(),
+        node_identity.node_id()
+    );
+    let (handles, subscription_factory) = comms::build_service_and_comms_stack(
+        &config,
+        shutdown.to_signal(),
+        node_identity.clone(),
+        mempool_service.clone(),
+        db_factory.clone(),
+        ConcreteAssetProcessor::default(),
+    )
+    .await?;
 
-    let grpc_server = ValidatorNodeGrpcServer::new(mempool_service.clone(), db_factory, asset_processor);
+    let asset_processor = ConcreteAssetProcessor::default();
+    let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(
+        handles.expect_handle::<ConnectivityRequester>(),
+        handles.expect_handle::<Dht>().discovery_service_requester(),
+    );
+    let asset_proxy = ConcreteAssetProxy::new(
+        GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
+        validator_node_client_factory,
+        5,
+    );
+
+    let grpc_server = ValidatorNodeGrpcServer::new(
+        mempool_service.clone(),
+        db_factory.clone(),
+        asset_processor,
+        asset_proxy,
+    );
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144);
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
-    run_dan_node(shutdown.to_signal(), config, mempool_service).await?;
+    run_dan_node(
+        shutdown.to_signal(),
+        config,
+        mempool_service,
+        db_factory,
+        handles,
+        subscription_factory,
+        node_identity,
+    )
+    .await?;
     Ok(())
 }
 
@@ -98,21 +163,34 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
-async fn run_dan_node(
+async fn run_dan_node<TDbFactory: DbFactory + Clone>(
     shutdown_signal: ShutdownSignal,
     config: GlobalConfig,
     mempool_service: MempoolServiceHandle,
+    db_factory: TDbFactory,
+    handles: ServiceHandles,
+    subscription_factory: SubscriptionFactory,
+    node_identity: Arc<NodeIdentity>,
 ) -> Result<(), ExitCodes> {
     let node = DanNode::new(config);
-    node.start(true, shutdown_signal, mempool_service).await
+    node.start(
+        shutdown_signal,
+        node_identity,
+        mempool_service,
+        db_factory,
+        handles,
+        subscription_factory,
+    )
+    .await
 }
 
 async fn run_grpc<
     TMempoolService: MempoolService + Clone + Sync + Send + 'static,
     TDbFactory: DbFactory + Sync + Send + 'static,
     TAssetProcessor: AssetProcessor + Sync + Send + 'static,
+    TAssetProxy: AssetProxy + Sync + Send + 'static,
 >(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor>,
+    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor, TAssetProxy>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
