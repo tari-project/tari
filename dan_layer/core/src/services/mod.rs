@@ -43,5 +43,7 @@ pub use signing_service::{NodeIdentitySigningService, SigningService};
 mod asset_proxy;
 #[cfg(test)]
 pub mod mocks;
+mod service_specification;
 mod validator_node_rpc_client;
+pub use service_specification::ServiceSpecification;
 pub use validator_node_rpc_client::{ValidatorNodeClientFactory, ValidatorNodeRpcClient};

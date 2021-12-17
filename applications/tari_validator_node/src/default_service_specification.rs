@@ -20,32 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
+use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
+use tari_dan_storage_sqlite::SqliteDbFactory;
 
-use crate::{models::TemplateId, services::infrastructure_services::NodeAddressable, DigitalAssetError};
+use crate::{
+    grpc::services::base_node_client::GrpcBaseNodeClient,
+    p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
+};
 
-pub trait ValidatorNodeClientFactory {
-    type Addr: NodeAddressable;
-    type Client: ValidatorNodeRpcClient + Sync + Send;
-    fn create_client(&self, address: &Self::Addr) -> Self::Client;
-}
+#[derive(Clone)]
+pub struct DefaultServiceSpecification {}
 
-#[async_trait]
-pub trait ValidatorNodeRpcClient {
-    async fn invoke_read_method(
-        &mut self,
-        asset_public_key: &PublicKey,
-        template_id: TemplateId,
-        method: String,
-        args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
-
-    async fn invoke_method(
-        &mut self,
-        asset_public_key: &PublicKey,
-        template_id: TemplateId,
-        method: String,
-        args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+impl ServiceSpecification for DefaultServiceSpecification {
+    type Addr = PublicKey;
+    type AssetProcessor = ConcreteAssetProcessor;
+    type AssetProxy = ConcreteAssetProxy<Self>;
+    type BaseNodeClient = GrpcBaseNodeClient;
+    type DbFactory = SqliteDbFactory;
+    type MempoolService = MempoolServiceHandle;
+    type ValidatorNodeClientFactory = TariCommsValidatorNodeClientFactory;
 }
