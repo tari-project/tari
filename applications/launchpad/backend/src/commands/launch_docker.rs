@@ -26,7 +26,6 @@ use crate::{
     docker::{
         helpers::create_password,
         BaseNodeConfig,
-        ContainerId,
         DockerWrapperError,
         LaunchpadConfig,
         MmProxyConfig,
@@ -39,8 +38,6 @@ use crate::{
     },
     error::LauncherError,
 };
-use bollard::Docker;
-use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, path::PathBuf, time::Duration};
 use tauri::{AppHandle, Manager, Wry};
@@ -188,39 +185,7 @@ async fn launch_docker_impl(
             .ok_or(DockerWrapperError::UnexpectedError)?;
         // Pipe docker container logs to Tauri using namespaced events
         workspace.start(docker.clone()).await?;
-        pipe_container_logs(app.clone(), docker.clone(), workspace);
     } // Drop write lock
     info!("Tari system, {} has launched", name);
     Ok(())
-}
-
-pub fn log_event_name(workspace: &mut TariWorkspace, id: &ContainerId) -> String {
-    let name = workspace
-        .managed_containers()
-        .get(id)
-        .map(|state| state.name())
-        .unwrap_or("unknown");
-    format!("tari://docker_log_{}", name)
-}
-
-fn pipe_container_logs(app: AppHandle<Wry>, docker: Docker, workspace: &mut TariWorkspace) {
-    info!("Setting up log events");
-    let streams = workspace.logs(docker);
-    for (id, mut stream) in streams {
-        let event_name = log_event_name(workspace, &id);
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            while let Some(message) = stream.next().await {
-                let emit_result = match message {
-                    Ok(payload) => app_clone.emit_all(event_name.as_str(), payload),
-                    Err(err) => app_clone.emit_all(format!("{}_error", event_name).as_str(), err.chained_message()),
-                };
-                if let Err(err) = emit_result {
-                    warn!("Error emitting event: {}", err.to_string());
-                }
-            }
-            info!("Log stream for {} has closed.", id);
-        });
-    }
-    info!("Container log events configured.");
 }

@@ -112,6 +112,10 @@ impl TariWorkspace {
         }
     }
 
+    pub fn config(&self) -> &LaunchpadConfig {
+        &self.config
+    }
+
     /// Returns the name of this system, which is generally used as the workspace name when running multiple Tari
     /// systems
     pub fn name(&self) -> &str {
@@ -137,20 +141,14 @@ impl TariWorkspace {
         let registry = self.config.registry.clone();
         let tag = self.config.tag.clone();
         for image in self.images_to_start() {
-            let args = self.config.command(image);
             // Start each container
-            let id = self
-                .start_service(image, registry.clone(), tag.clone(), args, docker.clone())
+            let name = self
+                .start_service(image, registry.clone(), tag.clone(), docker.clone())
                 .await?;
-            info!("Docker container {} ({}) successfully started", image.image_name(), id);
+            info!("Docker container {} ({}) successfully started", image.image_name(), name);
             // Connect the container to the network
             // self.connect_to_network(&id, image, &docker).await?;
         }
-
-        // Create the stats streams
-        // Create the log streams
-        // Create the kill hooks
-        // Happy mining
         Ok(())
     }
 
@@ -164,8 +162,6 @@ impl TariWorkspace {
             let id = setup_node_identity(id_file_path, &None, true, PeerFeatures::COMMUNICATION_NODE)?
                 .as_ref()
                 .clone();
-            // TODO - remove this log line since it prints a secret key
-            debug!("Identity: {}", id);
             Ok(Some(id))
         } else {
             Ok(None)
@@ -185,30 +181,29 @@ impl TariWorkspace {
 
     pub fn logs(
         &self,
+        container_name: &str,
         docker: Docker,
-    ) -> HashMap<ContainerId, impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
-        self.containers
-            .iter()
-            .map(|(id, _state)| {
-                let options = LogsOptions::<String> {
-                    follow: true,
-                    stdout: true,
-                    stderr: true,
-                    ..Default::default()
-                };
-                (
-                    id.clone(),
-                    docker
-                        .logs(id.as_str(), Some(options))
-                        .map(|log| log.map(LogMessage::from).map_err(DockerWrapperError::from)),
-                )
+    ) -> Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
+        let options = LogsOptions::<String> {
+            follow: true,
+            stdout: true,
+            stderr: true,
+            ..Default::default()
+        };
+        self.containers.get(container_name)
+            .map(move |container| {
+                let id = container.id();
+                docker.logs(id.as_str(), Some(options))
+                    .map(|log| {
+                        log.map(LogMessage::from)
+                            .map_err(DockerWrapperError::from)
+                    })
             })
-            .collect()
     }
 
     /// Returns a stream of resource stats for the container `name`, if it exists
     pub async fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
-        if let Some(container) = self.containers.get(&name) {
+        if let Some(container) = self.containers.get(name) {
             let options = StatsOptions {
                 stream: true,
                 one_shot: false
@@ -247,9 +242,9 @@ impl TariWorkspace {
         image: ImageType,
         registry: Option<String>,
         tag: Option<String>,
-        args: Vec<String>,
         docker: Docker,
     ) -> Result<String, DockerWrapperError> {
+        let args = self.config.command(image);
         let image_name = TariWorkspace::fully_qualified_image(image, registry.as_deref(), tag.as_deref());
         let options = Some(CreateContainerOptions {
             name: format!("{}_{}", self.name, image.image_name()),
@@ -293,7 +288,8 @@ impl TariWorkspace {
         debug!("{} has configuration object: {:#?}", image_name, config);
         let container = docker.create_container(options, config).await?;
         let name = image.container_name();
-        let id = self.add_container(name, container);
+        let id = container.id.clone();
+        self.add_container(name, container);
         info!("{} created.", image_name);
         info!("Starting {}.", image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
@@ -329,6 +325,10 @@ impl TariWorkspace {
     /// Returns a reference to the set of managed containers
     pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
         &self.containers
+    }
+
+    pub fn container_mut(&mut self, container_name: &str) -> Option<&mut ContainerState> {
+        self.containers.get_mut(container_name)
     }
 
     /// Add the container info to the list of containers the wrapper is managing

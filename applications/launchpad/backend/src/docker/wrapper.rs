@@ -21,8 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::collections::HashMap;
 use crate::docker::DockerWrapperError;
 use bollard::{image::CreateImageOptions, models::CreateImageInfo, Docker};
+use bollard::models::SystemEventsResponse;
+use bollard::system::EventsOptions;
 use futures::{Stream, TryStreamExt};
 
 pub struct DockerWrapper {
@@ -58,5 +61,26 @@ impl DockerWrapper {
         });
         let stream = self.handle.create_image(opts, None, None);
         stream.map_err(DockerWrapperError::from)
+    }
+
+    /// Returns a stream of relevant events
+    pub async fn events(&self) -> impl Stream<Item = Result<SystemEventsResponse, DockerWrapperError>> {
+        let docker = self.handle.clone();
+        let mut type_filter = HashMap::new();
+        type_filter.insert(
+            "type".to_string(),
+            vec![
+                "container".to_string(),
+                "image".to_string(),
+                "network".to_string(),
+                "volume".to_string()
+            ]
+        );
+        let options = EventsOptions {
+            since: None,
+            until: None,
+            filters: type_filter
+        };
+        docker.events(Some(options)).map_err(DockerWrapperError::from)
     }
 }

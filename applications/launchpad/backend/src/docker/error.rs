@@ -33,7 +33,7 @@ pub enum DockerWrapperError {
     FileSystemError(#[from] std::io::Error),
     #[error("The requested container id, {0} is not being managed by the wrapper")]
     ContainerNotFound(String),
-    #[error("The designated syatem, {0}, already exists")]
+    #[error("The designated system, {0}, already exists")]
     SystemAlreadyExists(String),
     #[error("The network is not supported")]
     UnsupportedNetwork,
@@ -41,6 +41,8 @@ pub enum DockerWrapperError {
     UnexpectedError,
     #[error("Could not create an identity file")]
     IdentityError(#[from] ExitCodes),
+    #[error("The specified image type is not supported")]
+    InvalidImageType,
 }
 
 impl DockerWrapperError {

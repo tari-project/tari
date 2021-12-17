@@ -1,8 +1,11 @@
 <template>
   <h1>{{ name }}</h1>
   <div>
-    <p><b>Network:</b> {{ $store.state.networkConfig.tari_network }}</p>
-    <p><b>Workspace:</b> {{ $store.state.networkConfig.root_folder }}</p>
+    <p><b>Network:</b> {{ $store.state.settings.tariNetwork }}</p>
+    <p><b>Workspace:</b> {{ $store.state.settings.rootFolder }}</p>
+    <p v-if="name === 'SHA3 miner'">
+      <b>Threads:</b> {{ $store.state.settings.numMiningThreads }}
+    </p>
     <o-button @click="startContainer">Start</o-button>
     <o-button @click="stopContainer">Stop</o-button>
     <p><b>Status:</b> {{ status }}</p>

@@ -27,7 +27,7 @@ use std::fmt::{Display, Formatter};
 
 //-------------------------------------------     ContainerId      ----------------------------------------------
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ContainerId(String);
+pub struct ContainerId(pub String);
 
 impl From<String> for ContainerId {
     fn from(s: String) -> Self {

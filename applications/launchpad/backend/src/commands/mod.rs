@@ -22,13 +22,17 @@
 //
 
 mod create_workspace;
+mod events;
 mod launch_docker;
 mod pull_images;
 mod shutdown;
+mod service;
 mod state;
 
 pub use create_workspace::create_new_workspace;
 pub use launch_docker::launch_docker;
 pub use pull_images::{image_list, pull_images};
+pub use service::{start_service};
 pub use shutdown::shutdown;
+pub use events::events;
 pub use state::AppState;

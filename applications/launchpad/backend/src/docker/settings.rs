@@ -34,6 +34,8 @@ use tor_hash_passwd::EncryptedKey;
 pub const DEFAULT_MINING_ADDRESS: &str =
     "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48";
 
+pub const DEFAULT_MONEROD_URL: &str= "http://monero-stagenet.exan.tech:38081";
+
 /// Supported networks for the launchpad
 #[derive(Serialize, Debug, Deserialize, Clone, Copy)]
 pub enum TariNetwork {
@@ -80,7 +82,7 @@ impl TryFrom<&str> for TariNetwork {
     }
 }
 
-#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
 pub enum ImageType {
     Tor,
     BaseNode,
@@ -125,6 +127,24 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
+        }
+    }
+}
+
+impl TryFrom<&str> for ImageType {
+    type Error = DockerWrapperError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let s = value.to_lowercase();
+        match s.as_str() {
+            "tor" => Ok(Self::Tor),
+            "base_node" | "base node" => Ok(Self::BaseNode),
+            "wallet" => Ok(Self::Wallet),
+            "xmrig" => Ok(Self::XmRig),
+            "sha3_miner" | "sha3 miner" => Ok(Self::Sha3Miner),
+            "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
+            "monerod" | "monero" => Ok(Self::Monerod),
+            _ => Err(DockerWrapperError::InvalidImageType)
         }
     }
 }
@@ -177,7 +197,7 @@ impl Default for MmProxyConfig {
     fn default() -> Self {
         MmProxyConfig {
             delay: Duration::from_secs(5),
-            monerod_url: "http://monero-stagenet.exan.tech:38081".to_string(),
+            monerod_url: DEFAULT_MONEROD_URL.to_string(),
             monero_username: "".to_string(),
             monero_password: "".to_string(),
             monero_use_auth: false,
@@ -340,7 +360,7 @@ impl LaunchpadConfig {
         }
     }
 
-    pub fn xmrig_cmd(&self) -> Vec<String> {
+    fn xmrig_cmd(&self) -> Vec<String> {
         let address = match &self.xmrig {
             Some(config) => config.monero_mining_address.as_str(),
             None => DEFAULT_MINING_ADDRESS,
@@ -358,7 +378,7 @@ impl LaunchpadConfig {
         args.into_iter().map(String::from).collect()
     }
 
-    pub fn monerod_cmd(&self) -> Vec<String> {
+    fn monerod_cmd(&self) -> Vec<String> {
         let network = match self.tari_network {
             TariNetwork::Mainnet => "--mainnet",
             _ => "--stagenet",
@@ -377,7 +397,7 @@ impl LaunchpadConfig {
         args.into_iter().map(String::from).collect()
     }
 
-    pub fn tor_cmd(&self) -> Vec<String> {
+    fn tor_cmd(&self) -> Vec<String> {
         let hashed_password = EncryptedKey::hash_password(self.tor_control_password.as_str()).to_string();
         let args = vec![
             "/usr/bin/tor",
@@ -421,7 +441,7 @@ impl LaunchpadConfig {
     }
 
     /// Generate the vector of ENVAR strings for the docker environment
-    pub fn base_node_environment(&self) -> Vec<String> {
+    fn base_node_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
         if let Some(base_node) = &self.base_node {
             env.append(&mut vec![

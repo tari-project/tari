@@ -43,6 +43,7 @@ pub use settings::{
     WalletConfig,
     XmRigConfig,
     DEFAULT_MINING_ADDRESS,
+    DEFAULT_MONEROD_URL
 };
 pub use workspace::{TariWorkspace, Workspaces, DEFAULT_IMAGES};
 pub use wrapper::DockerWrapper;
