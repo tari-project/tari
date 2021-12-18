@@ -142,7 +142,16 @@ jobs:
           #cd applications/tari_base_node
           #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
           cargo build --release
+      - name: Build tauri apps
+        env:
+          RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
+        run: |
+          echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
+          cd applications/tari_collectibles
+          npm install
+          npm run tauri build
 
+      #  - name: Prepare Archives
         #  - name: Prepare Archives
         #    shell: bash
         #    run: |
@@ -171,6 +180,8 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
 
       - name: Build the macos pkg
         if: startsWith(runner.os,'macOS')

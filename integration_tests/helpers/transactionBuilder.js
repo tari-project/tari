@@ -49,6 +49,9 @@ class TransactionBuilder {
     let features_buffer = Buffer.concat([
       flags,
       toLittleEndian(parseInt(features.maturity), 64),
+      toLittleEndian(features.metadata.length, 64),
+      new Uint8Array(features.metadata),
+      new Uint8Array([0, 0, 0, 0, 0]),
     ]);
     blake2bUpdate(context, buff_nonce);
     blake2bUpdate(context, script);
@@ -166,6 +169,13 @@ class TransactionBuilder {
     const outputFeatures = {
       flags: 0,
       maturity: 0,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
     };
     let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
@@ -340,6 +350,13 @@ class TransactionBuilder {
     let outputFeatures = {
       flags: 1,
       maturity: lockHeight,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
     };
     let scriptOffsetPrivateKeyNum = Math.floor(
       Math.random() * 500000000000 + 1
