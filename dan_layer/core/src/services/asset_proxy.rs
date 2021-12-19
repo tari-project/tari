@@ -28,8 +28,15 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
 use crate::{
-    models::TemplateId,
-    services::{validator_node_rpc_client::ValidatorNodeRpcClient, BaseNodeClient, ValidatorNodeClientFactory},
+    models::{Instruction, TemplateId},
+    services::{
+        validator_node_rpc_client::ValidatorNodeRpcClient,
+        BaseNodeClient,
+        MempoolService,
+        ServiceSpecification,
+        ValidatorNodeClientFactory,
+    },
+    storage::DbFactory,
     DigitalAssetError,
 };
 
@@ -37,6 +44,14 @@ const LOG_TARGET: &str = "tari::dan_layer::core::services::asset_proxy";
 
 #[async_trait]
 pub trait AssetProxy {
+    async fn invoke_method(
+        &self,
+        asset_public_key: &PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<(), DigitalAssetError>;
+
     async fn invoke_read_method(
         &self,
         asset_public_key: &PublicKey,
@@ -46,31 +61,40 @@ pub trait AssetProxy {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
-pub struct ConcreteAssetProxy<TBaseNodeClient: BaseNodeClient, TValidatorNodeClientFactory: ValidatorNodeClientFactory>
-{
-    base_node_client: TBaseNodeClient,
-    validator_node_client_factory: TValidatorNodeClientFactory,
-    max_clients_to_ask: usize,
+enum InvokeType {
+    InvokeReadMethod,
+    InvokeMethod,
 }
 
-impl<TBaseNodeClient: BaseNodeClient, TValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = PublicKey>>
-    ConcreteAssetProxy<TBaseNodeClient, TValidatorNodeClientFactory>
-{
+#[derive(Clone)]
+pub struct ConcreteAssetProxy<TServiceSpecification: ServiceSpecification> {
+    base_node_client: TServiceSpecification::BaseNodeClient,
+    validator_node_client_factory: TServiceSpecification::ValidatorNodeClientFactory,
+    max_clients_to_ask: usize,
+    mempool: TServiceSpecification::MempoolService,
+    db_factory: TServiceSpecification::DbFactory,
+}
+
+impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAssetProxy<TServiceSpecification> {
     pub fn new(
-        base_node_client: TBaseNodeClient,
-        validator_node_client_factory: TValidatorNodeClientFactory,
+        base_node_client: TServiceSpecification::BaseNodeClient,
+        validator_node_client_factory: TServiceSpecification::ValidatorNodeClientFactory,
         max_clients_to_ask: usize,
+        mempool: TServiceSpecification::MempoolService,
+        db_factory: TServiceSpecification::DbFactory,
     ) -> Self {
         Self {
             base_node_client,
             validator_node_client_factory,
             max_clients_to_ask,
+            mempool,
+            db_factory,
         }
     }
 
-    async fn send_request_to_node(
+    async fn forward_invoke_read_to_node(
         &self,
-        member: &PublicKey,
+        member: &TServiceSpecification::Addr,
         asset_public_key: &PublicKey,
         template_id: TemplateId,
         method: String,
@@ -81,24 +105,28 @@ impl<TBaseNodeClient: BaseNodeClient, TValidatorNodeClientFactory: ValidatorNode
             .invoke_read_method(asset_public_key, template_id, method, args)
             .await
     }
-}
 
-#[async_trait]
-impl<
-        TBaseNodeClient: BaseNodeClient + Clone + Sync + Send,
-        TValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = PublicKey> + Sync,
-    > AssetProxy for ConcreteAssetProxy<TBaseNodeClient, TValidatorNodeClientFactory>
-{
-    #[allow(clippy::for_loops_over_fallibles)]
-    async fn invoke_read_method(
+    async fn forward_invoke_to_node(
         &self,
+        member: &TServiceSpecification::Addr,
         asset_public_key: &PublicKey,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        // find the base layer committee
+        let mut client = self.validator_node_client_factory.create_client(member);
+        client.invoke_method(asset_public_key, template_id, method, args).await
+    }
 
+    #[allow(clippy::for_loops_over_fallibles)]
+    async fn forward_to_committee(
+        &self,
+        asset_public_key: &PublicKey,
+        invoke_type: InvokeType,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut base_node_client = self.base_node_client.clone();
         let tip = base_node_client.get_tip_info().await?;
         let last_checkpoint = base_node_client
@@ -121,29 +149,106 @@ impl<
         };
 
         if let Some(committee) = last_checkpoint.get_side_chain_committee() {
-            let mut tasks = FuturesUnordered::new();
-            for member in committee.iter().take(self.max_clients_to_ask) {
-                tasks.push(self.send_request_to_node(
-                    member,
-                    asset_public_key,
-                    template_id,
-                    method.clone(),
-                    args.clone(),
-                ));
-            }
+            match invoke_type {
+                InvokeType::InvokeReadMethod => {
+                    let mut tasks = FuturesUnordered::new();
+                    for member in committee.iter().take(self.max_clients_to_ask) {
+                        tasks.push(self.forward_invoke_read_to_node(
+                            member,
+                            asset_public_key,
+                            template_id,
+                            method.clone(),
+                            args.clone(),
+                        ));
+                    }
 
-            for result in tasks.next().await {
-                match result {
-                    Ok(data) => return Ok(data),
-                    Err(err) => {
-                        error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
-                    },
-                }
-            }
+                    for result in tasks.next().await {
+                        match result {
+                            Ok(data) => return Ok(data),
+                            Err(err) => {
+                                error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
+                            },
+                        }
+                    }
+                },
+                InvokeType::InvokeMethod => {
+                    let mut tasks = FuturesUnordered::new();
+                    for member in committee.iter().take(self.max_clients_to_ask) {
+                        tasks.push(self.forward_invoke_to_node(
+                            member,
+                            asset_public_key,
+                            template_id,
+                            method.clone(),
+                            args.clone(),
+                        ));
+                    }
+
+                    for result in tasks.next().await {
+                        match result {
+                            Ok(data) => return Ok(data),
+                            Err(err) => {
+                                error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
+                            },
+                        }
+                    }
+                },
+            };
 
             Err(DigitalAssetError::NoResponsesFromCommittee)
         } else {
             Err(DigitalAssetError::NoCommitteeForAsset)
         }
+    }
+}
+
+#[async_trait]
+impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
+    for ConcreteAssetProxy<TServiceSpecification>
+{
+    async fn invoke_method(
+        &self,
+        asset_public_key: &PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<(), DigitalAssetError> {
+        // check if we are processing this asset
+        if self.db_factory.get_state_db(asset_public_key)?.is_some() {
+            let instruction = Instruction::new(
+                asset_public_key.clone(),
+                template_id,
+                method.clone(),
+                args.clone(),
+                /* TokenId(request.token_id.clone()),
+                 * TODO: put signature in here
+                 * ComSig::default()
+                 * create_com_sig_from_bytes(&request.signature)
+                 *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+            );
+            let mut mempool = self.mempool.clone();
+            mempool.submit_instruction(instruction).await
+        } else {
+            let _result = self
+                .forward_to_committee(asset_public_key, InvokeType::InvokeMethod, template_id, method, args)
+                .await?;
+            Ok(())
+        }
+    }
+
+    async fn invoke_read_method(
+        &self,
+        asset_public_key: &PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        self.forward_to_committee(
+            asset_public_key,
+            InvokeType::InvokeReadMethod,
+            template_id,
+            method,
+            args,
+        )
+        .await
     }
 }

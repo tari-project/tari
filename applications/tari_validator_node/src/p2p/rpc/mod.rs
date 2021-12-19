@@ -41,16 +41,16 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
     ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus>;
 
     #[rpc(method = 2)]
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus>;
-
-    #[rpc(method = 3)]
     async fn invoke_read_method(
         &self,
         request: Request<proto::InvokeReadMethodRequest>,
     ) -> Result<Response<proto::InvokeReadMethodResponse>, RpcStatus>;
+
+    #[rpc(method = 3)]
+    async fn invoke_method(
+        &self,
+        request: Request<proto::InvokeMethodRequest>,
+    ) -> Result<Response<proto::InvokeMethodResponse>, RpcStatus>;
 }
 
 pub fn create_validator_node_rpc_service<

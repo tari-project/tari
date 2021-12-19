@@ -66,40 +66,6 @@ impl<
         Err(RpcStatus::general("Not implemented"))
     }
 
-    async fn submit_instruction(
-        &self,
-        request: Request<proto::SubmitInstructionRequest>,
-    ) -> Result<Response<proto::SubmitInstructionResponse>, RpcStatus> {
-        dbg!(&request);
-        let request = request.into_message();
-        let instruction = Instruction::new(
-            PublicKey::from_bytes(&request.asset_public_key)
-                .map_err(|_err| RpcStatus::bad_request("asset_public_key was not a valid public key"))?,
-            request.template_id.into(),
-            request.method.clone(),
-            request.args.clone(),
-            /* TokenId(request.token_id.clone()),
-             * TODO: put signature in here
-             * ComSig::default()
-             * create_com_sig_from_bytes(&request.signature)
-             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
-        );
-
-        let mut mempool_service = self.mempool_service.clone();
-        match mempool_service.submit_instruction(instruction).await {
-            Ok(_) => {
-                return Ok(Response::new(proto::SubmitInstructionResponse {
-                    status: proto::Status::Accepted as i32,
-                }))
-            },
-            Err(_) => {
-                return Ok(Response::new(proto::SubmitInstructionResponse {
-                    status: proto::Status::Errored as i32,
-                }))
-            },
-        }
-    }
-
     async fn invoke_read_method(
         &self,
         request: Request<proto::InvokeReadMethodRequest>,
@@ -124,7 +90,43 @@ impl<
             )
             .map_err(|e| RpcStatus::general(format!("Could not invoke read method: {}", e)))?;
         Ok(Response::new(proto::InvokeReadMethodResponse {
-            result: response_bytes,
+            result: response_bytes.unwrap_or_default(),
         }))
+    }
+
+    async fn invoke_method(
+        &self,
+        request: Request<proto::InvokeMethodRequest>,
+    ) -> Result<Response<proto::InvokeMethodResponse>, RpcStatus> {
+        dbg!(&request);
+        let request = request.into_message();
+        let instruction = Instruction::new(
+            PublicKey::from_bytes(&request.asset_public_key)
+                .map_err(|_err| RpcStatus::bad_request("asset_public_key was not a valid public key"))?,
+            request.template_id.into(),
+            request.method.clone(),
+            request.args.clone(),
+            /* TokenId(request.token_id.clone()),
+             * TODO: put signature in here
+             * ComSig::default()
+             * create_com_sig_from_bytes(&request.signature)
+             *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
+        );
+
+        let mut mempool_service = self.mempool_service.clone();
+        match mempool_service.submit_instruction(instruction).await {
+            Ok(_) => {
+                return Ok(Response::new(proto::InvokeMethodResponse {
+                    result: vec![],
+                    status: proto::Status::Accepted as i32,
+                }))
+            },
+            Err(_) => {
+                return Ok(Response::new(proto::InvokeMethodResponse {
+                    result: vec![],
+                    status: proto::Status::Errored as i32,
+                }))
+            },
+        }
     }
 }

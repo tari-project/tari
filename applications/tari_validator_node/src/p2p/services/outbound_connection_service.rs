@@ -69,7 +69,6 @@ impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundServic
     ) -> Result<(), DigitalAssetError> {
         // Tari comms does allow sending to itself
         if from == to && message.asset_public_key() == &self.asset_public_key {
-            dbg!(&message);
             self.loopback_service.send((from, message)).await.unwrap();
             return Ok(());
         }

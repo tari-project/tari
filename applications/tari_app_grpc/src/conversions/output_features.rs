@@ -39,16 +39,24 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
+        let unique_id = if features.unique_id.is_empty() {
+            None
+        } else {
+            Some(features.unique_id.clone())
+        };
+        let parent_public_key = if features.parent_public_key.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
+        };
+
         Ok(Self {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
             metadata: features.metadata,
-            unique_id: features.unique_id,
-            parent_public_key: match features.parent_public_key {
-                Some(a) => Some(PublicKey::from_bytes(a.as_bytes()).map_err(|err| format!("{:?}", err))?),
-                None => None,
-            },
+            unique_id,
+            parent_public_key,
             asset: features.asset.map(|a| a.try_into()).transpose()?,
             mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
@@ -62,8 +70,11 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
             metadata: features.metadata,
-            unique_id: features.unique_id,
-            parent_public_key: features.parent_public_key.map(|a| a.as_bytes().to_vec()),
+            unique_id: features.unique_id.unwrap_or_default(),
+            parent_public_key: features
+                .parent_public_key
+                .map(|a| a.as_bytes().to_vec())
+                .unwrap_or_default(),
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),

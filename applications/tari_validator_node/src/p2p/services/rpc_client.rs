@@ -102,11 +102,39 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             args,
         };
         let response = client.invoke_read_method(request).await?;
-        Ok(response.result)
+
+        Ok(if response.result.is_empty() {
+            None
+        } else {
+            Some(response.result)
+        })
+    }
+
+    async fn invoke_method(
+        &mut self,
+        asset_public_key: &PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        let mut connection = self.create_connection().await?;
+        let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
+        let request = proto::InvokeMethodRequest {
+            asset_public_key: asset_public_key.to_vec(),
+            template_id: template_id as u32,
+            method,
+            args,
+        };
+        let response = client.invoke_method(request).await?;
+        Ok(if response.result.is_empty() {
+            None
+        } else {
+            Some(response.result)
+        })
     }
 }
 
-#[derive()]
+#[derive(Clone)]
 pub struct TariCommsValidatorNodeClientFactory {
     connectivity_requester: ConnectivityRequester,
     dht_discovery: DhtDiscoveryRequester,
