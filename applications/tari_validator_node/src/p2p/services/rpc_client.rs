@@ -102,7 +102,12 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             args,
         };
         let response = client.invoke_read_method(request).await?;
-        Ok(response.result)
+
+        Ok(if response.result.is_empty() {
+            None
+        } else {
+            Some(response.result)
+        })
     }
 
     async fn invoke_method(
@@ -121,7 +126,11 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             args,
         };
         let response = client.invoke_method(request).await?;
-        Ok(response.result)
+        Ok(if response.result.is_empty() {
+            None
+        } else {
+            Some(response.result)
+        })
     }
 }
 

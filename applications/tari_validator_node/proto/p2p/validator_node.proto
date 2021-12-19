@@ -50,7 +50,7 @@ message InvokeReadMethodRequest{
 }
 
 message InvokeReadMethodResponse {
-  optional bytes result = 1;
+  bytes result = 1;
 }
 
 
@@ -62,6 +62,6 @@ message InvokeMethodRequest{
 }
 
 message InvokeMethodResponse {
-  optional bytes result = 1;
+  bytes result = 1;
   Status status = 2;
 }

@@ -82,11 +82,11 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         {
             Ok(_) => Ok(Response::new(rpc::InvokeMethodResponse {
                 status: "Accepted".to_string(),
-                result: None,
+                result: vec![],
             })),
             Err(_) => Ok(Response::new(rpc::InvokeMethodResponse {
                 status: "Errored".to_string(),
-                result: None,
+                result: vec![],
             })),
         }
     }
@@ -130,11 +130,11 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
                 )
                 .map_err(|e| Status::internal(format!("Could not invoke read method: {}", e)))?;
             Ok(Response::new(rpc::InvokeReadMethodResponse {
-                result: response_bytes,
+                result: response_bytes.unwrap_or_default(),
                 authority: Some(rpc::Authority {
                     node_public_key: vec![],
                     signature: vec![],
-                    proxied_by: None,
+                    proxied_by: vec![],
                 }),
             }))
         } else {
@@ -151,11 +151,11 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
                 .map_err(|err| Status::internal(format!("Error calling proxied method:{}", err)))?;
             // TODO: Populate authority
             Ok(Response::new(rpc::InvokeReadMethodResponse {
-                result: response_bytes,
+                result: response_bytes.unwrap_or_default(),
                 authority: Some(rpc::Authority {
                     node_public_key: vec![],
                     signature: vec![],
-                    proxied_by: Some(vec![]),
+                    proxied_by: vec![],
                 }),
             }))
         }

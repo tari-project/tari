@@ -92,9 +92,9 @@ message GetAssetMetadataRequest {
 }
 
 message GetAssetMetadataResponse {
-    optional string name = 2;
-    optional string description =3;
-    optional string image = 4;
+    string name = 2;
+    string description =3;
+    string image = 4;
     bytes owner_commitment = 5;
     OutputFeatures features = 6;
     uint64 mined_height = 7;

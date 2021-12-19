@@ -90,7 +90,7 @@ impl<
             )
             .map_err(|e| RpcStatus::general(format!("Could not invoke read method: {}", e)))?;
         Ok(Response::new(proto::InvokeReadMethodResponse {
-            result: response_bytes,
+            result: response_bytes.unwrap_or_default(),
         }))
     }
 
@@ -117,13 +117,13 @@ impl<
         match mempool_service.submit_instruction(instruction).await {
             Ok(_) => {
                 return Ok(Response::new(proto::InvokeMethodResponse {
-                    result: None,
+                    result: vec![],
                     status: proto::Status::Accepted as i32,
                 }))
             },
             Err(_) => {
                 return Ok(Response::new(proto::InvokeMethodResponse {
-                    result: None,
+                    result: vec![],
                     status: proto::Status::Errored as i32,
                 }))
             },
