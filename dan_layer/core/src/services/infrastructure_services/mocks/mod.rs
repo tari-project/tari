@@ -32,7 +32,7 @@ use crate::{
 };
 
 pub fn mock_inbound<TAddr: NodeAddressable, TPayload: Payload>() -> MockInboundConnectionService<TAddr, TPayload> {
-    MockInboundConnectionService::new()
+    MockInboundConnectionService::default()
 }
 
 type Messages<TAddr, TPayload> = (
@@ -53,12 +53,13 @@ impl<TAddr: NodeAddressable + Send, TPayload: Payload> InboundConnectionService<
         self.messages.1.recv().await.unwrap()
     }
 }
-
-impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAddr, TPayload> {
-    pub fn new() -> Self {
+impl<TAddr: NodeAddressable, TPayload: Payload> Default for MockInboundConnectionService<TAddr, TPayload> {
+    fn default() -> Self {
         Self { messages: channel(10) }
     }
+}
 
+impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAddr, TPayload> {
     pub fn _push(&mut self, from: TAddr, message: HotStuffMessage<TPayload>) {
         self.messages.0.try_send((from, message)).unwrap()
     }
