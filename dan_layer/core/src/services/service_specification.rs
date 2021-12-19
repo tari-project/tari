@@ -20,32 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_common_types::types::PublicKey;
+use crate::{
+    services::{
+        infrastructure_services::NodeAddressable,
+        AssetProcessor,
+        AssetProxy,
+        BaseNodeClient,
+        MempoolService,
+        ValidatorNodeClientFactory,
+    },
+    storage::DbFactory,
+};
 
-use crate::{models::TemplateId, services::infrastructure_services::NodeAddressable, DigitalAssetError};
-
-pub trait ValidatorNodeClientFactory {
+/// A trait to describe a specific configuration of services. This type allows other services to
+/// simply reference types.
+/// This trait is intended to only include `types` and no methods.
+pub trait ServiceSpecification: Clone {
     type Addr: NodeAddressable;
-    type Client: ValidatorNodeRpcClient + Sync + Send;
-    fn create_client(&self, address: &Self::Addr) -> Self::Client;
-}
-
-#[async_trait]
-pub trait ValidatorNodeRpcClient {
-    async fn invoke_read_method(
-        &mut self,
-        asset_public_key: &PublicKey,
-        template_id: TemplateId,
-        method: String,
-        args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
-
-    async fn invoke_method(
-        &mut self,
-        asset_public_key: &PublicKey,
-        template_id: TemplateId,
-        method: String,
-        args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+    type DbFactory: DbFactory + Clone + Sync + Send + 'static;
+    type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
+    type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone + Sync + Send + 'static;
+    type MempoolService: MempoolService + Clone + Sync + Send + 'static;
+    type AssetProcessor: AssetProcessor + Clone + Sync + Send + 'static;
+    type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
 }

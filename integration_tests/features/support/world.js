@@ -431,10 +431,10 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await baseNode.init();
   await baseNode.compile();
 
-  const danNode = new ValidatorNodeProcess("compile");
-  console.log("Compiling validator node...");
-  await danNode.init();
-  await danNode.compile();
+  // const danNode = new ValidatorNodeProcess("compile");
+  // console.log("Compiling validator node...");
+  // await danNode.init();
+  // await danNode.compile();
 
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");

@@ -24,7 +24,7 @@ members = [
     # "applications/installer",
     "applications/tari_base_node",
     "applications/tari_console_wallet",
-    "applications/tari_collectibles/src-tauri",
+#    "applications/tari_collectibles/src-tauri",
     "applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",

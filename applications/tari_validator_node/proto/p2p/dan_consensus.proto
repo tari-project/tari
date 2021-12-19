@@ -18,7 +18,7 @@ message HotStuffMessage {
     QuorumCertificate justify = 3;
     HotStuffTreeNode node= 4;
     Signature partial_sig = 5;
-    optional bytes node_hash = 6;
+    bytes node_hash = 6;
     bytes asset_public_key = 7;
 }
 
