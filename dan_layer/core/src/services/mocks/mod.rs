@@ -27,6 +27,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction::TemplateParameter;
 
 use super::CommitteeManager;
@@ -54,7 +55,6 @@ use crate::{
         SigningService,
     },
     storage::state::StateDbUnitOfWork,
-    types::PublicKey,
 };
 
 #[derive(Debug, Clone)]
@@ -127,7 +127,7 @@ pub fn mock_payload_provider() -> MockStaticPayloadProvider<&'static str> {
 }
 
 pub fn mock_events_publisher<TEvent: Event>() -> MockEventsPublisher<TEvent> {
-    MockEventsPublisher::new()
+    MockEventsPublisher::default()
 }
 
 #[derive(Clone)]
@@ -135,13 +135,15 @@ pub struct MockEventsPublisher<TEvent: Event> {
     events: Arc<Mutex<VecDeque<TEvent>>>,
 }
 
-impl<TEvent: Event> MockEventsPublisher<TEvent> {
-    pub fn new() -> Self {
+impl<TEvent: Event> Default for MockEventsPublisher<TEvent> {
+    fn default() -> Self {
         Self {
             events: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
+}
 
+impl<TEvent: Event> MockEventsPublisher<TEvent> {
     pub fn to_vec(&self) -> Vec<TEvent> {
         self.events.lock().unwrap().iter().cloned().collect()
     }

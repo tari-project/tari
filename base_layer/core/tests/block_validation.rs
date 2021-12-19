@@ -75,7 +75,7 @@ mod helpers;
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
@@ -109,7 +109,7 @@ fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()

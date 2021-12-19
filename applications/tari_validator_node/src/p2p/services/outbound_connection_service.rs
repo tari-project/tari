@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_dan_core::{
@@ -38,6 +39,7 @@ use crate::p2p::proto;
 pub struct TariCommsOutboundService<TPayload: Payload> {
     outbound_message_requester: OutboundMessageRequester,
     loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
+    asset_public_key: PublicKey,
     // TODO: Remove
     phantom: PhantomData<TPayload>,
 }
@@ -46,10 +48,12 @@ impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
     pub fn new(
         outbound_message_requester: OutboundMessageRequester,
         loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
+        asset_public_key: PublicKey,
     ) -> Self {
         Self {
             outbound_message_requester,
             loopback_service,
+            asset_public_key,
             phantom: PhantomData,
         }
     }
@@ -64,7 +68,7 @@ impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundServic
         message: HotStuffMessage<TariDanPayload>,
     ) -> Result<(), DigitalAssetError> {
         // Tari comms does allow sending to itself
-        if from == to {
+        if from == to && message.asset_public_key() == &self.asset_public_key {
             self.loopback_service.send((from, message)).await.unwrap();
             return Ok(());
         }

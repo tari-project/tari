@@ -1185,10 +1185,15 @@ where
             strategy
         );
         let mut utxos = Vec::new();
+
         let mut utxos_total_value = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
+        if let Some(token) = token {
+            utxos_total_value = token.unblinded_output.value;
+            utxos.push(token);
+        }
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;

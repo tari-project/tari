@@ -22,22 +22,20 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{
-        CheckpointData,
-        HotStuffMessage,
-        HotStuffMessageType,
-        HotStuffTreeNode,
-        Instruction,
-        InstructionSet,
-        QuorumCertificate,
-        Signature,
-        TariDanPayload,
-        TreeNodeHash,
-        ViewId,
-    },
-    types::PublicKey,
+use tari_dan_core::models::{
+    CheckpointData,
+    HotStuffMessage,
+    HotStuffMessageType,
+    HotStuffTreeNode,
+    Instruction,
+    InstructionSet,
+    QuorumCertificate,
+    Signature,
+    TariDanPayload,
+    TreeNodeHash,
+    ViewId,
 };
 
 use crate::p2p::proto::dan as dan_proto;
@@ -50,7 +48,8 @@ impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
             justify: source.justify().map(|j| j.clone().into()),
             partial_sig: source.partial_sig().map(|s| s.clone().into()),
             view_number: source.view_number().as_u64(),
-            node_hash: source.node_hash().map(|s| s.0.clone()),
+            node_hash: source.node_hash().map(|s| s.0.clone()).unwrap_or_default(),
+            asset_public_key: source.asset_public_key().to_vec(),
         }
     }
 }
@@ -120,13 +119,20 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
     type Error = String;
 
     fn try_from(value: dan_proto::HotStuffMessage) -> Result<Self, Self::Error> {
+        let node_hash = if value.node_hash.is_empty() {
+            None
+        } else {
+            Some(TreeNodeHash(value.node_hash))
+        };
         Ok(Self::new(
             ViewId(value.view_number),
             HotStuffMessageType::try_from(value.message_type as u8)?,
             value.justify.map(|j| j.try_into()).transpose()?,
             value.node.map(|n| n.try_into()).transpose()?,
-            value.node_hash.map(TreeNodeHash),
+            node_hash,
             value.partial_sig.map(|p| p.try_into()).transpose()?,
+            PublicKey::from_bytes(&value.asset_public_key)
+                .map_err(|err| format!("Not a valid asset public key:{}", err))?,
         ))
     }
 }

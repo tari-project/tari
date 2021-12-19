@@ -149,6 +149,7 @@ function createEnv(
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
   const configEnvs = {
+    [`TARI_BASE_NODE__GRPC_ENABLED`]: `true`,
     [`TARI_BASE_NODE__GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
     [`TARI_WALLET__GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
 

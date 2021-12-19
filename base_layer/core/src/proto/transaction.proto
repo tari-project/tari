@@ -76,9 +76,9 @@ message OutputFeatures {
 
     AssetOutputFeatures asset = 4;
 
-    optional bytes unique_id = 5;
+    bytes unique_id = 5;
 
-    optional bytes parent_public_key = 6;
+    bytes parent_public_key = 6;
 
     MintNonFungibleFeatures mint_non_fungible = 7;
 
