@@ -88,7 +88,9 @@ jobs:
           libgtk-3-dev \
           libappindicator3-dev \
           patchelf \
-          librsvg2-dev
+          librsvg2-dev \
+          libprotobuf-dev \
+          protobuf-compiler
       - name: checkout
         uses: actions/checkout@v2
       - name: Caching
