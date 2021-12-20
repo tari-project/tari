@@ -46,7 +46,7 @@ pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
                         .map(|s| s.as_str())
                         .unwrap_or("unknown");
                     let id = ContainerId(id.to_string());
-                    if let Err(err) = app_clone.emit_all(event_name(&id).as_str(), event) {
+                    if let Err(err) = app_clone.emit_all(event_name(), event) {
                         warn!("Could not emit event to front-end, {:?}", err);
                     }
                 },
@@ -59,6 +59,6 @@ pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
 }
 
 /// Extract data from the event object so we know which channel to emit the payload to
-pub fn event_name(id: &ContainerId) -> String {
-    format!("tari://docker-event-{}", id.as_str())
+pub fn event_name() -> &'static str {
+    "tari://docker-system-event"
 }

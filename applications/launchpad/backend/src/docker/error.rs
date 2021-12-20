@@ -33,8 +33,10 @@ pub enum DockerWrapperError {
     FileSystemError(#[from] std::io::Error),
     #[error("The requested container id, {0} is not being managed by the wrapper")]
     ContainerNotFound(String),
-    #[error("The designated system, {0}, already exists")]
-    SystemAlreadyExists(String),
+    #[error("The designated workspace, {0}, already exists")]
+    WorkspaceAlreadyExists(String),
+    #[error("The designated workspace, {0}, does not exist")]
+    WorkspaceDoesNotExist(String),
     #[error("The network is not supported")]
     UnsupportedNetwork,
     #[error("It should not be possible to be in this error state")]

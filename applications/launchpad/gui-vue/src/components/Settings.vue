@@ -60,6 +60,7 @@ function applySettings() {
 export default {
   name: 'settings',
   data() {
+    return {};
   },
   methods: {
     applySettings,

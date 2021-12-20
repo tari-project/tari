@@ -8,6 +8,8 @@ use tari_launchpad::{
     __cmd__launch_docker,
     __cmd__pull_images,
     __cmd__shutdown,
+    __cmd__start_service,
+    __cmd__stop_service,
     commands::*,
     docker::{DockerWrapper, Workspaces},
 };
@@ -43,6 +45,8 @@ fn main() {
             create_new_workspace,
             events,
             launch_docker,
+            start_service,
+            stop_service,
             shutdown
         ])
         .build(context)

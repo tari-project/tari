@@ -30,23 +30,23 @@
     </o-tab-item>
 
     <o-tab-item value="2" label="Tor">
-      <service name="Tor"></service>
+      <service display-name="Tor" service-name="tor"></service>
     </o-tab-item>
 
     <o-tab-item value="3" label="Base Node">
-      <service name="Base Node"></service>
+      <service display-name="Base Node" service-name="base_node"></service>
     </o-tab-item>
 
     <o-tab-item value="4" label="Wallet">
-      <service name="Wallet"></service>
+      <service display-name="Wallet" service-name="wallet"></service>
     </o-tab-item>
 
     <o-tab-item value="5" label="SHA3 Miner">
-      <service name="SHA3 miner"></service>
+      <service display-name="SHA3 miner" service-name="sha3_miner"></service>
     </o-tab-item>
 
     <o-tab-item value="6" label="Merged miner">
-      <service name="Merged Miner"></service>
+      <service display-name="Monero merge mining" service-name="merge_miner"></service>
     </o-tab-item>
 
     <o-tab-item value="7" label="Settings">
@@ -156,9 +156,6 @@ export default {
       docker_registry: null,
       docker_tag: null,
     };
-    const tabs = {
-      activeTab: '0',
-    };
     const ids = {
       base_node: {
         node_id: "none",
@@ -181,7 +178,7 @@ export default {
       logs: ["Logs go here"],
       options,
       ids,
-      tabs
+      activeTab: '0'
     }
   },
   methods: {

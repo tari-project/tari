@@ -78,7 +78,7 @@ impl Workspaces {
     /// Create a new Tari workspace. It must not previously exist
     pub fn create_workspace(&mut self, name: &str, config: LaunchpadConfig) -> Result<(), DockerWrapperError> {
         if self.workspaces.contains_key(name) {
-            return Err(DockerWrapperError::SystemAlreadyExists(name.to_string()));
+            return Err(DockerWrapperError::WorkspaceAlreadyExists(name.to_string()));
         }
         let new_system = TariWorkspace::new(name, config);
         self.workspaces.insert(name.to_string(), new_system);
@@ -202,7 +202,7 @@ impl TariWorkspace {
     }
 
     /// Returns a stream of resource stats for the container `name`, if it exists
-    pub async fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
+    pub fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
         if let Some(container) = self.containers.get(name) {
             let options = StatsOptions {
                 stream: true,
@@ -348,32 +348,46 @@ impl TariWorkspace {
         }
     }
 
-    /// Stop all running containers and optionally delete them
-    pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
-        for (id, container) in &mut self.containers {
-            // Stop the container immediately
-            let options = StopContainerOptions { t: 0 };
-            match docker.stop_container(id.as_str(), Some(options)).await {
-                Ok(_res) => {
-                    info!("Container {} stopped", id);
-                    container.set_stop();
+    /// Stop the container with `id` and optionally delete it
+    pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
+        let container = match self.container_mut(name) {
+            Some(c) => c,
+            None => {
+                info!("Cannot stop container {}. It was not found in the current workspace", name);
+                return;
+            }
+        };
+        let options = StopContainerOptions { t: 0 };
+        let id = container.id().clone();
+        match docker.stop_container(id.as_str(), Some(options)).await {
+            Ok(_res) => {
+                info!("Container {} stopped", id);
+                container.set_stop();
+            },
+            Err(err) => {
+                warn!("Could not stop container {} due to {}", id, err.to_string());
+            },
+        }
+        // Even if stopping failed (maybe it was already stopped), try and delete it
+        if delete {
+            match docker.remove_container(id.as_str(), None).await {
+                Ok(()) => {
+                    info!("Container {} deleted", id);
+                    container.set_deleted();
                 },
                 Err(err) => {
-                    warn!("Could not stop container {} due to {}", id, err.to_string());
+                    warn!("Could not delete container {} due to: {}", id, err.to_string())
                 },
             }
-            // Even if stopping failed (maybe it was already stopped), try and delete it
-            if delete {
-                match docker.remove_container(id.as_str(), None).await {
-                    Ok(()) => {
-                        info!("Container {} deleted", id);
-                        container.set_deleted();
-                    },
-                    Err(err) => {
-                        warn!("Could not delete container {} due to: {}", id, err.to_string())
-                    },
-                }
-            }
+        }
+    }
+
+    /// Stop all running containers and optionally delete them
+    pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
+        let names = self.containers.keys().cloned().collect::<Vec<String>>();
+        for name in names {
+            // Stop the container immediately
+            self.stop_container(name.as_str(), delete, docker).await;
         }
     }
 

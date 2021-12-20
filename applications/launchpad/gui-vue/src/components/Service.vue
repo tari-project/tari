@@ -1,9 +1,9 @@
 <template>
-  <h1>{{ name }}</h1>
+  <h1>{{ displayName }}</h1>
   <div>
     <p><b>Network:</b> {{ $store.state.settings.tariNetwork }}</p>
     <p><b>Workspace:</b> {{ $store.state.settings.rootFolder }}</p>
-    <p v-if="name === 'SHA3 miner'">
+    <p v-if="serviceName === 'sha3_miner'">
       <b>Threads:</b> {{ $store.state.settings.numMiningThreads }}
     </p>
     <o-button @click="startContainer">Start</o-button>
@@ -13,78 +13,68 @@
   </div>
 
   <div class="stats">
-    <h2>Stats <o-icon pack="fas" icon="tachometer-alt"> </o-icon></h2>
-    <p><b>CPU:</b> {{ stats.cpu }}%</p>
-    <p><b>Memory:</b> {{ stats.mem }} MB</p>
+    <h2>Stats
+      <o-icon pack="fas" icon="tachometer-alt"></o-icon>
+    </h2>
+    <p><b>CPU:</b> {{  cpu.toFixed(1) }} %</p>
+    <p><b>Memory:</b> {{  mem.toFixed(1) }} MB</p>
   </div>
 
   <div class="logs">
     <hr/>
     <h2>Logs</h2>
-    <o-table
-        :data="logs"
-        :columns="columns"
-        :striped="true"
-        :narrowed="true"
-        :hoverable="true"
-        :sticky-header="true"
-        :debounce-search="100"
-    >
-    </o-table>
+    <o-button @click="$store.commit('updateLog', { type: serviceName, log: {message: 'bar'}})">
+      Add logs
+    </o-button>
+    <table>
+      <tr v-for="(msg,index) in logs" v-bind:key="index">
+        <td> {{ index }} </td><td> {{msg.message}} </td>
+      </tr>
+    </table>
     <hr/>
   </div>
 </template>
 
 <script>
-// import {invoke} from '@tauri-apps/api/tauri'
-// import {listen} from '@tauri-apps/api/event'
 
-function startContainer() {
-  console.log(`Starting ${this.name}...`)
+import store from '../store';
+
+async function startContainer() {
+  console.log(`Starting ${this.displayName} (${this.serviceName})...`);
+  await this.$store.dispatch('startContainer', this.serviceName);
 }
 
-function stopContainer() {
-  console.log(`Stopping ${this.name}...`)
+async function stopContainer() {
+  await this.$store.dispatch('stopContainer', this.serviceName);
 }
 
 export default {
   name: 'service',
   props: {
-    name: String,
+    displayName: String,
+    serviceName: String,
+  },
+  setup(props) {
+    store.commit('newContainer', props.serviceName);
+  },
+
+  computed: {
+    logs() {
+      return this.$store.state.containers[this.serviceName].logs;
+    },
+    status() {
+      return this.$store.state.containers[this.serviceName].status;
+    },
+    cpu() {
+      return this.$store.state.containers[this.serviceName].stats.cpu;
+    },
+    mem() {
+      return this.$store.state.containers[this.serviceName].stats.mem;
+    }
   },
 
   data() {
-    const logs = [
-      {id: 0, timestamp: (new Date()).toISOString(), message: "Logs go here"}
-    ];
-    const columns = [
-      {
-        field: 'id',
-        label: 'ID',
-        width: '100',
-        numeric: true,
-        searchable: false
-      },
-      {
-        field: 'timestamp',
-        label: 'Time',
-        searchable: false
-      },
-      {
-        field: 'message',
-        label: 'Message',
-        searchable: true
-      }
-    ];
-    const stats = {
-      cpu: 0,
-      mem: 0,
-    };
     return {
-      status: "None",
-      logs,
-      columns,
-      stats
     }
   },
   methods: {
@@ -96,5 +86,30 @@ export default {
 
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
+
+.logs {
+  margin-top: 10px;
+  padding: 20px;
+  max-height: 600px;
+  width: 90%;
+  overflow: scroll;
+  color: black;
+  font-family: "Courier New", monospace;
+  font-size: 10pt;
+  text-align: left;
+}
+
+div.logs > table {
+  border-collapse: collapse;
+  border: #5c6773;
+}
+
+div.logs td {
+  border: 1px solid slategrey;
+}
+
+div.logs tr:nth-child(even) {
+  background-color: #9aa4ae;
+}
 
 </style>

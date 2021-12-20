@@ -38,10 +38,10 @@ library.add(
 import store from "./store";
 
 createApp(App)
+    .use(store)
     .component('vue-fontawesome', FontAwesomeIcon)
     .use(Oruga, {
         iconComponent: 'vue-fontawesome',
         iconPack: 'fas'
     })
-    .use(store)
     .mount('#app')

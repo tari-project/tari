@@ -2,9 +2,11 @@
 
   <h1>Tari Launchpad</h1>
   <Suspense>
-    <hr/>
-    <containers></containers>
-    <hr/>
+    <template>
+      <hr/>
+      <containers></containers>
+      <hr/>
+    </template>
   </Suspense>
   <launch-docker></launch-docker>
 </template>
@@ -17,6 +19,7 @@ import launchDocker from "./components/LaunchDocker";
 export default {
   name: 'App',
   data() {
+    return {};
   },
   components: {
     launchDocker,
