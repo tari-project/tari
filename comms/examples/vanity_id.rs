@@ -31,7 +31,7 @@ async fn main() {
     for i in 0u64..1_000_000_000u64 {
         let (k, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_public_key(&pk);
-        let node_id_hex = format!("{}", node_id.to_hex());
+        let node_id_hex = node_id.to_hex();
         if i % 10_000 == 0 {
             println!("{}", i);
         }
@@ -44,7 +44,7 @@ async fn main() {
                 println!("Public Key: {}", pk);
                 println!("Node Id: {}", node_id_hex);
                 println!("==================================================");
-                found = p.clone();
+                found = p;
                 break;
             }
         }
