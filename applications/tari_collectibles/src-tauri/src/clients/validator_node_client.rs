@@ -50,7 +50,7 @@ impl GrpcValidatorNodeClient {
     template_id: u32,
     method: String,
     args: Vec<u8>,
-  ) -> Result<Option<Vec<u8>>, CollectiblesError> {
+  ) -> Result<Vec<u8>, CollectiblesError> {
     let req = grpc::InvokeReadMethodRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
       template_id,
@@ -81,7 +81,7 @@ impl GrpcValidatorNodeClient {
     template_id: u32,
     method: String,
     args: Vec<u8>,
-  ) -> Result<Option<Vec<u8>>, CollectiblesError> {
+  ) -> Result<Vec<u8>, CollectiblesError> {
     let req = grpc::InvokeMethodRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
       template_id,
