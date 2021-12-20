@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{commands::AppState, docker::create_workspace, error::LauncherError};
+use crate::{commands::AppState, docker::create_workspace_folders, error::LauncherError};
 use log::*;
 use std::path::Path;
 use tauri::{
@@ -37,18 +37,17 @@ use tauri::{
 pub fn create_new_workspace(app: AppHandle<Wry>, root_path: String) -> Result<(), String> {
     let config = app.config();
     let package_info = &app.state::<AppState>().package_info;
-    let _ = create_folder_structure(&root_path).map_err(|e| e.chained_message())?;
-    copy_config_file(&root_path, config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
-    copy_config_file(&root_path, config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
+    let _ = create_workspace_folders(root_path.as_str()).map_err(|e| e.chained_message());
+    let path = Path::new(&root_path);
+    copy_config_file(path, config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
+    copy_config_file(path,config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
     info!("Workspace at {} complete!", root_path);
     Ok(())
 }
 
-pub fn create_folder_structure<S: AsRef<str>>(root_path: S) -> Result<(), LauncherError> {
-    create_workspace(root_path.as_ref()).map_err(|e| e.into())
-}
 
-pub fn copy_config_file<S: AsRef<str>>(
+
+pub fn copy_config_file<S: AsRef<Path>>(
     root_path: S,
     config: &Config,
     package_info: &PackageInfo,
@@ -59,7 +58,7 @@ pub fn copy_config_file<S: AsRef<str>>(
     let cfg = std::fs::read_to_string(&config_path).expect("The config assets were not bundled with the App");
     info!("Log Configuration file ({}) loaded", file);
     debug!("{}", cfg);
-    let dest = Path::new(root_path.as_ref()).join("config").join(file);
+    let dest = root_path.as_ref().join("config").join(file);
     std::fs::write(&dest, &cfg)?;
     info!("Log configuration file ({}) saved to workspace", file);
     Ok(())

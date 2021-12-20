@@ -28,14 +28,14 @@ use tauri::{AppHandle, Manager, State, Wry};
 use crate::commands::AppState;
 use log::*;
 use serde::{Serialize, Deserialize};
-use crate::commands::events::event_name;
-use crate::docker::{BaseNodeConfig, ContainerId, DEFAULT_MINING_ADDRESS, DEFAULT_MONEROD_URL, DockerWrapperError, LaunchpadConfig, MmProxyConfig, Sha3MinerConfig, TariWorkspace, WalletConfig, XmRigConfig};
+use crate::docker::{BaseNodeConfig, ContainerId, create_workspace_folders, DEFAULT_MINING_ADDRESS, DEFAULT_MONEROD_URL, DockerWrapperError, LaunchpadConfig, MmProxyConfig, Sha3MinerConfig, TariWorkspace, WalletConfig, XmRigConfig};
 use crate::docker::TariNetwork;
 use crate::docker::helpers::create_password;
 use crate::error::LauncherError;
 use std::path::PathBuf;
 use crate::docker::ImageType;
 use futures::StreamExt;
+use crate::commands::create_workspace::copy_config_file;
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Debug, Deserialize)]
@@ -135,18 +135,24 @@ pub async fn stop_service(state: State<'_, AppState>, service_name: String) -> R
 }
 
 #[tauri::command]
-pub async fn create_default_workspace(state: State<'_, AppState>, settings: ServiceSettings) -> Result<bool, String> {
-    create_default_workspace_impl(&state, settings).await
+pub async fn create_default_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, String> {
+    create_default_workspace_impl(app, settings).await
         .map_err(|e| e.to_string())
 }
 
-async fn create_default_workspace_impl(state: &State<'_, AppState>, settings: ServiceSettings) -> Result<bool, LauncherError> {
+async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, LauncherError> {
     let config = LaunchpadConfig::try_from(settings)?;
+    let state = app.state::<AppState>();
+    let app_config = app.config();
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
         !wrapper.workspace_exists("default")
     }; // drop read-only lock
     if should_create_workspace {
+        let package_info = &state.package_info;
+        let _ = create_workspace_folders(&config.data_directory).map_err(|e| e.chained_message());
+        copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "log4rs.yml")?;
+        copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
         let mut wrapper = state.workspaces.write().await;
         wrapper.create_workspace("default", config)?;
@@ -157,14 +163,17 @@ async fn create_default_workspace_impl(state: &State<'_, AppState>, settings: Se
 async fn start_service_impl(app: AppHandle<Wry>, service_name: String, settings: ServiceSettings) -> Result<StartServiceResult, LauncherError> {
     let state = app.state::<AppState>();
     let docker = state.docker_handle().await;
-    let _ = create_default_workspace_impl(&state, settings).await?;
+    let _ = create_default_workspace_impl(app.clone(), settings).await?;
     let mut wrapper = state.workspaces.write().await;
     debug!("Starting {} service", service_name);
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper.get_workspace_mut("default")
         .ok_or(DockerWrapperError::UnexpectedError)?;
     // Check the identity requirements for the service
-    let ids = workspace.create_identities()?;
+    let ids = workspace.create_or_load_identities()?;
+    for id in ids.values() {
+        debug!("Identity loaded: {}", id);
+    }
     // Check network requirements for the service
     if !workspace.network_exists(&docker).await? {
         workspace.create_network(&docker).await?;
@@ -173,7 +182,6 @@ async fn start_service_impl(app: AppHandle<Wry>, service_name: String, settings:
     let registry = workspace.config().registry.clone();
     let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
-    let args = workspace.config().command(image);
     let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
     let state = workspace.container_mut(container_name.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;

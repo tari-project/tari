@@ -1,5 +1,4 @@
 FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-11-01 as builder
-
 WORKDIR /tari
 
 # Adding only necessary things up front and copying the entrypoint script last
@@ -29,6 +28,7 @@ RUN cargo build --bin tari_base_node --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
 FROM quay.io/bitnami/minideb:bullseye as base
+ARG VERSION=1.0.1
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
@@ -54,7 +54,7 @@ RUN mkdir -p "/var/tari/base_node/weatherwax" \
 
 RUN mkdir /blockchain && chown tari.tari /blockchain && chmod 777 /blockchain
 USER tari
-
+ENV dockerfile_version=$VERSION
 ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/

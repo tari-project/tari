@@ -71,6 +71,10 @@ impl Workspaces {
         self.workspaces.get_mut(name)
     }
 
+    pub fn get_workspace(&self, name: &str) -> Option<&TariWorkspace> {
+        self.workspaces.get(name)
+    }
+
     pub fn workspace_exists(&self, name: &str) -> bool {
         self.workspaces.contains_key(name)
     }
@@ -130,7 +134,7 @@ impl TariWorkspace {
 
     pub async fn start(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
         // Create or load identities
-        let _ids = self.create_identities()?;
+        let _ids = self.create_or_load_identities()?;
         // Set up the local network
         if !self.network_exists(&docker).await? {
             self.create_network(&docker).await?;
@@ -152,7 +156,7 @@ impl TariWorkspace {
         Ok(())
     }
 
-    pub fn create_identity(
+    pub fn create_or_load_identity(
         &self,
         root_path: &str,
         image: ImageType,
@@ -168,11 +172,11 @@ impl TariWorkspace {
         }
     }
 
-    pub fn create_identities(&self) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
+    pub fn create_or_load_identities(&self) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
         let root_path = self.config.data_directory.to_string_lossy().to_string();
         let mut ids = HashMap::new();
         for image in ImageType::iter() {
-            if let Some(id) = self.create_identity(root_path.as_str(), image)? {
+            if let Some(id) = self.create_or_load_identity(root_path.as_str(), image)? {
                 let _ = ids.insert(image, id);
             }
         }

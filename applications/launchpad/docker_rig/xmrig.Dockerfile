@@ -1,6 +1,6 @@
 FROM alpine:latest as build
 
-ARG VERSION="v6.15.3"
+ARG XMRIG_VERSION="v6.15.3"
 
 RUN apk add \
     git \
@@ -14,7 +14,7 @@ RUN apk add \
     autoconf \
     linux-headers
 
-RUN git clone --branch ${VERSION} https://github.com/xmrig/xmrig.git
+RUN git clone --branch ${XMRIG_VERSION} https://github.com/xmrig/xmrig.git
 RUN mkdir xmrig/build
 WORKDIR /xmrig/scripts
 RUN ./build_deps.sh
@@ -23,6 +23,7 @@ RUN cmake .. -DXMRIG_DEPS=scripts/deps -DBUILD_STATIC=ON
 RUN make -j$(nproc)
 
 FROM alpine:latest as base
+ARG VERSION=1.0.1
 COPY --from=build /xmrig/build/xmrig /usr/bin/
 
 # Create a user & group
@@ -30,6 +31,8 @@ RUN addgroup -g 1000 tari && adduser -u 1000 -g 1000 -S tari -G tari
 RUN mkdir -p /home/tari && chown tari.tari /home/tari
 # Chown all the files to the app user.
 USER tari
+ENV dockerfile_version=$VERSION
+ENV xmrig_version=$XMRIG_VERSION
 
 RUN echo -e "\
 {\

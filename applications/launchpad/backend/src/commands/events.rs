@@ -25,7 +25,6 @@ use tauri::{AppHandle, Manager, Wry};
 use futures::StreamExt;
 use crate::commands::AppState;
 use log::*;
-use crate::docker::ContainerId;
 
 #[tauri::command]
 // Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
@@ -40,12 +39,6 @@ pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
             match event_result {
                 Ok(event) => {
                     debug!("Event received: {:?}", event);
-                    let id = event.actor.as_ref()
-                        .map(|a| a.id.as_ref())
-                        .flatten()
-                        .map(|s| s.as_str())
-                        .unwrap_or("unknown");
-                    let id = ContainerId(id.to_string());
                     if let Err(err) = app_clone.emit_all(event_name(), event) {
                         warn!("Could not emit event to front-end, {:?}", err);
                     }

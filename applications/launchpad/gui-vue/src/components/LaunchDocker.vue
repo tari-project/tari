@@ -45,11 +45,15 @@
       <service display-name="SHA3 miner" service-name="sha3_miner"></service>
     </o-tab-item>
 
-    <o-tab-item value="6" label="Merged miner">
-      <service display-name="Monero merge mining" service-name="merge_miner"></service>
+    <o-tab-item value="6" label="Merged miner proxy">
+      <service display-name="Merge mining proxy" service-name="mm_proxy"></service>
     </o-tab-item>
 
-    <o-tab-item value="7" label="Settings">
+    <o-tab-item value="7" label="XMRig">
+      <service display-name="Monero merge mining" service-name="xmrig"></service>
+    </o-tab-item>
+
+    <o-tab-item value="8" label="Settings">
       <settings></settings>
     </o-tab-item>
   </o-tabs>

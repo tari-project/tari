@@ -31,7 +31,7 @@ mod wrapper;
 pub mod helpers;
 
 pub use error::DockerWrapperError;
-pub use filesystem::create_workspace;
+pub use filesystem::create_workspace_folders;
 pub use models::{ContainerId, ContainerState, ContainerStatus, LogMessage};
 pub use settings::{
     BaseNodeConfig,

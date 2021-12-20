@@ -29,6 +29,7 @@ RUN cargo build --bin tari_mining_node --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
 FROM quay.io/bitnami/minideb:bullseye as base
+ARG VERSION=1.0.1
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
@@ -45,6 +46,7 @@ FROM base
 RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 USER tari
 
+ENV dockerfile_version=$VERSION
 ENV APP_NAME=sha3_miner APP_EXEC=tari_mining_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/

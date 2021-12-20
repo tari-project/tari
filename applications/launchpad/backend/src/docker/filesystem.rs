@@ -35,7 +35,7 @@ use strum::IntoEnumIterator;
 /// Creates the folders required for a new workspace off of the given root folder.
 /// IF the folders already exist, then nothing happens.
 /// On Linux, the permissions are also set to allow world access
-pub fn create_workspace<P: AsRef<Path>>(root: P) -> Result<(), DockerWrapperError> {
+pub fn create_workspace_folders<P: AsRef<Path>>(root: P) -> Result<(), DockerWrapperError> {
     if !root.as_ref().exists() {
         info!("Creating new workspace at {}", root.as_ref().to_str().unwrap_or("???"));
         fs::create_dir(&root)?

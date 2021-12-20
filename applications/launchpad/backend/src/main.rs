@@ -3,6 +3,7 @@
 use log::*;
 use tari_launchpad::{
     __cmd__create_new_workspace,
+    __cmd__create_default_workspace,
     __cmd__events,
     __cmd__image_list,
     __cmd__launch_docker,
@@ -43,6 +44,7 @@ fn main() {
             image_list,
             pull_images,
             create_new_workspace,
+            create_default_workspace,
             events,
             launch_docker,
             start_service,
