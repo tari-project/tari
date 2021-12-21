@@ -28,7 +28,7 @@ use std::{
 
 use bollard::{container::LogOutput, models::ContainerCreateResponse};
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
+
 use strum_macros::EnumIter;
 
 use crate::docker::DockerWrapperError;

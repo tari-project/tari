@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{collections::HashMap, convert::TryFrom, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
 
-use crate::docker::{models::ImageType, DockerWrapperError, TariNetwork};
+use crate::docker::{models::ImageType, TariNetwork};
 
 // TODO get a proper mining address for each network
 pub const DEFAULT_MINING_ADDRESS: &str =
