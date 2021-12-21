@@ -21,15 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::min,
     collections::HashMap,
     convert::TryFrom,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-use tari_common_types::types::Signature;
+use tari_common_types::types::{HashOutput, Signature};
 use tari_comms::{
-    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus},
+    protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
     PeerConnection,
 };
 use tari_core::{
@@ -47,6 +48,8 @@ use tari_core::{
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
             TipInfoResponse,
             TxQueryBatchResponses as TxQueryBatchResponsesProto,
             TxQueryResponse as TxQueryResponseProto,
@@ -63,7 +66,7 @@ use tari_core::{
     tari_utilities::Hashable,
     transactions::transaction::{Transaction, TransactionOutput},
 };
-use tokio::time::sleep;
+use tokio::{sync::mpsc, time::sleep};
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
 where T: From<RpcClient> + NamedProtocolService {
@@ -87,6 +90,8 @@ pub struct BaseNodeWalletRpcMockState {
     utxo_query_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     query_deleted_calls: Arc<Mutex<Vec<QueryDeletedRequest>>>,
     get_header_by_height_calls: Arc<Mutex<Vec<u64>>>,
+    get_height_at_time_calls: Arc<Mutex<Vec<u64>>>,
+    sync_utxo_by_block_calls: Arc<Mutex<Vec<(HashOutput, HashOutput)>>>,
     submit_transaction_response: Arc<Mutex<TxSubmissionResponse>>,
     transaction_query_response: Arc<Mutex<TxQueryResponse>>,
     transaction_query_batch_response: Arc<Mutex<TxQueryBatchResponsesProto>>,
@@ -100,6 +105,8 @@ pub struct BaseNodeWalletRpcMockState {
     synced: Arc<Mutex<bool>>,
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
     blocks: Arc<Mutex<HashMap<u64, BlockHeader>>>,
+    utxos_by_block: Arc<Mutex<Vec<UtxosByBlock>>>,
+    sync_utxos_by_block_trigger_channel: Arc<Mutex<Option<mpsc::Receiver<usize>>>>,
 }
 
 #[allow(clippy::mutex_atomic)]
@@ -112,6 +119,8 @@ impl BaseNodeWalletRpcMockState {
             utxo_query_calls: Arc::new(Mutex::new(vec![])),
             query_deleted_calls: Arc::new(Mutex::new(vec![])),
             get_header_by_height_calls: Arc::new(Mutex::new(vec![])),
+            get_height_at_time_calls: Arc::new(Mutex::new(vec![])),
+            sync_utxo_by_block_calls: Arc::new(Mutex::new(vec![])),
             submit_transaction_response: Arc::new(Mutex::new(TxSubmissionResponse {
                 accepted: true,
                 rejection_reason: TxSubmissionRejectionReason::None,
@@ -159,6 +168,8 @@ impl BaseNodeWalletRpcMockState {
             synced: Arc::new(Mutex::new(true)),
             utxos: Arc::new(Mutex::new(Vec::new())),
             blocks: Arc::new(Mutex::new(Default::default())),
+            utxos_by_block: Arc::new(Mutex::new(vec![])),
+            sync_utxos_by_block_trigger_channel: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -219,6 +230,17 @@ impl BaseNodeWalletRpcMockState {
         *lock = blocks;
     }
 
+    pub fn set_utxos_by_block(&self, utxos_by_block: Vec<UtxosByBlock>) {
+        let mut lock = acquire_lock!(self.utxos_by_block);
+        *lock = utxos_by_block;
+    }
+
+    /// This channel will used to control which height a sync stream will return to from the testing client
+    pub fn set_utxos_by_block_trigger_channel(&self, channel: mpsc::Receiver<usize>) {
+        let mut lock = acquire_lock!(self.sync_utxos_by_block_trigger_channel);
+        *lock = Some(channel);
+    }
+
     pub fn take_utxo_query_calls(&self) -> Vec<Vec<Vec<u8>>> {
         acquire_lock!(self.utxo_query_calls).drain(..).collect()
     }
@@ -275,6 +297,44 @@ impl BaseNodeWalletRpcMockState {
         acquire_lock!(self.get_header_by_height_calls).pop()
     }
 
+    pub fn pop_get_height_at_time_calls(&self) -> Option<u64> {
+        acquire_lock!(self.get_height_at_time_calls).pop()
+    }
+
+    pub fn take_get_height_at_time_calls(&self) -> Vec<u64> {
+        acquire_lock!(self.get_height_at_time_calls).drain(..).collect()
+    }
+
+    pub fn take_sync_utxos_by_block_calls(&self) -> Vec<(HashOutput, HashOutput)> {
+        acquire_lock!(self.sync_utxo_by_block_calls).drain(..).collect()
+    }
+
+    pub fn pop_sync_utxos_by_block_calls(&self) -> Option<(HashOutput, HashOutput)> {
+        acquire_lock!(self.sync_utxo_by_block_calls).pop()
+    }
+
+    pub async fn wait_pop_sync_utxos_by_block_calls(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<(HashOutput, HashOutput)>, String> {
+        let now = Instant::now();
+        let mut count = 0usize;
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.sync_utxo_by_block_calls);
+            count = (*lock).len();
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            sleep(Duration::from_millis(100)).await;
+        }
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
+    }
+
     pub async fn wait_pop_get_header_by_height_calls(
         &self,
         num_calls: usize,
@@ -284,6 +344,24 @@ impl BaseNodeWalletRpcMockState {
         let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.get_header_by_height_calls);
+            count = (*lock).len();
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            sleep(Duration::from_millis(100)).await;
+        }
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
+    }
+
+    pub async fn wait_pop_get_height_at_time(&self, num_calls: usize, timeout: Duration) -> Result<Vec<u64>, String> {
+        let now = Instant::now();
+        let mut count = 0usize;
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.get_height_at_time_calls);
             count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
@@ -644,6 +722,107 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
             Err(RpcStatus::not_found("Header not found"))
         }
     }
+
+    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
+        let time = request.into_message();
+
+        let mut height_at_time_lock = acquire_lock!(self.state.get_height_at_time_calls);
+        (*height_at_time_lock).push(time);
+
+        let block_lock = acquire_lock!(self.state.blocks);
+
+        let mut headers = (*block_lock).values().cloned().collect::<Vec<BlockHeader>>();
+        headers.sort_by(|a, b| b.height.cmp(&a.height));
+
+        let mut found_height = 0;
+        for h in headers.iter() {
+            if h.timestamp.as_u64() < time {
+                found_height = h.height;
+                break;
+            }
+        }
+        if found_height == 0 {
+            found_height = headers[0].height;
+        }
+        Ok(Response::new(found_height))
+    }
+
+    async fn sync_utxos_by_block(
+        &self,
+        request: Request<SyncUtxosByBlockRequest>,
+    ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus> {
+        let SyncUtxosByBlockRequest {
+            start_header_hash,
+            end_header_hash,
+        } = request.into_message();
+
+        let mut sync_utxo_by_block_lock = acquire_lock!(self.state.sync_utxo_by_block_calls);
+        (*sync_utxo_by_block_lock).push((start_header_hash.clone(), end_header_hash.clone()));
+
+        let block_lock = acquire_lock!(self.state.utxos_by_block);
+        let mut blocks = (*block_lock).clone();
+        blocks.sort_by(|a, b| a.height.cmp(&b.height));
+
+        let start_index = blocks.iter().position(|b| b.header_hash == start_header_hash);
+        let end_index = blocks.iter().position(|b| b.header_hash == end_header_hash);
+
+        let mut channel_lock = acquire_lock!(self.state.sync_utxos_by_block_trigger_channel);
+        let trigger_channel_option = (*channel_lock).take();
+
+        if let (Some(start), Some(end)) = (start_index, end_index) {
+            let (tx, rx) = mpsc::channel(200);
+            let task = async move {
+                if let Some(mut trigger_channel) = trigger_channel_option {
+                    let mut current_block = start;
+                    while let Some(trigger_block) = trigger_channel.recv().await {
+                        if trigger_block < current_block {
+                            // This is a testing harness so just panic if used incorrectly.
+                            panic!("Trigger block cannot be before current starting block");
+                        }
+                        for b in blocks
+                            .clone()
+                            .into_iter()
+                            .skip(current_block)
+                            .take(min(trigger_block, end) - current_block + 1)
+                        {
+                            let item = SyncUtxosByBlockResponse {
+                                outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
+                                height: b.height,
+                                header_hash: b.header_hash.clone(),
+                            };
+                            tx.send(Ok(item)).await.unwrap();
+                        }
+                        if trigger_block >= end {
+                            break;
+                        }
+                        current_block = trigger_block + 1;
+                    }
+                } else {
+                    for b in blocks.into_iter().skip(start).take(end - start + 1) {
+                        let item = SyncUtxosByBlockResponse {
+                            outputs: b.utxos.clone().into_iter().map(|o| o.into()).collect(),
+                            height: b.height,
+                            header_hash: b.header_hash.clone(),
+                        };
+                        tx.send(Ok(item)).await.unwrap();
+                    }
+                }
+            };
+
+            tokio::spawn(task);
+
+            Ok(Streaming::new(rx))
+        } else {
+            Err(RpcStatus::not_found("Headers not found"))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UtxosByBlock {
+    pub height: u64,
+    pub header_hash: Vec<u8>,
+    pub utxos: Vec<TransactionOutput>,
 }
 
 #[cfg(test)]

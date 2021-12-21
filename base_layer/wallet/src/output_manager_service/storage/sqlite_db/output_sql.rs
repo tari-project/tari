@@ -59,7 +59,7 @@ use crate::{
     },
 };
 
-const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
+const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Debug, Queryable, Identifiable, PartialEq)]
 #[table_name = "outputs"]

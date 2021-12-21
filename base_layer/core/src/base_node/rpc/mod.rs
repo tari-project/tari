@@ -23,8 +23,11 @@
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
+pub mod sync_utxos_by_block_task;
+
+#[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
 #[cfg(feature = "base_node")]
@@ -43,6 +46,8 @@ use crate::{
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
             TipInfoResponse,
             TxQueryBatchResponses,
             TxQueryResponse,
@@ -97,6 +102,15 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+
+    #[rpc(method = 10)]
+    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
+
+    #[rpc(method = 11)]
+    async fn sync_utxos_by_block(
+        &self,
+        request: Request<SyncUtxosByBlockRequest>,
+    ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

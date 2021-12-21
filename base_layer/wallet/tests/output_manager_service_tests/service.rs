@@ -123,7 +123,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
-
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
     mock_base_node_service.set_default_base_node_state();

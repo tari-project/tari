@@ -123,7 +123,7 @@ use tari_wallet::{
     },
     storage::{
         database::WalletDatabase,
-        sqlite_db::WalletSqliteDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     },
     test_utils::{create_consensus_constants, make_wallet_database_connection},

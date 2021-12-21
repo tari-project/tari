@@ -36,7 +36,7 @@ use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
+    storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 
@@ -167,7 +167,7 @@ pub fn initialize_sqlite_database_backends(
 /// the DB
 /// TODO remove at next testnet reset
 fn check_for_incompatible_db_encryption(connection: &SqliteConnection) -> Result<(), WalletStorageError> {
-    use crate::{diesel::RunQueryDsl, schema::wallet_settings, storage::sqlite_db::WalletSettingSql};
+    use crate::{diesel::RunQueryDsl, schema::wallet_settings, storage::sqlite_db::wallet::WalletSettingSql};
 
     if wallet_settings::table
         .filter(wallet_settings::key.eq("MasterSecretKey".to_string()))

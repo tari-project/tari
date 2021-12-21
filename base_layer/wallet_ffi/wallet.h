@@ -688,7 +688,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int *error_out);
 ///     - ConnectedToBaseNode, 0, 1
 ///     - ConnectionToBaseNodeFailed, number of retries, retry limit
 ///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's scanned, MicroTari recovered,
+///     - Completed, total number of UTXO's recovered, MicroTari recovered,
 ///     - ScanningRoundFailed, number of retries, retry limit
 ///     - RecoveryFailed, 0, 0
 ///
