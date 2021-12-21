@@ -184,9 +184,13 @@ impl LaunchpadConfig {
     fn build_mounts(&self, blockchain: bool, general: bool, volume_name: String) -> Vec<Mount> {
         let mut mounts = Vec::with_capacity(2);
         if general {
+            #[cfg(not(target_os = "linux"))]
+            let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
+            #[cfg(target_os = "linux")]
+            let host = self.data_directory.to_string_lossy().to_string();
             let mount = Mount {
                 target: Some("/var/tari".to_string()),
-                source: Some(format!("/host_mnt{}", self.data_directory.to_string_lossy())),
+                source: Some(host),
                 typ: Some(MountTypeEnum::BIND),
                 bind_options: None,
                 ..Default::default()

@@ -154,9 +154,11 @@ pub async fn start_service(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, String> {
-    start_service_impl(app, service_name, settings)
-        .await
-        .map_err(|e| e.to_string())
+    start_service_impl(app, service_name, settings).await.map_err(|e| {
+        let error = e.chained_message();
+        error!("{}", error);
+        error
+    })
 }
 
 /// Stops the specified service
@@ -173,9 +175,11 @@ pub async fn stop_service(state: State<'_, AppState>, service_name: String) -> R
 /// stopped manually)
 #[tauri::command]
 pub async fn create_default_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, String> {
-    create_default_workspace_impl(app, settings)
-        .await
-        .map_err(|e| e.to_string())
+    create_default_workspace_impl(app, settings).await.map_err(|e| {
+        let error = e.chained_message();
+        error!("{}", error);
+        error
+    })
 }
 
 async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, LauncherError> {
