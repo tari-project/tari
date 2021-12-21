@@ -2,11 +2,13 @@
   <div class="containers">
     <h1>Containers</h1>
     <o-button @click="pullImages">Pull images</o-button>
-    <ul>
-      <li v-for="(image, i) of imageList" :key="i"><b>{{ image }}</b>:{{ ' ' }}{{ info[image].status }} /
-        {{ info[image].progress }}%
-      </li>
-    </ul>
+    <table>
+      <tr v-for="(image,i) in imageList" :key="i">
+      <td><b>{{ image.displayName }}</b></td>
+      <td>{{ image.status }}</td>
+      <td class="progress">{{ image.progress }}</td>
+      </tr>
+    </table>
     <h2>Errors</h2>
     <p class="error">{{ errors }}</p>
   </div>
@@ -21,10 +23,10 @@ async function pullImages() {
   try {
     const unlisten = await listen('image-pull-progress', event => {
       console.log(event);
-      const name = event.payload.name;
+      const name = event.payload.image.split(':')[0];
       const progInfo = event.payload.info;
-      this.info[name].status = progInfo.status || "-";
-      this.info[name].progress = progInfo.progress || 0;
+      this.imageList[name].status = progInfo.status || "-";
+      this.imageList[name].progress = progInfo.progress || "";
     });
     await invoke('pull_images');
     await unlisten();
@@ -38,24 +40,19 @@ async function pullImages() {
 
 export default {
   name: 'containers',
-  async setup() {
-    console.log("Getting image list");
-    let imageList = [];
-    try {
-      imageList.value = await invoke("image_list");
-    } catch (err) {
-      console.log(err);
-      console.log("Using default image list");
-    }
-    return {imageList}
-  },
 
   data() {
-    const info = {};
     const errors = "None";
-    console.log("ImageList:", this.imageList);
-    this.imageList.forEach(p => info[p] = {status: "Unknown", progress: 0});
-    return {info, errors}
+    const imageList = {
+      'quay.io/tarilabs/tor': {displayName: 'tor', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/tari_base_node' : {displayName: 'base node', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/tari_console_wallet': {displayName: 'wallet', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/tari_sha3_miner': {displayName: 'SHA3 miner', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/tari_mm_proxy': {displayName: 'Merge miner proxy', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/xmrig': {displayName: 'xmrig', status: "Unknown", progress: ""},
+      'quay.io/tarilabs/monerod': {displayName: 'monerod', status: "Unknown", progress: ""},
+    }
+    return {imageList, errors}
   },
   methods: {pullImages}
 }
@@ -63,15 +60,17 @@ export default {
 
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
-ul {
-  font-size: 10pt;
-  list-style-type: square;
+
+table {
+  text-align: left;
+  border: 1px;
+}
+td {
   padding: 5px;
 }
-
-li {
-  text-align: left;
-  margin: 0 10px;
+td.progress {
+  font-family: "Courier New", monospace;
+  font-size: 8pt;
 }
 
 p.error {

@@ -48,12 +48,14 @@ use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
 static DEFAULT_TAG: &str = "latest";
 
-pub static DEFAULT_IMAGES: [ImageType; 5] = [
+pub static DEFAULT_IMAGES: [ImageType; 7] = [
     ImageType::BaseNode,
     ImageType::Wallet,
     ImageType::Sha3Miner,
     ImageType::Tor,
     ImageType::MmProxy,
+    ImageType::XmRig,
+    ImageType::Monerod,
 ];
 
 pub struct Workspaces {
