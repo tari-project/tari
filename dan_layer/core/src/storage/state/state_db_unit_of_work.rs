@@ -22,6 +22,9 @@
 
 use std::sync::{Arc, RwLock};
 
+use bs58;
+use patricia_tree::PatriciaMap;
+
 use crate::{
     models::StateRoot,
     storage::{
@@ -130,13 +133,24 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .backend_adapter
             .create_transaction()
             .map_err(TBackendAdapter::Error::into)?;
+        let mut current_tree = inner
+            .backend_adapter
+            .get_current_state_tree(&tx)
+            .map_err(TBackendAdapter::Error::into)?;
         for item in &inner.updates {
             let i = item.get();
             inner
                 .backend_adapter
                 .update_key_value(&i.schema, &i.key, &i.value, &tx)
                 .map_err(TBackendAdapter::Error::into)?;
+            let key = format!("{}.{}", &i.schema, bs58::encode(&i.key).into_string());
+            current_tree.insert(key, i.value.clone());
         }
+
+        inner
+            .backend_adapter
+            .set_current_state_tree(current_tree, &tx)
+            .map_err(TBackendAdapter::Error::into)?;
 
         inner
             .backend_adapter
@@ -148,6 +162,12 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
     }
 
     fn calculate_root(&self) -> Result<StateRoot, StorageError> {
+        let inner = self.inner.read().unwrap();
+        let tx = inner
+            .backend_adapter
+            .create_transaction()
+            .map_err(TBackendAdapter::Error::into)?;
+        for current_patricia in inner.backend_adapter.current_state_tree(&tx) {}
         Ok(StateRoot::default())
     }
 }

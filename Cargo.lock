@@ -5006,6 +5006,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake2",
+ "bs58",
  "bytecodec",
  "clap",
  "digest 0.9.0",

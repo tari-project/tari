@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use patricia_tree::PatriciaMap;
+
 use crate::storage::StorageError;
 
 pub trait StateDbBackendAdapter: Send + Sync + Clone {
@@ -37,4 +39,10 @@ pub trait StateDbBackendAdapter: Send + Sync + Clone {
     fn get(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
     fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error>;
     fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
+    fn get_current_state_tree(&self, tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error>;
+    fn set_current_state_tree(
+        &self,
+        tree: PatriciaMap<Vec<u8>>,
+        tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error>;
 }
