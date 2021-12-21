@@ -58,7 +58,7 @@
     </o-tab-item>
 
     <o-tab-item value="9" label="Logs">
-      <iframe src="http://localhost:9001" width="100%" height="1000"></iframe>
+      <logs></logs>
     </o-tab-item>
   </o-tabs>
 
@@ -72,6 +72,7 @@ import {listen} from "@tauri-apps/api/event";
 import {defineAsyncComponent} from "vue";
 import service from "@/components/Service";
 import settings from "@/components/Settings";
+import logs from '@/components/Logs';
 
 const imageNames = [
   "tor",
@@ -142,7 +143,8 @@ export default {
   components: {
     Containers: defineAsyncComponent(() => import("@/components/Containers")),
     service,
-    settings
+    settings,
+    logs,
   },
   data() {
     const options = {

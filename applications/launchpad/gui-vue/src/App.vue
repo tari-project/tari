@@ -15,7 +15,6 @@
 import containers from './components/Containers.vue';
 import launchDocker from "./components/LaunchDocker";
 
-
 export default {
   name: 'App',
   data() {

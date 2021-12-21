@@ -22,7 +22,7 @@ docker tag quay.io/tarilabs/xmrig:latest quay.io/tarilabs/xmrig:$VERSION
 docker push quay.io/tarilabs/xmrig:latest
 docker push quay.io/tarilabs/xmrig:$VERSION
 
-docker build -f docker_rig/fronttail.Dockerfile -t quay.io/tarilabs/frontail ./docker_rig
-docker tag quay.io/tarilabs/fronttail:latest quay.io/tarilabs/fronttail:$VERSION
-docker push quay.io/tarilabs/fronttail:latest
-docker push quay.io/tarilabs/fronttail:$VERSION
+docker build -f docker_rig/frontail.Dockerfile -t quay.io/tarilabs/frontail ./docker_rig
+docker tag quay.io/tarilabs/frontail:latest quay.io/tarilabs/frontail:$VERSION
+docker push quay.io/tarilabs/frontail:latest
+docker push quay.io/tarilabs/frontail:$VERSION

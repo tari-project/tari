@@ -22,27 +22,61 @@
 <!-- -->
 
 <template>
-    <iframe src="http://localhost:9001" width="100%" height="1000"></iframe>
+  <div v-if="ready">
+    <iframe src="http://localhost:18130" width="100%" height="1000"></iframe>
+  </div>
+  <div v-else>
+    <o-button @click="startServer">
+      Start Log server
+    </o-button>
+  </div>
 </template>
 
 <script>
-import {invoke} from '@tauri-apps/api/tauri'
 
-async function runFrontTail() {
+async function checkServer(self) {
   try {
-    await invoke('launch_fronttail');
+    let id = setInterval(async () => {
+      try {
+        await fetch("http://localhost:18130", {method: "HEAD", mode: "no-cors", cache: "no-cache"});
+        this.ready = true;
+        clearInterval(id);
+      } catch (err) {
+        if (!(err instanceof TypeError)) {
+          return;
+        }
+        if (err.message === "Failed to fetch" || err.message === "Load failed") {
+          console.log("Frontails not ready. Waiting some more..");
+        } else {
+          console.log("Frontails detected.", err.message);
+          self.ready = true;
+          clearInterval(id);
+        }
+      }
+    }, 5000);
   } catch (err) {
     console.log(err);
   }
 }
 
+async function startServer() {
+  console.log(`Starting Frontail...`);
+  await this.$store.dispatch('startContainer', 'frontail');
+}
+
 export default {
   name: 'logs',
 
-  data() {
-    return {}
+  async mounted() {
+    await checkServer(this)
   },
-  methods: {runFrontTail}
+
+  data() {
+    return {
+      ready: false
+    }
+  },
+  methods: {startServer}
 }
 </script>
 
