@@ -15,10 +15,10 @@ tari_comms = { path = "../../comms"}
 tari_utilities = "0.3.0"
 
 chrono = { version = "0.4.19", default-features = false }
-prost = "0.8"
-prost-types = "0.8"
-tonic = "0.5.2"
+prost = "0.9"
+prost-types = "0.9"
+tonic = "0.6.2"
 
 [build-dependencies]
-tonic-build = "0.5.2"
+tonic-build = "0.6.2"
 
