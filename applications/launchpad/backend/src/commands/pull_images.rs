@@ -21,15 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use bollard::models::CreateImageInfo;
+use futures::{future::join_all, stream::StreamExt, TryFutureExt};
+use serde::Serialize;
+use tauri::{AppHandle, Manager, Wry};
+
 use crate::{
     commands::AppState,
     docker::{ImageType, TariWorkspace},
     error::LauncherError,
 };
-use bollard::models::CreateImageInfo;
-use futures::{future::join_all, stream::StreamExt, TryFutureExt};
-use serde::Serialize;
-use tauri::{AppHandle, Manager, Wry};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Payload {

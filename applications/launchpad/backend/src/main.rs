@@ -2,8 +2,8 @@
 
 use log::*;
 use tari_launchpad::{
-    __cmd__create_new_workspace,
     __cmd__create_default_workspace,
+    __cmd__create_new_workspace,
     __cmd__events,
     __cmd__image_list,
     __cmd__launch_docker,

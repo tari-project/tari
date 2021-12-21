@@ -27,10 +27,12 @@
 //! from the host system, such as logs, and identity files. These all live in a 'workspace' folder, with several sub-
 //! directories for the individual components living under it.
 
-use crate::docker::{DockerWrapperError, ImageType};
-use log::*;
 use std::{fs, path::Path};
+
+use log::*;
 use strum::IntoEnumIterator;
+
+use crate::docker::{DockerWrapperError, ImageType};
 
 /// Creates the folders required for a new workspace off of the given root folder.
 /// IF the folders already exist, then nothing happens.
@@ -47,18 +49,19 @@ pub fn create_workspace_folders<P: AsRef<Path>>(root: P) -> Result<(), DockerWra
             true => {
                 debug!("{} already exists", p_str);
                 Ok(())
-            }
+            },
             false => {
                 info!("Creating new data folder, {}", p_str);
                 fs::create_dir(&p)?;
-                #[cfg(any(target_os = "linux", target_os = "macos"))] {
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                {
                     use std::os::unix::fs::PermissionsExt;
                     let mut perms = std::fs::metadata(&p)?.permissions();
                     perms.set_mode(0o777);
                     fs::set_permissions(&p, perms)?;
                 }
                 Ok(())
-            }
+            },
         }
     };
     let _ = make_subfolder("config")?;

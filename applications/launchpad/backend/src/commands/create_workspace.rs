@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::{commands::AppState, docker::create_workspace_folders, error::LauncherError};
-use log::*;
 use std::path::Path;
+
+use log::*;
 use tauri::{
     api::path::{resolve_path, BaseDirectory},
     AppHandle,
@@ -33,7 +33,9 @@ use tauri::{
     Wry,
 };
 
-/// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying 
+use crate::{commands::AppState, docker::create_workspace_folders, error::LauncherError};
+
+/// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying
 /// the default config files into it.
 #[tauri::command]
 pub fn create_new_workspace(app: AppHandle<Wry>, root_path: String) -> Result<(), String> {
@@ -42,12 +44,10 @@ pub fn create_new_workspace(app: AppHandle<Wry>, root_path: String) -> Result<()
     let _ = create_workspace_folders(root_path.as_str()).map_err(|e| e.chained_message());
     let path = Path::new(&root_path);
     copy_config_file(path, config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
-    copy_config_file(path,config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
+    copy_config_file(path, config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
     info!("Workspace at {} complete!", root_path);
     Ok(())
 }
-
-
 
 pub fn copy_config_file<S: AsRef<Path>>(
     root_path: S,

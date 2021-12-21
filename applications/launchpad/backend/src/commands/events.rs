@@ -21,15 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tauri::{AppHandle, Manager, Wry};
 use futures::StreamExt;
-use crate::commands::AppState;
 use log::*;
+use tauri::{AppHandle, Manager, Wry};
+
+use crate::commands::AppState;
 
 /// Subscribe to system-level docker events, such as container creation, volume, network events etc.
 /// This function does not actually return a result, but async commands have a [bug](https://github.com/tauri-apps/tauri/issues/2533)
 /// which is avoided by returning a `Result`.
-/// 
+///
 /// A side effect of this command is that events are emitted to the `tari://docker-system-event` channel. Front-ends
 /// can listen to this event stream to read in the event messages.
 #[tauri::command]
@@ -48,7 +49,9 @@ pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
                         warn!("Could not emit event to front-end, {:?}", err);
                     }
                 },
-                Err(err) => { warn!("Error in event stream: {:#?}", err) },
+                Err(err) => {
+                    warn!("Error in event stream: {:#?}", err)
+                },
             };
         }
         info!("Event stream has closed.");

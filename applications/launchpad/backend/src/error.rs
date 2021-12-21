@@ -21,10 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::docker::DockerWrapperError;
 use std::error::Error;
+
 use tauri::{api::Error as TauriApiError, Error as TauriError};
 use thiserror::Error;
+
+use crate::docker::DockerWrapperError;
 
 #[derive(Debug, Error)]
 pub enum LauncherError {

@@ -22,6 +22,7 @@
 //
 
 use std::error::Error;
+
 use tari_app_utilities::common::exit_codes::ExitCodes;
 use thiserror::Error;
 

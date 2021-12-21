@@ -21,13 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::convert::TryFrom;
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Formatter},
+};
+
 use bollard::{container::LogOutput, models::ContainerCreateResponse};
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
-use crate::docker::DockerWrapperError;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+
+use crate::docker::DockerWrapperError;
 
 //-------------------------------------------     ContainerId      ----------------------------------------------
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -233,7 +237,7 @@ impl ImageType {
             Self::Sha3Miner => "sha3_miner",
             Self::MmProxy => "mm_proxy",
             Self::Monerod => "monerod",
-            Self::Frontail => "frontail"
+            Self::Frontail => "frontail",
         }
     }
 }
@@ -252,7 +256,7 @@ impl TryFrom<&str> for ImageType {
             "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
             "monerod" | "monero" => Ok(Self::Monerod),
             "frontail" => Ok(Self::Frontail),
-            _ => Err(DockerWrapperError::InvalidImageType)
+            _ => Err(DockerWrapperError::InvalidImageType),
         }
     }
 }

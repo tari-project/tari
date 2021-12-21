@@ -119,9 +119,9 @@ pub fn release_memsocket_port(port: NonZeroU16) {
 /// ```rust,no_run
 /// use std::io::Result;
 ///
+/// use futures::prelude::*;
 /// use tari_comms::memsocket::{MemoryListener, MemorySocket};
 /// use tokio::io::*;
-/// use futures::prelude::*;
 ///
 /// async fn write_stormlight(mut stream: MemorySocket) -> Result<()> {
 ///     let msg = b"The most important step a person can take is always the next one.";
@@ -260,7 +260,7 @@ impl MemoryListener {
     ///         Ok(stream) => {
     ///             println!("new connection!");
     ///         },
-    ///         Err(e) => { /* connection failed */ }
+    ///         Err(e) => { /* connection failed */ },
     ///     }
     /// }
     /// # Ok(())}
@@ -309,8 +309,8 @@ impl<'a> Stream for Incoming<'a> {
 ///
 /// ```rust, no_run
 /// use futures::prelude::*;
-/// use tokio::io::*;
 /// use tari_comms::memsocket::MemorySocket;
+/// use tokio::io::*;
 ///
 /// # async fn run() -> ::std::io::Result<()> {
 /// let (mut socket_a, mut socket_b) = MemorySocket::new_pair();

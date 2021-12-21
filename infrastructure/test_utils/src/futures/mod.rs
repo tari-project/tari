@@ -30,16 +30,16 @@ mod async_assert_eventually;
 /// # use tari_test_utils::counter_context;
 ///
 /// {
-///   let mut my_fut = future::ready(());
-///   counter_context!(cx); // cx variable in scope
-///   assert!(my_fut.poll_unpin(&mut cx).is_ready());
+///     let mut my_fut = future::ready(());
+///     counter_context!(cx); // cx variable in scope
+///     assert!(my_fut.poll_unpin(&mut cx).is_ready());
 /// }
 ///
 /// {
-///   let mut my_fut = future::ready(());
-///   counter_context!(cx, counter); // cx and counter variables in scope
-///   assert!(my_fut.poll_unpin(&mut cx).is_ready());
-///   assert_eq!(counter.get(), 0); // `poll` didn't call the waker
+///     let mut my_fut = future::ready(());
+///     counter_context!(cx, counter); // cx and counter variables in scope
+///     assert!(my_fut.poll_unpin(&mut cx).is_ready());
+///     assert_eq!(counter.get(), 0); // `poll` didn't call the waker
 /// }
 /// ```
 #[macro_export]
@@ -63,9 +63,9 @@ macro_rules! counter_context {
 /// # use futures::future::{self, FutureExt};
 /// # use tari_test_utils::panic_context;
 ///
-///   let mut my_fut = future::ready(());
-///   panic_context!(cx); // cx variable in scope
-///   assert!(my_fut.poll_unpin(&mut cx).is_ready());
+/// let mut my_fut = future::ready(());
+/// panic_context!(cx); // cx variable in scope
+/// assert!(my_fut.poll_unpin(&mut cx).is_ready());
 /// ```
 #[macro_export]
 macro_rules! panic_context {

@@ -21,6 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::{convert::TryFrom, path::PathBuf, time::Duration};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, Wry};
+
 use crate::{
     commands::AppState,
     docker::{
@@ -38,11 +44,6 @@ use crate::{
     },
     error::LauncherError,
 };
-use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
-use tauri::{AppHandle, Manager, Wry};
-
-use log::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WorkspaceLaunchOptions {
@@ -74,9 +75,7 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
         let tor_delay = Duration::from_secs(options.wait_for_tor.unwrap_or(10));
         let base_node = match options.has_base_node {
             false => None,
-            true => Some(BaseNodeConfig {
-                delay: tor_delay,
-            }),
+            true => Some(BaseNodeConfig { delay: tor_delay }),
         };
         let wallet = match options.has_wallet {
             false => None,
@@ -105,7 +104,7 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
             true => {
                 let mut config = MmProxyConfig {
                     delay: Duration::from_secs(options.wait_for_tor.unwrap_or(15)),
-                    .. Default::default()
+                    ..Default::default()
                 };
                 if let Some(val) = options.monerod_url {
                     config.monerod_url = val;
@@ -130,7 +129,7 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
                     .unwrap_or_else(|| DEFAULT_MINING_ADDRESS.to_string());
                 Some(XmRigConfig {
                     delay: Duration::from_secs(options.wait_for_tor.unwrap_or(20)),
-                    monero_mining_address
+                    monero_mining_address,
                 })
             },
         };

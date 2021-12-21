@@ -21,6 +21,29 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::collections::HashMap;
+
+use bollard::{
+    container::{
+        Config,
+        CreateContainerOptions,
+        LogsOptions,
+        NetworkingConfig,
+        Stats,
+        StatsOptions,
+        StopContainerOptions,
+    },
+    models::{ContainerCreateResponse, EndpointSettings, HostConfig, Network},
+    network::{ConnectNetworkOptions, CreateNetworkOptions, InspectNetworkOptions},
+    volume::CreateVolumeOptions,
+    Docker,
+};
+use futures::{Stream, StreamExt, TryStreamExt};
+use log::*;
+use strum::IntoEnumIterator;
+use tari_app_utilities::identity_management::setup_node_identity;
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+
 use crate::docker::{
     models::{ContainerId, ContainerState},
     DockerWrapperError,
@@ -28,22 +51,6 @@ use crate::docker::{
     LaunchpadConfig,
     LogMessage,
 };
-use bollard::{
-    container::{Config, CreateContainerOptions, LogsOptions, StopContainerOptions},
-    models::{ContainerCreateResponse, HostConfig, Network},
-    network::{CreateNetworkOptions, InspectNetworkOptions},
-    volume::CreateVolumeOptions,
-    Docker,
-};
-use futures::{Stream, StreamExt, TryStreamExt};
-use log::*;
-use std::collections::HashMap;
-use bollard::container::{NetworkingConfig, Stats, StatsOptions};
-use bollard::models::{EndpointSettings};
-use bollard::network::ConnectNetworkOptions;
-use strum::IntoEnumIterator;
-use tari_app_utilities::identity_management::setup_node_identity;
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
 static DEFAULT_TAG: &str = "latest";
@@ -58,7 +65,8 @@ static DEFAULT_TAG: &str = "latest";
 /// Workspaces are referenced by a name, which is an arbitrary string, but by convention, you'll want to keep workspace
 /// names short and do not use spaces in workspace names.
 ///
-/// Docker containers are named using a `{workspace_name}_{image_type}` convention. See [TariWorkspace] for more details.
+/// Docker containers are named using a `{workspace_name}_{image_type}` convention. See [TariWorkspace] for more
+/// details.
 ///
 /// Each workspace should also have a unique data folder to keep logs and configuration separate, but this is not a hard
 /// requirement.
@@ -118,12 +126,12 @@ impl Workspaces {
 /// * **Blockchain data** is stored in a [Docker volume](https://docs.docker.com/storage/volumes/) that is not directly
 ///   accessible to the host system. This is primarily done for performance reasons, but should not be a major issue
 ///   since you seldom need direct access to the LMDB database. If you do need the database for some reason, you can
-///   mount the volume and run a bash command, for instance:
-///   `docker run --rm -v $(pwd):/backup -v blockchain:/blockchain ubuntu tar czvf /backup/backup.tar.gz /blockchain`.
-///   As currently written, the blockchain data is namespaced by workspace but it is also possible in principle for
-///   different workspaces to (TODO) share blockchain data (for the same network),
-///   thereby preventing the need to keep multiple copies of the blockchain. In this case, you need to be careful not to
-///   introduce contention from multiple nodes running against the same LMDB database, leading to corrupt db files.
+///   mount the volume and run a bash command, for instance: `docker run --rm -v $(pwd):/backup -v
+///   blockchain:/blockchain ubuntu tar czvf /backup/backup.tar.gz /blockchain`. As currently written, the blockchain
+///   data is namespaced by workspace but it is also possible in principle for different workspaces to (TODO) share
+///   blockchain data (for the same network), thereby preventing the need to keep multiple copies of the blockchain. In
+///   this case, you need to be careful not to introduce contention from multiple nodes running against the same LMDB
+///   database, leading to corrupt db files.
 /// * **Configuration** and log files are stored of the workspace `root_folder`. A typical folder structure looks like
 /// ```text
 ///      {root_folder}
@@ -204,9 +212,9 @@ impl TariWorkspace {
     }
 
     /// Returns the full image name for the given image type. for the default registry this is typically something like
-    /// `quay.io/tarilabs/tari_base_node:latest`. One should be able to use this string to do a successful 
+    /// `quay.io/tarilabs/tari_base_node:latest`. One should be able to use this string to do a successful
     /// `docker pull {image_name}`.
-    /// 
+    ///
     /// It also lets power users customise which version of docker images they want to run in the workspace.
     pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
         let reg = registry.unwrap_or(DEFAULT_REGISTRY);
@@ -227,7 +235,6 @@ impl TariWorkspace {
         }
         // Create or restart the volume
 
-
         let registry = self.config.registry.clone();
         let tag = self.config.tag.clone();
         for image in self.images_to_start() {
@@ -235,14 +242,18 @@ impl TariWorkspace {
             let name = self
                 .start_service(image, registry.clone(), tag.clone(), docker.clone())
                 .await?;
-            info!("Docker container {} ({}) successfully started", image.image_name(), name);
+            info!(
+                "Docker container {} ({}) successfully started",
+                image.image_name(),
+                name
+            );
         }
         Ok(())
     }
 
-    /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file 
+    /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file
     /// already exists at the canonical path location, it is loaded and returned instead.
-    /// 
+    ///
     /// The canonical path is defined as `{root_path}/config/{network}/{image_type}_id.json`
     pub fn create_or_load_identity(
         &self,
@@ -273,34 +284,39 @@ impl TariWorkspace {
     }
 
     /// Create and return a [`Stream`] of [`LogMessage`] instances for the `name`d container in the workspace.  
-    pub fn logs(&self, container_name: &str, docker: Docker) -> 
-                                                 Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
+    pub fn logs(
+        &self,
+        container_name: &str,
+        docker: Docker,
+    ) -> Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
         let options = LogsOptions::<String> {
             follow: true,
             stdout: true,
             stderr: true,
             ..Default::default()
         };
-        self.containers.get(container_name)
-            .map(move |container| {
-                let id = container.id();
-                docker.logs(id.as_str(), Some(options))
-                    .map(|log| {
-                        log.map(LogMessage::from)
-                            .map_err(DockerWrapperError::from)
-                    })
-            })
+        self.containers.get(container_name).map(move |container| {
+            let id = container.id();
+            docker
+                .logs(id.as_str(), Some(options))
+                .map(|log| log.map(LogMessage::from).map_err(DockerWrapperError::from))
+        })
     }
 
     /// Returns a [`Stream`] of resource stats for the container `name`, if it exists
-    pub fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
+    pub fn resource_stats(
+        &self,
+        name: &str,
+        docker: Docker,
+    ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
         if let Some(container) = self.containers.get(name) {
             let options = StatsOptions {
                 stream: true,
-                one_shot: false
+                one_shot: false,
             };
             let id = container.id();
-            let stream = docker.stats(id.as_str(), Some(options))
+            let stream = docker
+                .stats(id.as_str(), Some(options))
                 .map_err(DockerWrapperError::from);
             Some(stream)
         } else {
@@ -345,10 +361,10 @@ impl TariWorkspace {
         let ports = self.config.ports(image);
         let port_map = self.config.port_map(image);
         let mounts = self.config.mounts(image, self.tari_blockchain_volume_name());
-        let mut endpoints= HashMap::new();
+        let mut endpoints = HashMap::new();
         let endpoint = EndpointSettings {
             aliases: Some(vec![image.container_name().to_string()]),
-            .. Default::default()
+            ..Default::default()
         };
         endpoints.insert(self.network_name(), endpoint);
         let config = Config::<String> {
@@ -371,7 +387,7 @@ impl TariWorkspace {
                 ..Default::default()
             }),
             networking_config: Some(NetworkingConfig {
-                endpoints_config: endpoints
+                endpoints_config: endpoints,
             }),
             ..Default::default()
         };
@@ -446,9 +462,12 @@ impl TariWorkspace {
         let container = match self.container_mut(name) {
             Some(c) => c,
             None => {
-                info!("Cannot stop container {}. It was not found in the current workspace", name);
+                info!(
+                    "Cannot stop container {}. It was not found in the current workspace",
+                    name
+                );
                 return;
-            }
+            },
         };
         let options = StopContainerOptions { t: 0 };
         let id = container.id().clone();
@@ -564,20 +583,35 @@ impl TariWorkspace {
         Ok(())
     }
 
-    /// Connects a container to the workspace network. This is not typically needed, since the container will automatically
-    /// be connected to the network when it is created in [`start_service`].
-    pub async fn connect_to_network(&self, id: &ContainerId, image: ImageType, docker: &Docker) -> Result<(), DockerWrapperError> {
+    /// Connects a container to the workspace network. This is not typically needed, since the container will
+    /// automatically be connected to the network when it is created in [`start_service`].
+    pub async fn connect_to_network(
+        &self,
+        id: &ContainerId,
+        image: ImageType,
+        docker: &Docker,
+    ) -> Result<(), DockerWrapperError> {
         let network = self.network_name();
         let options = ConnectNetworkOptions {
             container: id.as_str(),
             endpoint_config: EndpointSettings {
                 aliases: Some(vec![image.container_name().to_string()]),
-                .. Default::default()
-            }
+                ..Default::default()
+            },
         };
-        info!("Connecting container {} ({}) to network {}...", image.image_name(), id, network);
+        info!(
+            "Connecting container {} ({}) to network {}...",
+            image.image_name(),
+            id,
+            network
+        );
         docker.connect_network(network.as_str(), options).await?;
-        info!("Docker container {} ({}) connected to network {}", image.image_name(), id, network);
+        info!(
+            "Docker container {} ({}) connected to network {}",
+            image.image_name(),
+            id,
+            network
+        );
         Ok(())
     }
 }

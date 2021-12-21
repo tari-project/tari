@@ -21,15 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::docker::{DockerWrapperError, TariNetwork};
+use std::{collections::HashMap, convert::TryFrom, path::PathBuf, time::Duration};
+
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, convert::TryFrom, path::PathBuf, time::Duration};
 use strum_macros::EnumIter;
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
-use crate::docker::models::ImageType;
+
+use crate::docker::{models::ImageType, DockerWrapperError, TariNetwork};
 
 // TODO get a proper mining address for each network
 pub const DEFAULT_MINING_ADDRESS: &str =
@@ -250,7 +251,7 @@ impl LaunchpadConfig {
         }
     }
 
-    /// Returns the canonical path to the id files. The canonical path is defined as 
+    /// Returns the canonical path to the id files. The canonical path is defined as
     /// `{root_path}/config/{network}/{image_type}_id.json`
     pub fn id_path(&self, root_path: &str, image_type: ImageType) -> Option<PathBuf> {
         match image_type {
@@ -265,7 +266,14 @@ impl LaunchpadConfig {
     }
 
     fn frontail_cmd(&self) -> Vec<String> {
-        let args = vec!["-p", "18130", "base_node/log/core.log", "wallet/log/core.log", "sha3_miner/log/core.log", "mm_proxy/log/core.log"];
+        let args = vec![
+            "-p",
+            "18130",
+            "base_node/log/core.log",
+            "wallet/log/core.log",
+            "sha3_miner/log/core.log",
+            "mm_proxy/log/core.log",
+        ];
         args.into_iter().map(String::from).collect()
     }
 
@@ -326,18 +334,15 @@ impl LaunchpadConfig {
         args.into_iter().map(String::from).collect()
     }
 
-    /// Returns the bollard configuration map. You can specify any/all of the host-mounted data folder, of the blockchain
-    /// folder to map.
+    /// Returns the bollard configuration map. You can specify any/all of the host-mounted data folder, of the
+    /// blockchain folder to map.
     pub fn build_volumes(&self, general: bool, tari_blockchain: bool) -> HashMap<String, HashMap<(), ()>> {
         let mut volumes = HashMap::new();
         if general {
             volumes.insert("/var/tari".to_string(), HashMap::<(), ()>::new());
         }
         if tari_blockchain {
-            volumes.insert(
-                format!("/blockchain"),
-                HashMap::new(),
-            );
+            volumes.insert(format!("/blockchain"), HashMap::new());
         }
         volumes
     }
@@ -438,9 +443,7 @@ impl LaunchpadConfig {
     fn xmrig_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
         if let Some(config) = &self.xmrig {
-            env.append(&mut vec![
-                format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9),
-            ]);
+            env.append(&mut vec![format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9)]);
         }
         env
     }

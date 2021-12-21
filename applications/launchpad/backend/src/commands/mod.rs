@@ -21,25 +21,24 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-///! This module defines all the Tauri commands we expose to the front-end.
-///! These are generally constructed as wrappers around the lower-level methods in the `docker` module.
-///! All the commands follow roughly the same pattern:
-///! - handle input parameters
-///! - call the the underlying function
-///! - Map results to JSON and errors to String.
-
+/// ! This module defines all the Tauri commands we expose to the front-end.
+/// ! These are generally constructed as wrappers around the lower-level methods in the `docker` module.
+/// ! All the commands follow roughly the same pattern:
+/// ! - handle input parameters
+/// ! - call the the underlying function
+/// ! - Map results to JSON and errors to String.
 mod create_workspace;
 mod events;
 mod launch_docker;
 mod pull_images;
-mod shutdown;
 mod service;
+mod shutdown;
 mod state;
 
 pub use create_workspace::create_new_workspace;
+pub use events::events;
 pub use launch_docker::launch_docker;
 pub use pull_images::{image_list, pull_images};
-pub use service::{start_service, stop_service, create_default_workspace};
+pub use service::{create_default_workspace, start_service, stop_service};
 pub use shutdown::shutdown;
-pub use events::events;
 pub use state::AppState;

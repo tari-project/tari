@@ -21,21 +21,35 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::convert::TryFrom;
-use std::time::Duration;
+use std::{convert::TryFrom, path::PathBuf, time::Duration};
+
 use bollard::Docker;
-use tauri::{AppHandle, Manager, State, Wry};
-use crate::commands::AppState;
-use log::*;
-use serde::{Serialize, Deserialize};
-use crate::docker::{BaseNodeConfig, ContainerId, create_workspace_folders, DEFAULT_MINING_ADDRESS, DEFAULT_MONEROD_URL, DockerWrapperError, LaunchpadConfig, MmProxyConfig, Sha3MinerConfig, TariWorkspace, WalletConfig, XmRigConfig};
-use crate::docker::TariNetwork;
-use crate::docker::helpers::create_password;
-use crate::error::LauncherError;
-use std::path::PathBuf;
-use crate::docker::ImageType;
 use futures::StreamExt;
-use crate::commands::create_workspace::copy_config_file;
+use log::*;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State, Wry};
+
+use crate::{
+    commands::{create_workspace::copy_config_file, AppState},
+    docker::{
+        create_workspace_folders,
+        helpers::create_password,
+        BaseNodeConfig,
+        ContainerId,
+        DockerWrapperError,
+        ImageType,
+        LaunchpadConfig,
+        MmProxyConfig,
+        Sha3MinerConfig,
+        TariNetwork,
+        TariWorkspace,
+        WalletConfig,
+        XmRigConfig,
+        DEFAULT_MINING_ADDRESS,
+        DEFAULT_MONEROD_URL,
+    },
+    error::LauncherError,
+};
 
 /// "Global" settings from the launcher front-end
 #[derive(Clone, Debug, Deserialize)]
@@ -62,9 +76,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         let tor_control_password = create_password(16);
         // Since most services are launched manually, we set the delay value to zero.
         let zero_delay = Duration::from_secs(0);
-        let base_node = BaseNodeConfig {
-            delay: zero_delay,
-        };
+        let base_node = BaseNodeConfig { delay: zero_delay };
         let wallet = WalletConfig {
             delay: zero_delay,
             password: settings.wallet_password,
@@ -83,7 +95,9 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
             mm_proxy.monero_username = settings.monero_username.unwrap_or_else(|| "".to_string());
             mm_proxy.monero_password = settings.monero_password.unwrap_or_else(|| "".to_string());
         }
-        let monero_mining_address = settings.monero_mining_address.unwrap_or_else(|| DEFAULT_MINING_ADDRESS.to_string());
+        let monero_mining_address = settings
+            .monero_mining_address
+            .unwrap_or_else(|| DEFAULT_MINING_ADDRESS.to_string());
         let xmrig = XmRigConfig {
             delay: Duration::from_secs(15), // Needs to wait for mm_proxy to be ready
             monero_mining_address,
@@ -135,8 +149,13 @@ pub struct StartServiceResult {
 /// - creates the log stream
 /// - creates the resource stats stream
 #[tauri::command]
-pub async fn start_service(app: AppHandle<Wry>, service_name: String, settings: ServiceSettings) -> Result<StartServiceResult, String> {
-    start_service_impl(app, service_name, settings).await
+pub async fn start_service(
+    app: AppHandle<Wry>,
+    service_name: String,
+    settings: ServiceSettings,
+) -> Result<StartServiceResult, String> {
+    start_service_impl(app, service_name, settings)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -147,15 +166,15 @@ pub async fn start_service(app: AppHandle<Wry>, service_name: String, settings: 
 /// Returns the container id
 #[tauri::command]
 pub async fn stop_service(state: State<'_, AppState>, service_name: String) -> Result<(), String> {
-    stop_service_impl(state, service_name).await
-        .map_err(|e| e.to_string())
+    stop_service_impl(state, service_name).await.map_err(|e| e.to_string())
 }
 
-/// The "default" workspace is one that is used in the manual front-end configuration (each container is started and stopped
-/// manually)
+/// The "default" workspace is one that is used in the manual front-end configuration (each container is started and
+/// stopped manually)
 #[tauri::command]
 pub async fn create_default_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, String> {
-    create_default_workspace_impl(app, settings).await
+    create_default_workspace_impl(app, settings)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -179,14 +198,19 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     Ok(should_create_workspace)
 }
 
-async fn start_service_impl(app: AppHandle<Wry>, service_name: String, settings: ServiceSettings) -> Result<StartServiceResult, LauncherError> {
+async fn start_service_impl(
+    app: AppHandle<Wry>,
+    service_name: String,
+    settings: ServiceSettings,
+) -> Result<StartServiceResult, LauncherError> {
     let state = app.state::<AppState>();
     let docker = state.docker_handle().await;
     let _ = create_default_workspace_impl(app.clone(), settings).await?;
     let mut wrapper = state.workspaces.write().await;
     debug!("Starting {} service", service_name);
     // We've just checked this, so it should never fail:
-    let workspace: &mut TariWorkspace = wrapper.get_workspace_mut("default")
+    let workspace: &mut TariWorkspace = wrapper
+        .get_workspace_mut("default")
         .ok_or(DockerWrapperError::UnexpectedError)?;
     // Check the identity requirements for the service
     let ids = workspace.create_or_load_identities()?;
@@ -202,14 +226,27 @@ async fn start_service_impl(app: AppHandle<Wry>, service_name: String, settings:
     let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
     let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
-    let state = workspace.container_mut(container_name.as_str())
+    let state = workspace
+        .container_mut(container_name.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;
     let id = state.id().to_string();
     let stats_events_name = stats_event_name(state.id());
     let log_events_name = log_event_name(state.name());
     // Set up event streams
-    container_logs(app.clone(), log_events_name.as_str(), container_name.as_str(), docker.clone(), workspace);
-    container_stats(app.clone(), stats_events_name.as_str(), container_name.as_str(), docker.clone(), workspace);
+    container_logs(
+        app.clone(),
+        log_events_name.as_str(),
+        container_name.as_str(),
+        docker.clone(),
+        workspace,
+    );
+    container_stats(
+        app.clone(),
+        stats_events_name.as_str(),
+        container_name.as_str(),
+        docker.clone(),
+        workspace,
+    );
     // Collect data for the return object
     let result = StartServiceResult {
         name: service_name,
@@ -222,7 +259,6 @@ async fn start_service_impl(app: AppHandle<Wry>, service_name: String, settings:
     Ok(result)
 }
 
-
 pub fn log_event_name(container_name: &str) -> String {
     format!("tari://docker_log_{}", container_name)
 }
@@ -231,7 +267,13 @@ pub fn stats_event_name(container_id: &ContainerId) -> String {
     format!("tari://docker_stats_{}", container_id.as_str())
 }
 
-fn container_logs(app: AppHandle<Wry>, event_name: &str, container_name: &str, docker: Docker, workspace: &mut TariWorkspace) {
+fn container_logs(
+    app: AppHandle<Wry>,
+    event_name: &str,
+    container_name: &str,
+    docker: Docker,
+    workspace: &mut TariWorkspace,
+) {
     info!("Setting up log events for {}", container_name);
     if let Some(mut stream) = workspace.logs(container_name, docker) {
         let event_name = event_name.to_string();
@@ -250,11 +292,20 @@ fn container_logs(app: AppHandle<Wry>, event_name: &str, container_name: &str, d
         });
         info!("Container log events configured.");
     } else {
-        info!("Log events could not be configured: {} is not a running container", container_name);
+        info!(
+            "Log events could not be configured: {} is not a running container",
+            container_name
+        );
     }
 }
 
-fn container_stats(app: AppHandle<Wry>, event_name: &str, container_name: &str, docker: Docker, workspace: &mut TariWorkspace) {
+fn container_stats(
+    app: AppHandle<Wry>,
+    event_name: &str,
+    container_name: &str,
+    docker: Docker,
+    workspace: &mut TariWorkspace,
+) {
     info!("Setting up Resource stats events for {}", container_name);
     if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
         let event_name = event_name.to_string();
@@ -273,7 +324,10 @@ fn container_stats(app: AppHandle<Wry>, event_name: &str, container_name: &str, 
         });
         info!("Resource stats events configured.");
     } else {
-        info!("Resource stats events could not be configured: {} is not a running container", container_name);
+        info!(
+            "Resource stats events could not be configured: {} is not a running container",
+            container_name
+        );
     }
 }
 
@@ -282,8 +336,9 @@ async fn stop_service_impl(state: State<'_, AppState>, service_name: String) -> 
     let mut wrapper = state.workspaces.write().await;
     debug!("Stopping {} service", service_name);
     // We've just checked this, so it should never fail:
-    let workspace: &mut TariWorkspace = wrapper.get_workspace_mut("default")
+    let workspace: &mut TariWorkspace = wrapper
+        .get_workspace_mut("default")
         .ok_or(DockerWrapperError::WorkspaceDoesNotExist("default".into()))?;
-            workspace.stop_container(service_name.as_str(), true, &docker).await;
+    workspace.stop_container(service_name.as_str(), true, &docker).await;
     Ok(())
 }

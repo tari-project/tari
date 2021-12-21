@@ -32,7 +32,7 @@ pub mod helpers;
 
 pub use error::DockerWrapperError;
 pub use filesystem::create_workspace_folders;
-pub use models::{ContainerId, ContainerState, ContainerStatus,    ImageType, LogMessage,  TariNetwork};
+pub use models::{ContainerId, ContainerState, ContainerStatus, ImageType, LogMessage, TariNetwork};
 pub use settings::{
     BaseNodeConfig,
     LaunchpadConfig,
@@ -41,7 +41,7 @@ pub use settings::{
     WalletConfig,
     XmRigConfig,
     DEFAULT_MINING_ADDRESS,
-    DEFAULT_MONEROD_URL
+    DEFAULT_MONEROD_URL,
 };
 pub use workspace::{TariWorkspace, Workspaces};
 pub use wrapper::DockerWrapper;

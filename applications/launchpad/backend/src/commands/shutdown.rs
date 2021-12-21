@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::commands::AppState;
 use log::*;
 use tauri::State;
+
+use crate::commands::AppState;
 
 /// Gracefully shutdown all containers and delete them. Blockchain volumes are preserved.
 #[tauri::command]
