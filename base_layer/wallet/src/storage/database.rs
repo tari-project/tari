@@ -31,7 +31,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
 use tari_key_manager::cipher_seed::CipherSeed;
 
-use crate::error::WalletStorageError;
+use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -45,6 +45,19 @@ pub trait WalletBackend: Send + Sync + Clone {
     fn apply_encryption(&self, passphrase: String) -> Result<Aes256Gcm, WalletStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), WalletStorageError>;
+
+    fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError>;
+    fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError>;
+    fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError>;
+    /// Clear scanned blocks from the givne height and higher
+    fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError>;
+    /// Clear scanned block history from before the specified height. Choice to exclude blocks that contained recovered
+    /// outputs
+    fn clear_scanned_blocks_before_height(
+        &self,
+        height: u64,
+        exclude_recovered: bool,
+    ) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -326,6 +339,60 @@ where T: WalletBackend + 'static
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(result)
     }
+
+    pub async fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let result = tokio::task::spawn_blocking(move || db_clone.get_scanned_blocks())
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(result)
+    }
+
+    pub async fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.save_scanned_block(scanned_block))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks())
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks_from_and_higher(height))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
+
+    pub async fn clear_scanned_blocks_before_height(
+        &self,
+        height: u64,
+        exclude_recovered: bool,
+    ) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.clear_scanned_blocks_before_height(height, exclude_recovered))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
+        Ok(())
+    }
 }
 
 impl Display for DbKey {
@@ -386,7 +453,7 @@ mod test {
 
     use crate::storage::{
         database::WalletDatabase,
-        sqlite_db::WalletSqliteDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
 

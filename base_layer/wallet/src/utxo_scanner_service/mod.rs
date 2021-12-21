@@ -24,7 +24,7 @@ pub mod error;
 pub mod handle;
 pub mod service;
 mod utxo_scanner_task;
-mod uxto_scanner_service_builder;
+pub mod uxto_scanner_service_builder;
 
 pub use utxo_scanner_task::RECOVERY_KEY;
 
