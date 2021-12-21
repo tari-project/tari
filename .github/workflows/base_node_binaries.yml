@@ -142,6 +142,12 @@ jobs:
             target
           key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Compile react (collectibles)
+        run: |
+          cd applications/tari_collectibles/web-app
+          npm install
+          npm run build
+
       - name: Build binaries
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
