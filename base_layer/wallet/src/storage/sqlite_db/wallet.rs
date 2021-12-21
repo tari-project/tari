@@ -50,12 +50,14 @@ use crate::{
     schema::{client_key_values, wallet_settings},
     storage::{
         database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+        sqlite_db::scanned_blocks::ScannedBlockSql,
         sqlite_utilities::wallet_db_connection::WalletDbConnection,
     },
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
+    utxo_scanner_service::service::ScannedBlock,
 };
 
-const LOG_TARGET: &str = "wallet::storage::sqlite_db";
+const LOG_TARGET: &str = "wallet::storage::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -512,6 +514,35 @@ impl WalletBackend for WalletSqliteDatabase {
 
         Ok(())
     }
+
+    fn get_scanned_blocks(&self) -> Result<Vec<ScannedBlock>, WalletStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::index(&conn).map(|sb| sb.into_iter().map(ScannedBlock::from).collect())
+    }
+
+    fn save_scanned_block(&self, scanned_block: ScannedBlock) -> Result<(), WalletStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::from(scanned_block).commit(&conn)
+    }
+
+    fn clear_scanned_blocks(&self) -> Result<(), WalletStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::clear_all(&conn)
+    }
+
+    fn clear_scanned_blocks_from_and_higher(&self, height: u64) -> Result<(), WalletStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::clear_from_and_higher(height, &conn)
+    }
+
+    fn clear_scanned_blocks_before_height(
+        &self,
+        height: u64,
+        exclude_recovered: bool,
+    ) -> Result<(), WalletStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        ScannedBlockSql::clear_before_height(height, exclude_recovered, &conn)
+    }
 }
 
 /// Confirm if database is encrypted or not and if a cipher is provided confirm the cipher is correct.
@@ -736,7 +767,7 @@ mod test {
 
     use crate::storage::{
         database::{DbKey, DbValue, WalletBackend},
-        sqlite_db::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
+        sqlite_db::wallet::{ClientKeyValueSql, WalletSettingSql, WalletSqliteDatabase},
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
 

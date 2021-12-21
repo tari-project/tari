@@ -43,14 +43,14 @@ pub enum UtxoScannerEvent {
     },
     /// Progress of the recovery process (current_block, current_chain_height)
     Progress {
-        current_index: u64,
-        total_index: u64,
+        current_height: u64,
+        tip_height: u64,
     },
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {
-        number_scanned: u64,
-        number_received: u64,
-        value_received: MicroTari,
+        final_height: u64,
+        num_recovered: u64,
+        value_recovered: MicroTari,
         time_taken: Duration,
     },
     /// Scanning process has failed and scanning process has exited

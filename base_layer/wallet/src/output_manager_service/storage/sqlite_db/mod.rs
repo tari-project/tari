@@ -67,7 +67,7 @@ use crate::{
 mod new_output_sql;
 mod output_sql;
 
-const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
+const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]

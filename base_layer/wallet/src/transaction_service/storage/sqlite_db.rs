@@ -66,7 +66,7 @@ use crate::{
     },
 };
 
-const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
+const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
