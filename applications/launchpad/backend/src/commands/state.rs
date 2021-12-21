@@ -25,6 +25,14 @@ use crate::docker::{DockerWrapper, Workspaces};
 use tauri::PackageInfo;
 use tokio::sync::RwLock as AsyncLock;
 
+/// The state variables that are managed by Tauri. Since the whole app is asynchronous, we need to store
+/// * the [`Workspaces`] object. This tracks global config settings, which containers we are running, and what their
+///   status is.
+/// * A handle to the docker API, via the [`DockerWrapper`] struct. The convenience function [`docker_handle`] gives you
+///   a cheap, thread-safe clone to the underlying docker API.
+/// * Package info, because Tauri doesn't give us an easy way to get at that in command callbacks for some reason.
+///
+/// Things that are mutable (docker, workspaces) are behind an [`AsyncLock`] for thread safety.
 pub struct AppState {
     pub docker: AsyncLock<DockerWrapper>,
     pub workspaces: AsyncLock<Workspaces>,

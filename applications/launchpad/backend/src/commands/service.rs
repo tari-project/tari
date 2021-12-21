@@ -103,13 +103,21 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
     }
 }
 
+/// [`start_service`] returns some useful info that the front-end can use to control the docker environment.
+/// In particular, the log and stats event names tell the front end which channels events will be broadcast on.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct StartServiceResult {
+    /// The name of the service that was created
     name: String,
+    /// The docker id of the container. Some commands need an id rather than the name.
     id: String,
+    /// What action was taken. Currently not used.
     action: String,
+    /// The name of the event stream to subscribe to for log events. These are the _docker_ logs and not the base node
+    /// _et. al._ logs. Those are saved to disk and accessible using the usual means, or with frontail.
     log_events_name: String,
+    /// The name of the event stream to subscribe to for resource events (CPU, memory etc).
     stats_events_name: String,
 }
 
@@ -117,6 +125,15 @@ pub struct StartServiceResult {
 ///
 /// The workspace will be created if this is the first call to `start_service`. Otherwise, the settings from the first
 /// call will be used and `settings` will be ignored.
+///
+/// Starting a service also:
+/// - creates a new workspace, if required
+/// - creates a network for the network, if required
+/// - creates new volumes, if required
+/// - creates new node identities, if required
+/// - launches the container
+/// - creates the log stream
+/// - creates the resource stats stream
 #[tauri::command]
 pub async fn start_service(app: AppHandle<Wry>, service_name: String, settings: ServiceSettings) -> Result<StartServiceResult, String> {
     start_service_impl(app, service_name, settings).await
@@ -134,6 +151,8 @@ pub async fn stop_service(state: State<'_, AppState>, service_name: String) -> R
         .map_err(|e| e.to_string())
 }
 
+/// The "default" workspace is one that is used in the manual front-end configuration (each container is started and stopped
+/// manually)
 #[tauri::command]
 pub async fn create_default_workspace(app: AppHandle<Wry>, settings: ServiceSettings) -> Result<bool, String> {
     create_default_workspace_impl(app, settings).await

@@ -56,6 +56,10 @@
     <o-tab-item value="8" label="Settings">
       <settings></settings>
     </o-tab-item>
+
+    <o-tab-item value="9" label="Logs">
+      <iframe src="http://localhost:9001" width="100%" height="1000"></iframe>
+    </o-tab-item>
   </o-tabs>
 
 

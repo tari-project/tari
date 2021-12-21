@@ -23,6 +23,7 @@
 
 use rand::distributions::{Alphanumeric, Distribution};
 
+/// Create a cryptographically secure password on length `len`
 pub fn create_password(len: usize) -> String {
     let mut rng = rand::thread_rng();
     Alphanumeric.sample_iter(&mut rng).take(len).map(char::from).collect()

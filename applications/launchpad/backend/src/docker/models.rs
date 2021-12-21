@@ -21,9 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::convert::TryFrom;
 use bollard::{container::LogOutput, models::ContainerCreateResponse};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use crate::docker::DockerWrapperError;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 //-------------------------------------------     ContainerId      ----------------------------------------------
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -128,5 +132,127 @@ impl From<LogOutput> for LogMessage {
             LogOutput::StdIn { message } => ("StdIn".to_string(), String::from_utf8_lossy(&message).into_owned()),
         };
         Self { source, message }
+    }
+}
+
+//-------------------------------------------     TariNetwork      ----------------------------------------------
+
+/// Supported networks for the launchpad
+#[derive(Serialize, Debug, Deserialize, Clone, Copy)]
+pub enum TariNetwork {
+    Weatherwax,
+    Igor,
+    Mainnet,
+}
+
+impl TariNetwork {
+    pub fn lower_case(&self) -> &'static str {
+        match self {
+            Self::Weatherwax => "weatherwax",
+            Self::Igor => "igor",
+            Self::Mainnet => "mainnet",
+        }
+    }
+
+    pub fn upper_case(&self) -> &'static str {
+        match self {
+            Self::Weatherwax => "WEATHERWAX",
+            Self::Igor => "IGOR",
+            Self::Mainnet => "MAINNET",
+        }
+    }
+}
+
+/// Default network is Weatherwax. This will change after mainnet launch
+impl Default for TariNetwork {
+    fn default() -> Self {
+        Self::Weatherwax
+    }
+}
+
+impl TryFrom<&str> for TariNetwork {
+    type Error = DockerWrapperError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "weatherwax" => Ok(TariNetwork::Weatherwax),
+            "igor" => Ok(TariNetwork::Igor),
+            "mainnet" => Ok(TariNetwork::Mainnet),
+            _ => Err(DockerWrapperError::UnsupportedNetwork),
+        }
+    }
+}
+
+//-------------------------------------------     ImageType      ----------------------------------------------
+
+#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
+pub enum ImageType {
+    Tor,
+    BaseNode,
+    Wallet,
+    XmRig,
+    Sha3Miner,
+    MmProxy,
+    Monerod,
+    Frontail,
+}
+
+impl ImageType {
+    pub fn image_name(&self) -> &str {
+        match self {
+            Self::Tor => "tor",
+            Self::BaseNode => "tari_base_node",
+            Self::Wallet => "tari_console_wallet",
+            Self::XmRig => "xmrig",
+            Self::Sha3Miner => "tari_sha3_miner",
+            Self::MmProxy => "tari_mm_proxy",
+            Self::Monerod => "monerod",
+            Self::Frontail => "frontail",
+        }
+    }
+
+    pub fn container_name(&self) -> &str {
+        match self {
+            Self::Tor => "tor",
+            Self::BaseNode => "base_node",
+            Self::Wallet => "wallet",
+            Self::XmRig => "xmrig",
+            Self::Sha3Miner => "sha3_miner",
+            Self::MmProxy => "mm_proxy",
+            Self::Monerod => "monerod",
+            Self::Frontail => "frontail",
+        }
+    }
+
+    pub fn data_folder(&self) -> &str {
+        match self {
+            Self::Tor => "tor",
+            Self::BaseNode => "base_node",
+            Self::Wallet => "wallet",
+            Self::XmRig => "xmrig",
+            Self::Sha3Miner => "sha3_miner",
+            Self::MmProxy => "mm_proxy",
+            Self::Monerod => "monerod",
+            Self::Frontail => "frontail"
+        }
+    }
+}
+
+impl TryFrom<&str> for ImageType {
+    type Error = DockerWrapperError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let s = value.to_lowercase();
+        match s.as_str() {
+            "tor" => Ok(Self::Tor),
+            "base_node" | "base node" => Ok(Self::BaseNode),
+            "wallet" => Ok(Self::Wallet),
+            "xmrig" => Ok(Self::XmRig),
+            "sha3_miner" | "sha3 miner" => Ok(Self::Sha3Miner),
+            "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
+            "monerod" | "monero" => Ok(Self::Monerod),
+            "frontail" => Ok(Self::Frontail),
+            _ => Err(DockerWrapperError::InvalidImageType)
+        }
     }
 }

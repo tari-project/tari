@@ -23,7 +23,7 @@
 
 use crate::{
     commands::AppState,
-    docker::{ImageType, TariWorkspace, DEFAULT_IMAGES},
+    docker::{ImageType, TariWorkspace},
     error::LauncherError,
 };
 use bollard::models::CreateImageInfo;
@@ -38,6 +38,18 @@ pub struct Payload {
     info: CreateImageInfo,
 }
 
+pub static DEFAULT_IMAGES: [ImageType; 8] = [
+    ImageType::BaseNode,
+    ImageType::Wallet,
+    ImageType::Sha3Miner,
+    ImageType::Tor,
+    ImageType::MmProxy,
+    ImageType::XmRig,
+    ImageType::Monerod,
+    ImageType::Frontail,
+];
+
+/// Provide a list of image names in the Tari "ecosystem"
 #[tauri::command]
 pub fn image_list() -> Vec<String> {
     DEFAULT_IMAGES
@@ -46,6 +58,7 @@ pub fn image_list() -> Vec<String> {
         .collect()
 }
 
+/// Pulls all the images concurrently using the docker API.
 #[tauri::command]
 pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
     let futures = DEFAULT_IMAGES

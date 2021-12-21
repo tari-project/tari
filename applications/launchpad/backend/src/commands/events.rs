@@ -26,8 +26,13 @@ use futures::StreamExt;
 use crate::commands::AppState;
 use log::*;
 
+/// Subscribe to system-level docker events, such as container creation, volume, network events etc.
+/// This function does not actually return a result, but async commands have a [bug](https://github.com/tauri-apps/tauri/issues/2533)
+/// which is avoided by returning a `Result`.
+/// 
+/// A side effect of this command is that events are emitted to the `tari://docker-system-event` channel. Front-ends
+/// can listen to this event stream to read in the event messages.
 #[tauri::command]
-// Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
 pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
     info!("Setting up event stream");
     let state = app.state::<AppState>();

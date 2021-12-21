@@ -21,6 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+///! This module defines all the Tauri commands we expose to the front-end.
+///! These are generally constructed as wrappers around the lower-level methods in the `docker` module.
+///! All the commands follow roughly the same pattern:
+///! - handle input parameters
+///! - call the the underlying function
+///! - Map results to JSON and errors to String.
+
 mod create_workspace;
 mod events;
 mod launch_docker;

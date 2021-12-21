@@ -28,20 +28,24 @@ use bollard::models::SystemEventsResponse;
 use bollard::system::EventsOptions;
 use futures::{Stream, TryStreamExt};
 
+/// A wrapper around a [`bollard::Docker`] instance providing some opinionated convenience methods for Tari workspaces.
 pub struct DockerWrapper {
     handle: Docker,
 }
 
 impl DockerWrapper {
+    /// Create a new wrapper
     pub fn new() -> Result<Self, DockerWrapperError> {
         let handle = Docker::connect_with_local_defaults()?;
         Ok(Self { handle })
     }
 
+    /// Returns the version of the _docker client_.
     pub fn version(&self) -> String {
         self.handle.client_version().to_string()
     }
 
+    /// Create a (cheap) clone of the [`Docker`] instance, suitable for passing to threads and futures.
     pub fn handle(&self) -> Docker {
         self.handle.clone()
     }
@@ -63,7 +67,8 @@ impl DockerWrapper {
         stream.map_err(DockerWrapperError::from)
     }
 
-    /// Returns a stream of relevant events
+    /// Returns a stream of relevant events. We're opinionated here, so we filter the stream to only return
+    /// container, image, network and volume events.
     pub async fn events(&self) -> impl Stream<Item = Result<SystemEventsResponse, DockerWrapperError>> {
         let docker = self.handle.clone();
         let mut type_filter = HashMap::new();

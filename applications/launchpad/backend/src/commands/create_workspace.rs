@@ -33,6 +33,8 @@ use tauri::{
     Wry,
 };
 
+/// Create a new workspace environment by creating a folder hierarchy (if required) at the `root_folder`, and copying 
+/// the default config files into it.
 #[tauri::command]
 pub fn create_new_workspace(app: AppHandle<Wry>, root_path: String) -> Result<(), String> {
     let config = app.config();

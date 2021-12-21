@@ -25,6 +25,7 @@ use crate::commands::AppState;
 use log::*;
 use tauri::State;
 
+/// Gracefully shutdown all containers and delete them. Blockchain volumes are preserved.
 #[tauri::command]
 // Return a Result until https://github.com/tauri-apps/tauri/issues/2533 is fixed
 pub async fn shutdown(state: State<'_, AppState>) -> Result<String, ()> {

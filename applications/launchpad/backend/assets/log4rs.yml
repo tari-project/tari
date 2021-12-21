@@ -70,32 +70,32 @@ root:
 loggers:
   # All events that get logged to core. Many of these are in separate log folders corresponding to their docker containers
   tari::application:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
   base_node::app:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
   c:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
   tari:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
   wallet:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
   tari_mining_node:
-    level: debug
+    level: info
     appenders:
       - core
     additive: false
@@ -129,7 +129,7 @@ loggers:
       - network
     additive: false
   yamux:
-    level: info
+    level: warn
     appenders:
       - network
     additive: false

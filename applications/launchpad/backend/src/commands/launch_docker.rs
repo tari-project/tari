@@ -149,6 +149,8 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
     }
 }
 
+/// This is an example of how we might launch a recipe. It's not currently used in the front-end, but essentially it
+/// launches all the containers in a choreographed fashion to stand up the entire mining infra.
 #[tauri::command]
 pub async fn launch_docker(app: AppHandle<Wry>, name: String, config: WorkspaceLaunchOptions) -> Result<(), String> {
     launch_docker_impl(app, name, config)
@@ -184,7 +186,7 @@ async fn launch_docker_impl(
             .get_workspace_mut(name.as_str())
             .ok_or(DockerWrapperError::UnexpectedError)?;
         // Pipe docker container logs to Tauri using namespaced events
-        workspace.start(docker.clone()).await?;
+        workspace.start_recipe(docker.clone()).await?;
     } // Drop write lock
     info!("Tari system, {} has launched", name);
     Ok(())

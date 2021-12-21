@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::docker::DockerWrapperError;
+use crate::docker::{DockerWrapperError, TariNetwork};
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
 use serde::{Deserialize, Serialize};
@@ -29,125 +29,13 @@ use std::{collections::HashMap, convert::TryFrom, path::PathBuf, time::Duration}
 use strum_macros::EnumIter;
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
+use crate::docker::models::ImageType;
 
 // TODO get a proper mining address for each network
 pub const DEFAULT_MINING_ADDRESS: &str =
     "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48";
 
-pub const DEFAULT_MONEROD_URL: &str= "http://monero-stagenet.exan.tech:38081";
-
-/// Supported networks for the launchpad
-#[derive(Serialize, Debug, Deserialize, Clone, Copy)]
-pub enum TariNetwork {
-    Weatherwax,
-    Igor,
-    Mainnet,
-}
-
-impl TariNetwork {
-    pub fn lower_case(&self) -> &'static str {
-        match self {
-            Self::Weatherwax => "weatherwax",
-            Self::Igor => "igor",
-            Self::Mainnet => "mainnet",
-        }
-    }
-
-    pub fn upper_case(&self) -> &'static str {
-        match self {
-            Self::Weatherwax => "WEATHERWAX",
-            Self::Igor => "IGOR",
-            Self::Mainnet => "MAINNET",
-        }
-    }
-}
-
-/// Default network is Weatherwax. This will change after mainnet launch
-impl Default for TariNetwork {
-    fn default() -> Self {
-        Self::Weatherwax
-    }
-}
-
-impl TryFrom<&str> for TariNetwork {
-    type Error = DockerWrapperError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "weatherwax" => Ok(TariNetwork::Weatherwax),
-            "igor" => Ok(TariNetwork::Igor),
-            "mainnet" => Ok(TariNetwork::Mainnet),
-            _ => Err(DockerWrapperError::UnsupportedNetwork),
-        }
-    }
-}
-
-#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
-pub enum ImageType {
-    Tor,
-    BaseNode,
-    Wallet,
-    XmRig,
-    Sha3Miner,
-    MmProxy,
-    Monerod,
-}
-
-impl ImageType {
-    pub fn image_name(&self) -> &str {
-        match self {
-            Self::Tor => "tor",
-            Self::BaseNode => "tari_base_node",
-            Self::Wallet => "tari_console_wallet",
-            Self::XmRig => "xmrig",
-            Self::Sha3Miner => "tari_sha3_miner",
-            Self::MmProxy => "tari_mm_proxy",
-            Self::Monerod => "monerod",
-        }
-    }
-
-    pub fn container_name(&self) -> &str {
-        match self {
-            Self::Tor => "tor",
-            Self::BaseNode => "base_node",
-            Self::Wallet => "wallet",
-            Self::XmRig => "xmrig",
-            Self::Sha3Miner => "sha3_miner",
-            Self::MmProxy => "mm_proxy",
-            Self::Monerod => "monerod",
-        }
-    }
-
-    pub fn data_folder(&self) -> &str {
-        match self {
-            Self::Tor => "tor",
-            Self::BaseNode => "base_node",
-            Self::Wallet => "wallet",
-            Self::XmRig => "xmrig",
-            Self::Sha3Miner => "sha3_miner",
-            Self::MmProxy => "mm_proxy",
-            Self::Monerod => "monerod",
-        }
-    }
-}
-
-impl TryFrom<&str> for ImageType {
-    type Error = DockerWrapperError;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let s = value.to_lowercase();
-        match s.as_str() {
-            "tor" => Ok(Self::Tor),
-            "base_node" | "base node" => Ok(Self::BaseNode),
-            "wallet" => Ok(Self::Wallet),
-            "xmrig" => Ok(Self::XmRig),
-            "sha3_miner" | "sha3 miner" => Ok(Self::Sha3Miner),
-            "mm_proxy" | "mm proxy" => Ok(Self::MmProxy),
-            "monerod" | "monero" => Ok(Self::Monerod),
-            _ => Err(DockerWrapperError::InvalidImageType)
-        }
-    }
-}
+pub const DEFAULT_MONEROD_URL: &str = "http://monero-stagenet.exan.tech:38081";
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BaseNodeConfig {
@@ -249,6 +137,9 @@ impl LaunchpadConfig {
         unimplemented!()
     }
 
+    /// Returns a list of environment variables that need to be set in the running container. For Tari containers, we
+    /// use this to override settings in the `config.yml` file that are generated on the fly here (the tor control
+    /// port password for example).
     pub fn environment(&self, image_type: ImageType) -> Vec<String> {
         match image_type {
             ImageType::BaseNode => self.base_node_environment(),
@@ -258,9 +149,11 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.mm_proxy_environment(),
             ImageType::Tor => self.tor_environment(),
             ImageType::Monerod => self.monerod_environment(),
+            ImageType::Frontail => self.common_envars(),
         }
     }
 
+    /// Provides a hashmap that bollard needs to mount the volumes we want for each image type.
     pub fn volumes(&self, image_type: ImageType) -> HashMap<String, HashMap<(), ()>> {
         match image_type {
             ImageType::BaseNode => self.build_volumes(true, true),
@@ -270,9 +163,11 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.build_volumes(true, false),
             ImageType::Tor => self.build_volumes(false, false),
             ImageType::Monerod => self.build_volumes(false, false),
+            ImageType::Frontail => self.build_volumes(true, false),
         }
     }
 
+    /// Similar to [`volumes`], provides a bollard configuration for mounting volumes.
     pub fn mounts(&self, image_type: ImageType, volume_name: String) -> Vec<Mount> {
         match image_type {
             ImageType::BaseNode => self.build_mounts(true, true, volume_name),
@@ -282,6 +177,7 @@ impl LaunchpadConfig {
             ImageType::MmProxy => self.build_mounts(false, true, volume_name),
             ImageType::Tor => self.build_mounts(false, false, volume_name),
             ImageType::Monerod => self.build_mounts(false, false, volume_name),
+            ImageType::Frontail => self.build_mounts(false, true, volume_name),
         }
     }
 
@@ -310,6 +206,8 @@ impl LaunchpadConfig {
         mounts
     }
 
+    /// Returns a map of ports to expose to the host system. TODO - remove the hardcoding so that multiple workspaces
+    /// don't have colliding exposed ports.
     pub fn ports(&self, image_type: ImageType) -> HashMap<String, HashMap<(), ()>> {
         match image_type {
             ImageType::BaseNode => create_port_map(&["18142", "18189"]),
@@ -319,9 +217,11 @@ impl LaunchpadConfig {
             ImageType::MmProxy => create_port_map(&[]),
             ImageType::Tor => create_port_map(&[]),
             ImageType::Monerod => create_port_map(&[]),
+            ImageType::Frontail => create_port_map(&["18130"]),
         }
     }
 
+    /// As for [`ports`] returns a bollard configuration for port mappings.
     pub fn port_map(&self, image_type: ImageType) -> PortMap {
         let ports = self.ports(image_type);
         ports
@@ -336,6 +236,7 @@ impl LaunchpadConfig {
             .collect()
     }
 
+    /// Return the command line arguments we want for the given container execution.
     pub fn command(&self, image_type: ImageType) -> Vec<String> {
         match image_type {
             ImageType::BaseNode => vec!["--non-interactive-mode".to_string()],
@@ -345,9 +246,12 @@ impl LaunchpadConfig {
             ImageType::MmProxy => vec![],
             ImageType::Tor => self.tor_cmd(),
             ImageType::Monerod => self.monerod_cmd(),
+            ImageType::Frontail => self.frontail_cmd(),
         }
     }
 
+    /// Returns the canonical path to the id files. The canonical path is defined as 
+    /// `{root_path}/config/{network}/{image_type}_id.json`
     pub fn id_path(&self, root_path: &str, image_type: ImageType) -> Option<PathBuf> {
         match image_type {
             ImageType::BaseNode | ImageType::Wallet => Some(
@@ -358,6 +262,11 @@ impl LaunchpadConfig {
             ),
             _ => None,
         }
+    }
+
+    fn frontail_cmd(&self) -> Vec<String> {
+        let args = vec!["-p", "18130", "base_node/log/core.log", "wallet/log/core.log", "sha3_miner/log/core.log", "mm_proxy/log/core.log"];
+        args.into_iter().map(String::from).collect()
     }
 
     fn xmrig_cmd(&self) -> Vec<String> {
@@ -417,6 +326,8 @@ impl LaunchpadConfig {
         args.into_iter().map(String::from).collect()
     }
 
+    /// Returns the bollard configuration map. You can specify any/all of the host-mounted data folder, of the blockchain
+    /// folder to map.
     pub fn build_volumes(&self, general: bool, tari_blockchain: bool) -> HashMap<String, HashMap<(), ()>> {
         let mut volumes = HashMap::new();
         if general {

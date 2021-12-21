@@ -48,35 +48,43 @@ use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 static DEFAULT_REGISTRY: &str = "quay.io/tarilabs";
 static DEFAULT_TAG: &str = "latest";
 
-pub static DEFAULT_IMAGES: [ImageType; 7] = [
-    ImageType::BaseNode,
-    ImageType::Wallet,
-    ImageType::Sha3Miner,
-    ImageType::Tor,
-    ImageType::MmProxy,
-    ImageType::XmRig,
-    ImageType::Monerod,
-];
-
+/// `Workspaces` allows us to spin up multiple [TariWorkspace] recipes or configurations at once. Most users will only
+/// ever need one at a time, and the default one at that, but developers and testers will likely find this useful.
+///
+/// For example, you might want to run a node and wallet on two different networks concurrently.
+/// Or, you might want to spin up two wallets on the same network to test some new feature. Here you would have one
+/// recipe with just a base node and a wallet, and another recipe with just a wallet.
+///
+/// Workspaces are referenced by a name, which is an arbitrary string, but by convention, you'll want to keep workspace
+/// names short and do not use spaces in workspace names.
+///
+/// Docker containers are named using a `{workspace_name}_{image_type}` convention. See [TariWorkspace] for more details.
+///
+/// Each workspace should also have a unique data folder to keep logs and configuration separate, but this is not a hard
+/// requirement.
 pub struct Workspaces {
     workspaces: HashMap<String, TariWorkspace>,
 }
 
 impl Workspaces {
+    /// Create a new Workspaces instance. This method has no side-effects and just creates the workspace hashmap.
     pub fn new() -> Self {
         Self {
             workspaces: HashMap::new(),
         }
     }
 
+    /// Returns a mutable reference to the `name`d workspace. For an immutable reference, see [workspace_mut].
     pub fn get_workspace_mut(&mut self, name: &str) -> Option<&mut TariWorkspace> {
         self.workspaces.get_mut(name)
     }
 
+    /// Returns an immtable reference to the `name`d workspace. For a mutable reference, see [get_workspace_mut].
     pub fn get_workspace(&self, name: &str) -> Option<&TariWorkspace> {
         self.workspaces.get(name)
     }
 
+    /// Checks if a workspace with the given name exists.
     pub fn workspace_exists(&self, name: &str) -> bool {
         self.workspaces.contains_key(name)
     }
@@ -102,6 +110,72 @@ impl Workspaces {
     }
 }
 
+/// A TariWorkspace is a configuration of docker images (node, wallet, miner etc), configuration files and secrets,
+/// and log files.
+///
+/// ### Data locations
+/// A workspace manages data in several places
+/// * **Blockchain data** is stored in a [Docker volume](https://docs.docker.com/storage/volumes/) that is not directly
+///   accessible to the host system. This is primarily done for performance reasons, but should not be a major issue
+///   since you seldom need direct access to the LMDB database. If you do need the database for some reason, you can
+///   mount the volume and run a bash command, for instance:
+///   `docker run --rm -v $(pwd):/backup -v blockchain:/blockchain ubuntu tar czvf /backup/backup.tar.gz /blockchain`.
+///   As currently written, the blockchain data is namespaced by workspace but it is also possible in principle for
+///   different workspaces to (TODO) share blockchain data (for the same network),
+///   thereby preventing the need to keep multiple copies of the blockchain. In this case, you need to be careful not to
+///   introduce contention from multiple nodes running against the same LMDB database, leading to corrupt db files.
+/// * **Configuration** and log files are stored of the workspace `root_folder`. A typical folder structure looks like
+/// ```text
+///      {root_folder}
+///      ├── base_node
+///      │   └── log
+///      │       ├── core.log
+///      │       ├── network.log
+///      │       └── other.log
+///      ├── config
+///      │   ├── config.toml
+///      │   ├── log4rs.yml
+///      │   └── weatherwax
+///      │       ├── base_node_tor.json
+///      │       ├── tari_base_node_id.json
+///      │       └── tari_console_wallet_id.json
+///      ├── mm_proxy
+///      ├── monerod
+///      ├── sha3_miner
+///      │   └── log
+///      │       ├── core.log
+///      │       ├── network.log
+///      │       └── other.log
+///      ├── tor
+///      ├── wallet
+///      │   ├── log
+///      │   │   ├── core.log
+///      │   │   ├── network.log
+///      │   │   └── other.log
+///      │   └── wallet
+///      │       ├── console-wallet.dat
+///      │       ├── console-wallet.dat-shm
+///      │       └── console-wallet.dat-wal
+///      └── xmrig
+/// ```
+/// the `{root_folder}` is mounted into the docker filesystem and is accessible to all containers in the workspace.
+/// TODO - investigate security issues for this. In particular, we almost certainly want to isolate the wallet data
+/// This means that changes to `config/log4rs.yml` take effect in all running containers immediately.
+/// * **Docker containers** are ephemeral and are created and destroyed at will.
+///
+/// ### Networking
+/// Tor is used by several other containers. The control password for Tor is randomly generated when the workspace is
+/// set up, and shared as an environment variable between containers.
+///
+/// A dedicated, namespaced network is created for each workspace. This means that each container in the network can
+/// talk to any other container in the same workspace, but not to containers in other workspaces.
+///
+/// We also expose some ports to the host system for host-container communication.
+///
+/// * Base node - ports 18142 and 18149. TODO - currently the same port is mapped to the host. For multiple Workspaces
+///   we'd need to expose a different port to the host. e.g. 1n142 where n is the workspace number.
+/// * Wallet - 18143 and 18188
+/// * Frontail - 18130
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,
@@ -118,6 +192,7 @@ impl TariWorkspace {
         }
     }
 
+    /// Return a reference to the immutable configuration object for this workspace.
     pub fn config(&self) -> &LaunchpadConfig {
         &self.config
     }
@@ -128,13 +203,22 @@ impl TariWorkspace {
         self.name.as_str()
     }
 
+    /// Returns the full image name for the given image type. for the default registry this is typically something like
+    /// `quay.io/tarilabs/tari_base_node:latest`. One should be able to use this string to do a successful 
+    /// `docker pull {image_name}`.
+    /// 
+    /// It also lets power users customise which version of docker images they want to run in the workspace.
     pub fn fully_qualified_image(image: ImageType, registry: Option<&str>, tag: Option<&str>) -> String {
         let reg = registry.unwrap_or(DEFAULT_REGISTRY);
         let tag = tag.unwrap_or(DEFAULT_TAG);
         format!("{}/{}:{}", reg, image.image_name(), tag)
     }
 
-    pub async fn start(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
+    /// Starts the Tari workspace recipe.
+    ///
+    /// This is an MVP / PoC version that starts everything in one go, but TODO, should really take some sort of recipe
+    /// object to allow us to build up different recipes (wallet only, full miner, SHA3-mining only etc)
+    pub async fn start_recipe(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
         // Create or load identities
         let _ids = self.create_or_load_identities()?;
         // Set up the local network
@@ -152,12 +236,14 @@ impl TariWorkspace {
                 .start_service(image, registry.clone(), tag.clone(), docker.clone())
                 .await?;
             info!("Docker container {} ({}) successfully started", image.image_name(), name);
-            // Connect the container to the network
-            // self.connect_to_network(&id, image, &docker).await?;
         }
         Ok(())
     }
 
+    /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file 
+    /// already exists at the canonical path location, it is loaded and returned instead.
+    /// 
+    /// The canonical path is defined as `{root_path}/config/{network}/{image_type}_id.json`
     pub fn create_or_load_identity(
         &self,
         root_path: &str,
@@ -174,6 +260,7 @@ impl TariWorkspace {
         }
     }
 
+    /// A convenience method that calls [create_or_load_identity] for each image type.
     pub fn create_or_load_identities(&self) -> Result<HashMap<ImageType, NodeIdentity>, DockerWrapperError> {
         let root_path = self.config.data_directory.to_string_lossy().to_string();
         let mut ids = HashMap::new();
@@ -185,11 +272,9 @@ impl TariWorkspace {
         Ok(ids)
     }
 
-    pub fn logs(
-        &self,
-        container_name: &str,
-        docker: Docker,
-    ) -> Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
+    /// Create and return a [`Stream`] of [`LogMessage`] instances for the `name`d container in the workspace.  
+    pub fn logs(&self, container_name: &str, docker: Docker) -> 
+                                                 Option<impl Stream<Item = Result<LogMessage, DockerWrapperError>>> {
         let options = LogsOptions::<String> {
             follow: true,
             stdout: true,
@@ -207,7 +292,7 @@ impl TariWorkspace {
             })
     }
 
-    /// Returns a stream of resource stats for the container `name`, if it exists
+    /// Returns a [`Stream`] of resource stats for the container `name`, if it exists
     pub fn resource_stats(&self, name: &str, docker: Docker) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
         if let Some(container) = self.containers.get(name) {
             let options = StatsOptions {
@@ -223,17 +308,17 @@ impl TariWorkspace {
         }
     }
 
-    /// Create and run the container described by `{registry}/image:tag`.
+    /// Create and run a docker container.
     ///
     /// ## Arguments
-    /// * `image`: The name of the image to run. e.g. "tari_base_node"
+    /// * `image`: The type of image to start. See [`ImageType`].
     /// * `registry`: An optional docker registry path to use. The default is `quay.io/tarilabs`
     /// * `tag`: The image tag to use. The default is `latest`.
-    /// * `args`: The command-line arguments to pass on to the entrypoint. The default is ""
+    /// * `docker`: a [`Docker`] instance.
     ///
     /// ## Return
     ///
-    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container id on
+    /// The method returns a future that resolves to a [`DockerWrapperError`] on an error, or the container name on
     /// success.
     ///
     /// `start_service` creates a new docker container and runs it. As part of this process,
@@ -296,7 +381,6 @@ impl TariWorkspace {
         let name = image.container_name();
         let id = container.id.clone();
         self.add_container(name, container);
-        info!("{} created.", image_name);
         info!("Starting {}.", image_name);
         docker.start_container::<String>(id.as_str(), None).await?;
         self.mark_container_running(name)?;
@@ -305,6 +389,7 @@ impl TariWorkspace {
         Ok(name.to_string())
     }
 
+    // helper function for start recipe. This will be overhauled to be more flexible in future
     fn images_to_start(&self) -> Vec<ImageType> {
         let mut images = Vec::with_capacity(6);
         // Always use Tor for now
@@ -328,11 +413,13 @@ impl TariWorkspace {
         images
     }
 
-    /// Returns a reference to the set of managed containers
+    /// Returns a reference to the set of managed containers. You can only retrieve immutable references from this
+    /// hash map. If you need a mutable reference tot a container's state, see [`container_mut`].
     pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
         &self.containers
     }
 
+    /// Return a mutable reference to the named container's [`ContainerState`].
     pub fn container_mut(&mut self, container_name: &str) -> Option<&mut ContainerState> {
         self.containers.get_mut(container_name)
     }
@@ -344,7 +431,7 @@ impl TariWorkspace {
         self.containers.insert(name.to_string(), state);
     }
 
-    /// Tag the container with id `id` as Running
+    // Tag the container with id `id` as Running
     fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
         if let Some(container) = self.containers.get_mut(name) {
             container.running();
@@ -354,7 +441,7 @@ impl TariWorkspace {
         }
     }
 
-    /// Stop the container with `id` and optionally delete it
+    /// Stop the container with the given `name` and optionally delete it
     pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
         let container = match self.container_mut(name) {
             Some(c) => c,
@@ -397,10 +484,13 @@ impl TariWorkspace {
         }
     }
 
+    /// Returns the network name
     pub fn network_name(&self) -> String {
         format!("{}_network", self.name)
     }
 
+    /// Returns the name of the volume holding blockchain data. Currently this is namespaced to the workspace. We might
+    /// want to change this to be shareable across networks, i.e. only namespace across the network type.
     pub fn tari_blockchain_volume_name(&self) -> String {
         format!("{}_{}_volume", self.name, self.config.tari_network.lower_case())
     }
@@ -428,6 +518,7 @@ impl TariWorkspace {
         }
     }
 
+    /// Create a network in docker to allow the containers in this workspace to communicate with each other.
     pub async fn create_network(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
         let name = self.network_name();
         let options = CreateNetworkOptions {
@@ -452,13 +543,15 @@ impl TariWorkspace {
         Ok(())
     }
 
+    /// Checks whether the blockchain data volume exists
     pub async fn volume_exists(&self, docker: &Docker) -> Result<bool, DockerWrapperError> {
         let name = self.tari_blockchain_volume_name();
         let volume = docker.inspect_volume(name.as_str()).await?;
-        debug!("Volume {} exists at {}", name, volume.mountpoint);
+        trace!("Volume {} exists at {}", name, volume.mountpoint);
         Ok(true)
     }
 
+    /// Tries to create a new blockchain data volume for this workspace.
     pub async fn create_volume(&self, docker: &Docker) -> Result<(), DockerWrapperError> {
         let name = self.tari_blockchain_volume_name();
         let config = CreateVolumeOptions {
@@ -471,6 +564,8 @@ impl TariWorkspace {
         Ok(())
     }
 
+    /// Connects a container to the workspace network. This is not typically needed, since the container will automatically
+    /// be connected to the network when it is created in [`start_service`].
     pub async fn connect_to_network(&self, id: &ContainerId, image: ImageType, docker: &Docker) -> Result<(), DockerWrapperError> {
         let network = self.network_name();
         let options = ConnectNetworkOptions {

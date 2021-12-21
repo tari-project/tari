@@ -43,6 +43,7 @@ pub enum LauncherError {
 }
 
 impl LauncherError {
+    /// Combine all error messages down the chain into one string.
     pub fn chained_message(&self) -> String {
         let mut messages = vec![self.to_string()];
         let mut this = self as &dyn Error;
