@@ -35,7 +35,6 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
 use tokio::{runtime, runtime::Runtime};
 
