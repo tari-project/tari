@@ -152,17 +152,17 @@ jobs:
           #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
           cargo build --release
 
-      - name: Build tauri apps
-        env:
-          RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
-        run: |
-          echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
-          cd applications/tari_collectibles
-          npm install
-          cd web-app
-          npm install
-          cd ..
-          npm run tauri build
+#      - name: Build tauri apps
+#        env:
+#          RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
+#        run: |
+#          echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
+#          cd applications/tari_collectibles
+#          npm install
+#          cd web-app
+#          npm install
+#          cd ..
+#          npm run tauri build
 
       #  - name: Prepare Archives
         #  - name: Prepare Archives
