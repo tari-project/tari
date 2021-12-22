@@ -169,8 +169,15 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .backend_adapter
             .create_transaction()
             .map_err(TBackendAdapter::Error::into)?;
-        let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
+        // let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
 
+        let hasher = HashDigest::new();
+        for schema in inner.backend_adapter.get_all_schemas(&tx)? {
+            let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+            for item in inner.backend_adapter.get_all_values_in_schema(schema, &tx)? {
+                mmr.push(item.)
+            }
+        }
         let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
         generate_mmr(&mut mmr, root_node);
         Ok(StateRoot::default())
