@@ -27,8 +27,8 @@
       Add logs
     </o-button>
     <table>
-      <tr v-for="(msg,index) in logs" v-bind:key="index">
-        <td> {{ index }} </td><td> {{msg.message}} </td>
+      <tr v-for="index in logs.length" v-bind:key="index">
+        <td> {{ index }} </td><td> {{ logs.get(index) }} </td>
       </tr>
     </table>
     <hr/>

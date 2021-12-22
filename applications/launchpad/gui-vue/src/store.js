@@ -1,6 +1,7 @@
 import {createStore} from 'vuex'
 import {invoke} from '@tauri-apps/api/tauri'
 import {listen} from "@tauri-apps/api/event";
+import CBuffer from 'CBuffer';
 
 const settings = {
     walletPassword: "tari",
@@ -64,7 +65,7 @@ export const store = createStore({
                 console.log(`Container ${type} already exists. Old container to be replaced: `, state.containers[type]);
             }
             state.containers[type] = {
-                logs: [],
+                logs: new CBuffer(1000),
                 stats: {cpu: 0, mem: 0}
             };
             console.log(`Added new container ${type}`);
