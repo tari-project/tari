@@ -22,7 +22,7 @@
 
 use std::{
     hash::Hash,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use bs58;
@@ -46,7 +46,7 @@ pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError>;
     fn set_u64(&mut self, schema: &str, key: &[u8], value: u64) -> Result<(), StorageError>;
     fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, StorageError>;
-    fn commit(&mut self) -> Result<StateRoot, StorageError>;
+    fn commit(&mut self) -> Result<(), StorageError>;
     fn calculate_root(&self) -> Result<StateRoot, StorageError>;
 }
 
@@ -133,7 +133,7 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)
     }
 
-    fn commit(&mut self) -> Result<StateRoot, StorageError> {
+    fn commit(&mut self) -> Result<(), StorageError> {
         let mut inner = self.inner.write().unwrap();
         let tx = inner
             .backend_adapter
@@ -164,7 +164,7 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?;
         inner.updates = vec![];
 
-        Ok(StateRoot::default())
+        Ok(())
     }
 
     fn calculate_root(&self) -> Result<StateRoot, StorageError> {
@@ -189,14 +189,33 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
                 .get_all_values_for_schema(&schema, &tx)
                 .map_err(TBackendAdapter::Error::into)?
             {
-                let mut hasher = HashDigest::new();
-                mmr.push(hasher.chain(key).chain(value).finalize().to_vec())?;
+                if let Some(updated_value) = find_update(&inner, &schema, &key) {
+                    let mut hasher = HashDigest::new();
+                    mmr.push(hasher.chain(key).chain(updated_value).finalize().to_vec())?;
+                } else {
+                    let mut hasher = HashDigest::new();
+                    mmr.push(hasher.chain(key).chain(value).finalize().to_vec())?;
+                }
             }
             let mut hasher = HashDigest::new();
             top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
         }
         Ok(StateRoot::new(top_level_mmr.get_merkle_root()?))
     }
+}
+
+fn find_update<TBackendAdapter: StateDbBackendAdapter>(
+    inner: &RwLockReadGuard<StateDbUnitOfWorkInner<TBackendAdapter>>,
+    schema: &str,
+    key: &[u8],
+) -> Option<Vec<u8>> {
+    for update in &inner.updates {
+        let update = update.get();
+        if &update.schema == schema && &update.key == key {
+            return Some(update.value.clone());
+        }
+    }
+    return None;
 }
 
 pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {
