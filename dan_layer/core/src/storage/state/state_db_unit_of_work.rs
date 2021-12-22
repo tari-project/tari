@@ -20,10 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::{
+    hash::Hash,
+    sync::{Arc, RwLock},
+};
 
 use bs58;
-use patricia_tree::node::Node;
+use digest::Digest;
+use tari_common_types::types::HashDigest;
 use tari_crypto::common::Blake256;
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 
@@ -171,19 +175,27 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?;
         // let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
 
-        let mut hasher = HashDigest::new();
-        for schema in inner.backend_adapter.get_all_schemas(&tx)? {
+        // omg it's an MMR of MMRs
+        let mut top_level_mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+
+        for schema in inner
+            .backend_adapter
+            .get_all_schemas(&tx)
+            .map_err(TBackendAdapter::Error::into)?
+        {
             let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-            for (key, value) in inner.backend_adapter.get_all_values_in_schema(&schema, &tx)? {
-                // TODO: It might be worth enforcing the keys to always be length 32
-                let mut data = vec![];
-                data.push(key.hash());
-                data.push(value.hash());
-                mmr.push(data);
+            for (key, value) in inner
+                .backend_adapter
+                .get_all_values_for_schema(&schema, &tx)
+                .map_err(TBackendAdapter::Error::into)?
+            {
+                let mut hasher = HashDigest::new();
+                mmr.push(hasher.chain(key).chain(value).finalize().to_vec())?;
             }
-            hasher = hasher.chain(schema).chain(mmr.root)
+            let mut hasher = HashDigest::new();
+            top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
         }
-        Ok(StateRoot::new(hasher.finalize().to_vec()))
+        Ok(StateRoot::new(top_level_mmr.get_merkle_root()?))
     }
 }
 

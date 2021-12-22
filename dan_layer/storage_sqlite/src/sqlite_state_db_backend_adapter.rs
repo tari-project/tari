@@ -160,17 +160,22 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
 
     fn get_current_state_tree(&self, tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error> {
         use crate::schema::state_tree::dsl;
-        let row: StateTree = dsl::state_tree
+        let row: Option<StateTree> = dsl::state_tree
             .filter(state_tree::is_current.eq(true))
             .order_by(state_tree::version.desc())
             .first(tx.connection())
+            .optional()
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
                 operation: "get_current_state_tree".to_string(),
             })?;
-        let mut decoder = NodeDecoder::new(BincodeDecoder::new());
-        let nodes: Node<Vec<u8>> = decoder.decode_from_bytes(&row.data)?;
-        Ok(nodes.into())
+        if let Some(row) = row {
+            let mut decoder = NodeDecoder::new(BincodeDecoder::new());
+            let nodes: Node<Vec<u8>> = decoder.decode_from_bytes(&row.data)?;
+            Ok(nodes.into())
+        } else {
+            Ok(PatriciaMap::new())
+        }
     }
 
     fn set_current_state_tree(
@@ -215,5 +220,38 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
             })?;
 
         Ok(())
+    }
+
+    fn get_all_schemas(&self, tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error> {
+        use crate::schema::state_keys::dsl;
+        let schemas: Vec<String> = dsl::state_keys
+            .select(state_keys::schema_name)
+            .distinct()
+            .order_by(state_keys::schema_name.asc())
+            .load(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_all_schemas".to_string(),
+            })?;
+        Ok(schemas)
+    }
+
+    fn get_all_values_for_schema(
+        &self,
+        schema: &str,
+        tx: &Self::BackendTransaction,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Self::Error> {
+        use crate::schema::state_keys::dsl;
+        let values: Vec<(Vec<u8>, Vec<u8>)> = dsl::state_keys
+            .filter(state_keys::schema_name.eq(schema))
+            .select((state_keys::key_name, state_keys::value))
+            .order_by(state_keys::key_name.asc())
+            .load(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_all_values_for_schema".to_string(),
+            })?;
+
+        Ok(values)
     }
 }
