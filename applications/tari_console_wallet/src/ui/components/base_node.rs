@@ -43,6 +43,7 @@ impl BaseNode {
 impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
+        let base_node_state = app_state.get_base_node_state();
         let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
 
         let chain_info = match current_online_status {
@@ -57,7 +58,6 @@ impl<B: Backend> Component<B> for BaseNode {
                 Span::styled("Offline", Style::default().fg(Color::Red)),
             ]),
             OnlineStatus::Online => {
-                let base_node_state = app_state.get_base_node_state();
                 if let Some(ref metadata) = base_node_state.chain_metadata {
                     let tip = metadata.height_of_longest_chain();
 
