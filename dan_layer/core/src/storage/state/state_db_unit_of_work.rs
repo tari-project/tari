@@ -23,7 +23,6 @@
 use std::sync::{Arc, RwLock};
 
 use bs58;
-use patricia_tree::PatriciaMap;
 
 use crate::{
     models::StateRoot,
@@ -33,6 +32,9 @@ use crate::{
         UnitOfWorkTracker,
     },
 };
+use tari_mmr::{MerkleMountainRange, MemBackendVec};
+use patricia_tree::node::Node;
+use tari_crypto::common::Blake256;
 
 pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
@@ -167,9 +169,16 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .backend_adapter
             .create_transaction()
             .map_err(TBackendAdapter::Error::into)?;
-        for current_patricia in inner.backend_adapter.current_state_tree(&tx) {}
+        let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
+
+        let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+        generate_mmr(&mut mmr, root_node);
         Ok(StateRoot::default())
     }
+}
+
+fn generate_mmr(mmr: &mut MerkleMountainRange<Blake256, MemBackendVec<Vec<u8>>>, node: Node<Vec<u8>>) {
+    if node.
 }
 
 pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {

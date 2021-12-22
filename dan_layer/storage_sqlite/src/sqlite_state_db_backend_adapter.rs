@@ -20,11 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use bytecodec::{
+    bincode_codec::{BincodeDecoder, BincodeEncoder},
+    DecodeExt,
+    EncodeExt,
+};
 use diesel::{prelude::*, Connection, SqliteConnection};
 use log::*;
+use patricia_tree::{
+    node::{Node, NodeDecoder, NodeEncoder},
+    PatriciaMap,
+};
 use tari_dan_core::storage::state::StateDbBackendAdapter;
 
-use crate::{error::SqliteStorageError, models::state_key::StateKey, schema::*, SqliteTransaction};
+use crate::{
+    error::SqliteStorageError,
+    models::{
+        state_key::StateKey,
+        state_tree::{NewStateTree, StateTree},
+    },
+    schema::*,
+    SqliteTransaction,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::storage_sqlite::sqlite_state_db_backend_adapter";
 
@@ -138,6 +155,65 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
                 source,
                 operation: "commit::state".to_string(),
             })?;
+        Ok(())
+    }
+
+    fn get_current_state_tree(&self, tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error> {
+        use crate::schema::state_tree::dsl;
+        let row: StateTree = dsl::state_tree
+            .filter(state_tree::is_current.eq(true))
+            .order_by(state_tree::version.desc())
+            .first(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_current_state_tree".to_string(),
+            })?;
+        let mut decoder = NodeDecoder::new(BincodeDecoder::new());
+        let nodes: Node<Vec<u8>> = decoder.decode_from_bytes(&row.data)?;
+        Ok(nodes.into())
+    }
+
+    fn set_current_state_tree(
+        &self,
+        tree: patricia_tree::map::PatriciaMap<Vec<u8>>,
+        tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        let mut encoder = NodeEncoder::new(BincodeEncoder::new());
+        let encoded = encoder.encode_into_bytes(tree.into())?;
+
+        use crate::schema::state_tree::dsl;
+        let existing_row: Option<StateTree> = dsl::state_tree
+            .filter(state_tree::is_current.eq(true))
+            .order_by(state_tree::version.desc())
+            .first(tx.connection())
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set_current_state_tree::fetch".to_string(),
+            })?;
+
+        diesel::update(dsl::state_tree.filter(state_tree::is_current.eq(true)))
+            .set(state_tree::is_current.eq(false))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set_current_state_tree:update".to_string(),
+            })?;
+
+        let row = NewStateTree {
+            version: existing_row.map(|r| r.version).unwrap_or_default() + 1,
+            is_current: true,
+            data: encoded,
+        };
+
+        diesel::insert_into(dsl::state_tree)
+            .values(row)
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "set_current_state_tree::insert".to_string(),
+            })?;
+
         Ok(())
     }
 }
