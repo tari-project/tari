@@ -121,14 +121,14 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
         format!(
             "The node identity file, {}, could not be read. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
     let id = json5::from_str::<NodeIdentity>(&id_str).map_err(|e| {
         format!(
             "The node identity file, {}, has an error. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
     info!(
@@ -216,7 +216,7 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
     let json = json5::to_string(object).unwrap();
     if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
-            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;
+            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e))?;
         }
     }
     let json_with_comment = format!(
@@ -228,7 +228,7 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
         format!(
             "Error writing json file, {}. {}",
             path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e.to_string()
+            e
         )
     })?;
 

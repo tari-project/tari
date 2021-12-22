@@ -12,7 +12,7 @@ name: CI
 env:
   CARGO_HTTP_MULTIPLEXING: false
   PROTOC: protoc
-  toolchain: nightly-2021-09-18
+  toolchain: nightly-2021-11-01
 
 jobs:
   clippy:
@@ -97,6 +97,12 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+
+      - name: Compile NPM
+        run: |
+          cd applications/launchpad/gui-vue
+          npm install
+          npm run build
 
       - name: toolchain
         uses: actions-rs/toolchain@v1

@@ -70,9 +70,10 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
         let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
 
         // The switchboard is full and all ports are in use
-        if switchboard.0.len() == (std::u16::MAX - 1) as usize {
-            panic!("All memsocket addresses in use!");
-        }
+        assert!(
+            !(switchboard.0.len() == (std::u16::MAX - 1) as usize),
+            "All memsocket addresses in use!"
+        );
 
         // Instead of overflowing to 0, resume searching at port 1 since port 0 isn't a
         // valid port to bind to.
@@ -407,7 +408,7 @@ impl MemorySocket {
 
 impl AsyncRead for MemorySocket {
     /// Attempt to read from the `AsyncRead` into `buf`.
-    fn poll_read(mut self: Pin<&mut Self>, mut context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(mut self: Pin<&mut Self>, context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         if self.incoming.is_terminated() {
             if self.seen_eof {
                 return Poll::Ready(Err(ErrorKind::UnexpectedEof.into()));
@@ -444,7 +445,7 @@ impl AsyncRead for MemorySocket {
                 // Either we've exhausted our current buffer or don't have one
                 _ => {
                     self.current_buffer = {
-                        match Pin::new(&mut self.incoming).poll_next(&mut context) {
+                        match Pin::new(&mut self.incoming).poll_next(context) {
                             Poll::Pending => {
                                 // If we've read anything up to this point return the bytes read
                                 if bytes_read > 0 {
