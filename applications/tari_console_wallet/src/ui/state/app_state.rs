@@ -824,7 +824,6 @@ impl AppStateInner {
                 peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
-
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",

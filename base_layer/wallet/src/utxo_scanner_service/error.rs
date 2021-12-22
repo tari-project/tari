@@ -56,4 +56,6 @@ pub enum UtxoScannerError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
+    #[error("Overflow Error")]
+    OverflowError,
 }
