@@ -45,4 +45,7 @@ pub trait StateDbBackendAdapter: Send + Sync + Clone {
         tree: PatriciaMap<Vec<u8>>,
         tx: &Self::BackendTransaction,
     ) -> Result<(), Self::Error>;
+
+    fn get_all_schemas(&self, tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error>;
+    fn get_all_values_for_schema(&self, schema: &str, &Self::BackendTransaction) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Self::Error>;
 }

@@ -23,6 +23,9 @@
 use std::sync::{Arc, RwLock};
 
 use bs58;
+use patricia_tree::node::Node;
+use tari_crypto::common::Blake256;
+use tari_mmr::{MemBackendVec, MerkleMountainRange};
 
 use crate::{
     models::StateRoot,
@@ -32,9 +35,6 @@ use crate::{
         UnitOfWorkTracker,
     },
 };
-use tari_mmr::{MerkleMountainRange, MemBackendVec};
-use patricia_tree::node::Node;
-use tari_crypto::common::Blake256;
 
 pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn set_value(&mut self, schema: String, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageError>;
@@ -171,21 +171,20 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?;
         // let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
 
-        let hasher = HashDigest::new();
+        let mut hasher = HashDigest::new();
         for schema in inner.backend_adapter.get_all_schemas(&tx)? {
             let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-            for item in inner.backend_adapter.get_all_values_in_schema(schema, &tx)? {
-                mmr.push(item.)
+            for (key, value) in inner.backend_adapter.get_all_values_in_schema(&schema, &tx)? {
+                // TODO: It might be worth enforcing the keys to always be length 32
+                let mut data = vec![];
+                data.push(key.hash());
+                data.push(value.hash());
+                mmr.push(data);
             }
+            hasher = hasher.chain(schema).chain(mmr.root)
         }
-        let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-        generate_mmr(&mut mmr, root_node);
-        Ok(StateRoot::default())
+        Ok(StateRoot::new(hasher.finalize().to_vec()))
     }
-}
-
-fn generate_mmr(mmr: &mut MerkleMountainRange<Blake256, MemBackendVec<Vec<u8>>>, node: Node<Vec<u8>>) {
-    if node.
 }
 
 pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {

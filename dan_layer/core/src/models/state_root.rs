@@ -25,4 +25,8 @@ pub struct StateRoot {
     root: Vec<u8>,
 }
 
-impl StateRoot {}
+impl StateRoot {
+    pub fn new(root: Vec<u8>) -> Self {
+        Self { root }
+    }
+}
