@@ -98,6 +98,12 @@ jobs:
           libprotobuf-dev \
           protobuf-compiler
 
+      - name: Compile NPM
+        run: |
+          cd applications/launchpad/gui-vue
+          npm install
+          npm run build
+
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:

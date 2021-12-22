@@ -132,6 +132,12 @@ jobs:
             target
           key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Compile NPM
+        run: |
+            cd applications/launchpad/gui-vue
+            npm install
+            npm run build
+
       - name: Build binaries
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
