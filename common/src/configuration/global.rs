@@ -859,6 +859,8 @@ where
     )))
 }
 
+// Clippy thinks "socks5" is not lowercase ...?
+#[allow(clippy::match_str_case_mismatch)]
 fn network_transport_config(
     cfg: &Config,
     mut application: ApplicationType,

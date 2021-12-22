@@ -70,18 +70,12 @@ static DEFAULT_TAG: &str = "latest";
 ///
 /// Each workspace should also have a unique data folder to keep logs and configuration separate, but this is not a hard
 /// requirement.
+#[derive(Default)]
 pub struct Workspaces {
     workspaces: HashMap<String, TariWorkspace>,
 }
 
 impl Workspaces {
-    /// Create a new Workspaces instance. This method has no side-effects and just creates the workspace hashmap.
-    pub fn new() -> Self {
-        Self {
-            workspaces: HashMap::new(),
-        }
-    }
-
     /// Returns a mutable reference to the `name`d workspace. For an immutable reference, see [workspace_mut].
     pub fn get_workspace_mut(&mut self, name: &str) -> Option<&mut TariWorkspace> {
         self.workspaces.get_mut(name)

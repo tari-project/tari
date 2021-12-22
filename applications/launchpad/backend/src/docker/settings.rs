@@ -345,7 +345,7 @@ impl LaunchpadConfig {
             volumes.insert("/var/tari".to_string(), HashMap::<(), ()>::new());
         }
         if tari_blockchain {
-            volumes.insert(format!("/blockchain"), HashMap::new());
+            volumes.insert("/blockchain".to_string(), HashMap::new());
         }
         volumes
     }

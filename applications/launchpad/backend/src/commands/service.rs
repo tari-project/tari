@@ -342,7 +342,7 @@ async fn stop_service_impl(state: State<'_, AppState>, service_name: String) -> 
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut("default")
-        .ok_or(DockerWrapperError::WorkspaceDoesNotExist("default".into()))?;
+        .ok_or_else(|| DockerWrapperError::WorkspaceDoesNotExist("default".into()))?;
     workspace.stop_container(service_name.as_str(), true, &docker).await;
     Ok(())
 }

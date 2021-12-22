@@ -142,7 +142,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     let banner = include!("../assets/tari_banner.rs");
     let target_line_length = multiline_find_display_length(banner);
     for line in banner.lines() {
-        println!("{}", line.to_string());
+        println!("{}", line);
     }
     println!("\n{}", box_line(target_line_length, true));
     let logo = include!("../assets/tari_logo.rs");

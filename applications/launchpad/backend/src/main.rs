@@ -33,7 +33,7 @@ fn main() {
     };
 
     // TODO - Load workspace definitions from persistent storage here
-    let workspaces = Workspaces::new();
+    let workspaces = Workspaces::default();
     // We're going to attach this to the AppState because Tauri does not expose it for some reason
     let package_info = context.package_info().clone();
     info!("Using Docker version: {}", docker.version());
