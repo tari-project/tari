@@ -63,6 +63,11 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
+      - name: Compile NPM
+        run: |
+            cd applications/launchpad/gui-vue
+            npm install
+            npm run build
       - name: Clippy check
         uses: actions-rs/cargo@v1
         with:
