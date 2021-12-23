@@ -1,0 +1,99 @@
+/* Dropdown */
+
+.dropdown-item {
+  position: relative;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  min-width: 7rem;
+  min-height: 3rem;
+  padding: 0.8rem 1rem;
+  overflow: hidden;
+  line-height: 1;
+  text-overflow: ellipsis;
+  word-wrap: break-word;
+}
+
+/* Buttons */
+
+.btn {
+  height: 100%;
+}
+
+/* Steps */
+
+.step-marker {
+  border-radius: 50%;
+  height: 50px;
+  width: 50px;
+}
+
+.step-divider {
+  background: #b5b5b5;
+  content: " ";
+  display: block;
+  position: absolute;
+  bottom: 0;
+  left: -50%;
+  width: 100%;
+  height: 5px;
+  top: 35%;
+}
+
+.steps-nav-item-active .step-marker {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.steps-nav-item-active .step-divider {
+  background: none;
+  background: var(--primary);
+}
+
+.steps-nav-item-previous .step-marker {
+  background: var(--primary);
+}
+
+.steps-nav-item-previous .step-divider {
+  background: none;
+  background: var(--primary);
+}
+
+/* Checkbox */
+
+.form-check {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-color: var(--gray);
+  background-color: white;
+}
+
+.form-check-checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+.form-check-label {
+  margin-left: 0.2rem;
+}
+
+.form-check:hover:after {
+  content: "";
+  border-radius: 50%;
+  opacity: 0.2;
+  cursor: pointer;
+  height: 34px;
+  position: absolute;
+  transition: inherit;
+  width: 34px;
+  left: calc(50% - 24px);
+  top: calc(50% - 24px);
+  margin: 7px;
+  background-color: inherit;
+}
+
+/* Field */
+
+.field {
+  margin-top: 0.8rem
+}
