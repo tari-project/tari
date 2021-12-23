@@ -35,7 +35,7 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_core::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
 use tokio::{runtime, runtime::Runtime};
 
@@ -164,7 +164,7 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     builder
         .enable_all()
         .build()
-        .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
+        .map_err(|e| format!("There was an error while building the node runtime. {}", e))
 }
 
 /// Returns a CommsPublicKey from either a emoji id or a public key

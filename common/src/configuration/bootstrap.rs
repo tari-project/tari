@@ -337,7 +337,7 @@ where F: Fn(ApplicationType, &Path) -> Result<(), std::io::Error> {
         println!(
             "Failed to install a new configuration file in {}: {}",
             path.to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     }
 }

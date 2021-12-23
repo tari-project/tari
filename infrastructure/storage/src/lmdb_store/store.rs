@@ -721,7 +721,7 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     {
         match val {
             Ok(None) => Ok(None),
-            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e.to_string()))),
+            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
             Ok(Some(v)) => match bincode::deserialize(v) {
                 // The reference to v is about to be dropped, so we must copy the data now
                 Ok(val) => Ok(Some(val)),

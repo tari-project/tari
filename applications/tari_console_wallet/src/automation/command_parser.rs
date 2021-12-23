@@ -93,16 +93,16 @@ impl Display for ParsedArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use ParsedArgument::*;
         match self {
-            Amount(v) => write!(f, "{}", v.to_string()),
-            PublicKey(v) => write!(f, "{}", v.to_string()),
-            Text(v) => write!(f, "{}", v.to_string()),
-            Float(v) => write!(f, "{}", v.to_string()),
-            Int(v) => write!(f, "{}", v.to_string()),
-            Date(v) => write!(f, "{}", v.to_string()),
-            OutputToCSVFile(v) => write!(f, "{}", v.to_string()),
-            CSVFileName(v) => write!(f, "{}", v.to_string()),
-            Address(v) => write!(f, "{}", v.to_string()),
-            Negotiated(v) => write!(f, "{}", v.to_string()),
+            Amount(v) => write!(f, "{}", v),
+            PublicKey(v) => write!(f, "{}", v),
+            Text(v) => write!(f, "{}", v),
+            Float(v) => write!(f, "{}", v),
+            Int(v) => write!(f, "{}", v),
+            Date(v) => write!(f, "{}", v),
+            OutputToCSVFile(v) => write!(f, "{}", v),
+            CSVFileName(v) => write!(f, "{}", v),
+            Address(v) => write!(f, "{}", v),
+            Negotiated(v) => write!(f, "{}", v),
             Hash(v) => write!(f, "{}", v.to_hex()),
         }
     }
