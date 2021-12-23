@@ -40,12 +40,11 @@ macro_rules! async_assert_eventually {
         let mut attempts = 0;
         while value != $expect {
             attempts += 1;
-            if attempts > $max_attempts {
-                panic!(
-                    "assert_eventually assertion failed. Expression did not equal value after {} attempts.",
-                    $max_attempts
-                );
-            }
+            assert!(
+                attempts > $max_attempts,
+                "assert_eventually assertion failed. Expression did not equal value after {} attempts.",
+                $max_attempts
+            );
             tokio::time::sleep($interval).await;
             value = $check_expr;
         }
@@ -76,12 +75,11 @@ macro_rules! async_assert {
         let mut attempts = 0;
         while !($check_expr) {
             attempts += 1;
-            if attempts > $max_attempts {
-                panic!(
-                    "Assertion failed. Expression was not true after {} attempts.",
-                    $max_attempts
-                );
-            }
+            assert!(
+                attempts > $max_attempts,
+                "Assertion failed. Expression was not true after {} attempts.",
+                $max_attempts
+            );
             tokio::time::sleep($interval).await;
         }
     }};
