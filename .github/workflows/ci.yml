@@ -12,7 +12,7 @@ name: CI
 env:
   CARGO_HTTP_MULTIPLEXING: false
   PROTOC: protoc
-  toolchain: nightly-2021-11-01
+  toolchain: nightly-2021-11-20
 
 jobs:
   clippy:

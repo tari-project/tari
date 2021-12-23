@@ -26,7 +26,7 @@ use tari_app_utilities::consts;
 /// returns the top or bottom box line of the specified length
 fn box_line(length: usize, is_top: bool) -> String {
     if length < 2 {
-        return format!("");
+        return String::new();
     }
     if is_top {
         format!("{}{}{}", "┌", "─".repeat(length - 2), "┐")
@@ -38,7 +38,7 @@ fn box_line(length: usize, is_top: bool) -> String {
 /// returns a horizontal rule of the box of the specified length
 fn box_separator(length: usize) -> String {
     if length < 2 {
-        return format!("");
+        return String::new();
     }
     format!("{}{}{}", "├", "─".repeat(length - 2), "┤")
 }
