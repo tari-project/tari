@@ -91,16 +91,7 @@ use crate::support::{
     utils::make_input,
 };
 
-// Just in case other options become apparent in later testing
-#[derive(PartialEq)]
-pub enum TxProtocolTestConfig {
-    WithConnection,
-    WithoutConnection,
-}
-
-pub async fn setup(
-    config: TxProtocolTestConfig,
-) -> (
+pub async fn setup() -> (
     TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
@@ -125,13 +116,11 @@ pub async fn setup(
 
     let wallet_connectivity = create_wallet_connectivity_mock();
 
-    if config == TxProtocolTestConfig::WithConnection {
-        let mut connection = mock_rpc_server
-            .create_connection(server_node_identity.to_peer(), protocol_name.into())
-            .await;
+    let mut connection = mock_rpc_server
+        .create_connection(server_node_identity.to_peer(), protocol_name.into())
+        .await;
 
-        wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
-    }
+    wallet_connectivity.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let db_name = format!("{}.sqlite3", random::string(8).as_str());
     let temp_dir = tempdir().unwrap();
@@ -245,7 +234,7 @@ async fn tx_broadcast_protocol_submit_success() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
     wallet_connectivity.notify_base_node_set(server_node_identity.to_peer());
@@ -329,7 +318,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
@@ -400,7 +389,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
@@ -487,7 +476,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     let mut event_stream = resources.event_publisher.subscribe();
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
@@ -577,7 +566,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
     // Set Base Node to respond with AlreadyMined
@@ -641,7 +630,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
 
     add_transaction_to_database(1, 1 * T, true, None, None, resources.db.clone()).await;
 
@@ -737,7 +726,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -878,7 +867,7 @@ async fn tx_revalidation() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
@@ -1002,7 +991,7 @@ async fn tx_validation_protocol_reorg() {
         _temp_dir,
         _transaction_event_receiver,
         wallet_connectivity,
-    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    ) = setup().await;
     // Now we add the connection
     let mut connection = mock_rpc_server
         .create_connection(server_node_identity.to_peer(), "t/bnwallet/1".into())
