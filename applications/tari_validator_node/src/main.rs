@@ -156,11 +156,11 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
-async fn run_dan_node<TDbFactory: DbFactory + Clone>(
+async fn run_dan_node(
     shutdown_signal: ShutdownSignal,
     config: GlobalConfig,
     mempool_service: MempoolServiceHandle,
-    db_factory: TDbFactory,
+    db_factory: SqliteDbFactory,
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,

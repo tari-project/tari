@@ -21,15 +21,23 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    models::{domain_events::ConsensusWorkerDomainEvent, Payload},
     services::{
-        infrastructure_services::NodeAddressable,
+        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        wallet_client::WalletClient,
         AssetProcessor,
         AssetProxy,
         BaseNodeClient,
+        CheckpointManager,
+        CommitteeManager,
+        EventsPublisher,
         MempoolService,
+        PayloadProcessor,
+        PayloadProvider,
+        SigningService,
         ValidatorNodeClientFactory,
     },
-    storage::DbFactory,
+    storage::{state::StateDbBackendAdapter, ChainStorageService, DbFactory},
 };
 
 /// A trait to describe a specific configuration of services. This type allows other services to
@@ -37,10 +45,22 @@ use crate::{
 /// This trait is intended to only include `types` and no methods.
 pub trait ServiceSpecification: Clone {
     type Addr: NodeAddressable;
-    type DbFactory: DbFactory + Clone + Sync + Send + 'static;
-    type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
-    type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone + Sync + Send + 'static;
-    type MempoolService: MempoolService + Clone + Sync + Send + 'static;
     type AssetProcessor: AssetProcessor + Clone + Sync + Send + 'static;
     type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
+    type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
+    type ChainStorageService: ChainStorageService<Self::Payload>;
+    type CheckpointManager: CheckpointManager;
+    type CommitteeManager: CommitteeManager<Self::Addr>;
+    type DbFactory: DbFactory<StateDbBackendAdapter = Self::StateDbBackendAdapter> + Clone + Sync + Send + 'static;
+    type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
+    type InboundConnectionService: InboundConnectionService<Self::Addr, Self::Payload> + 'static + Send + Sync;
+    type MempoolService: MempoolService + Clone + Sync + Send + 'static;
+    type OutboundService: OutboundService<Self::Addr, Self::Payload>;
+    type Payload: Payload;
+    type PayloadProcessor: PayloadProcessor<Self::Payload>;
+    type PayloadProvider: PayloadProvider<Self::Payload>;
+    type SigningService: SigningService<Self::Addr>;
+    type StateDbBackendAdapter: StateDbBackendAdapter;
+    type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone + Sync + Send + 'static;
+    type WalletClient: WalletClient + Clone + Sync + Send + 'static;
 }

@@ -59,6 +59,7 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -68,14 +69,16 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
     },
     CreatePayToSelfWithOutputs {
-        amount: MicroTari,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
+        spending_unique_id: Option<Vec<u8>>,
+        spending_parent_public_key: Option<PublicKey>,
     },
     CancelTransaction(TxId),
     GetSpentOutputs,
@@ -419,6 +422,7 @@ impl OutputManagerHandle {
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -430,6 +434,7 @@ impl OutputManagerHandle {
                 tx_id,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 lock_height,
                 message,
@@ -645,16 +650,18 @@ impl OutputManagerHandle {
 
     pub async fn create_send_to_self_with_output(
         &mut self,
-        amount: MicroTari,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
+        spending_unique_id: Option<Vec<u8>>,
+        spending_parent_public_key: Option<PublicKey>,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfWithOutputs {
-                amount,
                 outputs,
                 fee_per_gram,
+                spending_unique_id,
+                spending_parent_public_key,
             })
             .await??
         {
@@ -668,6 +675,7 @@ impl OutputManagerHandle {
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -681,6 +689,7 @@ impl OutputManagerHandle {
                 lock_height,
                 message,
                 unique_id,
+                parent_public_key,
             })
             .await??
         {

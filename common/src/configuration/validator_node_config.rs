@@ -39,6 +39,8 @@ pub struct ValidatorNodeConfig {
     pub asset_config_directory: PathBuf,
     #[serde(default = "default_base_node_grpc_address")]
     pub base_node_grpc_address: SocketAddr,
+    #[serde(default = "default_wallet_grpc_address")]
+    pub wallet_grpc_address: SocketAddr,
 }
 
 fn default_asset_config_directory() -> PathBuf {
@@ -47,6 +49,10 @@ fn default_asset_config_directory() -> PathBuf {
 
 fn default_base_node_grpc_address() -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142)
+}
+
+fn default_wallet_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143)
 }
 
 impl ValidatorNodeConfig {

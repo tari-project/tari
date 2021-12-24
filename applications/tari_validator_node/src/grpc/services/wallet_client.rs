@@ -20,5 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod base_node_client;
-pub mod wallet_client;
+use std::net::SocketAddr;
+
+use async_trait::async_trait;
+use tari_app_grpc::tari_rpc as grpc;
+use tari_common_types::types::PublicKey;
+use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
+
+#[derive(Clone)]
+pub struct GrpcWalletClient {
+    endpoint: SocketAddr,
+    inner: Option<grpc::wallet_client::WalletClient<tonic::transport::Channel>>,
+}
+
+impl GrpcWalletClient {
+    pub fn new(endpoint: SocketAddr) -> GrpcWalletClient {
+        Self { endpoint, inner: None }
+    }
+
+    pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
+        self.inner = Some(
+            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint))
+                .await
+                .unwrap(),
+        );
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl WalletClient for GrpcWalletClient {
+    async fn create_new_checkpoint(
+        &self,
+        asset_public_key: &PublicKey,
+        checkpoint_unique_id: &[u8],
+        state_root: &StateRoot,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+}

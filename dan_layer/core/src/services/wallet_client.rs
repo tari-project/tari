@@ -20,5 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod base_node_client;
-pub mod wallet_client;
+use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
+
+use crate::{models::StateRoot, DigitalAssetError};
+
+#[async_trait]
+pub trait WalletClient {
+    async fn create_new_checkpoint(
+        &self,
+        asset_public_key: &PublicKey,
+        checkpoint_unique_id: &[u8],
+        state_root: &StateRoot,
+    ) -> Result<(), DigitalAssetError>;
+}

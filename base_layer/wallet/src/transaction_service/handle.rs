@@ -58,6 +58,7 @@ pub enum TransactionServiceRequest {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -65,6 +66,7 @@ pub enum TransactionServiceRequest {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
     },
@@ -295,6 +297,7 @@ impl TransactionServiceHandle {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
@@ -304,6 +307,7 @@ impl TransactionServiceHandle {
                 dest_pubkey,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 message,
             })
@@ -319,6 +323,7 @@ impl TransactionServiceHandle {
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
@@ -328,6 +333,7 @@ impl TransactionServiceHandle {
                 dest_pubkey,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 message,
             })

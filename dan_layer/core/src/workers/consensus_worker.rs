@@ -20,28 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::marker::PhantomData;
-
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, Payload, View, ViewId},
-    services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-        BaseNodeClient,
-        CommitteeManager,
-        EventsPublisher,
-        PayloadProcessor,
-        PayloadProvider,
-        SigningService,
-    },
+    models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, View, ViewId},
+    services::{CheckpointManager, CommitteeManager, EventsPublisher, PayloadProvider, ServiceSpecification},
     storage::{
         chain::ChainDbUnitOfWork,
         state::{StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkImpl},
-        ChainStorageService,
         DbFactory,
     },
     workers::{states, states::ConsensusWorkerStateEvent},
@@ -49,118 +38,43 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::consensus_worker";
 
-pub struct ConsensusWorker<
-    TInboundConnectionService,
-    TOutboundService,
-    TAddr,
-    TPayload,
-    TPayloadProvider,
-    TEventsPublisher,
-    TSigningService,
-    TPayloadProcessor,
-    TCommitteeManager,
-    TBaseNodeClient,
-    TStateBackendAdapter,
-    TDbFactory,
-    TChainStorageService,
-> where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable + Clone + Send,
-    TPayload: Payload,
-    TPayloadProvider: PayloadProvider<TPayload>,
-    TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
-    TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
-    TCommitteeManager: CommitteeManager<TAddr>,
-    TBaseNodeClient: BaseNodeClient,
-    TStateBackendAdapter: StateDbBackendAdapter,
-    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter>,
-    TChainStorageService: ChainStorageService<TPayload>,
-{
-    inbound_connections: TInboundConnectionService,
-    outbound_service: TOutboundService,
+pub struct ConsensusWorker<TSpecification: ServiceSpecification> {
+    inbound_connections: TSpecification::InboundConnectionService,
+    outbound_service: TSpecification::OutboundService,
     state: ConsensusWorkerState,
     current_view_id: ViewId,
-    committee_manager: TCommitteeManager,
+    committee_manager: TSpecification::CommitteeManager,
     timeout: Duration,
-    node_id: TAddr,
-    payload_provider: TPayloadProvider,
-    events_publisher: TEventsPublisher,
-    signing_service: TSigningService,
-    payload_processor: TPayloadProcessor,
+    node_id: TSpecification::Addr,
+    payload_provider: TSpecification::PayloadProvider,
+    events_publisher: TSpecification::EventsPublisher,
+    signing_service: TSpecification::SigningService,
+    payload_processor: TSpecification::PayloadProcessor,
     asset_definition: AssetDefinition,
-    base_node_client: TBaseNodeClient,
-    db_factory: TDbFactory,
-    chain_storage_service: TChainStorageService,
-    pd2: PhantomData<TPayload>,
-    // TODO: Switch out for generic
-    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TStateBackendAdapter>>,
+    base_node_client: TSpecification::BaseNodeClient,
+    db_factory: TSpecification::DbFactory,
+    chain_storage_service: TSpecification::ChainStorageService,
+    state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TSpecification::StateDbBackendAdapter>>,
+    checkpoint_manager: TSpecification::CheckpointManager,
 }
 
-impl<
-        TInboundConnectionService,
-        TOutboundService,
-        TAddr,
-        TPayload,
-        TPayloadProvider,
-        TEventsPublisher,
-        TSigningService,
-        TPayloadProcessor,
-        TCommitteeManager,
-        TBaseNodeClient,
-        TStateBackendAdapter,
-        TDbFactory,
-        TChainStorageService,
-    >
-    ConsensusWorker<
-        TInboundConnectionService,
-        TOutboundService,
-        TAddr,
-        TPayload,
-        TPayloadProvider,
-        TEventsPublisher,
-        TSigningService,
-        TPayloadProcessor,
-        TCommitteeManager,
-        TBaseNodeClient,
-        TStateBackendAdapter,
-        TDbFactory,
-        TChainStorageService,
-    >
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + 'static + Send + Sync,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable + Clone + Send + Sync,
-    TPayload: Payload,
-    TPayloadProvider: PayloadProvider<TPayload>,
-    TEventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>,
-    TSigningService: SigningService<TAddr>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
-    TCommitteeManager: CommitteeManager<TAddr>,
-    TBaseNodeClient: BaseNodeClient,
-    TStateBackendAdapter: StateDbBackendAdapter,
-    TDbFactory: DbFactory<StateDbBackendAdapter = TStateBackendAdapter> + Clone,
-    TChainStorageService: ChainStorageService<TPayload>,
-{
+impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
     pub fn new(
-        inbound_connections: TInboundConnectionService,
-        outbound_service: TOutboundService,
-        committee_manager: TCommitteeManager,
-        node_id: TAddr,
-        payload_provider: TPayloadProvider,
-        events_publisher: TEventsPublisher,
-        signing_service: TSigningService,
-        payload_processor: TPayloadProcessor,
-        // TODO: maybe make this more generic through a service
+        inbound_connections: TSpecification::InboundConnectionService,
+        outbound_service: TSpecification::OutboundService,
+        committee_manager: TSpecification::CommitteeManager,
+        node_id: TSpecification::Addr,
+        payload_provider: TSpecification::PayloadProvider,
+        events_publisher: TSpecification::EventsPublisher,
+        signing_service: TSpecification::SigningService,
+        payload_processor: TSpecification::PayloadProcessor,
         asset_definition: AssetDefinition,
-        base_node_client: TBaseNodeClient,
+        base_node_client: TSpecification::BaseNodeClient,
         timeout: Duration,
-        db_factory: TDbFactory,
-        chain_storage_service: TChainStorageService,
+        db_factory: TSpecification::DbFactory,
+        chain_storage_service: TSpecification::ChainStorageService,
+        checkpoint_manager: TSpecification::CheckpointManager,
     ) -> Self {
-        // let prepare_qc = Arc::new(QuorumCertificate::genesis(ash()));
-
         Self {
             inbound_connections,
             state: ConsensusWorkerState::Starting,
@@ -177,8 +91,8 @@ where
             base_node_client,
             db_factory,
             chain_storage_service,
-            pd2: PhantomData,
             state_db_unit_of_work: None,
+            checkpoint_manager,
         }
     }
 
@@ -198,7 +112,6 @@ where
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
-        dbg!("starting consensus worker");
         let starting_view = self.current_view_id;
         loop {
             if let Some(max) = max_views_to_process {
@@ -351,6 +264,9 @@ where
                 unit_of_work.commit()?;
                 if let Some(mut state_tx) = self.state_db_unit_of_work.take() {
                     state_tx.commit()?;
+                    self.checkpoint_manager
+                        .create_checkpoint(state_tx.calculate_root()?)
+                        .await?;
                 } else {
                     // technically impossible
                     error!(target: LOG_TARGET, "No state unit of work was present");
