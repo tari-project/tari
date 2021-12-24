@@ -31,7 +31,7 @@ use patricia_tree::{
     node::{Node, NodeDecoder, NodeEncoder},
     PatriciaMap,
 };
-use tari_dan_core::storage::state::StateDbBackendAdapter;
+use tari_dan_core::storage::state::{DbKeyValue, StateDbBackendAdapter};
 
 use crate::{
     error::SqliteStorageError,
@@ -240,11 +240,11 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
         &self,
         schema: &str,
         tx: &Self::BackendTransaction,
-    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Self::Error> {
+    ) -> Result<Vec<DbKeyValue>, Self::Error> {
         use crate::schema::state_keys::dsl;
-        let values: Vec<(Vec<u8>, Vec<u8>)> = dsl::state_keys
+        let values: Vec<(String, Vec<u8>, Vec<u8>)> = dsl::state_keys
             .filter(state_keys::schema_name.eq(schema))
-            .select((state_keys::key_name, state_keys::value))
+            .select((state_keys::schema_name, state_keys::key_name, state_keys::value))
             .order_by(state_keys::key_name.asc())
             .load(tx.connection())
             .map_err(|source| SqliteStorageError::DieselError {
@@ -252,6 +252,9 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
                 operation: "get_all_values_for_schema".to_string(),
             })?;
 
-        Ok(values)
+        Ok(values
+            .into_iter()
+            .map(|(schema, key, value)| DbKeyValue { schema, key, value })
+            .collect())
     }
 }

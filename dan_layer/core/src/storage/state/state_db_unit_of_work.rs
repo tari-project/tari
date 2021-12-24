@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    hash::Hash,
-    sync::{Arc, RwLock, RwLockReadGuard},
-};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use bs58;
 use digest::Digest;
@@ -184,20 +181,20 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?
         {
             let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-            for (key, value) in inner
+            for key_value in inner
                 .backend_adapter
                 .get_all_values_for_schema(&schema, &tx)
                 .map_err(TBackendAdapter::Error::into)?
             {
-                if let Some(updated_value) = find_update(&inner, &schema, &key) {
-                    let mut hasher = HashDigest::new();
-                    mmr.push(hasher.chain(key).chain(updated_value).finalize().to_vec())?;
+                if let Some(updated_value) = find_update(&inner, &schema, &key_value.key) {
+                    let hasher = HashDigest::new();
+                    mmr.push(hasher.chain(&key_value.key).chain(updated_value).finalize().to_vec())?;
                 } else {
-                    let mut hasher = HashDigest::new();
-                    mmr.push(hasher.chain(key).chain(value).finalize().to_vec())?;
+                    let hasher = HashDigest::new();
+                    mmr.push(hasher.chain(&key_value.key).chain(&key_value.value).finalize().to_vec())?;
                 }
             }
-            let mut hasher = HashDigest::new();
+            let hasher = HashDigest::new();
             top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
         }
         Ok(StateRoot::new(top_level_mmr.get_merkle_root()?))
@@ -211,11 +208,11 @@ fn find_update<TBackendAdapter: StateDbBackendAdapter>(
 ) -> Option<Vec<u8>> {
     for update in &inner.updates {
         let update = update.get();
-        if &update.schema == schema && &update.key == key {
+        if update.schema == schema && update.key == key {
             return Some(update.value.clone());
         }
     }
-    return None;
+    None
 }
 
 pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {

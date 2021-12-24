@@ -23,9 +23,9 @@
 use crate::schema::*;
 #[derive(Queryable)]
 pub(crate) struct StateTree {
-    pub id: i32,
+    pub _id: i32,
     pub version: i32,
-    pub is_current: bool,
+    pub _is_current: bool,
     pub data: Vec<u8>,
 }
 

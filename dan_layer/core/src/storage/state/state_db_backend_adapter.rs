@@ -22,7 +22,7 @@
 
 use patricia_tree::PatriciaMap;
 
-use crate::storage::StorageError;
+use crate::storage::{state::db_key_value::DbKeyValue, StorageError};
 
 pub trait StateDbBackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
@@ -51,5 +51,5 @@ pub trait StateDbBackendAdapter: Send + Sync + Clone {
         &self,
         schema: &str,
         tx: &Self::BackendTransaction,
-    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Self::Error>;
+    ) -> Result<Vec<DbKeyValue>, Self::Error>;
 }
