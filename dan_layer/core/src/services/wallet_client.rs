@@ -22,6 +22,7 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
 
 use crate::{models::StateRoot, DigitalAssetError};
 
@@ -32,5 +33,6 @@ pub trait WalletClient {
         asset_public_key: &PublicKey,
         checkpoint_unique_id: &[u8],
         state_root: &StateRoot,
+        next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError>;
 }

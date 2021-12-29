@@ -266,7 +266,10 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                 if let Some(mut state_tx) = self.state_db_unit_of_work.take() {
                     state_tx.commit()?;
                     self.checkpoint_manager
-                        .create_checkpoint(state_tx.calculate_root()?)
+                        .create_checkpoint(
+                            state_tx.calculate_root()?,
+                            self.committee_manager.current_committee()?.members.clone(),
+                        )
                         .await?;
                 } else {
                     // technically impossible

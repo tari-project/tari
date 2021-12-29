@@ -21,16 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
+use tari_comms::types::CommsPublicKey;
 
 use crate::{
     models::{AssetDefinition, StateRoot},
-    services::wallet_client::WalletClient,
+    services::{infrastructure_services::NodeAddressable, wallet_client::WalletClient},
     DigitalAssetError,
 };
 
 #[async_trait]
-pub trait CheckpointManager {
-    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError>;
+pub trait CheckpointManager<TAddr: NodeAddressable> {
+    async fn create_checkpoint(
+        &mut self,
+        state_root: StateRoot,
+        next_committee: Vec<TAddr>,
+    ) -> Result<(), DigitalAssetError>;
 }
 
 #[derive(Default)]
@@ -49,13 +54,18 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
 }
 
 #[async_trait]
-impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpointManager<TWallet> {
-    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError> {
+impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for ConcreteCheckpointManager<TWallet> {
+    async fn create_checkpoint(
+        &mut self,
+        state_root: StateRoot,
+        next_committee: Vec<CommsPublicKey>,
+    ) -> Result<(), DigitalAssetError> {
         self.wallet
             .create_new_checkpoint(
                 &self.asset_definition.public_key,
                 &self.asset_definition.checkpoint_unique_id,
                 &state_root,
+                next_committee,
             )
             .await
     }

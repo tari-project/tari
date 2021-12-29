@@ -49,7 +49,7 @@ pub trait ServiceSpecification: Clone {
     type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
     type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
     type ChainStorageService: ChainStorageService<Self::Payload>;
-    type CheckpointManager: CheckpointManager;
+    type CheckpointManager: CheckpointManager<Self::Addr>;
     type CommitteeManager: CommitteeManager<Self::Addr>;
     type DbFactory: DbFactory<StateDbBackendAdapter = Self::StateDbBackendAdapter> + Clone + Sync + Send + 'static;
     type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
