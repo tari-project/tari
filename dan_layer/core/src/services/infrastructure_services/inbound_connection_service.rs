@@ -23,7 +23,7 @@
 use async_trait::async_trait;
 
 use crate::{
-    models::{HotStuffMessage, HotStuffMessageType, Payload, View, ViewId},
+    models::{HotStuffMessage, HotStuffMessageType, Payload, ViewId},
     services::infrastructure_services::NodeAddressable,
     DigitalAssetError,
 };

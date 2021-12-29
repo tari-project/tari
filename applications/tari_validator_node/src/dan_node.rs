@@ -35,14 +35,11 @@ use tari_dan_core::{
         ConcreteCheckpointManager,
         ConcreteCommitteeManager,
         LoggingEventsPublisher,
-        MempoolService,
         MempoolServiceHandle,
         NodeIdentitySigningService,
-        ServiceSpecification,
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::DbFactory,
     workers::ConsensusWorker,
 };
 use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
@@ -205,7 +202,7 @@ impl DanNode {
         // let data_store = AssetDataStore::new(backend);
         let asset_processor = ConcreteAssetProcessor::default();
 
-        let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service.clone());
+        let payload_processor = TariDanPayloadProcessor::new(asset_processor);
         let mut inbound = TariCommsInboundConnectionService::new(asset_definition.public_key.clone());
         let receiver = inbound.get_receiver();
 

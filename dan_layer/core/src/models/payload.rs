@@ -22,7 +22,7 @@
 
 use std::fmt::Debug;
 
-use crate::models::{ConsensusHash, StateRoot};
+use crate::models::ConsensusHash;
 
 pub trait Payload: Debug + Clone + Send + Sync + ConsensusHash {}
 

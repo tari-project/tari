@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use lmdb_zero::Stat;
 use tari_crypto::common::Blake256;
 
 use crate::models::{Payload, StateRoot, TreeNodeHash};

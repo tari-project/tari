@@ -31,14 +31,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{
-        AssetOutputFeatures,
-        MintNonFungibleFeatures,
-        OutputFeatures,
-        OutputFlags,
-        SideChainCheckpointFeatures,
-        UnblindedOutput,
-    },
+    transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{
@@ -46,7 +39,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 use crate::{
     output_manager_service::{

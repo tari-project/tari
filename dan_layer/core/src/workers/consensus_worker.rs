@@ -30,7 +30,7 @@ use crate::{
     services::{CheckpointManager, CommitteeManager, EventsPublisher, PayloadProvider, ServiceSpecification},
     storage::{
         chain::ChainDbUnitOfWork,
-        state::{StateDbBackendAdapter, StateDbUnitOfWork, StateDbUnitOfWorkImpl},
+        state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl},
         DbFactory,
     },
     workers::{states, states::ConsensusWorkerStateEvent},
@@ -177,7 +177,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                         &self.get_current_view()?,
                         self.timeout,
                         self.committee_manager.current_committee()?,
-                        &mut self.inbound_connections,
+                        &self.inbound_connections,
                         &mut self.outbound_service,
                         &mut self.payload_provider,
                         &self.signing_service,
@@ -207,7 +207,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                     .next_event(
                         self.timeout,
                         &self.get_current_view()?,
-                        &mut self.inbound_connections,
+                        &self.inbound_connections,
                         &mut self.outbound_service,
                         &self.signing_service,
                         unit_of_work.clone(),

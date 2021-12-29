@@ -42,10 +42,7 @@ use tari_app_utilities::{identity_management::setup_node_identity, initializatio
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_dan_core::{
-    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
-    storage::DbFactory,
-};
+use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;

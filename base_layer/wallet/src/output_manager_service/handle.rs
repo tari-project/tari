@@ -46,6 +46,7 @@ use crate::output_manager_service::{
 };
 
 /// API Request enum
+#[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),

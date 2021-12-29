@@ -290,7 +290,7 @@ where
                         .add_node::<TUnitOfWork>(node, chain_tx.clone())
                         .await?;
 
-                    payload_provider.reserve_payload(node.payload(), node.hash());
+                    payload_provider.reserve_payload(node.payload(), node.hash()).await?;
                     self.send_vote_to_leader(
                         node.hash().clone(),
                         outbound,

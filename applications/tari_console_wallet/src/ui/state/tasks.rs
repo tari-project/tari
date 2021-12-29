@@ -30,6 +30,7 @@ use crate::ui::{state::UiTransactionSendStatus, UiError};
 
 const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,
@@ -107,6 +108,7 @@ pub async fn send_transaction_task(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send_one_sided_transaction_task(
     public_key: CommsPublicKey,
     amount: MicroTari,

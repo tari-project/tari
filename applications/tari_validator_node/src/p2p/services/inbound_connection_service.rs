@@ -32,17 +32,15 @@ use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_dan_core::{
-    models::{HotStuffMessage, HotStuffMessageType, Payload, TariDanPayload, ViewId},
+    models::{HotStuffMessage, HotStuffMessageType, TariDanPayload, ViewId},
     services::infrastructure_services::InboundConnectionService,
     DigitalAssetError,
 };
 use tari_p2p::comms_connector::PeerMessage;
-use tari_service_framework::reply_channel::Receiver as TariReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{
     mpsc::{channel, Receiver, Sender},
     oneshot,
-    RwLock,
 };
 
 use crate::p2p::proto;
@@ -72,6 +70,7 @@ pub struct TariCommsInboundConnectionService {
     asset_public_key: PublicKey,
     buffered_messages: VecDeque<(CommsPublicKey, HotStuffMessage<TariDanPayload>, Instant)>,
     expiry_time: Duration,
+    #[allow(clippy::type_complexity)]
     waiters: VecDeque<(
         HotStuffMessageType,
         ViewId,
@@ -235,7 +234,7 @@ impl TariCommsInboundConnectionService {
             let mut waiter_index = None;
             for (index, waiter) in self.waiters.iter().enumerate() {
                 let (message_type, view_number, wait_for_type, _) = waiter;
-                match waiter.2 {
+                match wait_for_type {
                     WaitForMessageType::Message => {
                         if message.message_type() == *message_type && message.view_number() == *view_number {
                             waiter_index = Some(index);
@@ -262,9 +261,8 @@ impl TariCommsInboundConnectionService {
                 if let Some(w) = self.waiters.swap_remove_back(index) {
                     // The receiver on the other end of this channel may have dropped naturally
                     // as it moves out of scope and is not longer interested in receiving the message
-                    match w.3.send((from.clone(), message.clone())) {
-                        Ok(_) => return Ok(()),
-                        Err(_) => {},
+                    if w.3.send((from.clone(), message.clone())).is_ok() {
+                        return Ok(());
                     }
                 }
             } else {
@@ -279,7 +277,7 @@ impl TariCommsInboundConnectionService {
         );
         // Otherwise, buffer it
         self.buffered_messages.push_back((from, message, Instant::now()));
-        return Ok(());
+        Ok(())
     }
 }
 

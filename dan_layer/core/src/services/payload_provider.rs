@@ -26,7 +26,6 @@ use crate::{
     digital_assets_error::DigitalAssetError,
     models::{InstructionSet, Payload, TariDanPayload, TreeNodeHash},
     services::MempoolService,
-    storage::state::StateDbUnitOfWork,
 };
 
 #[async_trait]

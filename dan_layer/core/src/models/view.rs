@@ -37,6 +37,4 @@ impl View {
     pub fn view_id(&self) -> ViewId {
         self.view_id
     }
-
 }
-

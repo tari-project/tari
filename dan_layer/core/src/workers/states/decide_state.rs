@@ -32,7 +32,6 @@ use crate::{
     models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-        PayloadProcessor,
         PayloadProvider,
     },
     storage::chain::ChainDbUnitOfWork,

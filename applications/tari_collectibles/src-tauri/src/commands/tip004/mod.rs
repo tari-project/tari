@@ -116,15 +116,17 @@ pub(crate) async fn tip004_list_tokens(
         if !token_result.is_empty() {
           let token_data: tip004::TokenOfOwnerByIndexResponse = Message::decode(&*token_result)?;
 
-      let token_row = Tip721TokenRow {
-        id: Uuid::new_v4(),
-        address_id: address.id,
-        token_id: token_data.token_id,
-        token: token_data.token.clone(),
-      };
+          let token_row = Tip721TokenRow {
+            id: Uuid::new_v4(),
+            address_id: address.id,
+            token_id: token_data.token_id,
+            token: token_data.token.clone(),
+          };
 
-      db.tip721_tokens().insert(&token_row, &tx)?;
-      token_ids.push((token_row, address.clone()));
+          db.tip721_tokens().insert(&token_row, &tx)?;
+          token_ids.push((token_row, address.clone()));
+        }
+      }
     }
   }
   tx.commit()?;
