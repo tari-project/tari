@@ -20,64 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Debug;
-
-use digest::Digest;
-use tari_crypto::common::Blake256;
-
-use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload};
-
-#[derive(Debug, Clone)]
-pub struct TariDanPayload {
-    hash: Vec<u8>,
-    instruction_set: InstructionSet,
-    checkpoint: Option<CheckpointData>,
-}
-
-impl TariDanPayload {
-    pub fn new(instruction_set: InstructionSet, checkpoint: Option<CheckpointData>) -> Self {
-        let mut result = Self {
-            hash: vec![],
-            instruction_set,
-            checkpoint,
-        };
-        result.hash = result.calculate_hash();
-        result
-    }
-
-    pub fn destruct(self) -> (InstructionSet, Option<CheckpointData>) {
-        (self.instruction_set, self.checkpoint)
-    }
-
-    pub fn instructions(&self) -> &[Instruction] {
-        self.instruction_set.instructions()
-    }
-
-    fn calculate_hash(&self) -> Vec<u8> {
-        let result = Blake256::new().chain(self.instruction_set.consensus_hash());
-        if let Some(ref ck) = self.checkpoint {
-            result.chain(ck.consensus_hash()).finalize().to_vec()
-        } else {
-            result.finalize().to_vec()
-        }
-    }
-}
-
-impl ConsensusHash for TariDanPayload {
-    fn consensus_hash(&self) -> &[u8] {
-        self.hash.as_slice()
-    }
-}
-
-impl Payload for TariDanPayload {}
-
-#[derive(Debug, Clone, Default)]
-pub struct CheckpointData {
-    hash: Vec<u8>,
-}
-
-impl ConsensusHash for CheckpointData {
-    fn consensus_hash(&self) -> &[u8] {
-        self.hash.as_slice()
-    }
+pub async fn wait_for_message(
+    inbound_connection: &TInboundConnectionService,
+    message_type: HotStuffMessageType,
+    view: ViewId,
+) -> (TAddr, HotStuffMessage<TPayload>) {
 }

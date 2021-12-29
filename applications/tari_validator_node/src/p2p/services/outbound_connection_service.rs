@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
@@ -67,6 +68,7 @@ impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundServic
         to: CommsPublicKey,
         message: HotStuffMessage<TariDanPayload>,
     ) -> Result<(), DigitalAssetError> {
+        debug!(target: "messages::outbound::validator_node", "Outbound message to be sent:{} {:?}", to, message);
         // Tari comms does allow sending to itself
         if from == to && message.asset_public_key() == &self.asset_public_key {
             self.loopback_service.send((from, message)).await.unwrap();

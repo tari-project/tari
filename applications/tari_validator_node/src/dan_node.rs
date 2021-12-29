@@ -207,7 +207,7 @@ impl DanNode {
 
         let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service.clone());
         let mut inbound = TariCommsInboundConnectionService::new(asset_definition.public_key.clone());
-        let receiver = inbound.take_receiver().unwrap();
+        let receiver = inbound.get_receiver();
 
         let loopback = inbound.clone_sender();
         let shutdown_2 = shutdown.clone();
@@ -223,7 +223,6 @@ impl DanNode {
         let chain_storage = SqliteStorageService {};
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
         let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
-        dbg!("About to start consensus worker");
         let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
             receiver,
             outbound,

@@ -45,7 +45,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, StorageError},
+    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, DbFactory, StorageError},
     workers::states::ConsensusWorkerStateEvent,
 };
 
@@ -125,19 +125,21 @@ where
         TChainStorageService: ChainStorageService<TPayload>,
         TUnitOfWork: ChainDbUnitOfWork,
         TStateDbUnitOfWork: StateDbUnitOfWork,
+        TDbFactory: DbFactory,
     >(
         &mut self,
         current_view: &View,
         timeout: Duration,
         committee: &Committee<TAddr>,
-        inbound_services: &mut TInboundConnectionService,
+        inbound_services: &TInboundConnectionService,
         outbound_service: &mut TOutboundService,
-        payload_provider: &TPayloadProvider,
+        payload_provider: &mut TPayloadProvider,
         signing_service: &TSigningService,
         payload_processor: &mut TPayloadProcessor,
         chain_storage_service: &TChainStorageService,
         chain_tx: TUnitOfWork,
         state_tx: &mut TStateDbUnitOfWork,
+        db_factory: &TDbFactory,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
@@ -146,18 +148,24 @@ where
         let next_event_result;
         loop {
             tokio::select! {
-                (from, message) = self.wait_for_message(inbound_services) => {
+                r = inbound_services.wait_for_message(HotStuffMessageType::NewView, current_view.view_id() - 1.into())  => {
+                    let (from, message) = r?;
+                    debug!(target: LOG_TARGET, "Received leader message");
                     if current_view.is_leader() {
                         if let Some(result) = self.process_leader_message(current_view, message.clone(),
-                            &from, committee, payload_provider, outbound_service).await?{
+                            &from, committee, payload_provider, payload_processor, outbound_service, db_factory).await?{
                            next_event_result = result;
                             break;
                         }
 
                     }
+                },
+                r = inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                    let (from, message) = r?;
+                    debug!(target: LOG_TARGET, "Received replica message");
                     if let Some(result) = self.process_replica_message(&message, current_view, &from,
                         committee.leader_for_view(current_view.view_id),  outbound_service, signing_service,
-                    payload_processor, &mut chain_tx, chain_storage_service, state_tx).await? {
+                    payload_processor, payload_provider, &mut chain_tx, chain_storage_service, state_tx).await? {
                         next_event_result = result;
                         break;
                     }
@@ -175,42 +183,23 @@ where
         Ok(next_event_result)
     }
 
-    async fn wait_for_message(
-        &self,
-        inbound_connection: &mut TInboundConnectionService,
-    ) -> (TAddr, HotStuffMessage<TPayload>) {
-        inbound_connection.receive_message().await
-    }
-
-    async fn process_leader_message(
+    async fn process_leader_message<TDbFactory: DbFactory>(
         &mut self,
         current_view: &View,
         message: HotStuffMessage<TPayload>,
         sender: &TAddr,
         committee: &Committee<TAddr>,
         payload_provider: &TPayloadProvider,
+        payload_processor: &mut TPayloadProcessor,
         outbound: &mut TOutboundService,
+        db_factory: &TDbFactory,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        if message.message_type() != &HotStuffMessageType::NewView {
-            warn!(
-                target: LOG_TARGET,
-                "{} sent wrong message of type {:?}. Expecting NEW_VIEW",
-                sender,
-                message.message_type()
-            );
-            return Ok(None);
-        }
-
-        if message.view_number() != current_view.view_id - 1.into() {
-            warn!(
-                target: LOG_TARGET,
-                "{} sent wrong view number for NEW_VIEW message. Expecting {}, got {}",
-                sender,
-                current_view.view_id - 1.into(),
-                message.view_number()
-            );
-            return Ok(None);
-        }
+        debug!(
+            target: LOG_TARGET,
+            "Received message as leader:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
 
         // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(sender) {
@@ -229,8 +218,17 @@ where
             );
             let high_qc = self.find_highest_qc();
 
+            let temp_state_tx = db_factory
+                .get_or_create_state_db(&self.asset_public_key)?
+                .new_unit_of_work();
             let proposal = self
-                .create_proposal(high_qc.node_hash().clone(), payload_provider, 0)
+                .create_proposal(
+                    high_qc.node_hash().clone(),
+                    payload_provider,
+                    payload_processor,
+                    0,
+                    temp_state_tx,
+                )
                 .await?;
             self.broadcast_proposal(outbound, committee, proposal, high_qc, current_view.view_id)
                 .await?;
@@ -259,19 +257,17 @@ where
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
         payload_processor: &mut TPayloadProcessor,
+        payload_provider: &mut TPayloadProvider,
         chain_tx: &mut TUnitOfWork,
         chain_storage_service: &TChainStorageService,
         state_tx: &mut TStateDbUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
-        if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
-            // println!(
-            //     "Wrong message type received, log. {:?} {:?} View {:?}",
-            //     &self.node_id,
-            //     &message.message_type(),
-            //     current_view.view_id
-            // );
-            return Ok(None);
-        }
+        debug!(
+            target: LOG_TARGET,
+            "Received message as replica:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if message.node().is_none() {
             unimplemented!("Empty message");
         }
@@ -287,13 +283,14 @@ where
                 }
 
                 let res = payload_processor
-                    .process_payload(node.hash().clone(), node.payload(), state_tx.clone())
+                    .process_payload(node.payload(), state_tx.clone())
                     .await?;
-                if res == node.payload().state_root() {
+                if &res == node.state_root() {
                     chain_storage_service
                         .add_node::<TUnitOfWork>(node, chain_tx.clone())
                         .await?;
 
+                    payload_provider.reserve_payload(node.payload(), node.hash());
                     self.send_vote_to_leader(
                         node.hash().clone(),
                         outbound,
@@ -302,8 +299,17 @@ where
                         signing_service,
                     )
                     .await?;
+                    Ok(Some(ConsensusWorkerStateEvent::Prepared))
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Calculated state root did not match the state root provided by the leader: Expected: {:?} \
+                         Leader provided:{:?}",
+                        res,
+                        node.state_root()
+                    );
+                    Ok(None)
                 }
-                Ok(Some(ConsensusWorkerStateEvent::Prepared))
             } else {
                 unimplemented!("Did not extend from qc.justify.node")
             }
@@ -330,11 +336,13 @@ where
         max_qc.unwrap()
     }
 
-    async fn create_proposal(
+    async fn create_proposal<TStateDbUnitOfWork: StateDbUnitOfWork>(
         &self,
         parent: TreeNodeHash,
         payload_provider: &TPayloadProvider,
+        payload_processor: &mut TPayloadProcessor,
         height: u32,
+        state_db: TStateDbUnitOfWork,
     ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
         debug!(target: LOG_TARGET, "Creating new proposal");
 
@@ -342,7 +350,8 @@ where
         sleep(Duration::from_secs(10)).await;
 
         let payload = payload_provider.create_payload().await?;
-        Ok(HotStuffTreeNode::from_parent(parent, payload, height))
+        let state_root = payload_processor.process_payload(&payload, state_db).await?;
+        Ok(HotStuffTreeNode::from_parent(parent, payload, state_root, height))
     }
 
     async fn broadcast_proposal(

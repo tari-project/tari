@@ -179,12 +179,13 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                         self.committee_manager.current_committee()?,
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
-                        &self.payload_provider,
+                        &mut self.payload_provider,
                         &self.signing_service,
                         &mut self.payload_processor,
                         &self.chain_storage_service,
                         unit_of_work.clone(),
                         &mut state_tx,
+                        &self.db_factory,
                     )
                     .await?;
                 // Will only be committed in DECIDE
@@ -258,7 +259,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                         &mut self.inbound_connections,
                         &mut self.outbound_service,
                         unit_of_work.clone(),
-                        &mut self.payload_processor,
+                        &mut self.payload_provider,
                     )
                     .await?;
                 unit_of_work.commit()?;
@@ -316,7 +317,10 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
             (Starting, Initialized) => NextView,
             (_, NotPartOfCommittee) => Idle,
             (Idle, TimedOut) => Starting,
-            (_, TimedOut) => NextView,
+            (_, TimedOut) => {
+                warn!(target: LOG_TARGET, "State timed out");
+                NextView
+            },
             (NextView, NewView { .. }) => {
                 self.current_view_id = self.current_view_id.next();
                 Prepare

@@ -33,4 +33,10 @@ impl View {
     pub fn is_leader(&self) -> bool {
         self.is_leader
     }
+
+    pub fn view_id(&self) -> ViewId {
+        self.view_id
+    }
+
 }
+

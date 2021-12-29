@@ -40,11 +40,9 @@ pub trait PayloadProcessor<TPayload: Payload> {
     ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &mut self,
-        node_hash: TreeNodeHash,
         payload: &TPayload,
         unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError>;
-    async fn remove_payload_for_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError>;
 }
 
 pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
@@ -81,9 +79,8 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempool: MempoolService + S
             .init_template(template_parameter, asset_definition, state_db)
     }
 
-    async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
+    async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &mut self,
-        node_hash: TreeNodeHash,
         payload: &TariDanPayload,
         state_tx: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
@@ -94,17 +91,7 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempool: MempoolService + S
             // TODO: Should we swallow + log the error instead of propagating it?
             self.asset_processor.execute_instruction(instruction, &mut state_tx)?;
         }
-        // Reserve all instructions if they succeeded
-        for instruction in payload.instructions() {
-            self.mempool
-                .reserve_instruction_in_block(instruction.hash(), node_hash.0.clone())
-                .await?;
-        }
 
         Ok(state_tx.calculate_root()?)
-    }
-
-    async fn remove_payload_for_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
-        self.mempool.remove_all_in_block(node_hash.as_bytes()).await
     }
 }

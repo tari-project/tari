@@ -63,6 +63,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
+    // console_subscriber::init();
     if let Err(exit_code) = main_inner() {
         eprintln!("{:?}", exit_code);
         error!(

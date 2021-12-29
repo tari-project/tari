@@ -37,9 +37,10 @@ prost = "0.8"
 prost-types = "0.8"
 serde = "1.0.126"
 thiserror = "^1.0.20"
-tokio = { version="1.10", features = ["macros", "time"]}
+tokio = { version="1.10", features = ["macros", "time", "sync"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tonic = "0.5.2"
+console-subscriber = "0.1.0"
 
 # saving of patricia tree
 patricia_tree = { version = "0.3.0", features = ["binary-format"] }
