@@ -28,7 +28,7 @@ use crate::{models::StateRoot, DigitalAssetError};
 #[async_trait]
 pub trait WalletClient {
     async fn create_new_checkpoint(
-        &self,
+        &mut self,
         asset_public_key: &PublicKey,
         checkpoint_unique_id: &[u8],
         state_root: &StateRoot,

@@ -430,8 +430,11 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 
         warn!(
             target: LOG_TARGET,
-            "Input spends a UTXO but does not produce the same hash as the output it spends:
+            "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
+             provided hash:{}
             {}",
+            utxo_hash.to_hex(),
+            output_hash.to_hex(),
             input
         );
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));

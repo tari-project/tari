@@ -30,7 +30,7 @@ use crate::{
 
 #[async_trait]
 pub trait CheckpointManager {
-    async fn create_checkpoint(&self, state_root: StateRoot) -> Result<(), DigitalAssetError>;
+    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError>;
 }
 
 #[derive(Default)]
@@ -50,7 +50,7 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
 
 #[async_trait]
 impl<TWallet: WalletClient + Sync + Send> CheckpointManager for ConcreteCheckpointManager<TWallet> {
-    async fn create_checkpoint(&self, state_root: StateRoot) -> Result<(), DigitalAssetError> {
+    async fn create_checkpoint(&mut self, state_root: StateRoot) -> Result<(), DigitalAssetError> {
         self.wallet
             .create_new_checkpoint(
                 &self.asset_definition.public_key,

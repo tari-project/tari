@@ -160,7 +160,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 0.into(),
                 OutputFeatures::for_checkpoint(
                     asset_pub_key,
-                    vec![3u8, 32],
+                    vec![3u8; 32],
                     merkle_root,
                     committee_pub_keys.clone(),
                     true,
