@@ -3850,8 +3850,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
                     (*dest_public_key).clone(),
                     MicroTari::from(amount),
-                    None,
-                    None,
                     MicroTari::from(fee_per_gram),
                     message_string,
                 )) {
@@ -3869,8 +3867,6 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .block_on((*wallet).wallet.transaction_service.send_transaction(
                     (*dest_public_key).clone(),
                     MicroTari::from(amount),
-                    None,
-                    None,
                     MicroTari::from(fee_per_gram),
                     message_string,
                 )) {

@@ -49,8 +49,20 @@ pub struct MockInboundConnectionService<TAddr: NodeAddressable, TPayload: Payloa
 impl<TAddr: NodeAddressable + Send, TPayload: Payload> InboundConnectionService<TAddr, TPayload>
     for MockInboundConnectionService<TAddr, TPayload>
 {
-    async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>) {
-        self.messages.1.recv().await.unwrap()
+    async fn wait_for_message(
+        &self,
+        _message_type: HotStuffMessageType,
+        _for_view: ViewId,
+    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn wait_for_qc(
+        &self,
+        _message_type: HotStuffMessageType,
+        _for_view: ViewId,
+    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError> {
+        todo!()
     }
 }
 impl<TAddr: NodeAddressable, TPayload: Payload> Default for MockInboundConnectionService<TAddr, TPayload> {
@@ -110,7 +122,7 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockOutboundService<TAddr, TPayl
 
 use std::fmt::Debug;
 
-use crate::models::Payload;
+use crate::models::{HotStuffMessageType, Payload, ViewId};
 
 #[async_trait]
 impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>

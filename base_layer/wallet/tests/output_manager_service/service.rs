@@ -393,6 +393,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             TxId::new_random(),
             amount,
             None,
+            None,
             fee_per_gram,
             None,
             "".to_string(),
@@ -418,6 +419,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             amount,
+            None,
             None,
             fee_per_gram,
             None,
@@ -497,6 +499,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             TxId::new_random(),
             amount,
             None,
+            None,
             fee_per_gram,
             None,
             "".to_string(),
@@ -552,6 +555,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             TxId::new_random(),
             amount,
             None,
+            None,
             fee_per_gram,
             None,
             "".to_string(),
@@ -576,6 +580,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             6 * amount,
+            None,
             None,
             fee_per_gram,
             None,
@@ -619,6 +624,7 @@ async fn send_not_enough_funds() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(num_outputs * 2000),
+            None,
             None,
             MicroTari::from(4),
             None,
@@ -671,6 +677,7 @@ async fn send_no_change() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(value1 + value2) - fee_without_change,
+            None,
             None,
             fee_per_gram,
             None,
@@ -726,6 +733,7 @@ async fn send_not_enough_for_change() {
             TxId::new_random(),
             value1 + value2 + uT - fee_without_change,
             None,
+            None,
             fee_per_gram,
             None,
             "".to_string(),
@@ -760,6 +768,7 @@ async fn cancel_transaction() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
+            None,
             None,
             MicroTari::from(4),
             None,
@@ -838,6 +847,7 @@ async fn test_get_balance() {
             TxId::new_random(),
             send_value,
             None,
+            None,
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -883,6 +893,7 @@ async fn sending_transaction_with_short_term_clear() {
             TxId::new_random(),
             MicroTari::from(1000),
             None,
+            None,
             MicroTari::from(4),
             None,
             "".to_string(),
@@ -908,6 +919,7 @@ async fn sending_transaction_with_short_term_clear() {
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
+            None,
             None,
             MicroTari::from(4),
             None,
@@ -1169,6 +1181,7 @@ async fn test_txo_validation() {
     oms.prepare_transaction_to_send(
         4.into(),
         MicroTari::from(900_000),
+        None,
         None,
         MicroTari::from(10),
         None,

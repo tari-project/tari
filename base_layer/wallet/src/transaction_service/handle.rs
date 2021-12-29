@@ -296,6 +296,30 @@ impl TransactionServiceHandle {
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendTransaction {
+                dest_pubkey,
+                amount,
+                unique_id: None,
+                parent_public_key: None,
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_transaction_or_token(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
         unique_id: Option<Vec<u8>>,
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
@@ -319,6 +343,30 @@ impl TransactionServiceHandle {
     }
 
     pub async fn send_one_sided_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                unique_id: None,
+                parent_public_key: None,
+                fee_per_gram,
+                message,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_transaction_or_token(
         &mut self,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
