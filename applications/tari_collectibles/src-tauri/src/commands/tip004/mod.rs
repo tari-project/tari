@@ -98,21 +98,23 @@ pub(crate) async fn tip004_list_tokens(
       .await?;
     dbg!(&result);
     db.tip721_tokens().delete_all_for_address(address.id, &tx)?;
-    let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;
-    for index in 0..balance_of.num_tokens {
-      let args = tip004::TokenOfOwnerByIndexRequest {
-        owner: Vec::from(address.public_key.as_bytes()),
-        index,
-      };
-      let token_result = client
-        .invoke_read_method(
-          asset_public_key.clone(),
-          4,
-          "token_of_owner_by_index".to_string(),
-          args.encode_to_vec(),
-        )
-        .await?;
-      let token_data: tip004::TokenOfOwnerByIndexResponse = Message::decode(&*token_result)?;
+    if !result.is_empty() {
+      let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;
+      for index in 0..balance_of.num_tokens {
+        let args = tip004::TokenOfOwnerByIndexRequest {
+          owner: Vec::from(address.public_key.as_bytes()),
+          index,
+        };
+        let token_result = client
+          .invoke_read_method(
+            asset_public_key.clone(),
+            4,
+            "token_of_owner_by_index".to_string(),
+            args.encode_to_vec(),
+          )
+          .await?;
+        if !token_result.is_empty() {
+          let token_data: tip004::TokenOfOwnerByIndexResponse = Message::decode(&*token_result)?;
 
       let token_row = Tip721TokenRow {
         id: Uuid::new_v4(),
