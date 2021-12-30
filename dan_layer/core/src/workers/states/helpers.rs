@@ -20,36 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use patricia_tree::PatriciaMap;
-
-use crate::storage::{state::db_key_value::DbKeyValue, StorageError};
-
-pub trait StateDbBackendAdapter: Send + Sync + Clone {
-    type BackendTransaction;
-    type Error: Into<StorageError>;
-
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
-    fn update_key_value(
-        &self,
-        schema: &str,
-        key: &[u8],
-        value: &[u8],
-        tx: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-    fn get(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error>;
-    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn get_current_state_tree(&self, tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error>;
-    fn set_current_state_tree(
-        &self,
-        tree: PatriciaMap<Vec<u8>>,
-        tx: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-
-    fn get_all_schemas(&self, tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error>;
-    fn get_all_values_for_schema(
-        &self,
-        schema: &str,
-        tx: &Self::BackendTransaction,
-    ) -> Result<Vec<DbKeyValue>, Self::Error>;
+pub async fn wait_for_message(
+    inbound_connection: &TInboundConnectionService,
+    message_type: HotStuffMessageType,
+    view: ViewId,
+) -> (TAddr, HotStuffMessage<TPayload>) {
 }

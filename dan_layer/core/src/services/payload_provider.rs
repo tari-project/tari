@@ -24,7 +24,7 @@ use async_trait::async_trait;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{InstructionSet, Payload, TariDanPayload},
+    models::{InstructionSet, Payload, TariDanPayload, TreeNodeHash},
     services::MempoolService,
 };
 
@@ -33,6 +33,12 @@ pub trait PayloadProvider<TPayload: Payload> {
     async fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
     fn create_genesis_payload(&self) -> TPayload;
     async fn get_payload_queue(&self) -> usize;
+    async fn reserve_payload(
+        &mut self,
+        payload: &TPayload,
+        reservation_key: &TreeNodeHash,
+    ) -> Result<(), DigitalAssetError>;
+    async fn remove_payload(&mut self, reservation_key: &TreeNodeHash) -> Result<(), DigitalAssetError>;
 }
 
 pub struct TariDanPayloadProvider<TMempoolService: MempoolService> {
@@ -50,6 +56,7 @@ impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDa
     async fn create_payload(&self) -> Result<TariDanPayload, DigitalAssetError> {
         let instructions = self.mempool.read_block(100).await?;
         let instruction_set = InstructionSet::from_slice(&instructions);
+
         Ok(TariDanPayload::new(instruction_set, None))
     }
 
@@ -59,5 +66,23 @@ impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDa
 
     async fn get_payload_queue(&self) -> usize {
         self.mempool.size().await
+    }
+
+    async fn reserve_payload(
+        &mut self,
+        payload: &TariDanPayload,
+        reservation_key: &TreeNodeHash,
+    ) -> Result<(), DigitalAssetError> {
+        // Reserve all instructions if they succeeded
+        for instruction in payload.instructions() {
+            self.mempool
+                .reserve_instruction_in_block(instruction.hash(), reservation_key.0.clone())
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn remove_payload(&mut self, reservation_key: &TreeNodeHash) -> Result<(), DigitalAssetError> {
+        self.mempool.remove_all_in_block(reservation_key.as_bytes()).await
     }
 }

@@ -42,10 +42,7 @@ use tari_app_utilities::{identity_management::setup_node_identity, initializatio
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_dan_core::{
-    services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification},
-    storage::DbFactory,
-};
+use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;
@@ -63,6 +60,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
+    // console_subscriber::init();
     if let Err(exit_code) = main_inner() {
         eprintln!("{:?}", exit_code);
         error!(
@@ -156,11 +154,11 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
-async fn run_dan_node<TDbFactory: DbFactory + Clone>(
+async fn run_dan_node(
     shutdown_signal: ShutdownSignal,
     config: GlobalConfig,
     mempool_service: MempoolServiceHandle,
-    db_factory: TDbFactory,
+    db_factory: SqliteDbFactory,
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,

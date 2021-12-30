@@ -23,21 +23,23 @@
 use digest::Digest;
 use tari_crypto::common::Blake256;
 
-use crate::models::{Payload, TreeNodeHash};
+use crate::models::{Payload, StateRoot, TreeNodeHash};
 
 #[derive(Debug, Clone)]
 pub struct HotStuffTreeNode<TPayload: Payload> {
     parent: TreeNodeHash,
     payload: TPayload,
+    state_root: StateRoot,
     hash: TreeNodeHash,
     height: u32,
 }
 
 impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
-    pub fn new(parent: TreeNodeHash, payload: TPayload, height: u32) -> Self {
+    pub fn new(parent: TreeNodeHash, payload: TPayload, state_root: StateRoot, height: u32) -> Self {
         let mut s = HotStuffTreeNode {
             parent,
             payload,
+            state_root,
             hash: TreeNodeHash(vec![]),
             height,
         };
@@ -50,14 +52,20 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             parent: TreeNodeHash(vec![0u8; 32]),
             payload,
             hash: TreeNodeHash(vec![]),
+            state_root: StateRoot::default(),
             height: 0,
         };
         s.hash = s.calculate_hash();
         s
     }
 
-    pub fn from_parent(parent: TreeNodeHash, payload: TPayload, height: u32) -> HotStuffTreeNode<TPayload> {
-        Self::new(parent, payload, height)
+    pub fn from_parent(
+        parent: TreeNodeHash,
+        payload: TPayload,
+        state_root: StateRoot,
+        height: u32,
+    ) -> HotStuffTreeNode<TPayload> {
+        Self::new(parent, payload, state_root, height)
     }
 
     pub fn calculate_hash(&self) -> TreeNodeHash {
@@ -79,6 +87,10 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
 
     pub fn payload(&self) -> &TPayload {
         &self.payload
+    }
+
+    pub fn state_root(&self) -> &StateRoot {
+        &self.state_root
     }
 
     pub fn height(&self) -> u32 {

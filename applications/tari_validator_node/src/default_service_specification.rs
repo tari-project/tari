@@ -21,12 +21,30 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::PublicKey;
-use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
-use tari_dan_storage_sqlite::SqliteDbFactory;
+use tari_dan_core::{
+    models::{domain_events::ConsensusWorkerDomainEvent, TariDanPayload},
+    services::{
+        ConcreteAssetProcessor,
+        ConcreteAssetProxy,
+        ConcreteCheckpointManager,
+        ConcreteCommitteeManager,
+        LoggingEventsPublisher,
+        MempoolServiceHandle,
+        NodeIdentitySigningService,
+        ServiceSpecification,
+        TariDanPayloadProcessor,
+        TariDanPayloadProvider,
+    },
+};
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStateDbBackendAdapter, SqliteStorageService};
 
 use crate::{
-    grpc::services::base_node_client::GrpcBaseNodeClient,
-    p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
+    grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
+    p2p::services::{
+        inbound_connection_service::TariCommsInboundReceiverHandle,
+        outbound_connection_service::TariCommsOutboundService,
+        rpc_client::TariCommsValidatorNodeClientFactory,
+    },
 };
 
 #[derive(Clone)]
@@ -37,7 +55,19 @@ impl ServiceSpecification for DefaultServiceSpecification {
     type AssetProcessor = ConcreteAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;
     type BaseNodeClient = GrpcBaseNodeClient;
+    type ChainStorageService = SqliteStorageService;
+    type CheckpointManager = ConcreteCheckpointManager<Self::WalletClient>;
+    type CommitteeManager = ConcreteCommitteeManager;
     type DbFactory = SqliteDbFactory;
+    type EventsPublisher = LoggingEventsPublisher<ConsensusWorkerDomainEvent>;
+    type InboundConnectionService = TariCommsInboundReceiverHandle;
     type MempoolService = MempoolServiceHandle;
+    type OutboundService = TariCommsOutboundService<Self::Payload>;
+    type Payload = TariDanPayload;
+    type PayloadProcessor = TariDanPayloadProcessor<Self::AssetProcessor>;
+    type PayloadProvider = TariDanPayloadProvider<Self::MempoolService>;
+    type SigningService = NodeIdentitySigningService;
+    type StateDbBackendAdapter = SqliteStateDbBackendAdapter;
     type ValidatorNodeClientFactory = TariCommsValidatorNodeClientFactory;
+    type WalletClient = GrpcWalletClient;
 }

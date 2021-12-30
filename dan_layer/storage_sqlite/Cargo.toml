@@ -19,3 +19,5 @@ async-trait = "0.1.50"
 tokio = { version="1.10", features = ["macros", "time"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 log = { version = "0.4.8", features = ["std"] }
+patricia_tree = { version = "0.3.0", features = ["binary-format"] }
+bytecodec = { version = "0.4.14", features = ["bincode_codec"] }

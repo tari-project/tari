@@ -20,61 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, net::SocketAddr};
+use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::{tari_rpc as grpc, tari_rpc::CreateFollowOnAssetCheckpointRequest};
 use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::{
-    models::{BaseLayerMetadata, BaseLayerOutput},
-    services::BaseNodeClient,
-    DigitalAssetError,
-};
+use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
 
 #[derive(Clone)]
-pub struct GrpcBaseNodeClient {
+pub struct GrpcWalletClient {
     endpoint: SocketAddr,
-    inner: Option<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>>,
+    inner: Option<grpc::wallet_client::WalletClient<tonic::transport::Channel>>,
 }
 
-impl GrpcBaseNodeClient {
-    pub fn new(endpoint: SocketAddr) -> GrpcBaseNodeClient {
+impl GrpcWalletClient {
+    pub fn new(endpoint: SocketAddr) -> GrpcWalletClient {
         Self { endpoint, inner: None }
     }
 
     pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
         self.inner = Some(
-            grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.endpoint))
+            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint))
                 .await
                 .unwrap(),
         );
         Ok(())
     }
 }
-#[async_trait]
-impl BaseNodeClient for GrpcBaseNodeClient {
-    async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
-        let request = grpc::Empty {};
-        let result = inner.get_tip_info(request).await.unwrap().into_inner();
-        Ok(BaseLayerMetadata {
-            height_of_longest_chain: result.metadata.unwrap().height_of_longest_chain,
-        })
-    }
 
-    async fn get_current_checkpoint(
+#[async_trait]
+impl WalletClient for GrpcWalletClient {
+    async fn create_new_checkpoint(
         &mut self,
-        _height: u64,
-        asset_public_key: PublicKey,
-        checkpoint_unique_id: Vec<u8>,
-    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        asset_public_key: &PublicKey,
+        checkpoint_unique_id: &[u8],
+        state_root: &StateRoot,
+        next_committee: Vec<CommsPublicKey>,
+    ) -> Result<(), DigitalAssetError> {
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => {
@@ -82,22 +66,20 @@ impl BaseNodeClient for GrpcBaseNodeClient {
                 self.inner.as_mut().unwrap()
             },
         };
-        let request = grpc::GetTokensRequest {
+
+        let request = CreateFollowOnAssetCheckpointRequest {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
-            unique_ids: vec![checkpoint_unique_id],
+            unique_id: Vec::from(checkpoint_unique_id),
+            merkle_root: state_root.as_bytes().to_vec(),
+            next_committee: next_committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
         };
-        let mut result = inner.get_tokens(request).await.unwrap().into_inner();
-        let mut outputs = vec![];
-        while let Some(r) = result.message().await.unwrap() {
-            outputs.push(r);
-        }
-        let output = outputs
-            .first()
-            .map(|o| match o.features.clone().unwrap().try_into() {
-                Ok(f) => Ok(BaseLayerOutput { features: f }),
-                Err(e) => Err(DigitalAssetError::ConversionError(e)),
-            })
-            .transpose()?;
-        Ok(output)
+
+        let res = inner
+            .create_follow_on_asset_checkpoint(request)
+            .await
+            .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
+
+        dbg!(&res);
+        Ok(())
     }
 }

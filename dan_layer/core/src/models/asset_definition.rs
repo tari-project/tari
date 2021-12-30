@@ -49,7 +49,7 @@ impl Default for AssetDefinition {
             checkpoint_unique_id: vec![3u8; 32],
             public_key: Default::default(),
             initial_committee: vec![],
-            phase_timeout: 10,
+            phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
         }

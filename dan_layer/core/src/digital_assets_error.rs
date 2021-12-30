@@ -74,6 +74,8 @@ pub enum DigitalAssetError {
     RpcError(#[from] RpcError),
     #[error("Dht Discovery error: {0}")]
     DhtDiscoveryError(#[from] DhtDiscoveryError),
+    #[error("Fatal error: {0}")]
+    FatalError(String),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {
