@@ -42,6 +42,8 @@ pub trait CheckpointManager<TAddr: NodeAddressable> {
 pub struct ConcreteCheckpointManager<TWallet: WalletClient> {
     asset_definition: AssetDefinition,
     wallet: TWallet,
+    num_calls: u32,
+    checkpoint_interval: u32,
 }
 
 impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
@@ -49,6 +51,8 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
         Self {
             asset_definition,
             wallet,
+            num_calls: 0,
+            checkpoint_interval: 20,
         }
     }
 }
@@ -60,13 +64,18 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for 
         state_root: StateRoot,
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
-        self.wallet
-            .create_new_checkpoint(
-                &self.asset_definition.public_key,
-                &self.asset_definition.checkpoint_unique_id,
-                &state_root,
-                next_committee,
-            )
-            .await
+        self.num_calls += 1;
+        if self.num_calls > self.checkpoint_interval {
+            self.wallet
+                .create_new_checkpoint(
+                    &self.asset_definition.public_key,
+                    &self.asset_definition.checkpoint_unique_id,
+                    &state_root,
+                    next_committee,
+                )
+                .await?;
+            self.num_calls = 0;
+        }
+        Ok(())
     }
 }
