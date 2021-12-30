@@ -8,6 +8,7 @@ const asciichart = require("asciichart")
 var indexRouter = require("./routes/index")
 var blocksRouter = require("./routes/blocks")
 var mempoolRouter = require("./routes/mempool")
+var searchRouter = require("./routes/search")
 
 var hbs = require("hbs")
 hbs.registerHelper("hex", function (buffer) {
@@ -50,9 +51,13 @@ hbs.registerHelper("percentbar", function (a, b) {
 })
 
 hbs.registerHelper("chart", function (data, height) {
-  return asciichart.plot(data, {
-    height: height,
-  })
+  if (data.length > 0) {
+    return asciichart.plot(data, {
+      height: height,
+    })
+  } else {
+    return "**No data**"
+  }
 })
 
 var app = express()
@@ -74,6 +79,7 @@ app.use(express.static(path.join(__dirname, "public")))
 app.use("/", indexRouter)
 app.use("/blocks", blocksRouter)
 app.use("/mempool", mempoolRouter)
+app.use("/search", searchRouter)
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
