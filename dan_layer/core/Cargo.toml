@@ -28,13 +28,13 @@ digest = "0.9.0"
 futures = { version = "^0.3.1" }
 log = { version = "0.4.8", features = ["std"] }
 lmdb-zero = "0.4.4"
-prost = "0.8"
-prost-types = "0.8"
+prost = "0.9"
+prost-types = "0.9"
 serde = "1.0.126"
 thiserror = "^1.0.20"
 tokio = { version="1.10", features = ["macros", "time"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
-tonic = "0.5.2"
+tonic = "0.6.2"
 
 # saving of patricia tree
 patricia_tree = { version = "0.3.0", features = ["binary-format"] }
