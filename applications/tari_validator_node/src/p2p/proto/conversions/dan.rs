@@ -33,6 +33,7 @@ use tari_dan_core::models::{
     InstructionSet,
     QuorumCertificate,
     Signature,
+    StateRoot,
     TariDanPayload,
     TreeNodeHash,
     ViewId,
@@ -60,6 +61,7 @@ impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
             parent: Vec::from(source.parent().as_bytes()),
             payload: Some(source.payload().clone().into()),
             height: source.height(),
+            state_root: Vec::from(source.state_root().as_bytes()),
         }
     }
 }
@@ -164,6 +166,7 @@ impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
                 .map(|p| p.try_into())
                 .transpose()?
                 .ok_or_else(|| "payload not provided".to_string())?,
+            StateRoot::new(value.state_root),
             value.height,
         ))
     }

@@ -210,8 +210,8 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
         self.node_hash.as_ref()
     }
 
-    pub fn message_type(&self) -> &HotStuffMessageType {
-        &self.message_type
+    pub fn message_type(&self) -> HotStuffMessageType {
+        self.message_type
     }
 
     pub fn justify(&self) -> Option<&QuorumCertificate> {
@@ -220,7 +220,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
 
     pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
         // from hotstuf spec
-        self.message_type() == &message_type && view_id == self.view_number()
+        self.message_type() == message_type && view_id == self.view_number()
     }
 
     pub fn add_partial_sig(&mut self, signature: Signature) {

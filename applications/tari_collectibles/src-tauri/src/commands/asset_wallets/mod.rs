@@ -57,9 +57,21 @@ pub(crate) async fn asset_wallets_create(
 
   let mut client = state.connect_base_node_client().await?;
   let chain_registration_data = client.get_asset_metadata(&asset_public_key).await?;
-  new_account.name = Some(chain_registration_data.name.clone());
-  new_account.description = Some(chain_registration_data.description.clone());
-  new_account.image = Some(chain_registration_data.image.clone());
+  new_account.name = if chain_registration_data.name.is_empty() {
+    None
+  } else {
+    Some(chain_registration_data.name.clone())
+  };
+  new_account.description = if chain_registration_data.description.is_empty() {
+    None
+  } else {
+    Some(chain_registration_data.description.clone())
+  };
+  new_account.image = if chain_registration_data.image.is_empty() {
+    None
+  } else {
+    Some(chain_registration_data.image.clone())
+  };
 
   let sidechain_committee = match client.get_sidechain_committee(&asset_public_key).await {
     Ok(s) => {

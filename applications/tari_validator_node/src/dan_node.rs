@@ -32,25 +32,25 @@ use tari_dan_core::{
     models::{AssetDefinition, Committee},
     services::{
         ConcreteAssetProcessor,
+        ConcreteCheckpointManager,
         ConcreteCommitteeManager,
         LoggingEventsPublisher,
-        MempoolService,
         MempoolServiceHandle,
         NodeIdentitySigningService,
         TariDanPayloadProcessor,
         TariDanPayloadProvider,
     },
-    storage::DbFactory,
     workers::ConsensusWorker,
 };
-use tari_dan_storage_sqlite::SqliteStorageService;
+use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
 use tari_p2p::{comms_connector::SubscriptionFactory, tari_message::TariMessageType};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::task;
 
 use crate::{
-    grpc::services::base_node_client::GrpcBaseNodeClient,
+    default_service_specification::DefaultServiceSpecification,
+    grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
     p2p::services::{
         inbound_connection_service::TariCommsInboundConnectionService,
         outbound_connection_service::TariCommsOutboundService,
@@ -69,12 +69,12 @@ impl DanNode {
         Self { config }
     }
 
-    pub async fn start<TDbFactory: DbFactory + Clone>(
+    pub async fn start(
         &self,
         shutdown: ShutdownSignal,
         node_identity: Arc<NodeIdentity>,
         mempool_service: MempoolServiceHandle,
-        db_factory: TDbFactory,
+        db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
     ) -> Result<(), ExitCodes> {
@@ -169,18 +169,15 @@ impl DanNode {
     //     todo!()
     // }
 
-    async fn start_asset_worker<
-        TMempoolService: MempoolService + Clone,
-        TDbFactory: DbFactory + Clone + Send + Sync,
-    >(
+    async fn start_asset_worker(
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
-        mempool_service: TMempoolService,
+        mempool_service: MempoolServiceHandle,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
-        db_factory: TDbFactory,
+        db_factory: SqliteDbFactory,
     ) -> Result<(), ExitCodes> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         let committee = asset_definition
@@ -205,9 +202,9 @@ impl DanNode {
         // let data_store = AssetDataStore::new(backend);
         let asset_processor = ConcreteAssetProcessor::default();
 
-        let payload_processor = TariDanPayloadProcessor::new(asset_processor, mempool_service.clone());
+        let payload_processor = TariDanPayloadProcessor::new(asset_processor);
         let mut inbound = TariCommsInboundConnectionService::new(asset_definition.public_key.clone());
-        let receiver = inbound.take_receiver().unwrap();
+        let receiver = inbound.get_receiver();
 
         let loopback = inbound.clone_sender();
         let shutdown_2 = shutdown.clone();
@@ -221,9 +218,9 @@ impl DanNode {
             TariCommsOutboundService::new(dht.outbound_requester(), loopback, asset_definition.public_key.clone());
         let base_node_client = GrpcBaseNodeClient::new(config.base_node_grpc_address);
         let chain_storage = SqliteStorageService {};
-        dbg!(&asset_definition);
-        dbg!("About to start consensus worker");
-        let mut consensus_worker = ConsensusWorker::new(
+        let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
+        let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
+        let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
             receiver,
             outbound,
             committee_service,
@@ -237,7 +234,9 @@ impl DanNode {
             timeout,
             db_factory,
             chain_storage,
+            checkpoint_manager,
         );
+
         consensus_worker
             .run(shutdown.clone(), None)
             .await

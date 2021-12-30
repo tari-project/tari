@@ -21,4 +21,9 @@
 --  // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-alter table outputs drop features_sidechain_committee;
+create table state_tree (
+                            id integer primary  key autoincrement not null,
+                            version integer not null,
+                            is_current boolean not null,
+                            data blob not null
+)

@@ -33,6 +33,7 @@ message HotStuffTreeNode {
     bytes parent = 1;
     TariDanPayload payload = 2;
     uint32 height = 3;
+    bytes state_root =4;
 }
 
 message Signature{

@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use digest::Digest;
 use tari_crypto::common::Blake256;
 
-use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload, StateRoot};
+use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload};
 
 #[derive(Debug, Clone)]
 pub struct TariDanPayload {
@@ -69,11 +69,7 @@ impl ConsensusHash for TariDanPayload {
     }
 }
 
-impl Payload for TariDanPayload {
-    fn state_root(&self) -> StateRoot {
-        StateRoot::default()
-    }
-}
+impl Payload for TariDanPayload {}
 
 #[derive(Debug, Clone, Default)]
 pub struct CheckpointData {

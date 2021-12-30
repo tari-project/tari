@@ -6487,10 +6487,12 @@ name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytecodec",
  "diesel",
  "diesel_migrations",
  "dotenv",
  "log",
+ "patricia_tree",
  "tari_common",
  "tari_common_types",
  "tari_dan_core",

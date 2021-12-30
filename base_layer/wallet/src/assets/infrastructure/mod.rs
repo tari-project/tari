@@ -56,6 +56,12 @@ pub enum AssetManagerRequest {
         merkle_root: Vec<u8>,
         committee_public_keys: Vec<PublicKey>,
     },
+    CreateFollowOnCheckpoint {
+        asset_public_key: Box<PublicKey>,
+        unique_id: Vec<u8>,
+        merkle_root: Vec<u8>,
+        committee_public_keys: Vec<PublicKey>,
+    },
 }
 
 pub enum AssetManagerResponse {
@@ -64,4 +70,5 @@ pub enum AssetManagerResponse {
     CreateRegistrationTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateMintingTransaction { transaction: Box<Transaction>, tx_id: TxId },
     CreateInitialCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
+    CreateFollowOnCheckpoint { transaction: Box<Transaction>, tx_id: TxId },
 }
