@@ -207,8 +207,8 @@ pub(crate) async fn assets_get_registration(
 
   Ok(RegisteredAssetInfo {
     owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
-    asset_public_key: RistrettoPublicKey::from_bytes(features.unique_id.as_ref().unwrap()).ok(),
-    unique_id: features.unique_id.clone().unwrap(),
+    asset_public_key: RistrettoPublicKey::from_bytes(&features.unique_id).ok(),
+    unique_id: features.unique_id.clone(),
     mined_height: asset.mined_height,
     mined_in_block: asset.mined_in_block,
     features: features.into(),
