@@ -118,6 +118,18 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
     async fn get_payload_queue(&self) -> usize {
         1
     }
+
+    async fn reserve_payload(
+        &mut self,
+        _payload: &TPayload,
+        _reservation_key: &TreeNodeHash,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    async fn remove_payload(&mut self, _reservation_key: &TreeNodeHash) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
 }
 
 pub fn mock_payload_provider() -> MockStaticPayloadProvider<&'static str> {
@@ -238,15 +250,10 @@ impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
     }
 
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
-        &mut self,
-        _node_hash: TreeNodeHash,
+        &self,
         _payload: &TPayload,
         _unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
-        todo!()
-    }
-
-    async fn remove_payload_for_node(&mut self, _node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 }

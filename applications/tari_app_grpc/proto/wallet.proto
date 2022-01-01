@@ -66,6 +66,8 @@ service Wallet {
     rpc RegisterAsset(RegisterAssetRequest) returns (RegisterAssetResponse);
 
     rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
+    // TODO: Needs a better name pls
+    rpc CreateFollowOnAssetCheckpoint(CreateFollowOnAssetCheckpointRequest) returns (CreateFollowOnAssetCheckpointResponse);
 
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
@@ -261,6 +263,17 @@ message CreateInitialAssetCheckpointRequest {
 }
 
 message CreateInitialAssetCheckpointResponse {
+
+}
+
+message CreateFollowOnAssetCheckpointRequest {
+    bytes asset_public_key = 1;
+    bytes unique_id = 2;
+    bytes merkle_root = 3;
+    repeated bytes next_committee = 4;
+}
+
+message CreateFollowOnAssetCheckpointResponse {
 
 }
 

@@ -20,36 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use patricia_tree::PatriciaMap;
+use async_trait::async_trait;
+use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
 
-use crate::storage::{state::db_key_value::DbKeyValue, StorageError};
+use crate::{models::StateRoot, DigitalAssetError};
 
-pub trait StateDbBackendAdapter: Send + Sync + Clone {
-    type BackendTransaction;
-    type Error: Into<StorageError>;
-
-    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
-    fn update_key_value(
-        &self,
-        schema: &str,
-        key: &[u8],
-        value: &[u8],
-        tx: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-    fn get(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
-    fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error>;
-    fn commit(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
-    fn get_current_state_tree(&self, tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error>;
-    fn set_current_state_tree(
-        &self,
-        tree: PatriciaMap<Vec<u8>>,
-        tx: &Self::BackendTransaction,
-    ) -> Result<(), Self::Error>;
-
-    fn get_all_schemas(&self, tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error>;
-    fn get_all_values_for_schema(
-        &self,
-        schema: &str,
-        tx: &Self::BackendTransaction,
-    ) -> Result<Vec<DbKeyValue>, Self::Error>;
+#[async_trait]
+pub trait WalletClient {
+    async fn create_new_checkpoint(
+        &mut self,
+        asset_public_key: &PublicKey,
+        checkpoint_unique_id: &[u8],
+        state_root: &StateRoot,
+        next_committee: Vec<CommsPublicKey>,
+    ) -> Result<(), DigitalAssetError>;
 }

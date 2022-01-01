@@ -37,7 +37,7 @@ prost = "0.9"
 prost-types = "0.9"
 serde = "1.0.126"
 thiserror = "^1.0.20"
-tokio = { version="1.10", features = ["macros", "time"]}
+tokio = { version="1.10", features = ["macros", "time", "sync"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 tonic = "0.6.2"
 

@@ -541,6 +541,7 @@ where
                 dest_pubkey,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 message,
             } => {
@@ -549,6 +550,7 @@ where
                     dest_pubkey,
                     amount,
                     unique_id,
+                    parent_public_key,
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
@@ -562,6 +564,7 @@ where
                 dest_pubkey,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 message,
             } => self
@@ -569,6 +572,7 @@ where
                     dest_pubkey,
                     amount,
                     unique_id,
+                    parent_public_key,
                     fee_per_gram,
                     message,
                     transaction_broadcast_join_handles,
@@ -738,6 +742,7 @@ where
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError>>>,
@@ -757,7 +762,15 @@ where
 
             let (fee, transaction) = self
                 .output_manager_service
-                .create_pay_to_self_transaction(tx_id, amount, unique_id.clone(), fee_per_gram, None, message.clone())
+                .create_pay_to_self_transaction(
+                    tx_id,
+                    amount,
+                    unique_id.clone(),
+                    parent_public_key.clone(),
+                    fee_per_gram,
+                    None,
+                    message.clone(),
+                )
                 .await?;
 
             // Notify that the transaction was successfully resolved.
@@ -807,6 +820,7 @@ where
             dest_pubkey,
             amount,
             unique_id,
+            parent_public_key,
             fee_per_gram,
             message,
             Some(reply_channel),
@@ -850,7 +864,16 @@ where
         // Prepare sender part of the transaction
         let mut stp = self
             .output_manager_service
-            .prepare_transaction_to_send(tx_id, amount, None, fee_per_gram, None, message.clone(), script.clone())
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                None,
+                None,
+                fee_per_gram,
+                None,
+                message.clone(),
+                script.clone(),
+            )
             .await?;
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
@@ -981,6 +1004,7 @@ where
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1003,6 +1027,7 @@ where
                 tx_id,
                 amount,
                 unique_id.clone(),
+                parent_public_key.clone(),
                 fee_per_gram,
                 None,
                 message.clone(),
@@ -1390,7 +1415,8 @@ where
                     cancellation_receiver,
                     tx.destination_public_key,
                     tx.amount,
-                    None, // TODO: Fill this ?
+                    None,
+                    None,
                     tx.fee,
                     tx.message,
                     None,

@@ -1166,21 +1166,8 @@ impl LMDBDatabase {
             );
             self.insert_kernel(txn, &block_hash, &kernel, pos as u32)?;
         }
-
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
-        for output in outputs {
-            output_mmr.push(output.hash())?;
-            witness_mmr.push(output.witness_hash())?;
-            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
-            self.insert_output(
-                txn,
-                &block_hash,
-                header.height,
-                &output,
-                (witness_mmr.get_leaf_count()? - 1) as u32,
-            )?;
-        }
 
         // unique_id_index expects inputs to be inserted before outputs
         for input in inputs {
@@ -1195,6 +1182,19 @@ impl LMDBDatabase {
             }
             debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
             self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
+        }
+
+        for output in outputs {
+            output_mmr.push(output.hash())?;
+            witness_mmr.push(output.witness_hash())?;
+            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
+            self.insert_output(
+                txn,
+                &block_hash,
+                header.height,
+                &output,
+                (witness_mmr.get_leaf_count()? - 1) as u32,
+            )?;
         }
 
         // Merge current deletions with the tip bitmap
