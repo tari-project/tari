@@ -37,8 +37,8 @@ pub enum ChainStorageError {
          identify the issue: {0}"
     )]
     CorruptedDatabase(String),
-    #[error("A given input could not be spent because it was not in the UTXO set")]
-    UnspendableInput,
+    #[error("A given input could not be spent because it was not in the UTXO set:{reason}")]
+    UnspendableInput { reason: String },
     #[error("A problem occurred trying to move a STXO back into the UTXO pool during a reorg.")]
     UnspendError,
     #[error(

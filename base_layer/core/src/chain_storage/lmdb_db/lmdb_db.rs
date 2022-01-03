@@ -291,7 +291,7 @@ impl LMDBDatabase {
                     output,
                     mmr_position,
                 } => {
-                    self.insert_output(&write_txn, header_hash, *header_height, &*output, *mmr_position)?;
+                    self.insert_output(&write_txn, header_hash, *header_height, &*output, *mmr_position, false)?;
                 },
                 InsertPrunedOutput {
                     header_hash,
@@ -490,40 +490,43 @@ impl LMDBDatabase {
         header_height: u64,
         output: &TransactionOutput,
         mmr_position: u32,
+        spent_in_same_block: bool,
     ) -> Result<(), ChainStorageError> {
         let output_hash = output.hash();
         let witness_hash = output.witness_hash();
 
         let key = OutputKey::new(header_hash, mmr_position, &[]);
 
-        lmdb_insert(
-            txn,
-            &*self.utxo_commitment_index,
-            output.commitment.as_bytes(),
-            &output_hash,
-            "utxo_commitment_index",
-        )?;
-
-        if let Some(ref unique_id) = output.features.unique_id {
-            let parent_public_key = output.features.parent_public_key.as_ref();
-            let key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
-            debug!(
-                target: LOG_TARGET,
-                "inserting index for unique_id <{}, {}> in output {}. Key is {}",
-                parent_public_key
-                    .map(|p| p.to_hex())
-                    .unwrap_or_else(|| "<none>".to_string()),
-                unique_id.to_hex(),
-                output_hash.to_hex(),
-                key,
-            );
+        if !spent_in_same_block {
             lmdb_insert(
                 txn,
-                &*self.unique_id_index,
-                key.as_bytes(),
+                &*self.utxo_commitment_index,
+                output.commitment.as_bytes(),
                 &output_hash,
-                "unique_id_index",
+                "utxo_commitment_index",
             )?;
+
+            if let Some(ref unique_id) = output.features.unique_id {
+                let parent_public_key = output.features.parent_public_key.as_ref();
+                let key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
+                debug!(
+                    target: LOG_TARGET,
+                    "inserting index for unique_id <{}, {}> in output {}. Key is {}",
+                    parent_public_key
+                        .map(|p| p.to_hex())
+                        .unwrap_or_else(|| "<none>".to_string()),
+                    unique_id.to_hex(),
+                    output_hash.to_hex(),
+                    key,
+                );
+                lmdb_insert(
+                    txn,
+                    &*self.unique_id_index,
+                    key.as_bytes(),
+                    &output_hash,
+                    "unique_id_index",
+                )?;
+            }
         }
 
         lmdb_insert(
@@ -640,13 +643,16 @@ impl LMDBDatabase {
         header_hash: HashOutput,
         input: TransactionInput,
         mmr_position: u32,
+        spent_in_same_block: bool,
     ) -> Result<(), ChainStorageError> {
-        lmdb_delete(
-            txn,
-            &self.utxo_commitment_index,
-            input.commitment().as_bytes(),
-            "utxo_commitment_index",
-        )?;
+        if !spent_in_same_block {
+            lmdb_delete(
+                txn,
+                &self.utxo_commitment_index,
+                input.commitment().as_bytes(),
+                "utxo_commitment_index",
+            )?;
+        }
         lmdb_insert(
             txn,
             &self.deleted_txo_mmr_position_to_height_index,
@@ -655,50 +661,52 @@ impl LMDBDatabase {
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        if let Some(ref unique_id) = input.features.unique_id {
-            let parent_public_key = input.features.parent_public_key.as_ref();
-            // Move the "current" UTXO entry to a key containing the spend height
-            let mut key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
-            let expected_output_hash = lmdb_get::<_, HashOutput>(txn, &self.unique_id_index, key.as_bytes())?
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "insert_input",
-                    details: format!("unique token ID with key {} does not exist in index", key.to_hex()),
-                })?;
+        if !spent_in_same_block {
+            if let Some(ref unique_id) = input.features.unique_id {
+                let parent_public_key = input.features.parent_public_key.as_ref();
+                // Move the "current" UTXO entry to a key containing the spend height
+                let mut key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
+                let expected_output_hash = lmdb_get::<_, HashOutput>(txn, &self.unique_id_index, key.as_bytes())?
+                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                        function: "insert_input",
+                        details: format!("unique token ID with key {} does not exist in index", key.to_hex()),
+                    })?;
 
-            let output_hash = input.output_hash();
-            if expected_output_hash != output_hash {
-                // This should have been checked by an upstream validator
-                return Err(ChainStorageError::DataInconsistencyDetected {
-                    function: "insert_input",
-                    details: format!(
-                        "output hash for unique id key {} did not match the output hash this input is spending. \
-                         output hash in index {}, hash of spent output: {}",
-                        key.to_hex(),
-                        expected_output_hash.to_hex(),
-                        output_hash.to_hex()
-                    ),
-                });
+                let output_hash = input.output_hash();
+                if expected_output_hash != output_hash {
+                    // This should have been checked by an upstream validator
+                    return Err(ChainStorageError::DataInconsistencyDetected {
+                        function: "insert_input",
+                        details: format!(
+                            "output hash for unique id key {} did not match the output hash this input is spending. \
+                             output hash in index {}, hash of spent output: {}",
+                            key.to_hex(),
+                            expected_output_hash.to_hex(),
+                            output_hash.to_hex()
+                        ),
+                    });
+                }
+
+                lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
+                key.set_deleted_height(height);
+                debug!(
+                    target: LOG_TARGET,
+                    "moving index for unique_id <{}, {}> in output {} to key {}",
+                    parent_public_key
+                        .map(|p| p.to_hex())
+                        .unwrap_or_else(|| "<none>".to_string()),
+                    unique_id.to_hex(),
+                    output_hash.to_hex(),
+                    key,
+                );
+                lmdb_insert(
+                    txn,
+                    &self.unique_id_index,
+                    key.as_bytes(),
+                    &output_hash,
+                    "unique_id_index",
+                )?;
             }
-
-            lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
-            key.set_deleted_height(height);
-            debug!(
-                target: LOG_TARGET,
-                "moving index for unique_id <{}, {}> in output {} to key {}",
-                parent_public_key
-                    .map(|p| p.to_hex())
-                    .unwrap_or_else(|| "<none>".to_string()),
-                unique_id.to_hex(),
-                output_hash.to_hex(),
-                key,
-            );
-            lmdb_insert(
-                txn,
-                &self.unique_id_index,
-                key.as_bytes(),
-                &output_hash,
-                "unique_id_index",
-            )?;
         }
 
         let hash = input.hash();
@@ -1169,22 +1177,59 @@ impl LMDBDatabase {
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
 
+        // A vec to ensure each output in the block is only used once
+        let max_output_mmr = current_header_at_height.output_mmr_size;
+        let mut zero_conf_outputs_spent = vec![false; outputs.len()];
+
         // unique_id_index expects inputs to be inserted before outputs
         for input in inputs {
-            let index = self
-                .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
-                .ok_or(ChainStorageError::UnspendableInput)?;
-            if !output_mmr.delete(index) {
+            let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())? {
+                Some(i) => i,
+                None => {
+                    let mut i = None;
+                    // Check for the input in the block
+                    for (output_index, o) in outputs.iter().enumerate() {
+                        if o.hash() == input.output_hash() {
+                            if zero_conf_outputs_spent[output_index] {
+                                return Err(ChainStorageError::UnspendableInput {
+                                    reason: "The output has already been spent in this block".to_string(),
+                                });
+                            } else {
+                                zero_conf_outputs_spent[output_index] = true;
+                                i = Some(max_output_mmr + output_index as u64);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(i) = i {
+                        i as u32
+                    } else {
+                        return Err(ChainStorageError::UnspendableInput {
+                            reason: "The output with this hash does not exist in the chain or in the current block"
+                                .to_string(),
+                        });
+                    }
+                },
+            };
+            // zeroconfs will get deleted later
+            if (index as u64) < max_output_mmr && !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "Could not delete index {} from the output MMR",
                     index
                 )));
             }
             debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
-            self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
+            self.insert_input(
+                txn,
+                current_header_at_height.height,
+                block_hash.clone(),
+                input,
+                index,
+                (index as u64) >= max_output_mmr,
+            )?;
         }
 
-        for output in outputs {
+        for (output_index, output) in outputs.into_iter().enumerate() {
             output_mmr.push(output.hash())?;
             witness_mmr.push(output.witness_hash())?;
             debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
@@ -1194,14 +1239,22 @@ impl LMDBDatabase {
                 header.height,
                 &output,
                 (witness_mmr.get_leaf_count()? - 1) as u32,
+                zero_conf_outputs_spent[output_index],
             )?;
         }
+
+        // delete zeroconfs
 
         // Merge current deletions with the tip bitmap
         let deleted_at_current_height = output_mmr.deleted().clone();
         // Merge the new indexes with the blockchain deleted bitmap
         let mut deleted_bitmap = self.load_deleted_bitmap_model(txn)?;
         deleted_bitmap.merge(&deleted_at_current_height)?;
+        for (index, is_deleted) in zero_conf_outputs_spent.into_iter().enumerate() {
+            if is_deleted {
+                deleted_bitmap.delete(max_output_mmr as u32 + index as u32)?;
+            }
+        }
 
         // Set the output MMR to the complete map so that the complete state can be committed to in the final MR
         output_mmr.set_deleted(deleted_bitmap.get().clone().into_bitmap());
@@ -2543,6 +2596,12 @@ impl<'a, 'b> DeletedBitmapModel<'a, WriteTransaction<'b>> {
         self.bitmap.bitmap_mut().andnot_inplace(deleted);
         self.is_dirty = true;
         Ok(self)
+    }
+
+    pub fn delete(&mut self, index: u32) -> Result<(), ChainStorageError> {
+        self.bitmap.bitmap_mut().add(index);
+        self.is_dirty = true;
+        Ok(())
     }
 
     /// Persist the bitmap if required. This is a no-op if the bitmap has not been modified.
