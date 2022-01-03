@@ -638,7 +638,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         height: u64,
-        header_hash: HashOutput,
+        header_hash: &HashOutput,
         input: &TransactionInput,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
@@ -657,7 +657,7 @@ impl LMDBDatabase {
             txn,
             &self.deleted_txo_mmr_position_to_height_index,
             &mmr_position,
-            &(height, &header_hash),
+            &(height, header_hash),
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
@@ -709,7 +709,7 @@ impl LMDBDatabase {
         }
 
         let hash = input.hash();
-        let key = InputKey::new(&header_hash, mmr_position, &hash);
+        let key = InputKey::new(header_hash, mmr_position, &hash);
         lmdb_insert(
             txn,
             &*self.inputs_db,
@@ -718,7 +718,7 @@ impl LMDBDatabase {
                 input,
                 header_hash,
                 mmr_position,
-                hash,
+                hash: &hash,
             },
             "inputs_db",
         )
@@ -1192,9 +1192,10 @@ impl LMDBDatabase {
         let mut spent_zero_conf_commitments = Vec::new();
         // unique_id_index expects inputs to be inserted before outputs
         for input in &inputs {
-            let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())? {
+            let output_hash = input.output_hash();
+            let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &output_hash)? {
                 Some(index) => index,
-                None => match output_mmr.find_leaf_index(&input.output_hash())? {
+                None => match output_mmr.find_leaf_index(&output_hash)? {
                     Some(index) => {
                         debug!(
                             target: LOG_TARGET,
@@ -1213,7 +1214,7 @@ impl LMDBDatabase {
                 )));
             }
             debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
-            self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
+            self.insert_input(txn, current_header_at_height.height, &block_hash, input, index)?;
         }
 
         for (output, mmr_count) in outputs {

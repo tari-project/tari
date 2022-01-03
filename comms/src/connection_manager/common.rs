@@ -22,14 +22,13 @@
 
 use std::{convert::TryFrom, net::Ipv6Addr};
 
-use futures::StreamExt;
 use log::*;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::types::ConnectionDirection;
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
-    multiplexing::Yamux,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     proto::identity::PeerIdentityMsg,
     protocol,
@@ -43,30 +42,24 @@ const LOG_TARGET: &str = "comms::connection_manager::common";
 /// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
 const MAX_USER_AGENT_LEN: usize = 100;
 
-pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId>>(
-    muxer: &mut Yamux,
+pub async fn perform_identity_exchange<
+    'p,
+    P: IntoIterator<Item = &'p ProtocolId>,
+    TSocket: AsyncRead + AsyncWrite + Unpin,
+>(
+    socket: &mut TSocket,
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
 ) -> Result<PeerIdentityMsg, ConnectionManagerError> {
-    let mut control = muxer.get_yamux_control();
-    let stream = match direction {
-        ConnectionDirection::Inbound => muxer
-            .incoming_mut()
-            .next()
-            .await
-            .ok_or(ConnectionManagerError::IncomingListenerStreamClosed)?,
-        ConnectionDirection::Outbound => control.open_stream().await?,
-    };
-
     debug!(
         target: LOG_TARGET,
-        "{} substream opened to peer. Performing identity exchange.", direction
+        "{} socket opened to peer. Performing identity exchange.", direction
     );
 
     let peer_identity =
-        protocol::identity_exchange(node_identity, direction, our_supported_protocols, network_info, stream).await?;
+        protocol::identity_exchange(node_identity, direction, our_supported_protocols, network_info, socket).await?;
 
     Ok(peer_identity)
 }

@@ -42,12 +42,16 @@ pub(crate) struct TransactionOutputRowData {
     pub mined_height: u64,
 }
 
+/// Transaction input row data taking references and used for serialization.
+/// This struct must mirror the fields in `TransactionInputRowData`
 #[derive(Serialize, Debug)]
 pub(crate) struct TransactionInputRowDataRef<'a> {
     pub input: &'a TransactionInput,
-    pub header_hash: HashOutput,
+    #[allow(clippy::ptr_arg)]
+    pub header_hash: &'a HashOutput,
     pub mmr_position: u32,
-    pub hash: HashOutput,
+    #[allow(clippy::ptr_arg)]
+    pub hash: &'a HashOutput,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
