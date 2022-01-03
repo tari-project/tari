@@ -36,9 +36,11 @@ use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
 #[cfg(feature = "base_node")]
-use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
 use crate::{
     base_node::LocalNodeCommsInterface,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+};
+use crate::{
     proto,
     proto::base_node::{
         FindChainSplitRequest,
