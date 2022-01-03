@@ -665,7 +665,7 @@ mod clear_all_pending_headers {
                     .build()
                     .unwrap();
 
-                let header = ChainHeader::try_construct(header.clone(), accum.clone()).unwrap();
+                let header = ChainHeader::try_construct(header, accum.clone()).unwrap();
 
                 prev_header = header.clone();
                 prev_accum = accum;
