@@ -26,14 +26,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     peer_manager::NodeId,
-    protocol::{
-        ProtocolError,
-        ProtocolExtension,
-        ProtocolExtensionContext,
-        ProtocolExtensionError,
-        ProtocolId,
-        IDENTITY_PROTOCOL,
-    },
+    protocol::{ProtocolError, ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolId},
     Substream,
 };
 
@@ -102,10 +95,7 @@ impl<TSubstream> Protocols<TSubstream> {
     }
 
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
-        let mut p = Vec::with_capacity(self.protocols.len() + 1);
-        p.push(IDENTITY_PROTOCOL.clone());
-        p.extend(self.protocols.keys().cloned());
-        p
+        self.protocols.keys().cloned().collect()
     }
 
     pub async fn notify(
@@ -152,7 +142,6 @@ mod test {
     fn add() {
         let (tx, _) = mpsc::channel(1);
         let protos = [
-            IDENTITY_PROTOCOL.clone(),
             ProtocolId::from_static(b"/tari/test/1"),
             ProtocolId::from_static(b"/tari/test/2"),
         ];
