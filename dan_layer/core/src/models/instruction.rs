@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
+use tari_common_types::types::PublicKey;
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 
-use crate::{models::TemplateId, types::PublicKey};
+use crate::models::TemplateId;
 
 #[derive(Clone, Debug)]
 pub struct Instruction {

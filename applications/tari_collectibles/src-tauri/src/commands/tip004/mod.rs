@@ -98,7 +98,7 @@ pub(crate) async fn tip004_list_tokens(
       .await?;
     dbg!(&result);
     db.tip721_tokens().delete_all_for_address(address.id, &tx)?;
-    if let Some(result) = result {
+    if !result.is_empty() {
       let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;
       for index in 0..balance_of.num_tokens {
         let args = tip004::TokenOfOwnerByIndexRequest {
@@ -113,7 +113,7 @@ pub(crate) async fn tip004_list_tokens(
             args.encode_to_vec(),
           )
           .await?;
-        if let Some(token_result) = token_result {
+        if !token_result.is_empty() {
           let token_data: tip004::TokenOfOwnerByIndexResponse = Message::decode(&*token_result)?;
 
           let token_row = Tip721TokenRow {

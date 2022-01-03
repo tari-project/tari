@@ -30,7 +30,7 @@ use crate::{
     templates::{tip002_template, tip004_template, tip721_template},
 };
 
-pub trait AssetProcessor {
+pub trait AssetProcessor: Sync + Send + 'static {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         template_parameter: &TemplateParameter,
@@ -55,7 +55,7 @@ pub trait AssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConcreteAssetProcessor {
     template_factory: TemplateFactory,
 }
@@ -136,7 +136,7 @@ impl ConcreteAssetProcessor {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TemplateFactory {}
 
 impl TemplateFactory {

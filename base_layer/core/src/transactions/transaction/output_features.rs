@@ -150,15 +150,20 @@ impl OutputFeatures {
 
     pub fn for_checkpoint(
         parent_public_key: PublicKey,
+        unique_id: Vec<u8>,
         merkle_root: Vec<u8>,
         committee: Vec<PublicKey>,
+        is_initial: bool,
     ) -> OutputFeatures {
-        const CHECKPOINT_UNIQUE_ID: [u8; 32] = [3u8; 32];
         Self {
-            flags: OutputFlags::SIDECHAIN_CHECKPOINT,
+            flags: if is_initial {
+                OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE
+            } else {
+                OutputFlags::SIDECHAIN_CHECKPOINT
+            },
             sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
             parent_public_key: Some(parent_public_key),
-            unique_id: Some(CHECKPOINT_UNIQUE_ID.to_vec()),
+            unique_id: Some(unique_id),
             ..Default::default()
         }
     }

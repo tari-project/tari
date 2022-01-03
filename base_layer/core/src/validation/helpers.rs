@@ -422,11 +422,16 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             return Ok(());
         }
 
+        let output = db.fetch_output(&utxo_hash)?;
         warn!(
             target: LOG_TARGET,
-            "Input spends a UTXO but does not produce the same hash as the output it spends:
-            {}",
-            input
+            "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
+             provided hash:{}
+            input: {:?}. output in db: {:?}",
+            utxo_hash.to_hex(),
+            output_hash.to_hex(),
+            input,
+            output
         );
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
     }

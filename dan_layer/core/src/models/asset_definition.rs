@@ -23,10 +23,9 @@
 use std::{fmt, marker::PhantomData};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
+use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
-
-use crate::types::PublicKey;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -50,7 +49,7 @@ impl Default for AssetDefinition {
             checkpoint_unique_id: vec![3u8; 32],
             public_key: Default::default(),
             initial_committee: vec![],
-            phase_timeout: 10,
+            phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
         }

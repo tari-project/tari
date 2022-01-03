@@ -35,6 +35,7 @@ mod sqlite_db_factory;
 pub use sqlite_db_factory::SqliteDbFactory;
 mod models;
 mod sqlite_state_db_backend_adapter;
+pub use sqlite_state_db_backend_adapter::SqliteStateDbBackendAdapter;
 mod sqlite_storage_service;
 
 pub use sqlite_storage_service::SqliteStorageService;

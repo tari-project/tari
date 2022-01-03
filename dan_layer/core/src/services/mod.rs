@@ -31,6 +31,7 @@ mod payload_provider;
 mod signing_service;
 
 pub use asset_processor::{AssetProcessor, ConcreteAssetProcessor, MemoryInstructionLog};
+pub use asset_proxy::{AssetProxy, ConcreteAssetProxy};
 pub use base_node_client::BaseNodeClient;
 pub use committee_manager::{CommitteeManager, ConcreteCommitteeManager};
 pub use events_publisher::{EventsPublisher, LoggingEventsPublisher};
@@ -39,5 +40,14 @@ pub use payload_processor::{PayloadProcessor, TariDanPayloadProcessor};
 pub use payload_provider::{PayloadProvider, TariDanPayloadProvider};
 pub use signing_service::{NodeIdentitySigningService, SigningService};
 
+mod asset_proxy;
+mod checkpoint_manager;
 #[cfg(test)]
 pub mod mocks;
+mod service_specification;
+mod validator_node_rpc_client;
+mod wallet_client;
+pub use checkpoint_manager::{CheckpointManager, ConcreteCheckpointManager};
+pub use service_specification::ServiceSpecification;
+pub use validator_node_rpc_client::{ValidatorNodeClientFactory, ValidatorNodeRpcClient};
+pub use wallet_client::WalletClient;

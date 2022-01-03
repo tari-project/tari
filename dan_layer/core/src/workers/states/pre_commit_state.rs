@@ -23,6 +23,7 @@
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tokio::time::{sleep, Duration};
 
 use crate::{
@@ -47,6 +48,7 @@ where
     TSigningService: SigningService<TAddr>,
 {
     node_id: TAddr,
+    asset_public_key: PublicKey,
     committee: Committee<TAddr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
@@ -65,9 +67,10 @@ where
     TPayload: Payload,
     TSigningService: SigningService<TAddr>,
 {
-    pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
+    pub fn new(node_id: TAddr, committee: Committee<TAddr>, asset_public_key: PublicKey) -> Self {
         Self {
             node_id,
+            asset_public_key,
             committee,
             phantom_inbound: PhantomData,
             phantom_outbound: PhantomData,
@@ -82,7 +85,7 @@ where
         &mut self,
         timeout: Duration,
         current_view: &View,
-        inbound_services: &mut TInboundConnectionService,
+        inbound_services: &TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         signing_service: &TSigningService,
         unit_of_work: TUnitOfWork,
@@ -93,8 +96,12 @@ where
         let next_event_result;
         loop {
             tokio::select! {
-                           (from, message) = self.wait_for_message(inbound_services) => {
-            if current_view.is_leader() {
+                          r =  inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                    let (from, message) = r?;
+                    debug!(target: LOG_TARGET, "Received message: {:?} view:{}",  message.message_type(),
+            message.view_number());
+                     if current_view.is_leader() {
+
                                   if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
                             ).await?{
                                      next_event_result = result;
@@ -102,13 +109,16 @@ where
                                   }
 
                               }
+                    },
+                r =  inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                    let (from, message) = r?;
                     let leader= self.committee.leader_for_view(current_view.view_id).clone();
                               if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
                                   next_event_result = result;
                                   break;
                               }
 
-                              }
+               },
                       _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
                                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                                     break;
@@ -118,13 +128,6 @@ where
         Ok(next_event_result)
     }
 
-    async fn wait_for_message(
-        &self,
-        inbound_connection: &mut TInboundConnectionService,
-    ) -> (TAddr, HotStuffMessage<TPayload>) {
-        inbound_connection.receive_message().await
-    }
-
     async fn process_leader_message(
         &mut self,
         current_view: &View,
@@ -132,12 +135,17 @@ where
         sender: &TAddr,
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            "Received message as leader:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if !message.matches(HotStuffMessageType::Prepare, current_view.view_id) {
             return Ok(None);
         }
 
         if self.received_new_view_messages.contains_key(sender) {
-            dbg!("Already received message from {:?}", &sender);
             return Ok(None);
         }
 
@@ -177,7 +185,7 @@ where
         prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number);
+        let message = HotStuffMessage::pre_commit(None, Some(prepare_qc), view_number, self.asset_public_key.clone());
         outbound
             .broadcast(self.node_id.clone(), committee.members.as_slice(), message)
             .await
@@ -219,6 +227,12 @@ where
         signing_service: &TSigningService,
         unit_of_work: &mut TUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            "Received message as replica:{:?} for view:{}",
+            message.message_type(),
+            message.view_number()
+        );
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Prepare, current_view.view_id) {
                 warn!(
@@ -260,7 +274,7 @@ where
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number);
+        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number, self.asset_public_key.clone());
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }
