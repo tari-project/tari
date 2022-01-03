@@ -102,12 +102,12 @@ where TBaseNodeClient: BaseNodeClient
 
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let chain_db = db_factory.create_chain_db()?;
+        let chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
         if chain_db.is_empty()? {
             info!(target: LOG_TARGET, "DB is empty, initializing");
             let mut tx = chain_db.new_unit_of_work();
 
-            let state_db = db_factory.create_state_db()?;
+            let state_db = db_factory.get_or_create_state_db(&asset_definition.public_key)?;
             let mut state_tx = state_db.new_unit_of_work();
 
             info!(target: LOG_TARGET, "Loading initial state");

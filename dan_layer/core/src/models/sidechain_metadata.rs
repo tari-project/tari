@@ -20,10 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    models::{ChainHeight, TreeNodeHash},
-    types::PublicKey,
-};
+use tari_common_types::types::PublicKey;
+
+use crate::models::{ChainHeight, TreeNodeHash};
 
 pub struct SidechainMetadata {
     asset_public_key: PublicKey,

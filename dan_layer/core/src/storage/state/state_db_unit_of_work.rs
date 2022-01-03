@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard};
+
+use digest::Digest;
+use tari_common_types::types::HashDigest;
+use tari_crypto::common::Blake256;
+use tari_mmr::{MemBackendVec, MerkleMountainRange};
 
 use crate::{
     models::StateRoot,
@@ -37,7 +42,7 @@ pub trait StateDbUnitOfWork: Clone + Send + Sync {
     fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError>;
     fn set_u64(&mut self, schema: &str, key: &[u8], value: u64) -> Result<(), StorageError>;
     fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, StorageError>;
-    fn commit(&mut self) -> Result<StateRoot, StorageError>;
+    fn commit(&mut self) -> Result<(), StorageError>;
     fn calculate_root(&self) -> Result<StateRoot, StorageError>;
 }
 
@@ -124,19 +129,30 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)
     }
 
-    fn commit(&mut self) -> Result<StateRoot, StorageError> {
+    fn commit(&mut self) -> Result<(), StorageError> {
         let mut inner = self.inner.write().unwrap();
         let tx = inner
             .backend_adapter
             .create_transaction()
             .map_err(TBackendAdapter::Error::into)?;
+        // let mut current_tree = inner
+        //     .backend_adapter
+        //     .get_current_state_tree(&tx)
+        //     .map_err(TBackendAdapter::Error::into)?;
         for item in &inner.updates {
             let i = item.get();
             inner
                 .backend_adapter
                 .update_key_value(&i.schema, &i.key, &i.value, &tx)
                 .map_err(TBackendAdapter::Error::into)?;
+            // let key = format!("{}.{}", &i.schema, bs58::encode(&i.key).into_string());
+            // current_tree.insert(key, i.value.clone());
         }
+
+        // inner
+        //     .backend_adapter
+        //     .set_current_state_tree(current_tree, &tx)
+        //     .map_err(TBackendAdapter::Error::into)?;
 
         inner
             .backend_adapter
@@ -144,12 +160,58 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
             .map_err(TBackendAdapter::Error::into)?;
         inner.updates = vec![];
 
-        Ok(StateRoot::default())
+        Ok(())
     }
 
     fn calculate_root(&self) -> Result<StateRoot, StorageError> {
-        Ok(StateRoot::default())
+        let inner = self.inner.read().unwrap();
+        let tx = inner
+            .backend_adapter
+            .create_transaction()
+            .map_err(TBackendAdapter::Error::into)?;
+        // let root_node : Node<Vec<u8>> = inner.backend_adapter.get_current_state_tree(&tx).into();
+
+        // omg it's an MMR of MMRs
+        let mut top_level_mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+
+        for schema in inner
+            .backend_adapter
+            .get_all_schemas(&tx)
+            .map_err(TBackendAdapter::Error::into)?
+        {
+            let mut mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
+            for key_value in inner
+                .backend_adapter
+                .get_all_values_for_schema(&schema, &tx)
+                .map_err(TBackendAdapter::Error::into)?
+            {
+                if let Some(updated_value) = find_update(&inner, &schema, &key_value.key) {
+                    let hasher = HashDigest::new();
+                    mmr.push(hasher.chain(&key_value.key).chain(updated_value).finalize().to_vec())?;
+                } else {
+                    let hasher = HashDigest::new();
+                    mmr.push(hasher.chain(&key_value.key).chain(&key_value.value).finalize().to_vec())?;
+                }
+            }
+            let hasher = HashDigest::new();
+            top_level_mmr.push(hasher.chain(schema).chain(mmr.get_merkle_root()?).finalize().to_vec())?;
+        }
+        Ok(StateRoot::new(top_level_mmr.get_merkle_root()?))
     }
+}
+
+fn find_update<TBackendAdapter: StateDbBackendAdapter>(
+    inner: &RwLockReadGuard<StateDbUnitOfWorkInner<TBackendAdapter>>,
+    schema: &str,
+    key: &[u8],
+) -> Option<Vec<u8>> {
+    for update in &inner.updates {
+        let update = update.get();
+        if update.schema == schema && update.key == key {
+            return Some(update.value.clone());
+        }
+    }
+    None
 }
 
 pub struct StateDbUnitOfWorkInner<TBackendAdapter: StateDbBackendAdapter> {

@@ -23,6 +23,7 @@
 use std::{collections::HashMap, marker::PhantomData, time::Instant};
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
 
@@ -31,7 +32,7 @@ use crate::{
     models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
     services::{
         infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
-        PayloadProcessor,
+        PayloadProvider,
     },
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
@@ -48,6 +49,7 @@ where
     TOutboundService: OutboundService<TAddr, TPayload>,
 {
     node_id: TAddr,
+    asset_public_key: PublicKey,
     committee: Committee<TAddr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
@@ -64,9 +66,10 @@ where
     TAddr: NodeAddressable,
     TPayload: Payload,
 {
-    pub fn new(node_id: TAddr, committee: Committee<TAddr>) -> Self {
+    pub fn new(node_id: TAddr, asset_public_key: PublicKey, committee: Committee<TAddr>) -> Self {
         Self {
             node_id,
+            asset_public_key,
             committee,
             phantom_inbound: PhantomData,
             phantom_outbound: PhantomData,
@@ -76,14 +79,14 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork, TPayloadProcessor: PayloadProcessor<TPayload>>(
+    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
         &mut self,
         timeout: Duration,
         current_view: &View,
         inbound_services: &mut TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         unit_of_work: TUnitOfWork,
-        payload_processor: &mut TPayloadProcessor,
+        payload_provider: &mut TPayloadProvider,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
         let started = Instant::now();
@@ -91,36 +94,34 @@ where
         let next_event_result;
         loop {
             tokio::select! {
-                           (from, message) = self.wait_for_message(inbound_services) => {
-            if current_view.is_leader() {
-                                  if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                            ).await?{
-                                     next_event_result = result;
-                                      break;
-                                  }
-
-                              }
-                    let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_processor).await? {
-                                  next_event_result = result;
+                      r = inbound_services.wait_for_message(HotStuffMessageType::Commit, current_view.view_id()) => {
+                    let (from, message) = r?;
+                        if current_view.is_leader() {
+                              if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
+                        ).await?{
+                                 next_event_result = result;
                                   break;
                               }
 
-                              }
-                      _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                                    next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                                    break;
-                                }
+                          }
+                },
+              r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                    let (from, message) = r?;
+                        let leader= self.committee.leader_for_view(current_view.view_id).clone();
+                          if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
+                              next_event_result = result;
+                              break;
+                          }
+
+                          }
+            ,
+                  _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
+                                next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                                break;
                             }
+                        }
         }
         Ok(next_event_result)
-    }
-
-    async fn wait_for_message(
-        &self,
-        inbound_connection: &mut TInboundConnectionService,
-    ) -> (TAddr, HotStuffMessage<TPayload>) {
-        inbound_connection.receive_message().await
     }
 
     async fn process_leader_message(
@@ -172,7 +173,7 @@ where
         commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
-        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number);
+        let message = HotStuffMessage::decide(None, Some(commit_qc), view_number, self.asset_public_key.clone());
         outbound
             .broadcast(self.node_id.clone(), self.committee.members.as_slice(), message)
             .await
@@ -204,14 +205,14 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork, TPayloadProcessor: PayloadProcessor<TPayload>>(
+    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
         &mut self,
         message: &HotStuffMessage<TPayload>,
         current_view: &View,
         from: &TAddr,
         view_leader: &TAddr,
         unit_of_work: &mut TUnitOfWork,
-        payload_processor: &mut TPayloadProcessor,
+        payload_provider: &mut TPayloadProvider,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
@@ -233,7 +234,7 @@ where
                 return Ok(None);
             }
 
-            payload_processor.remove_payload_for_node(justify.node_hash()).await?;
+            payload_provider.remove_payload(justify.node_hash()).await?;
             unit_of_work.commit_node(justify.node_hash())?;
             info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().0.to_hex());
             Ok(Some(ConsensusWorkerStateEvent::Decided))

@@ -94,6 +94,31 @@ impl AssetManagerHandle {
         }
     }
 
+    pub async fn create_follow_on_asset_checkpoint(
+        &mut self,
+        public_key: &PublicKey,
+        unique_id: &[u8],
+        merkle_root: &[u8],
+        committee_public_keys: &[PublicKey],
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateFollowOnCheckpoint {
+                asset_public_key: Box::new(public_key.clone()),
+                merkle_root: merkle_root.to_vec(),
+                unique_id: unique_id.to_vec(),
+                committee_public_keys: committee_public_keys.to_vec(),
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateFollowOnCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_follow_on_asset_checkpoint".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
     pub async fn create_registration_transaction(
         &mut self,
         name: String,

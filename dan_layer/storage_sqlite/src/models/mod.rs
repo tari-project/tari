@@ -25,3 +25,4 @@ pub mod locked_qc;
 pub mod node;
 pub mod prepare_qc;
 pub mod state_key;
+pub mod state_tree;

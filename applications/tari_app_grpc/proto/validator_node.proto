@@ -77,7 +77,14 @@ message InvokeReadMethodRequest{
 }
 
 message InvokeReadMethodResponse {
-    optional bytes result = 1;
+    bytes result = 1;
+    Authority authority = 2;
+}
+
+message Authority {
+    bytes node_public_key =1;
+    bytes signature = 2;
+    bytes proxied_by = 3;
 }
 
 message InvokeMethodRequest{
@@ -89,5 +96,5 @@ message InvokeMethodRequest{
 
 message InvokeMethodResponse {
     string status = 1;
-    optional bytes result = 2;
+    bytes result = 2;
 }

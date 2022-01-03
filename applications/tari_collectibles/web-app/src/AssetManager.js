@@ -26,7 +26,6 @@ import { useParams, withRouter } from "react-router-dom";
 import PropTypes from "prop-types";
 import binding from "./binding";
 import { fs, path } from "@tauri-apps/api";
-import {esES} from "@mui/material/locale";
 
 class AssetManagerContent extends React.Component {
   constructor(props) {
