@@ -490,9 +490,9 @@ impl ConnectivityManagerActor {
         #[allow(clippy::single_match)]
         match event {
             PeerConnected(new_conn) => {
-                self.connection_manager
-                    .cancel_dial(new_conn.peer_node_id().clone())
-                    .await?;
+                // self.connection_manager
+                //     .cancel_dial(new_conn.peer_node_id().clone())
+                //     .await?;
 
                 match self.pool.get_connection(new_conn.peer_node_id()) {
                     Some(existing_conn) if !existing_conn.is_connected() => {
