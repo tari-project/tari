@@ -117,6 +117,7 @@ pub struct GlobalConfig {
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
     pub wallet_base_node_service_peers: Vec<String>,
+    pub wallet_custom_base_node: Option<String>,
     pub wallet_base_node_service_refresh_interval: u64,
     pub wallet_base_node_service_request_max_age: u64,
     pub wallet_balance_enquiry_cooldown_period: u64,
@@ -526,6 +527,13 @@ fn convert_node_config(
         },
     };
 
+    let key = config_string("wallet", net_str, "custom_base_node");
+    let custom_peer: Option<String> = match cfg.get_int(&key) {
+        Ok(peer) => Some(peer.to_string()),
+        Err(ConfigError::NotFound(_)) => None,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
     let key = "wallet.password";
     let console_wallet_password = optional(cfg.get_str(key))?;
 
@@ -795,6 +803,7 @@ fn convert_node_config(
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
         wallet_base_node_service_peers,
+        wallet_custom_base_node: custom_peer,
         wallet_base_node_service_refresh_interval,
         wallet_base_node_service_request_max_age,
         wallet_balance_enquiry_cooldown_period,
@@ -850,6 +859,8 @@ where
     )))
 }
 
+// Clippy thinks "socks5" is not lowercase ...?
+#[allow(clippy::match_str_case_mismatch)]
 fn network_transport_config(
     cfg: &Config,
     mut application: ApplicationType,

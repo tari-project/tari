@@ -340,11 +340,7 @@ impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
         let proof = if proof.len() > 32 {
-            format!(
-                "{}..{}",
-                proof[0..16].to_string(),
-                proof[proof.len() - 16..proof.len()].to_string()
-            )
+            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
         } else {
             proof
         };

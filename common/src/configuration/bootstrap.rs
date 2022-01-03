@@ -164,6 +164,8 @@ pub struct ConfigBootstrap {
     /// Metrics push endpoint (prometheus push)
     #[structopt(long)]
     pub metrics_push_endpoint: Option<String>,
+    #[structopt(long, alias = "custom_base_node")]
+    pub custom_base_node: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -203,6 +205,7 @@ impl Default for ConfigBootstrap {
             wallet_grpc_address: None,
             metrics_server_bind_addr: None,
             metrics_push_endpoint: None,
+            custom_base_node: None,
         }
     }
 }
@@ -334,7 +337,7 @@ where F: Fn(ApplicationType, &Path) -> Result<(), std::io::Error> {
         println!(
             "Failed to install a new configuration file in {}: {}",
             path.to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     }
 }

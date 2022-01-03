@@ -112,7 +112,7 @@ impl RpcRequestMock {
 /// //     async fn my_method(&self, request: Request<()>) -> Result<Response<()>, RpcStatus> {
 /// //         self.request_response(request, &self.my_method).await
 /// // }
-/// impl RpcMock for MyServiceMock{};
+/// impl RpcMock for MyServiceMock {};
 /// ```
 #[async_trait]
 pub trait RpcMock {

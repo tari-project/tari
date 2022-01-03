@@ -91,9 +91,6 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 
     #[rpc(method = 8)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
-
-    #[rpc(method = 9)]
-    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

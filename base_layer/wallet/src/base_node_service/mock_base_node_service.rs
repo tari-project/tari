@@ -86,6 +86,7 @@ impl MockBaseNodeService {
             },
             None => (None, None),
         };
+
         self.state = BaseNodeState {
             chain_metadata,
             is_synced,

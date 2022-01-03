@@ -383,9 +383,10 @@ mod test {
 
         match seed.to_mnemonic(&MnemonicLanguage::Spanish, Some("Passphrase".to_string())) {
             Ok(mnemonic_seq) => {
-                if CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_ok() {
-                    panic!("Should not be able to derive seed with wrong passphrase");
-                }
+                assert!(
+                    !CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_ok(),
+                    "Should not be able to derive seed with wrong passphrase"
+                );
             },
             Err(_e) => panic!("Couldn't convert CipherSeed to Mnemonic"),
         }

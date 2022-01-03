@@ -24,3 +24,5 @@ pub mod utils;
 pub mod comms_and_services;
 pub mod comms_rpc;
 pub mod data;
+pub mod output_manager_service_mock;
+pub mod transaction_service_mock;

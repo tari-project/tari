@@ -58,10 +58,10 @@ pub enum MicroTariError {
 }
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
-///   use tari_core::transactions::tari_amount::{MicroTari, uT, T};
-///   assert_eq!(MicroTari::from(42), 42 * uT);
-///   assert_eq!(1 * T, 1_000_000.into());
-///   assert_eq!(3_000_000 * uT, 3 * T);
+/// use tari_core::transactions::tari_amount::{uT, MicroTari, T};
+/// assert_eq!(MicroTari::from(42), 42 * uT);
+/// assert_eq!(1 * T, 1_000_000.into());
+/// assert_eq!(3_000_000 * uT, 3 * T);
 /// ```
 #[allow(non_upper_case_globals)]
 pub const uT: MicroTari = MicroTari(1);
