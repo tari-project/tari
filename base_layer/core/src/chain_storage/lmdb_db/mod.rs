@@ -42,6 +42,14 @@ pub(crate) struct TransactionOutputRowData {
     pub mined_height: u64,
 }
 
+#[derive(Serialize, Debug)]
+pub(crate) struct TransactionInputRowDataRef<'a> {
+    pub input: &'a TransactionInput,
+    pub header_hash: HashOutput,
+    pub mmr_position: u32,
+    pub hash: HashOutput,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionInputRowData {
     pub input: TransactionInput,

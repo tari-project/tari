@@ -255,7 +255,6 @@ mod unique_id {
     }
 
     #[tokio::test]
-    #[ignore = "broken after validator node merge"]
     async fn it_allows_spending_to_new_utxo() {
         let (mut blockchain, validator) = setup();
 

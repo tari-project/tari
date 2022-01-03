@@ -447,7 +447,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id, None)?
         {
             // Check that it is the same utxo in which the unique_id was created
-            if utxo_hash.output.hash() == output_hash {
+            if utxo_hash.output.hash() != output_hash {
                 return Ok(());
             }
 
