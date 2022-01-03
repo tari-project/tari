@@ -158,7 +158,7 @@ mod test {
         let hash_vec = from_hex(hash_str).unwrap();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(hash_vec.as_slice());
-        let covenant = covenant!(output_hash_eq(@hash(hash.clone())));
+        let covenant = covenant!(output_hash_eq(@hash(hash)));
         assert_eq!(covenant.to_consensus_bytes().to_hex(), format!("3001{}", hash_str));
 
         let covenant = covenant!(and(

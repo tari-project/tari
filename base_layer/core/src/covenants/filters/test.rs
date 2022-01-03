@@ -38,7 +38,7 @@ pub fn setup_filter_test<'a, F>(
 where
     F: FnOnce(&mut Vec<TransactionOutput>),
 {
-    let mut context = create_context(&covenant, input, block_height);
+    let mut context = create_context(covenant, input, block_height);
     // Consume root token (i.e the filter we're testing), args for filter presumably come next
     context.next_filter().unwrap();
     let mut outputs = create_outputs(10, Default::default());

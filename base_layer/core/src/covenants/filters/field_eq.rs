@@ -135,7 +135,7 @@ mod test {
         context.next_filter().unwrap();
         let mut outputs = create_outputs(10, Default::default());
         outputs[5].commitment = commitment.clone();
-        outputs[7].commitment = commitment.clone();
+        outputs[7].commitment = commitment;
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
 
@@ -156,7 +156,7 @@ mod test {
         context.next_filter().unwrap();
         let mut outputs = create_outputs(10, Default::default());
         outputs[5].script = script.clone();
-        outputs[7].script = script.clone();
+        outputs[7].script = script;
         let mut output_set = OutputSet::new(&outputs);
         FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
 
