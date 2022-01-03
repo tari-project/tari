@@ -23,11 +23,22 @@
 use async_trait::async_trait;
 
 use crate::{
-    models::{HotStuffMessage, Payload},
+    models::{HotStuffMessage, HotStuffMessageType, Payload, ViewId},
     services::infrastructure_services::NodeAddressable,
+    DigitalAssetError,
 };
 
 #[async_trait]
 pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
-    async fn receive_message(&mut self) -> (TAddr, HotStuffMessage<TPayload>);
+    async fn wait_for_message(
+        &self,
+        message_type: HotStuffMessageType,
+        for_view: ViewId,
+    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError>;
+
+    async fn wait_for_qc(
+        &self,
+        message_type: HotStuffMessageType,
+        for_view: ViewId,
+    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError>;
 }

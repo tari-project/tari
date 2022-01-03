@@ -25,8 +25,8 @@ use tari_core::transactions::transaction::TemplateParameter;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Payload, StateRoot, TariDanPayload, TreeNodeHash},
-    services::{AssetProcessor, MempoolService},
+    models::{AssetDefinition, Payload, StateRoot, TariDanPayload},
+    services::AssetProcessor,
     storage::state::StateDbUnitOfWork,
 };
 
@@ -39,37 +39,27 @@ pub trait PayloadProcessor<TPayload: Payload> {
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
-        &mut self,
-        node_hash: TreeNodeHash,
+        &self,
         payload: &TPayload,
         unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError>;
-    async fn remove_payload_for_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError>;
 }
 
-pub struct TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
-where
-    TAssetProcessor: AssetProcessor,
-    TMempoolService: MempoolService,
+pub struct TariDanPayloadProcessor<TAssetProcessor>
+where TAssetProcessor: AssetProcessor
 {
-    mempool: TMempoolService,
     asset_processor: TAssetProcessor,
 }
 
-impl<TAssetProcessor: AssetProcessor, TMempoolService: MempoolService>
-    TariDanPayloadProcessor<TAssetProcessor, TMempoolService>
-{
-    pub fn new(asset_processor: TAssetProcessor, mempool: TMempoolService) -> Self {
-        Self {
-            asset_processor,
-            mempool,
-        }
+impl<TAssetProcessor: AssetProcessor> TariDanPayloadProcessor<TAssetProcessor> {
+    pub fn new(asset_processor: TAssetProcessor) -> Self {
+        Self { asset_processor }
     }
 }
 
 #[async_trait]
-impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempool: MempoolService + Send + Sync>
-    PayloadProcessor<TariDanPayload> for TariDanPayloadProcessor<TAssetProcessor, TMempool>
+impl<TAssetProcessor: AssetProcessor + Send + Sync> PayloadProcessor<TariDanPayload>
+    for TariDanPayloadProcessor<TAssetProcessor>
 {
     fn init_template<TUnitOfWork: StateDbUnitOfWork>(
         &self,
@@ -81,9 +71,8 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempool: MempoolService + S
             .init_template(template_parameter, asset_definition, state_db)
     }
 
-    async fn process_payload<TUnitOfWork: StateDbUnitOfWork + Clone + Send>(
-        &mut self,
-        node_hash: TreeNodeHash,
+    async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
         payload: &TariDanPayload,
         state_tx: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
@@ -94,17 +83,7 @@ impl<TAssetProcessor: AssetProcessor + Send + Sync, TMempool: MempoolService + S
             // TODO: Should we swallow + log the error instead of propagating it?
             self.asset_processor.execute_instruction(instruction, &mut state_tx)?;
         }
-        // Reserve all instructions if they succeeded
-        for instruction in payload.instructions() {
-            self.mempool
-                .reserve_instruction_in_block(instruction.hash(), node_hash.0.clone())
-                .await?;
-        }
 
         Ok(state_tx.calculate_root()?)
-    }
-
-    async fn remove_payload_for_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
-        self.mempool.remove_all_in_block(node_hash.as_bytes()).await
     }
 }

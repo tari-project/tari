@@ -31,14 +31,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{
-        AssetOutputFeatures,
-        MintNonFungibleFeatures,
-        OutputFeatures,
-        OutputFlags,
-        SideChainCheckpointFeatures,
-        UnblindedOutput,
-    },
+    transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{
@@ -46,7 +39,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
-use tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::hash::Hashable;
 
 use crate::{
     output_manager_service::{
@@ -94,14 +87,11 @@ pub struct OutputSql {
     pub spent_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub metadata: Option<Vec<u8>>,
-    pub features_mint_asset_public_key: Option<Vec<u8>>,
-    pub features_sidechain_checkpoint_merkle_root: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
-    pub features_sidechain_committee: Option<String>,
     pub script_lock_height: i64,
     pub spending_priority: i32,
-    pub features_asset_json: Option<String>,
+    pub features_json: String,
 }
 
 impl OutputSql {
@@ -480,52 +470,22 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let asset_features = match o.features_asset_json {
-            Some(ref json) => {
-                let asset: AssetOutputFeatures =
-                    serde_json::from_str(json.as_str()).map_err(|s| OutputManagerStorageError::ConversionError {
-                        reason: format!("Could not convert json into AssetOutputFeatures:{}", s),
-                    })?;
-                Some(asset)
-            },
-            None => None,
-        };
-        let mint_non_fungible = match o.features_mint_asset_public_key {
-            Some(ref public_key) => Some(MintNonFungibleFeatures {
-                asset_public_key: PublicKey::from_bytes(public_key)?,
-                asset_owner_commitment: o.commitment.clone().map(|ao| Commitment::from_bytes(&ao)).unwrap()?,
-            }),
-            None => None,
-        };
-        let sidechain_checkpoint = if let Some(ref merkle_root) = o.features_sidechain_checkpoint_merkle_root {
-            let merkle_root = merkle_root.to_owned();
+        let mut features: OutputFeatures =
+            serde_json::from_str(o.features_json.as_str()).map_err(|s| OutputManagerStorageError::ConversionError {
+                reason: format!("Could not convert json into OutputFeatures:{}", s),
+            })?;
 
-            let committee = o
-                .features_sidechain_committee
-                .unwrap_or_default()
-                .split(',')
-                .map(|c| PublicKey::from_hex(c))
-                .collect::<Result<_, _>>()?;
-            Some(SideChainCheckpointFeatures { merkle_root, committee })
-        } else {
-            None
-        };
+        features.flags = OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError {
+            reason: "Flags could not be converted from bits".to_string(),
+        })?;
+        features.maturity = o.maturity as u64;
+        features.metadata = o.metadata.unwrap_or_default();
+        features.unique_id = o.features_unique_id.clone();
+        features.parent_public_key = o
+            .features_parent_public_key
+            .map(|p| PublicKey::from_bytes(&p))
+            .transpose()?;
 
-        let features = OutputFeatures {
-            flags: OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError {
-                reason: "Flags could not be converted from bits".to_string(),
-            })?,
-            maturity: o.maturity as u64,
-            metadata: o.metadata.unwrap_or_default(),
-            unique_id: o.features_unique_id.clone(),
-            parent_public_key: o
-                .features_parent_public_key
-                .map(|p| PublicKey::from_bytes(&p))
-                .transpose()?,
-            asset: asset_features,
-            mint_non_fungible,
-            sidechain_checkpoint,
-        };
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {

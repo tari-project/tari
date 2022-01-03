@@ -24,6 +24,7 @@
 mod cmd_args;
 mod comms;
 mod dan_node;
+mod default_service_specification;
 mod grpc;
 mod p2p;
 
@@ -41,17 +42,7 @@ use tari_app_utilities::{identity_management::setup_node_identity, initializatio
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
-use tari_dan_core::{
-    services::{
-        AssetProcessor,
-        AssetProxy,
-        ConcreteAssetProcessor,
-        ConcreteAssetProxy,
-        MempoolService,
-        MempoolServiceHandle,
-    },
-    storage::DbFactory,
-};
+use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
 use tari_p2p::comms_connector::SubscriptionFactory;
 use tari_service_framework::ServiceHandles;
@@ -61,6 +52,7 @@ use tonic::transport::Server;
 
 use crate::{
     dan_node::DanNode,
+    default_service_specification::DefaultServiceSpecification,
     grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
     p2p::services::rpc_client::TariCommsValidatorNodeClientFactory,
 };
@@ -68,6 +60,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
+    // console_subscriber::init();
     if let Err(exit_code) = main_inner() {
         eprintln!("{:?}", exit_code);
         error!(
@@ -127,18 +120,16 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
         handles.expect_handle::<ConnectivityRequester>(),
         handles.expect_handle::<Dht>().discovery_service_requester(),
     );
-    let asset_proxy = ConcreteAssetProxy::new(
+    let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
         GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
         validator_node_client_factory,
         5,
-    );
-
-    let grpc_server = ValidatorNodeGrpcServer::new(
         mempool_service.clone(),
         db_factory.clone(),
-        asset_processor,
-        asset_proxy,
     );
+
+    let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> =
+        ValidatorNodeGrpcServer::new(db_factory.clone(), asset_processor, asset_proxy);
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144);
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
@@ -163,11 +154,11 @@ fn build_runtime() -> Result<Runtime, ExitCodes> {
         .map_err(|e| ExitCodes::UnknownError(e.to_string()))
 }
 
-async fn run_dan_node<TDbFactory: DbFactory + Clone>(
+async fn run_dan_node(
     shutdown_signal: ShutdownSignal,
     config: GlobalConfig,
     mempool_service: MempoolServiceHandle,
-    db_factory: TDbFactory,
+    db_factory: SqliteDbFactory,
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,
@@ -184,13 +175,8 @@ async fn run_dan_node<TDbFactory: DbFactory + Clone>(
     .await
 }
 
-async fn run_grpc<
-    TMempoolService: MempoolService + Clone + Sync + Send + 'static,
-    TDbFactory: DbFactory + Sync + Send + 'static,
-    TAssetProcessor: AssetProcessor + Sync + Send + 'static,
-    TAssetProxy: AssetProxy + Sync + Send + 'static,
->(
-    grpc_server: ValidatorNodeGrpcServer<TMempoolService, TDbFactory, TAssetProcessor, TAssetProxy>,
+async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
+    grpc_server: ValidatorNodeGrpcServer<TServiceSpecification>,
     grpc_address: SocketAddr,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {

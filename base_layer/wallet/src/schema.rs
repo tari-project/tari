@@ -114,14 +114,11 @@ table! {
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
         metadata -> Nullable<Binary>,
-        features_mint_asset_public_key -> Nullable<Binary>,
-        features_sidechain_checkpoint_merkle_root -> Nullable<Binary>,
         features_parent_public_key -> Nullable<Binary>,
         features_unique_id -> Nullable<Binary>,
-        features_sidechain_committee -> Nullable<Text>,
         script_lock_height -> BigInt,
         spending_priority -> Integer,
-        features_asset_json -> Nullable<Text>,
+        features_json -> Text,
     }
 }
 

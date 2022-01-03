@@ -23,6 +23,7 @@
 use std::io;
 
 use lmdb_zero as lmdb;
+use tari_mmr::error::MerkleMountainRangeError;
 use tari_storage::lmdb_store::LMDBError;
 
 #[derive(Debug, thiserror::Error)]
@@ -47,4 +48,6 @@ pub enum StorageError {
     NotFound,
     #[error("File system path does not exist")]
     FileSystemPathDoesNotExist,
+    #[error("Merkle error:{0}")]
+    MerkleMountainRangeError(#[from] MerkleMountainRangeError),
 }

@@ -30,7 +30,6 @@ import {
 } from "react-router-dom";
 import { createTheme } from "@mui/material/styles";
 import {
-  AppBar,
   Box,
   CssBaseline,
   Divider,
@@ -42,7 +41,6 @@ import {
   ListItemText,
   ListSubheader,
   Toolbar,
-  Typography,
 } from "@mui/material";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import DashboardIcon from "@mui/icons-material/Dashboard";
@@ -183,7 +181,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState("");
-  const [password, setPassword] = useState("");
+  const setPassword = useState("")[1];
 
   // todo: screen lock after x mins no activity
 

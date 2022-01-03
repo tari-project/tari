@@ -40,4 +40,12 @@ pub trait ValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+
+    async fn invoke_method(
+        &mut self,
+        asset_public_key: &PublicKey,
+        template_id: TemplateId,
+        method: String,
+        args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }

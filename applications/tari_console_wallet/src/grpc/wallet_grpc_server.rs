@@ -1,3 +1,25 @@
+//  Copyright 2021. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::convert::{TryFrom, TryInto};
 
 use futures::{channel::mpsc, future, SinkExt};
@@ -14,6 +36,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateFollowOnAssetCheckpointRequest,
+        CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
         CreateInitialAssetCheckpointResponse,
         GetBalanceRequest,
@@ -363,7 +387,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
+                            .send_transaction(pk, amount.into(), fee_per_gram.into(), message)
                             .await,
                     )
                 });
@@ -372,7 +396,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     (
                         address,
                         transaction_service
-                            .send_one_sided_transaction(pk, amount.into(), None, fee_per_gram.into(), message)
+                            .send_one_sided_transaction(pk, amount.into(), fee_per_gram.into(), message)
                             .await,
                     )
                 });
@@ -647,6 +671,43 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateInitialAssetCheckpointResponse {}))
+    }
+
+    async fn create_follow_on_asset_checkpoint(
+        &self,
+        request: Request<CreateFollowOnAssetCheckpointRequest>,
+    ) -> Result<Response<CreateFollowOnAssetCheckpointResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .next_committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| {
+                Status::invalid_argument(format!("Next committee did not contain valid pub keys:{}", err))
+            })?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_follow_on_asset_checkpoint(
+                &asset_public_key,
+                message.unique_id.as_slice(),
+                message.merkle_root.as_slice(),
+                committee_public_keys.as_slice(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "Follow on asset checkpoint".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {

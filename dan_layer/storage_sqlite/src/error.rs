@@ -40,6 +40,8 @@ pub enum SqliteStorageError {
         #[from]
         source: diesel_migrations::RunMigrationsError,
     },
+    #[error("Error decoding bytes:{0}")]
+    DecodeError(#[from] bytecodec::Error),
 }
 
 impl From<SqliteStorageError> for StorageError {
@@ -54,6 +56,7 @@ impl From<SqliteStorageError> for StorageError {
             SqliteStorageError::MigrationError { .. } => StorageError::MigrationError {
                 reason: source.to_string(),
             },
+            SqliteStorageError::DecodeError(e) => StorageError::DecodeError(e),
         }
     }
 }

@@ -401,6 +401,7 @@ impl SendTab {
                                     self.to_field.clone(),
                                     amount.into(),
                                     self.selected_unique_id.clone(),
+                                    None, // TODO: Select the actual value
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
@@ -418,6 +419,7 @@ impl SendTab {
                                     self.to_field.clone(),
                                     amount.into(),
                                     self.selected_unique_id.clone(),
+                                    None, // TODO: select actual value
                                     fee_per_gram,
                                     self.message_field.clone(),
                                     tx,
