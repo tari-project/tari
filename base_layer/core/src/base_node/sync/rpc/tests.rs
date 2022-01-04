@@ -22,12 +22,14 @@
 
 use futures::StreamExt;
 use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use tari_service_framework::reply_channel;
 use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tempfile::{tempdir, TempDir};
+use tokio::sync::broadcast;
 
 use super::BaseNodeSyncRpcService;
 use crate::{
-    base_node::BaseNodeSyncService,
+    base_node::{BaseNodeSyncService, LocalNodeCommsInterface},
     chain_storage::BlockchainDatabase,
     proto::base_node::{SyncBlocksRequest, SyncUtxosRequest},
     test_helpers::{
@@ -47,7 +49,13 @@ fn setup() -> (
     let request_mock = RpcRequestMock::new(peer_manager);
 
     let db = create_new_blockchain();
-    let service = BaseNodeSyncRpcService::new(db.clone().into());
+    let (req_tx, _) = reply_channel::unbounded();
+    let (block_tx, _) = reply_channel::unbounded();
+    let (block_event_tx, _) = broadcast::channel(1);
+    let service = BaseNodeSyncRpcService::new(
+        db.clone().into(),
+        LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+    );
     (service, db, request_mock, tmp)
 }
 

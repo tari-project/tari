@@ -28,7 +28,7 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use tari_common_types::types::HashOutput;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
@@ -63,6 +63,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a [SyncPeer],
     hooks: Hooks,
+    local_metadata: &'a ChainMetadata,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -73,6 +74,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a [SyncPeer],
         randomx_factory: RandomXFactory,
+        local_metadata: &'a ChainMetadata,
     ) -> Self {
         Self {
             config,
@@ -81,6 +83,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             connectivity,
             sync_peers,
             hooks: Default::default(),
+            local_metadata,
         }
     }
 
@@ -247,11 +250,28 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     );
                     Ok(())
                 } else {
+                    // Check if the metadata that we had when we decided to enter header sync is behind the peer's
+                    // claimed one. If so, our chain has updated in the meantime and the sync peer
+                    // is behaving.
+                    if self.local_metadata.accumulated_difficulty() <=
+                        sync_peer.claimed_chain_metadata().accumulated_difficulty()
+                    {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Local blockchain received a better block through propagation at height {} (was: {}). \
+                             Proceeding to archival/pruned block sync",
+                            metadata.height_of_longest_chain(),
+                            self.local_metadata.height_of_longest_chain()
+                        );
+                        return Ok(());
+                    }
                     debug!(
                         target: LOG_TARGET,
-                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {})",
+                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {}, Peer's height: \
+                         {})",
                         header_tip_height,
-                        metadata.height_of_longest_chain()
+                        metadata.height_of_longest_chain(),
+                        sync_peer.claimed_chain_metadata().height_of_longest_chain(),
                     );
                     Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                         claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
@@ -364,13 +384,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             fork_hash_index,
             tip_height: remote_tip_height,
         } = resp;
-        debug!(
-            target: LOG_TARGET,
-            "Found split {} blocks back, received {} headers from peer `{}`",
-            steps_back,
-            headers.len(),
-            sync_peer
-        );
+
+        if steps_back > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Found chain split {} blocks back, received {} headers from peer `{}`",
+                steps_back,
+                headers.len(),
+                sync_peer
+            );
+        }
 
         if fork_hash_index >= block_hashes.len() as u64 {
             let _ = self
@@ -658,7 +681,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // Check that the remote tip is stronger than the local tip
         let proposed_tip = chain_headers.last().unwrap();
-        self.header_validator.compare_chains(current_tip, proposed_tip).is_lt()
+        self.header_validator.compare_chains(current_tip, proposed_tip).is_le()
     }
 
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {
