@@ -42,7 +42,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
-    protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
+    protocol::{ProtocolEvent, ProtocolId, Protocols},
     runtime,
     runtime::task,
     test_utils::{
@@ -156,7 +156,7 @@ async fn dial_success() {
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
-    assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
 
     let event = subscription2.recv().await.unwrap();
@@ -164,7 +164,7 @@ async fn dial_success() {
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
     let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
-    assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer1.supported_protocols(), [&TEST_PROTO]);
     assert_eq!(peer1.user_agent, "node1");
 
     let err = conn_out

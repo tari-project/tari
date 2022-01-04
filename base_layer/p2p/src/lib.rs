@@ -53,7 +53,7 @@ pub use tari_common::configuration::Network;
 pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";
 
 /// Major network version. Peers will refuse connections if this value differs
-pub const MAJOR_NETWORK_VERSION: u32 = 0;
+pub const MAJOR_NETWORK_VERSION: u8 = 0;
 /// Minor network version. This should change with each time the network protocol has changed in a backward-compatible
 /// way.
-pub const MINOR_NETWORK_VERSION: u32 = 0;
+pub const MINOR_NETWORK_VERSION: u8 = 0;
