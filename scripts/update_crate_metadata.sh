@@ -43,15 +43,18 @@ function update_versions {
    base_layer/wallet_ffi
    base_layer/tari_stratum_ffi
    common
+   common_sqlite
    comms
    comms/dht
    comms/rpc_macros
+   applications/launchpad/backend
    applications/tari_base_node
    applications/tari_app_grpc
    applications/tari_app_utilities
    applications/tari_console_wallet
    applications/tari_merge_mining_proxy
    applications/tari_mining_node
+   applications/tari_stratum_transcoder
    applications/test_faucet
 '}
 
