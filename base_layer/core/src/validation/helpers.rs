@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::cmp::Ordering;
 
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
@@ -305,45 +304,16 @@ pub fn check_sorting_and_duplicates(block: &Block) -> Result<(), ValidationError
     if !is_all_unique_and_sorted(body.inputs()) {
         return Err(ValidationError::UnsortedOrDuplicateInput);
     }
+
     if !is_all_unique_and_sorted(body.outputs()) {
         return Err(ValidationError::UnsortedOrDuplicateOutput);
     }
 
-    if block.version() == 1 {
-        // TODO: #testnetreset clean up
-        let wrapped = body
-            .kernels()
-            .iter()
-            .map(KernelDeprecatedOrdWrapper::new)
-            .collect::<Vec<_>>();
-        if !is_all_unique_and_sorted(&wrapped) {
-            return Err(ValidationError::UnsortedOrDuplicateKernel);
-        }
-    } else if !is_all_unique_and_sorted(body.kernels()) {
+    if !is_all_unique_and_sorted(body.kernels()) {
         return Err(ValidationError::UnsortedOrDuplicateKernel);
     }
 
     Ok(())
-}
-
-#[derive(PartialEq, Eq)]
-struct KernelDeprecatedOrdWrapper<'a> {
-    kernel: &'a TransactionKernel,
-}
-impl<'a> KernelDeprecatedOrdWrapper<'a> {
-    pub fn new(kernel: &'a TransactionKernel) -> Self {
-        Self { kernel }
-    }
-}
-impl PartialOrd for KernelDeprecatedOrdWrapper<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.kernel.deprecated_cmp(other.kernel))
-    }
-}
-impl Ord for KernelDeprecatedOrdWrapper<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.kernel.deprecated_cmp(other.kernel)
-    }
 }
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent

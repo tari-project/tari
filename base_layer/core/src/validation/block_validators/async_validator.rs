@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{cmp, cmp::Ordering, convert::TryInto, thread, time::Instant};
+use std::{cmp, convert::TryInto, thread, time::Instant};
 
 use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -164,14 +164,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         kernels: Vec<TransactionKernel>,
     ) -> AbortOnDropJoinHandle<Result<KernelValidationData, ValidationError>> {
         let height = header.height;
-        let block_version = header.version;
-        let kernel_comparer = move |a: &TransactionKernel, b: &TransactionKernel| -> Ordering {
-            if block_version == 1 {
-                a.deprecated_cmp(b)
-            } else {
-                a.cmp(b)
-            }
-        };
 
         let total_kernel_offset = header.total_kernel_offset.clone();
         let total_reward = self.rules.calculate_coinbase_and_fees(height, &kernels);
@@ -190,12 +182,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut coinbase_index = None;
             let mut max_kernel_timelock = 0;
             for (i, kernel) in kernels.iter().enumerate() {
-                if i > 0 &&
-                    matches!(
-                        kernel_comparer(kernel, &kernels[i - 1]),
-                        Ordering::Equal | Ordering::Less
-                    )
-                {
+                if i > 0 && kernel <= &kernels[i - 1] {
                     return Err(ValidationError::UnsortedOrDuplicateKernel);
                 }
 
