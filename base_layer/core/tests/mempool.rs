@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 
 use helpers::{
     block_builders::{
@@ -915,7 +915,10 @@ async fn receive_and_propagate_transaction() {
         .outbound_message_service
         .send_direct(
             bob_node.node_identity.public_key().clone(),
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(tx).unwrap(),
+            ),
         )
         .await
         .unwrap();
@@ -923,7 +926,10 @@ async fn receive_and_propagate_transaction() {
         .outbound_message_service
         .send_direct(
             carol_node.node_identity.public_key().clone(),
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(orphan)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(orphan).unwrap(),
+            ),
         )
         .await
         .unwrap();

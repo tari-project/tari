@@ -181,7 +181,7 @@ impl TransactionOutput {
     /// This will ignore the output range proof
     #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
-        self.commitment == output.commitment && self.features == output.features
+        self.hash() == output.output_hash()
     }
 
     /// Returns true if the output is a coinbase, otherwise false

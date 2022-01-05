@@ -29,13 +29,15 @@ use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl From<Transaction> for grpc::Transaction {
-    fn from(source: Transaction) -> Self {
-        Self {
+impl TryFrom<Transaction> for grpc::Transaction {
+    type Error = String;
+
+    fn try_from(source: Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
             offset: Vec::from(source.offset.as_bytes()),
-            body: Some(source.body.into()),
+            body: Some(source.body.try_into()?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
-        }
+        })
     }
 }
 

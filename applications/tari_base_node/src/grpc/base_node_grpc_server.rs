@@ -234,9 +234,26 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for transaction in transactions.unconfirmed_pool {
+                let transaction = match tari_rpc::Transaction::try_from(transaction) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending converting transaction for GRPC:  {}", e
+                        );
+                        match tx.send(Err(Status::internal("Error converting transaction"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                };
+
                 match tx
                     .send(Ok(tari_rpc::GetMempoolTransactionsResponse {
-                        transaction: Some(transaction.into()),
+                        transaction: Some(transaction),
                     }))
                     .await
                 {
@@ -638,7 +655,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 total_fees: new_template.total_fees.into(),
                 algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
             }),
-            new_block_template: Some(new_template.into()),
+            new_block_template: Some(new_template.try_into().map_err(Status::internal)?),
 
             initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
         };
@@ -677,7 +694,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         // construct response
         let block_hash = new_block.hash();
         let mining_hash = new_block.header.merged_mining_hash();
-        let block: Option<tari_rpc::Block> = Some(new_block.into());
+        let block: Option<tari_rpc::Block> = Some(new_block.try_into().map_err(Status::internal)?);
 
         let response = tari_rpc::GetNewBlockResult {
             block_hash,

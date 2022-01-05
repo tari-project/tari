@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 // Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -20,7 +21,6 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-
 use std::time::Duration;
 
 use log::*;
@@ -64,7 +64,12 @@ pub async fn send_finalized_transaction_message(
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             let finalized_transaction_message = proto::TransactionFinalizedMessage {
                 tx_id: tx_id.into(),
-                transaction: Some(transaction.clone().into()),
+                transaction: Some(
+                    transaction
+                        .clone()
+                        .try_into()
+                        .map_err(TransactionServiceError::InvalidMessageError)?,
+                ),
             };
             let store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
                 tx_id,
@@ -92,7 +97,12 @@ pub async fn send_finalized_transaction_message_direct(
 ) -> Result<(), TransactionServiceError> {
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id: tx_id.into(),
-        transaction: Some(transaction.clone().into()),
+        transaction: Some(
+            transaction
+                .clone()
+                .try_into()
+                .map_err(TransactionServiceError::InvalidMessageError)?,
+        ),
     };
     let mut store_and_forward_send_result = false;
     let mut direct_send_result = false;
