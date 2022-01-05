@@ -32,7 +32,7 @@ use tokio::task;
 use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     consensus::ConsensusManager,
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
@@ -95,6 +95,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
         // Start all validation tasks concurrently
         let kernels_task = self.start_kernel_validation(&valid_header, kernels);
+
         let inputs_task =
             self.start_input_validation(&valid_header, outputs.iter().map(|o| o.hash()).collect(), inputs);
 
@@ -249,7 +250,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         &self,
         header: &BlockHeader,
         output_hashes: Vec<HashOutput>,
-        inputs: Vec<TransactionInput>,
+        mut inputs: Vec<TransactionInput>,
     ) -> AbortOnDropJoinHandle<Result<InputValidationData, ValidationError>> {
         let block_height = header.height;
         let commitment_factory = self.factories.commitment.clone();
@@ -263,13 +264,37 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut not_found_inputs = Vec::new();
             let db = db.db_read_access()?;
 
+            // Check for duplicates and/or incorrect sorting
             for (i, input) in inputs.iter().enumerate() {
-                // Check for duplicates and/or incorrect sorting
                 if i > 0 && input <= &inputs[i - 1] {
                     return Err(ValidationError::UnsortedOrDuplicateInput);
                 }
+            }
 
-                if !input.is_mature_at(block_height) {
+            for input in inputs.iter_mut() {
+                // Read the spent_output for this compact input
+                if input.is_compact() {
+                    let output_mined_info = match db.fetch_output(&input.output_hash())? {
+                        None => return Err(ValidationError::TransactionInputSpentOutputMissing),
+                        Some(o) => o,
+                    };
+
+                    match output_mined_info.output {
+                        PrunedOutput::Pruned { .. } => {
+                            return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+                        },
+                        PrunedOutput::NotPruned { output } => {
+                            input.add_output_data(
+                                output.features,
+                                output.commitment,
+                                output.script,
+                                output.sender_offset_public_key,
+                            );
+                        },
+                    }
+                }
+
+                if !input.is_mature_at(block_height)? {
                     warn!(
                         target: LOG_TARGET,
                         "Input found that has not yet matured to spending height: {}", block_height
@@ -281,12 +306,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     Err(ValidationError::UnknownInput) => {
                         // Check if the input spends from the current block
                         let output_hash = input.output_hash();
-                        if output_hashes.iter().all(|hash| *hash != output_hash) {
+                        if output_hashes.iter().all(|hash| hash != &output_hash) {
                             warn!(
                                 target: LOG_TARGET,
                                 "Validation failed due to input: {} which does not exist yet", input
                             );
-                            not_found_inputs.push(output_hash);
+                            not_found_inputs.push(output_hash.clone());
                         }
                     },
                     Err(err) => return Err(err),
@@ -295,12 +320,16 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
                 // Once we've found unknown inputs, the aggregate data will be discarded and there is no reason to run
                 // the tari script
+                let commitment = match input.commitment() {
+                    Ok(c) => c,
+                    Err(e) => return Err(ValidationError::from(e)),
+                };
                 if not_found_inputs.is_empty() {
-                    let context = ScriptContext::new(height, &prev_hash, &input.commitment);
+                    let context = ScriptContext::new(height, &prev_hash, commitment);
                     // lets count up the input script public keys
                     aggregate_input_key =
                         aggregate_input_key + input.run_and_verify_script(&commitment_factory, Some(context))?;
-                    commitment_sum = &commitment_sum + &input.commitment;
+                    commitment_sum = &commitment_sum + input.commitment()?;
                 }
             }
 

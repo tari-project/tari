@@ -53,6 +53,7 @@ use tari_crypto::{
 };
 use tari_utilities::hex::Hex;
 use tari_wallet::{
+    error::WalletError,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
@@ -941,7 +942,10 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Re
             i + 1,
             utxo.value.0,
             utxo.spending_key.to_hex(),
-            utxo.as_transaction_input(&factory)?.commitment.to_hex(),
+            utxo.as_transaction_input(&factory)?
+                .commitment()
+                .map_err(|e| CommandError::WalletError(WalletError::TransactionError(e)))?
+                .to_hex(),
             utxo.features.flags,
             utxo.features.maturity,
             utxo.script.to_hex(),

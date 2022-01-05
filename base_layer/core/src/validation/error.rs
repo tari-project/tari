@@ -96,6 +96,10 @@ pub enum ValidationError {
     IncorrectPreviousHash { expected: String, block_hash: String },
     #[error("Async validation task failed: {0}")]
     AsyncTaskFailed(#[from] task::JoinError),
+    #[error("Could not find the Output being spent by Transaction Input")]
+    TransactionInputSpentOutputMissing,
+    #[error("Output being spent by Transaction Input has already been pruned")]
+    TransactionInputSpendsPrunedOutput,
     #[error("Bad block with hash {hash} found")]
     BadBlockFound { hash: String },
     #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
