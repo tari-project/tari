@@ -2433,9 +2433,9 @@ When(
   }
 );
 
-When(/I wait (.*) seconds/, { timeout: 600 * 1000 }, async function (int) {
-  console.log("Waiting for", int, "seconds");
-  await sleep(int * 1000);
+When("I wait {int} seconds", { timeout: 600 * 1000 }, async function (seconds) {
+  console.log("Waiting for", seconds, "seconds");
+  await sleep(seconds * 1000);
   console.log("Waiting finished");
 });
 

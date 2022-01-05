@@ -22,6 +22,7 @@
 mod state_db_unit_of_work;
 pub use state_db_unit_of_work::{StateDbUnitOfWork, StateDbUnitOfWorkImpl};
 mod db_key_value;
+pub use db_key_value::DbKeyValue;
 mod state_db;
 pub use state_db::StateDb;
 mod state_db_backend_adapter;

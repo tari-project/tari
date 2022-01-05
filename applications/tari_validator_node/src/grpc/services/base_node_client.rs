@@ -19,18 +19,20 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{convert::TryInto, net::SocketAddr};
 
 use async_trait::async_trait;
 use tari_app_grpc::tari_rpc as grpc;
+use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{BaseLayerMetadata, BaseLayerOutput},
     services::BaseNodeClient,
-    types::PublicKey,
     DigitalAssetError,
 };
 
+#[derive(Clone)]
 pub struct GrpcBaseNodeClient {
     endpoint: SocketAddr,
     inner: Option<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>>,

@@ -562,10 +562,8 @@ impl ServiceInitializer for P2pInitializer {
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 
-        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         let peers = match Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
@@ -580,6 +578,9 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             },
         };
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
+
+        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

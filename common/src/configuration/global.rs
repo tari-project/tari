@@ -331,7 +331,9 @@ fn convert_node_config(
 
         bn_config.grpc_address = if grpc_enabled {
             let key = "base_node.grpc_address";
-            let addr = cfg.get_str(key).unwrap_or_else(|_| "/tcp/127.0.0.1/18142".to_string());
+            let addr = cfg
+                .get_str(key)
+                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18142".to_string());
 
             let grpc_address = addr
                 .parse::<Multiaddr>()
@@ -354,7 +356,9 @@ fn convert_node_config(
 
         config.grpc_address = if grpc_enabled {
             let key = "wallet.grpc_address";
-            let addr = cfg.get_str(key).unwrap_or_else(|_| "/tcp/127.0.0.1/18143".to_string());
+            let addr = cfg
+                .get_str(key)
+                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18143".to_string());
 
             let grpc_address = addr
                 .parse::<Multiaddr>()

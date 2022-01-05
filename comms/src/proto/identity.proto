@@ -9,12 +9,8 @@ message PeerIdentityMsg {
     uint64 features = 2;
     repeated bytes supported_protocols = 3;
     string user_agent = 4;
-    // Major node version. This must match the current node's version in order for the connection to be established.
-    uint32 major = 5;
-    // Minor node version. This indicates minor non-breaking changes.
-    uint32 minor = 6;
     // Signature that signs the peer identity
-    IdentitySignature identity_signature = 7;
+    IdentitySignature identity_signature = 5;
 }
 
 message IdentitySignature {

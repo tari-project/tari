@@ -551,8 +551,11 @@ async fn dht_propagate_dedup() {
 
     let mut node_A_messaging = node_A.messaging_events.subscribe();
     let mut node_B_messaging = node_B.messaging_events.subscribe();
+    let mut node_B_messaging2 = node_B.messaging_events.subscribe();
     let mut node_C_messaging = node_C.messaging_events.subscribe();
+    let mut node_C_messaging2 = node_C.messaging_events.subscribe();
     let mut node_D_messaging = node_D.messaging_events.subscribe();
+    let mut node_D_messaging2 = node_D.messaging_events.subscribe();
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -597,6 +600,11 @@ async fn dht_propagate_dedup() {
     let node_C_id = node_C.node_identity().node_id().clone();
     let node_D_id = node_D.node_identity().node_id().clone();
 
+    // Ensure that the message has propagated before disconnecting everyone
+    let _ = node_B_messaging2.recv().await.unwrap();
+    let _ = node_C_messaging2.recv().await.unwrap();
+    let _ = node_D_messaging2.recv().await.unwrap();
+
     node_A.shutdown().await;
     node_B.shutdown().await;
     node_C.shutdown().await;
@@ -612,7 +620,11 @@ async fn dht_propagate_dedup() {
     let received = filter_received(collect_try_recv!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
-    assert!((1..=2).contains(&recv_count));
+    assert!(
+        (1..=2).contains(&recv_count),
+        "expected recv_count to be in [1-2] but was {}",
+        recv_count
+    );
 
     let received = filter_received(collect_try_recv!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);

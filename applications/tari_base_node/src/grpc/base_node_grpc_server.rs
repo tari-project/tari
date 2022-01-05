@@ -508,9 +508,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             // TODO Perhaps this should just return metadata and have the client read the metadata in a
                             // pattern described by the template
                             return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
-                                name,
-                                description,
-                                image,
+                                name: name.unwrap_or_default(),
+                                description: description.unwrap_or_default(),
+                                image: image.unwrap_or_default(),
                                 owner_commitment: Vec::from(output.commitment.as_bytes()),
                                 features: Some(output.features.clone().into()),
                                 mined_height,
@@ -519,9 +519,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         }
                     }
                     return Ok(Response::new(tari_rpc::GetAssetMetadataResponse {
-                        name: None,
-                        description: None,
-                        image: None,
+                        name: "".into(),
+                        description: "".into(),
+                        image: "".into(),
                         owner_commitment: Vec::from(output.commitment.as_bytes()),
                         features: Some(output.features.into()),
                         mined_height,

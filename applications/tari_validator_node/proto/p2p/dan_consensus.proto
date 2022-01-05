@@ -18,7 +18,8 @@ message HotStuffMessage {
     QuorumCertificate justify = 3;
     HotStuffTreeNode node= 4;
     Signature partial_sig = 5;
-    optional bytes node_hash = 6;
+    bytes node_hash = 6;
+    bytes asset_public_key = 7;
 }
 
 message QuorumCertificate {
@@ -32,6 +33,7 @@ message HotStuffTreeNode {
     bytes parent = 1;
     TariDanPayload payload = 2;
     uint32 height = 3;
+    bytes state_root =4;
 }
 
 message Signature{

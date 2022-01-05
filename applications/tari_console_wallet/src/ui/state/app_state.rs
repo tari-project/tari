@@ -256,11 +256,13 @@ impl AppState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn send_transaction(
         &mut self,
         public_key: String,
         amount: u64,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -277,6 +279,7 @@ impl AppState {
             public_key,
             MicroTari::from(amount),
             unique_id,
+            parent_public_key,
             message,
             fee_per_gram,
             tx_service_handle,
@@ -286,11 +289,13 @@ impl AppState {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn send_one_sided_transaction(
         &mut self,
         public_key: String,
         amount: u64,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
@@ -307,6 +312,7 @@ impl AppState {
             public_key,
             MicroTari::from(amount),
             unique_id,
+            parent_public_key,
             message,
             fee_per_gram,
             tx_service_handle,

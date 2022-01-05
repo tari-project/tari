@@ -352,7 +352,7 @@ where
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
-        socket: NoiseSocket<TTransport::Output>,
+        mut socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -361,42 +361,35 @@ where
         cancel_signal: ShutdownSignal,
     ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
-        let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
-            .await
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
-
         debug!(
             target: LOG_TARGET,
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
-        if cancel_signal.is_terminated() {
-            return Err(ConnectionManagerError::DialCancelled);
-        }
+
+        // Check if we know the peer and if it is banned
+        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
 
         let peer_identity = common::perform_identity_exchange(
-            &mut muxer,
+            &mut socket,
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
             config.network_info.clone(),
         )
         .await?;
+
         if cancel_signal.is_terminated() {
-            muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }
 
         let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "Peer identity exchange succeeded on Outbound connection for peer '{}' (Features = {:?})",
             authenticated_public_key,
             features
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
-
-        // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
 
         let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
@@ -409,7 +402,6 @@ where
         .await?;
 
         if cancel_signal.is_terminated() {
-            muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -419,6 +411,14 @@ where
             node_identity.node_id().short_str(),
             peer_node_id.short_str()
         );
+
+        let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
+            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
+
+        if cancel_signal.is_terminated() {
+            muxer.get_yamux_control().close().await?;
+            return Err(ConnectionManagerError::DialCancelled);
+        }
 
         peer_connection::create(
             muxer,

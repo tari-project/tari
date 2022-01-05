@@ -42,7 +42,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
-    protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
+    protocol::{ProtocolEvent, ProtocolId, Protocols},
     runtime,
     runtime::task,
     test_utils::{
@@ -160,7 +160,7 @@ async fn dial_success() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
 
     let event = subscription2.recv().await.unwrap();
@@ -172,7 +172,7 @@ async fn dial_success() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer1.supported_protocols(), [&TEST_PROTO]);
     assert_eq!(peer1.user_agent, "node1");
 
     let err = conn_out

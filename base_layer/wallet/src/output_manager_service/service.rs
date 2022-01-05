@@ -233,23 +233,42 @@ where
                 tx_id,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 lock_height,
                 message,
                 script,
             } => self
-                .prepare_transaction_to_send(tx_id, amount, unique_id, fee_per_gram, lock_height, message, script)
+                .prepare_transaction_to_send(
+                    tx_id,
+                    amount,
+                    unique_id,
+                    parent_public_key,
+                    fee_per_gram,
+                    lock_height,
+                    message,
+                    script,
+                )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
             OutputManagerRequest::CreatePayToSelfTransaction {
                 tx_id,
                 amount,
                 unique_id,
+                parent_public_key,
                 fee_per_gram,
                 lock_height,
                 message,
             } => self
-                .create_pay_to_self_transaction(tx_id, amount, unique_id, fee_per_gram, lock_height, message)
+                .create_pay_to_self_transaction(
+                    tx_id,
+                    amount,
+                    unique_id,
+                    parent_public_key,
+                    fee_per_gram,
+                    lock_height,
+                    message,
+                )
                 .await
                 .map(OutputManagerResponse::PayToSelfTransaction),
             OutputManagerRequest::FeeEstimate {
@@ -358,12 +377,18 @@ where
                 })
             },
             OutputManagerRequest::CreatePayToSelfWithOutputs {
-                amount: _,
                 outputs,
                 fee_per_gram,
+                spending_unique_id,
+                spending_parent_public_key,
             } => {
                 let (tx_id, transaction) = self
-                    .create_pay_to_self_containing_outputs(outputs, fee_per_gram)
+                    .create_pay_to_self_containing_outputs(
+                        outputs,
+                        fee_per_gram,
+                        spending_unique_id.as_ref(),
+                        spending_parent_public_key.as_ref(),
+                    )
                     .await?;
                 Ok(OutputManagerResponse::CreatePayToSelfWithOutputs {
                     transaction: Box::new(transaction),
@@ -640,6 +665,7 @@ where
                 metadata_byte_size * num_outputs,
                 None,
                 None,
+                None,
             )
             .await?;
 
@@ -658,6 +684,7 @@ where
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -675,7 +702,15 @@ where
             ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size();
 
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, None, unique_id.as_ref())
+            .select_utxos(
+                amount,
+                fee_per_gram,
+                1,
+                metadata_byte_size,
+                None,
+                unique_id.as_ref(),
+                parent_public_key.as_ref(),
+            )
             .await?;
 
         // TODO: improve this logic
@@ -852,6 +887,8 @@ where
         &mut self,
         outputs: Vec<UnblindedOutputBuilder>,
         fee_per_gram: MicroTari,
+        spending_unique_id: Option<&Vec<u8>>,
+        spending_parent_public_key: Option<&PublicKey>,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
         let nop_script = script![Nop];
@@ -862,7 +899,15 @@ where
                     .consensus_encode_exact_size()
         });
         let input_selection = self
-            .select_utxos(total_value, fee_per_gram, outputs.len(), metadata_byte_size, None, None)
+            .select_utxos(
+                total_value,
+                fee_per_gram,
+                outputs.len(),
+                metadata_byte_size,
+                None,
+                spending_unique_id,
+                spending_parent_public_key,
+            )
             .await?;
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -995,6 +1040,7 @@ where
         tx_id: TxId,
         amount: MicroTari,
         unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         lock_height: Option<u64>,
         message: String,
@@ -1008,7 +1054,15 @@ where
             ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
 
         let input_selection = self
-            .select_utxos(amount, fee_per_gram, 1, metadata_byte_size, None, unique_id.as_ref())
+            .select_utxos(
+                amount,
+                fee_per_gram,
+                1,
+                metadata_byte_size,
+                None,
+                unique_id.as_ref(),
+                parent_public_key.as_ref(),
+            )
             .await?;
 
         let offset = PrivateKey::random(&mut OsRng);
@@ -1151,6 +1205,7 @@ where
         output_metadata_byte_size: usize,
         strategy: Option<UTXOSelectionStrategy>,
         unique_id: Option<&Vec<u8>>,
+        parent_public_key: Option<&PublicKey>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         let token = match unique_id {
             Some(unique_id) => {
@@ -1162,7 +1217,8 @@ where
                 if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
                     Some(token_unique_id) => {
                         warn!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
-                        token_unique_id == unique_id
+                        token_unique_id == unique_id &&
+                            x.unblinded_output.features.parent_public_key.as_ref() == parent_public_key
                     },
                     _ => false,
                 }) {
@@ -1185,10 +1241,15 @@ where
             strategy
         );
         let mut utxos = Vec::new();
+
         let mut utxos_total_value = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         let fee_calc = self.get_fee_calc();
+        if let Some(token) = token {
+            utxos_total_value = token.unblinded_output.value;
+            utxos.push(token);
+        }
 
         // Attempt to get the chain tip height
         let chain_metadata = self.base_node_service.get_chain_metadata().await?;
@@ -1317,6 +1378,7 @@ where
                 output_count,
                 output_count * metadata_byte_size,
                 Some(UTXOSelectionStrategy::Largest),
+                None,
                 None,
             )
             .await?;

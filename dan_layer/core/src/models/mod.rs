@@ -30,12 +30,14 @@ mod hot_stuff_message;
 mod hot_stuff_tree_node;
 mod instruction;
 mod instruction_set;
+mod payload;
 mod quorum_certificate;
 mod sidechain_metadata;
 mod state_root;
 mod tari_dan_payload;
 mod view;
 mod view_id;
+
 pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
@@ -44,6 +46,7 @@ pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
+pub use payload::Payload;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_metadata::SidechainMetadata;
 pub use state_root::StateRoot;
@@ -178,22 +181,6 @@ impl ConsensusHash for &str {
 impl ConsensusHash for String {
     fn consensus_hash(&self) -> &[u8] {
         self.as_bytes()
-    }
-}
-
-// TODO: Perhaps should be CoW instead of Clone
-pub trait Payload: Debug + Clone + Send + Sync + ConsensusHash {
-    fn state_root(&self) -> StateRoot;
-}
-
-impl Payload for &str {
-    fn state_root(&self) -> StateRoot {
-        StateRoot::default()
-    }
-}
-impl Payload for String {
-    fn state_root(&self) -> StateRoot {
-        StateRoot::default()
     }
 }
 

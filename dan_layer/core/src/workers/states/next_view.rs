@@ -25,7 +25,7 @@ use tari_shutdown::ShutdownSignal;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, Payload, View},
+    models::{AssetDefinition, Committee, HotStuffMessage, Payload, View},
     services::infrastructure_services::{NodeAddressable, OutboundService},
     storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
@@ -49,15 +49,16 @@ impl NextViewState {
         broadcast: &mut TOutboundService,
         committee: &Committee<TAddr>,
         node_id: TAddr,
+        asset_definition: &AssetDefinition,
         _shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        let db = db_factory.create_chain_db()?;
+        let db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
         let prepare_qc = db.find_highest_prepared_qc()?;
-        let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id);
+        let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id, asset_definition.public_key.clone());
         let next_view = current_view.view_id.next();
         let leader = committee.leader_for_view(next_view);
         broadcast.send(node_id, leader.clone(), message).await?;
-        debug!(target: LOG_TARGET, "End of view: {}", current_view.view_id.0);
+        info!(target: LOG_TARGET, "End of view: {}", current_view.view_id.0);
         debug!(target: LOG_TARGET, "--------------------------------");
         Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
     }

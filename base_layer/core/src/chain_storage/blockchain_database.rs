@@ -860,7 +860,7 @@ where B: BlockchainBackend
 
         if block_add_result.was_chain_modified() {
             // If blocks were added and the node is in pruned mode, perform pruning
-            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?
+            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
         info!(

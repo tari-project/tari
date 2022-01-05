@@ -364,6 +364,7 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    use bytes::Bytes;
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -375,7 +376,6 @@ mod test {
     use crate::{
         net_address::MultiaddressesWithStats,
         peer_manager::NodeId,
-        protocol,
         test_utils::node_identity::build_node_identity,
         types::CommsPublicKey,
     };
@@ -438,6 +438,7 @@ mod test {
         let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
 
+        static DUMMY_PROTOCOL: Bytes = Bytes::from_static(b"dummy");
         peer.update(
             Some(vec![net_address2.clone(), net_address3.clone()]),
             None,
@@ -445,7 +446,7 @@ mod test {
             Some("".to_string()),
             None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
+            Some(vec![DUMMY_PROTOCOL.clone()]),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -467,7 +468,7 @@ mod test {
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert!(peer.is_banned());
         assert!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION));
-        assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
+        assert_eq!(peer.supported_protocols, vec![DUMMY_PROTOCOL.clone()]);
     }
 
     #[test]

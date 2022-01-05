@@ -25,7 +25,7 @@ structopt = { version = "0.3.13", default_features = false }
 strum = "^0.22"
 strum_macros = "^0.22"
 thiserror = "^1.0.26"
-tonic = "0.5.2"
+tonic = "0.6.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

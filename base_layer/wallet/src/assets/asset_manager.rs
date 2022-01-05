@@ -112,7 +112,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(0.into(), vec![output], 20.into())
+            .create_send_to_self_with_output(vec![output], 20.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -143,7 +143,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(0.into(), outputs, 100.into())
+            .create_send_to_self_with_output(outputs, 100.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -158,7 +158,13 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .output_manager
             .create_output_with_features(
                 0.into(),
-                OutputFeatures::for_checkpoint(asset_pub_key, merkle_root, committee_pub_keys.clone()),
+                OutputFeatures::for_checkpoint(
+                    asset_pub_key,
+                    vec![3u8; 32],
+                    merkle_root,
+                    committee_pub_keys.clone(),
+                    true,
+                ),
             )
             .await?;
         // TODO: get consensus threshold from somewhere else
@@ -184,7 +190,55 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(0.into(), vec![output], 100.into())
+            .create_send_to_self_with_output(vec![output], 100.into(), None, None)
+            .await?;
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_follow_on_asset_checkpoint(
+        &mut self,
+        asset_pub_key: PublicKey,
+        unique_id: Vec<u8>,
+        merkle_root: Vec<u8>,
+        committee_pub_keys: Vec<PublicKey>,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_checkpoint(
+                    asset_pub_key.clone(),
+                    unique_id.clone(),
+                    merkle_root,
+                    committee_pub_keys.clone(),
+                    false,
+                ),
+            )
+            .await?;
+        // TODO: get consensus threshold from somewhere else
+        // TODO: Put the multisig script back
+        // let n = committee_pub_keys.len();
+        // if n > u8::MAX as usize {
+        //     return Err(WalletError::ArgumentError {
+        //         argument: "committee_pub_keys".to_string(),
+        //         message: "Cannot be more than 255".to_string(),
+        //         value: n.to_string(),
+        //     });
+        // }
+        // let max_failures = n / 3;
+        // let m = max_failures * 2 + 1;
+        // let mut msg = [0u8; 32];
+        // msg.copy_from_slice("Need a better message12345678901".as_bytes());
+        //
+        // let output = output.with_script(script!(CheckMultiSig(
+        //     m as u8,
+        //     n as u8,
+        //     committee_pub_keys,
+        //     Box::new(msg)
+        // )));
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], 100.into(), Some(unique_id), Some(asset_pub_key))
             .await?;
         Ok((tx_id, transaction))
     }
