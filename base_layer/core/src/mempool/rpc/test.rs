@@ -64,9 +64,10 @@ mod get_stats {
 }
 
 mod get_state {
+    use std::convert::TryInto;
+
     use super::*;
     use crate::mempool::{MempoolService, StateResponse};
-    use std::convert::TryInto;
 
     #[tokio::test]
     async fn it_returns_the_state() {
