@@ -969,8 +969,10 @@ pub struct CompletedTransactionInfo {
 fn first_unique_id(tx: &CompletedTransaction) -> String {
     let body = tx.transaction.body();
     for input in body.inputs() {
-        if let Some(ref unique_id) = input.features.unique_id {
-            return unique_id.to_hex();
+        if let Ok(features) = input.features() {
+            if let Some(ref unique_id) = features.unique_id {
+                return unique_id.to_hex();
+            }
         }
     }
     for output in body.outputs() {

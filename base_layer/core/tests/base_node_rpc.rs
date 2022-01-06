@@ -145,7 +145,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::NotStored);
 
     // First lets try submit tx2 which will be an orphan tx
-    let msg = TransactionProto::from(tx2.clone());
+    let msg = TransactionProto::try_from(tx2.clone()).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
 
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
@@ -175,7 +175,7 @@ async fn test_base_node_wallet_rpc() {
         .unwrap();
 
     // Check that subitting Tx2 will now be accepted
-    let msg = TransactionProto::from(tx2);
+    let msg = TransactionProto::try_from(tx2).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = service.submit_transaction(req).await.unwrap().into_message();
     assert!(resp.accepted);
@@ -190,7 +190,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::InMempool);
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined as Tx1's kernel is present
-    let msg = TransactionProto::from(tx1);
+    let msg = TransactionProto::try_from(tx1).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
@@ -202,7 +202,7 @@ async fn test_base_node_wallet_rpc() {
     let tx1b = (*txs1b[0]).clone();
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined
-    let msg = TransactionProto::from(tx1b);
+    let msg = TransactionProto::try_from(tx1b).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 

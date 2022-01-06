@@ -357,16 +357,23 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
         .collect::<Vec<_>>();
     for input in body.inputs() {
         // If spending a unique_id, a new output must contain the unique id
-        if let Some(ref unique_id) = input.features.unique_id {
+        if let Some(ref unique_id) = input.features()?.unique_id {
             let exactly_one = output_unique_ids
                 .iter()
-                .filter(|(parent_public_key, output_unique_id)| {
-                    input.features.parent_public_key.as_ref() == *parent_public_key && unique_id == *output_unique_id
+                .filter_map(|(parent_public_key, output_unique_id)| match input.features() {
+                    Ok(features) => {
+                        if features.parent_public_key.as_ref() == *parent_public_key && unique_id == *output_unique_id {
+                            Some(Ok((parent_public_key, output_unique_id)))
+                        } else {
+                            None
+                        }
+                    },
+                    Err(e) => Some(Err(e)),
                 })
                 .take(2)
-                .collect::<Vec<_>>();
+                .collect::<Result<Vec<_>, TransactionError>>()?;
             // Unless a burn flag is present
-            if input.features.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
+            if input.features()?.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
                 if !exactly_one.is_empty() {
                     return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
                 }
@@ -389,7 +396,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
 
                 let output_hashes = output_hashes.as_ref().unwrap();
                 let output_hash = input.output_hash();
-                if output_hashes.iter().any(|output| *output == output_hash) {
+                if output_hashes.iter().any(|output| output == &output_hash) {
                     continue;
                 }
 
@@ -397,7 +404,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                     target: LOG_TARGET,
                     "Validation failed due to input: {} which does not exist yet", input
                 );
-                not_found_inputs.push(output_hash);
+                not_found_inputs.push(output_hash.clone());
             },
             Err(err) => {
                 return Err(err);
@@ -415,7 +422,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
 /// This function checks that an input is a valid spendable UTXO
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
     let output_hash = input.output_hash();
-    if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(&input.commitment)? {
+    if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(input.commitment()?)? {
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)
         if utxo_hash == output_hash {
@@ -436,9 +443,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
     }
 
-    if let Some(unique_id) = &input.features.unique_id {
+    if let Some(unique_id) = &input.features()?.unique_id {
         if let Some(utxo_hash) =
-            db.fetch_utxo_by_unique_id(input.features.parent_public_key.as_ref(), unique_id, None)?
+            db.fetch_utxo_by_unique_id(input.features()?.parent_public_key.as_ref(), unique_id, None)?
         {
             // Check that it is the same utxo in which the unique_id was created
             if utxo_hash.output.hash() == output_hash {
@@ -700,12 +707,25 @@ pub fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> R
 
 /// Checks that all inputs have matured at the given height
 pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
-    if let Some(input) = inputs.iter().find(|input| !input.is_mature_at(height)) {
-        warn!(
-            target: LOG_TARGET,
-            "Input found that has not yet matured to spending height: {}", input
-        );
-        return Err(TransactionError::InputMaturity);
+    if let Err(e) = inputs
+        .iter()
+        .map(|input| match input.is_mature_at(height) {
+            Ok(mature) => {
+                if !mature {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Input found that has not yet matured to spending height: {}", input
+                    );
+                    Err(TransactionError::InputMaturity)
+                } else {
+                    Ok(0)
+                }
+            },
+            Err(e) => Err(e),
+        })
+        .sum::<Result<usize, TransactionError>>()
+    {
+        return Err(e);
     }
     Ok(())
 }
@@ -799,19 +819,18 @@ mod test {
 
     mod check_maturity {
         use super::*;
+        use crate::transactions::transaction::OutputFeatures;
 
         #[test]
         fn it_checks_the_input_maturity() {
-            let mut input = TransactionInput::new(
-                Default::default(),
+            let input = TransactionInput::new_with_output_data(
+                OutputFeatures::with_maturity(5),
                 Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
             );
-
-            input.features.maturity = 5;
 
             assert_eq!(
                 check_maturity(1, &[input.clone()]),

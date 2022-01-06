@@ -78,7 +78,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction::TransactionKernel,
+    transactions::transaction::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -860,7 +860,7 @@ where B: BlockchainBackend
 
         if block_add_result.was_chain_modified() {
             // If blocks were added and the node is in pruned mode, perform pruning
-            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?
+            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
         info!(
@@ -1146,7 +1146,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        input_mmr.push(input.hash())?;
+        input_mmr.push(input.canonical_hash()?)?;
 
         // Search the DB for the output leaf index so that it can be marked as spent/deleted.
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
@@ -1366,7 +1366,36 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
     let (header, accumulated_data) = chain_header.into_parts();
     let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
     let outputs = db.fetch_outputs_in_block(&accumulated_data.hash)?;
-    let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
+    // Fetch inputs from the backend and populate their spent_output data if available
+    let inputs = db
+        .fetch_inputs_in_block(&accumulated_data.hash)?
+        .into_iter()
+        .map(|mut compact_input| {
+            let utxo_mined_info = match db.fetch_output(&compact_input.output_hash()) {
+                Ok(Some(o)) => o,
+                Ok(None) => {
+                    return Err(ChainStorageError::InvalidBlock(
+                        "An Input in a block doesn't contain a matching spending output".to_string(),
+                    ))
+                },
+                Err(e) => return Err(e),
+            };
+
+            match utxo_mined_info.output {
+                PrunedOutput::Pruned { .. } => Ok(compact_input),
+                PrunedOutput::NotPruned { output } => {
+                    compact_input.add_output_data(
+                        output.features,
+                        output.commitment,
+                        output.script,
+                        output.sender_offset_public_key,
+                    );
+                    Ok(compact_input)
+                },
+            }
+        })
+        .collect::<Result<Vec<TransactionInput>, _>>()?;
+
     let mut unpruned = vec![];
     let mut pruned = vec![];
     for output in outputs {

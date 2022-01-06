@@ -648,7 +648,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::convert::{TryFrom, TryInto};
 
     use tari_common_types::types::BlindingFactor;
     use tari_comms::{
@@ -711,7 +711,8 @@ mod test {
             BlindingFactor::default(),
         );
 
-        let resp = TxSubmissionResponse::try_from(client.submit_transaction(tx.into()).await.unwrap()).unwrap();
+        let resp =
+            TxSubmissionResponse::try_from(client.submit_transaction(tx.try_into().unwrap()).await.unwrap()).unwrap();
         assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::TimeLocked);
 
         let calls = service_state

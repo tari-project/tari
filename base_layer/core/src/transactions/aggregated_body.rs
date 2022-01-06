@@ -328,7 +328,7 @@ impl AggregateBody {
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs() {
-            if input.features.maturity > height {
+            if input.features()?.maturity > height {
                 warn!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input
@@ -377,10 +377,16 @@ impl AggregateBody {
     }
 
     /// Calculate the sum of the outputs - inputs
-    fn sum_commitments(&self) -> Commitment {
-        let sum_inputs = &self.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
+    fn sum_commitments(&self) -> Result<Commitment, TransactionError> {
+        let sum_inputs = &self
+            .inputs
+            .iter()
+            .map(|i| i.commitment())
+            .collect::<Result<Vec<&Commitment>, _>>()?
+            .into_iter()
+            .sum::<Commitment>();
         let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
-        sum_outputs - sum_inputs
+        Ok(sum_outputs - sum_inputs)
     }
 
     /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
@@ -409,7 +415,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel total");
         let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
-        let sum_io = self.sum_commitments();
+        let sum_io = self.sum_commitments()?;
         trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
         let fees = factory.commit_value(&PrivateKey::default(), fees.into());
         trace!(
@@ -442,7 +448,7 @@ impl AggregateBody {
         let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
         let height = height.unwrap_or_default();
         for input in &self.inputs {
-            let context = ScriptContext::new(height, &prev_hash, &input.commitment);
+            let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
             input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
         }
 
@@ -512,6 +518,16 @@ impl AggregateBody {
         self.kernels()
             .iter()
             .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
+
+    /// Return a cloned version of self with TransactionInputs in their compact form
+    pub fn to_compact(&self) -> Self {
+        Self {
+            sorted: self.sorted,
+            inputs: self.inputs.iter().map(|i| i.to_compact()).collect(),
+            outputs: self.outputs.clone(),
+            kernels: self.kernels.clone(),
+        }
     }
 }
 

@@ -87,6 +87,7 @@ use crate::{
                 lmdb_replace,
             },
             TransactionInputRowData,
+            TransactionInputRowDataRef,
             TransactionKernelRowData,
             TransactionOutputRowData,
         },
@@ -101,7 +102,7 @@ use crate::{
     },
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     },
 };
 
@@ -637,26 +638,31 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         height: u64,
-        header_hash: HashOutput,
-        input: TransactionInput,
+        header_hash: &HashOutput,
+        input: &TransactionInput,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
         lmdb_delete(
             txn,
             &self.utxo_commitment_index,
-            input.commitment().as_bytes(),
+            input.commitment()?.as_bytes(),
             "utxo_commitment_index",
-        )?;
+        )
+        .or_else(|err| match err {
+            // The commitment may not yet be included in the DB in the 0-conf transaction case
+            ChainStorageError::ValueNotFound { .. } => Ok(()),
+            _ => Err(err),
+        })?;
         lmdb_insert(
             txn,
             &self.deleted_txo_mmr_position_to_height_index,
             &mmr_position,
-            &(height, &header_hash),
+            &(height, header_hash),
             "deleted_txo_mmr_position_to_height_index",
         )?;
 
-        if let Some(ref unique_id) = input.features.unique_id {
-            let parent_public_key = input.features.parent_public_key.as_ref();
+        if let Some(ref unique_id) = input.features()?.unique_id {
+            let parent_public_key = input.features()?.parent_public_key.as_ref();
             // Move the "current" UTXO entry to a key containing the spend height
             let mut key = UniqueIdIndexKey::new(parent_public_key, unique_id.as_slice());
             let expected_output_hash = lmdb_get::<_, HashOutput>(txn, &self.unique_id_index, key.as_bytes())?
@@ -680,6 +686,7 @@ impl LMDBDatabase {
                 });
             }
 
+            // TODO: 0-conf is not currently supported for transactions with unique_id set
             lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
             key.set_deleted_height(height);
             debug!(
@@ -701,17 +708,17 @@ impl LMDBDatabase {
             )?;
         }
 
-        let hash = input.hash();
-        let key = InputKey::new(&header_hash, mmr_position, &hash);
+        let hash = input.canonical_hash()?;
+        let key = InputKey::new(header_hash, mmr_position, &hash);
         lmdb_insert(
             txn,
             &*self.inputs_db,
             key.as_bytes(),
-            &TransactionInputRowData {
-                input,
+            &TransactionInputRowDataRef {
+                input: &input.to_compact(),
                 header_hash,
                 mmr_position,
-                hash,
+                hash: &hash,
             },
             "inputs_db",
         )
@@ -987,12 +994,39 @@ impl LMDBDatabase {
             if output_rows.iter().any(|r| r.hash == output_hash) {
                 continue;
             }
-            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", row.input);
+            let mut input = row.input.clone();
+
+            let utxo_mined_info =
+                self.fetch_output_in_txn(txn, &output_hash)?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "UTXO",
+                        field: "hash",
+                        value: output_hash.to_hex(),
+                    })?;
+
+            match utxo_mined_info.output {
+                PrunedOutput::Pruned { .. } => {
+                    debug!(target: LOG_TARGET, "Output Transaction Input is spending is pruned");
+                    return Err(ChainStorageError::TransactionError(
+                        TransactionError::MissingTransactionInputData,
+                    ));
+                },
+                PrunedOutput::NotPruned { output } => {
+                    input.add_output_data(
+                        output.features,
+                        output.commitment,
+                        output.script,
+                        output.sender_offset_public_key,
+                    );
+                },
+            }
+
+            trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
                 txn,
                 &*self.utxo_commitment_index,
-                row.input.commitment.as_bytes(),
-                &row.input.output_hash(),
+                input.commitment()?.as_bytes(),
+                &input.output_hash(),
                 "utxo_commitment_index",
             )?;
             lmdb_delete(
@@ -1001,8 +1035,9 @@ impl LMDBDatabase {
                 &row.mmr_position,
                 "deleted_txo_mmr_position_to_height_index",
             )?;
-            if let Some(unique_id) = row.input.features.unique_asset_id() {
-                let mut key = UniqueIdIndexKey::new(row.input.features.parent_public_key.as_ref(), unique_id);
+
+            if let Some(unique_id) = input.features()?.unique_asset_id() {
+                let mut key = UniqueIdIndexKey::new(input.features()?.parent_public_key.as_ref(), unique_id);
                 // The output that made this input that is being unspent is now at the head
                 lmdb_replace(txn, &self.unique_id_index, key.as_bytes(), &output_hash)?;
 
@@ -1169,34 +1204,60 @@ impl LMDBDatabase {
         let mut output_mmr = MutableMmr::<HashDigest, _>::new(pruned_output_set, Bitmap::create())?;
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(pruned_proof_set);
 
+        let leaf_count = witness_mmr.get_leaf_count()?;
+
+        // Output hashes added before inputs so that inputs can spend outputs in this transaction (0-conf and combined)
+        let outputs = outputs
+            .into_iter()
+            .enumerate()
+            .map(|(i, output)| {
+                output_mmr.push(output.hash())?;
+                witness_mmr.push(output.witness_hash())?;
+                Ok((output, leaf_count + i + 1))
+            })
+            .collect::<Result<Vec<_>, ChainStorageError>>()?;
+
+        let mut spent_zero_conf_commitments = Vec::new();
         // unique_id_index expects inputs to be inserted before outputs
-        for input in inputs {
-            let index = self
-                .fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &input.output_hash())?
-                .ok_or(ChainStorageError::UnspendableInput)?;
+        for input in &inputs {
+            let output_hash = input.output_hash();
+            let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &output_hash)? {
+                Some(index) => index,
+                None => match output_mmr.find_leaf_index(&output_hash)? {
+                    Some(index) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Input {} spends output from current block (0-conf)", input
+                        );
+                        spent_zero_conf_commitments.push(input.commitment()?);
+                        index
+                    },
+                    None => return Err(ChainStorageError::UnspendableInput),
+                },
+            };
             if !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
                     "Could not delete index {} from the output MMR",
                     index
                 )));
             }
-            debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment.to_hex());
-            self.insert_input(txn, current_header_at_height.height, block_hash.clone(), input, index)?;
+            debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment()?.to_hex());
+            self.insert_input(txn, current_header_at_height.height, &block_hash, input, index)?;
         }
 
-        for output in outputs {
-            output_mmr.push(output.hash())?;
-            witness_mmr.push(output.witness_hash())?;
+        for (output, mmr_count) in outputs {
             debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
-            self.insert_output(
+            self.insert_output(txn, &block_hash, header.height, &output, mmr_count as u32 - 1)?;
+        }
+
+        for commitment in spent_zero_conf_commitments {
+            lmdb_delete(
                 txn,
-                &block_hash,
-                header.height,
-                &output,
-                (witness_mmr.get_leaf_count()? - 1) as u32,
+                &self.utxo_commitment_index,
+                commitment.as_bytes(),
+                "utxo_commitment_index",
             )?;
         }
-
         // Merge current deletions with the tip bitmap
         let deleted_at_current_height = output_mmr.deleted().clone();
         // Merge the new indexes with the blockchain deleted bitmap
@@ -1867,7 +1928,7 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
-        self.fetch_output_in_txn(&txn, output_hash)
+        self.fetch_output_in_txn(&*txn, output_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(
