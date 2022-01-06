@@ -22,7 +22,7 @@
 
 //---------------------------------- ARG byte codes --------------------------------------------//
 pub(super) fn is_valid_arg_code(code: u8) -> bool {
-    (0x01..=0x0a).contains(&code)
+    (0x01..=0x09).contains(&code)
 }
 pub const ARG_HASH: u8 = 0x01;
 pub const ARG_PUBLIC_KEY: u8 = 0x02;
