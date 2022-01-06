@@ -52,7 +52,7 @@ impl<TWallet: WalletClient> ConcreteCheckpointManager<TWallet> {
             asset_definition,
             wallet,
             num_calls: 0,
-            checkpoint_interval: 20,
+            checkpoint_interval: 100,
         }
     }
 }
