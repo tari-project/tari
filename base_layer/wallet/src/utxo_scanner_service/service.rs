@@ -22,9 +22,9 @@
 
 use std::sync::Arc;
 
+use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
-use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
@@ -48,6 +48,12 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
+
+// Cache 1 days worth of headers.
+// TODO Determine a better strategy for maintaining a cache. Logarithmic sampling has been suggested but the problem
+// with it is that as you move on to the next block you need to resample say a 100 headers where a simple window like
+// this only samples 1 header per new block. A ticket has been added to the backlog to think about this
+pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
 pub struct UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
@@ -172,14 +178,6 @@ where TBackend: WalletBackend + 'static
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct ScanningMetadata {
-    pub total_amount: MicroTari,
-    pub number_of_utxos: u64,
-    pub utxo_index: u64,
-    pub height_hash: HashOutput,
-}
-
 #[derive(Clone)]
 pub struct UtxoScannerResources<TBackend> {
     pub db: WalletDatabase<TBackend>,
@@ -189,4 +187,13 @@ pub struct UtxoScannerResources<TBackend> {
     pub transaction_service: TransactionServiceHandle,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScannedBlock {
+    pub header_hash: HashOutput,
+    pub height: u64,
+    pub num_outputs: Option<u64>,
+    pub amount: Option<MicroTari>,
+    pub timestamp: NaiveDateTime,
 }

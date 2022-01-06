@@ -48,20 +48,20 @@
 //! use tari_service_framework::{reply_channel, tower::ServiceExt};
 //!
 //! block_on(async {
-//!    let (mut sender, mut receiver) = reply_channel::unbounded();
+//!     let (mut sender, mut receiver) = reply_channel::unbounded();
 //!
-//!    let (result, _) = futures::join!(
+//!     let (result, _) = futures::join!(
 //!         // Make the request and make progress on the resulting future
 //!         sender.call_ready("upper"),
 //!         // At the same time receive the request and reply
 //!         async move {
-//!           let req_context = receiver.next().await.unwrap();
-//!           let msg = req_context.request().unwrap().clone();
-//!           req_context.reply(msg.to_uppercase());
+//!             let req_context = receiver.next().await.unwrap();
+//!             let msg = req_context.request().unwrap().clone();
+//!             req_context.reply(msg.to_uppercase());
 //!         }
 //!     );
 //!
-//!    assert_eq!(result.unwrap(), "UPPER");
+//!     assert_eq!(result.unwrap(), "UPPER");
 //! });
 //! ```
 //!

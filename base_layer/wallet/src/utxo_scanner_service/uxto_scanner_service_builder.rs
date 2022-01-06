@@ -33,7 +33,7 @@ use crate::{
     output_manager_service::handle::OutputManagerHandle,
     storage::{
         database::{WalletBackend, WalletDatabase},
-        sqlite_db::WalletSqliteDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
     },
     transaction_service::handle::TransactionServiceHandle,
     utxo_scanner_service::{

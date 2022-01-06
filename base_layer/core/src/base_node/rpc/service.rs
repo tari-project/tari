@@ -26,7 +26,11 @@ use tari_common_types::types::Signature;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 use crate::{
-    base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
+    base_node::{
+        rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
+        state_machine_service::states::StateInfo,
+        StateMachineHandle,
+    },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
@@ -37,6 +41,8 @@ use crate::{
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
             TipInfoResponse,
             TxLocation,
             TxQueryBatchResponse,
@@ -52,7 +58,6 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-
 const LOG_TARGET: &str = "c::base_node::rpc";
 
 pub struct BaseNodeWalletRpcService<B> {
@@ -498,5 +503,84 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
+    }
+
+    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
+        let requested_epoch_time: u64 = request.into_message();
+
+        let tip_header = self
+            .db()
+            .fetch_tip_header()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+        let mut left_height = 0u64;
+        let mut right_height = tip_header.height();
+
+        while left_height <= right_height {
+            let mut mid_height = (left_height + right_height) / 2;
+
+            if mid_height == 0 {
+                return Ok(Response::new(0u64));
+            }
+            // If the two bounds are adjacent then perform the test between the right and left sides
+            if left_height == mid_height {
+                mid_height = right_height;
+            }
+
+            let mid_header = self
+                .db()
+                .fetch_header(mid_height)
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .ok_or_else(|| {
+                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height))
+                })?;
+            let before_mid_header = self
+                .db()
+                .fetch_header(mid_height - 1)
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .ok_or_else(|| {
+                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height - 1))
+                })?;
+
+            if requested_epoch_time < mid_header.timestamp.as_u64() &&
+                requested_epoch_time >= before_mid_header.timestamp.as_u64()
+            {
+                return Ok(Response::new(before_mid_header.height));
+            } else if mid_height == right_height {
+                return Ok(Response::new(right_height));
+            } else if requested_epoch_time <= mid_header.timestamp.as_u64() {
+                right_height = mid_height;
+            } else {
+                left_height = mid_height;
+            }
+        }
+
+        Ok(Response::new(0u64))
+    }
+
+    async fn sync_utxos_by_block(
+        &self,
+        request: Request<SyncUtxosByBlockRequest>,
+    ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus> {
+        let req = request.message();
+        let peer = request.context().peer_node_id();
+        debug!(
+            target: LOG_TARGET,
+            "Received sync_utxos_by_block request from {} from header {} to {} ",
+            peer,
+            req.start_header_hash.to_hex(),
+            req.end_header_hash.to_hex(),
+        );
+
+        // Number of blocks to load and push to the stream before loading the next batch. Most blocks have 1 output but
+        // full blocks will have 500
+        const BATCH_SIZE: usize = 5;
+        let (tx, rx) = mpsc::channel(BATCH_SIZE);
+        let task = SyncUtxosByBlockTask::new(self.db());
+        task.run(request.into_message(), tx).await?;
+
+        Ok(Streaming::new(rx))
     }
 }

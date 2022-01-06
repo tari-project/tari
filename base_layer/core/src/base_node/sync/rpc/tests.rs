@@ -22,14 +22,16 @@
 
 use futures::StreamExt;
 use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use tari_service_framework::reply_channel;
 use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tempfile::{tempdir, TempDir};
+use tokio::sync::broadcast;
 
 use super::BaseNodeSyncRpcService;
 use crate::{
-    base_node::BaseNodeSyncService,
+    base_node::{BaseNodeSyncService, LocalNodeCommsInterface},
     chain_storage::BlockchainDatabase,
-    proto::base_node::SyncBlocksRequest,
+    proto::base_node::{SyncBlocksRequest, SyncUtxosRequest},
     test_helpers::{
         blockchain::{create_main_chain, create_new_blockchain, TempDatabase},
         create_peer_manager,
@@ -47,7 +49,13 @@ fn setup() -> (
     let request_mock = RpcRequestMock::new(peer_manager);
 
     let db = create_new_blockchain();
-    let service = BaseNodeSyncRpcService::new(db.clone().into());
+    let (req_tx, _) = reply_channel::unbounded();
+    let (block_tx, _) = reply_channel::unbounded();
+    let (block_event_tx, _) = broadcast::channel(1);
+    let service = BaseNodeSyncRpcService::new(
+        db.clone().into(),
+        LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+    );
     (service, db, request_mock, tmp)
 }
 
@@ -106,5 +114,62 @@ mod sync_blocks {
         blocks.iter().zip(["B", "C", "D", "E"]).for_each(|(block, name)| {
             assert_eq!(*chain.get(name).unwrap().hash(), block.hash);
         });
+    }
+}
+
+mod sync_utxos {
+    use super::*;
+
+    #[tokio::test]
+    async fn it_returns_not_found_if_unknown_hash() {
+        let (service, _, rpc_request_mock, _tmp) = setup();
+        let msg = SyncUtxosRequest {
+            start: 0,
+            end_header_hash: vec![0; 32],
+            include_pruned_utxos: true,
+            include_deleted_bitmaps: false,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let err = service.sync_utxos(req).await.unwrap_err();
+        unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
+    }
+
+    #[tokio::test]
+    async fn it_returns_not_found_if_index_too_large() {
+        let (service, db, rpc_request_mock, _tmp) = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
+        let gb = chain.get("GB").unwrap();
+        let msg = SyncUtxosRequest {
+            start: 100000000,
+            end_header_hash: gb.hash().clone(),
+            include_pruned_utxos: true,
+            include_deleted_bitmaps: false,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let err = service.sync_utxos(req).await.unwrap_err();
+        unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
+    }
+
+    #[tokio::test]
+    async fn it_sends_an_offset_response() {
+        let (service, db, rpc_request_mock, _tmp) = setup();
+
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+
+        let block = chain.get("B").unwrap();
+        let msg = SyncUtxosRequest {
+            start: 3500,
+            end_header_hash: block.hash().clone(),
+            include_pruned_utxos: true,
+            include_deleted_bitmaps: false,
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+        let utxo_indexes = convert_mpsc_to_stream(&mut streaming)
+            .map(|utxo| utxo.unwrap().mmr_index)
+            .collect::<Vec<_>>()
+            .await;
+
+        assert!(utxo_indexes.iter().all(|index| (3500..=4002).contains(index)));
     }
 }

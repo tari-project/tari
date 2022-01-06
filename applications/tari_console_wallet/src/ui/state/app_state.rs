@@ -53,7 +53,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     assets::Asset,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
-    connectivity_service::WalletConnectivityHandle,
+    connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     tokens::Token,
@@ -163,6 +163,7 @@ impl AppState {
     }
 
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
+        self.check_connectivity().await;
         let mut inner = self.inner.write().await;
         inner.refresh_connected_peers_state().await?;
         drop(inner);
@@ -200,6 +201,27 @@ impl AppState {
             if let Some(data) = updated_state {
                 self.cached_data = data;
                 self.cache_update_cooldown = Some(Instant::now());
+            }
+        }
+    }
+
+    pub async fn check_connectivity(&mut self) {
+        if self.get_custom_base_node().is_none() &&
+            self.wallet_connectivity.get_connectivity_status() == OnlineStatus::Offline
+        {
+            let current = self.get_selected_base_node();
+            let list = self.get_base_node_list().clone();
+            let mut index: usize = list.iter().position(|(_, p)| p == current).unwrap_or_default();
+            if !list.is_empty() {
+                if index == list.len() - 1 {
+                    index = 0;
+                } else {
+                    index += 1;
+                }
+                let (_, next) = &list[index];
+                if let Err(e) = self.set_base_node_peer(next.clone()).await {
+                    error!(target: LOG_TARGET, "Base node offline: {:?}", e);
+                }
             }
         }
     }
@@ -737,7 +759,6 @@ impl AppStateInner {
 
     pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
-
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
         for c in connections.iter() {
@@ -745,7 +766,6 @@ impl AppStateInner {
                 peers.push(p);
             }
         }
-
         self.data.connected_peers = peers;
         self.updated = true;
         Ok(())
@@ -873,7 +893,6 @@ impl AppStateInner {
                 peer.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
             )
             .await?;
-
         info!(
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",

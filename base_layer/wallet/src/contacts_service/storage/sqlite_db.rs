@@ -72,7 +72,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
 
         match op {
-            WriteOperation::Upsert(kvp) => match kvp {
+            WriteOperation::Upsert(kvp) => match *kvp {
                 DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
                     Ok(found_c) => {
                         let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;

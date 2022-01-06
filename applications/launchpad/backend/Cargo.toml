@@ -1,0 +1,36 @@
+[package]
+name = "tari_launchpad"
+version = "0.22.1"
+description = "The Tari Launcher"
+authors = ["The Tari Development Community"]
+license = ""
+repository = ""
+edition = "2018"
+build = "src/build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.0.0-beta.4" }
+
+[dependencies]
+tari_app_utilities = { version = "^0.22", path = "../../tari_app_utilities" }
+tari_comms = { version = "^0.22", path = "../../../comms" }
+bollard = "0.11.0"
+config = "0.11.0"
+env_logger = "0.9.0"
+log = "0.4.14"
+rand = "0.8.4"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+strum = "0.23.0"
+strum_macros = "0.23.0"
+tauri = { version = "1.0.0-beta.8", features = ["api-all", "cli"] }
+tor-hash-passwd = "1.0.1"
+thiserror = "1.0.30"
+tokio = { version = "1.9", features= ["sync"] }
+futures = "0.3"
+
+[features]
+default = [ "custom-protocol" ]
+custom-protocol = [ "tauri/custom-protocol" ]

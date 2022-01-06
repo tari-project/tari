@@ -123,6 +123,8 @@ pub enum ChainStorageError {
     DatabaseResyncRequired(&'static str),
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
+    #[error("Add block is currently locked. No blocks may be added using add_block until the flag is cleared.")]
+    AddBlockOperationLocked,
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Could not convert data:{0}")]

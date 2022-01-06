@@ -21,7 +21,7 @@ members = [
     "infrastructure/storage",
     "infrastructure/test_utils",
     "applications/deps_only",
-    # "applications/installer",
+    "applications/launchpad/backend",
     "applications/tari_base_node",
     "applications/tari_console_wallet",
     "applications/tari_collectibles/src-tauri",

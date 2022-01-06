@@ -58,7 +58,7 @@ use crate::{
     },
 };
 
-const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
+const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
 #[derive(Clone, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
 #[table_name = "outputs"]
@@ -295,7 +295,7 @@ impl OutputSql {
         let mut time_locked_balance = Some(None);
         let mut pending_incoming_balance = None;
         let mut pending_outgoing_balance = None;
-        for balance in balance_query_result.clone() {
+        for balance in balance_query_result {
             match balance.category.as_str() {
                 "available_balance" => available_balance = Some(MicroTari::from(balance.amount as u64)),
                 "time_locked_balance" => time_locked_balance = Some(Some(MicroTari::from(balance.amount as u64))),

@@ -140,7 +140,7 @@ use tari_wallet::{
     error::{WalletError, WalletStorageError},
     storage::{
         database::WalletDatabase,
-        sqlite_db::WalletSqliteDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
         sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
     },
     transaction_service::{
@@ -5447,7 +5447,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - ConnectedToBaseNode, 0, 1
 ///     - ConnectionToBaseNodeFailed, number of retries, retry limit
 ///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's scanned, MicroTari recovered,
+///     - Completed, total number of UTXO's recovered, MicroTari recovered,
 ///     - ScanningRoundFailed, number of retries, retry limit
 ///     - RecoveryFailed, 0, 0
 ///

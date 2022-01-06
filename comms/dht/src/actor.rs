@@ -500,7 +500,7 @@ impl DhtActor {
                 let dest_node_id = destination
                     .node_id()
                     .cloned()
-                    .or_else(|| destination.public_key().map(|pk| NodeId::from_public_key(pk)));
+                    .or_else(|| destination.public_key().map(NodeId::from_public_key));
 
                 let connections = match dest_node_id {
                     Some(node_id) => {

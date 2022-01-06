@@ -123,6 +123,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListAssetRegistrationsStream = mpsc::Receiver<Result<tari_rpc::ListAssetRegistrationsResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     async fn get_network_difficulty(
         &self,
@@ -1035,6 +1036,62 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         debug!(target: LOG_TARGET, "Sending SearchKernels response stream to client");
+        Ok(Response::new(rx))
+    }
+
+    async fn search_utxos(
+        &self,
+        request: Request<tari_rpc::SearchUtxosRequest>,
+    ) -> Result<Response<Self::SearchUtxosStream>, Status> {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
+        let request = request.into_inner();
+
+        let converted: Result<Vec<_>, _> = request
+            .commitments
+            .into_iter()
+            .map(|s| Commitment::from_bytes(&s))
+            .collect();
+        let outputs = converted.map_err(|_| Status::internal("Failed to convert one or more arguments."))?;
+
+        let mut handler = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(async move {
+            let blocks = match handler.fetch_blocks_with_utxos(outputs).await {
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for block in blocks {
+                match tx
+                    .send(
+                        block
+                            .try_into()
+                            .map_err(|err| Status::internal(format!("Could not provide block:{}", err))),
+                    )
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+
+        debug!(target: LOG_TARGET, "Sending SearchUtxos response stream to client");
         Ok(Response::new(rx))
     }
 
