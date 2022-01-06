@@ -127,16 +127,40 @@ impl OutputField {
     pub fn is_eq_input(&self, input: &TransactionInput, output: &TransactionOutput) -> bool {
         use OutputField::*;
         match self {
-            Commitment => input.commitment == output.commitment,
-            Script => input.script == output.script,
-            SenderOffsetPublicKey => input.sender_offset_public_key == output.sender_offset_public_key,
+            Commitment => input
+                .commitment()
+                .map(|commitment| *commitment == output.commitment)
+                .unwrap_or(false),
+            Script => input.script().map(|script| *script == output.script).unwrap_or(false),
+            SenderOffsetPublicKey => input
+                .sender_offset_public_key()
+                .map(|sender_offset_public_key| *sender_offset_public_key == output.sender_offset_public_key)
+                .unwrap_or(false),
             Covenant => unimplemented!(),
-            Features => input.features == output.features,
-            FeaturesFlags => input.features.flags == output.features.flags,
-            FeaturesMaturity => input.features.maturity == output.features.maturity,
-            FeaturesUniqueId => input.features.unique_id == output.features.unique_id,
-            FeaturesParentPublicKey => input.features.parent_public_key == output.features.parent_public_key,
-            FeaturesMetadata => input.features.metadata == output.features.metadata,
+            Features => input
+                .features()
+                .map(|features| *features == output.features)
+                .unwrap_or(false),
+            FeaturesFlags => input
+                .features()
+                .map(|features| features.flags == output.features.flags)
+                .unwrap_or(false),
+            FeaturesMaturity => input
+                .features()
+                .map(|features| features.maturity == output.features.maturity)
+                .unwrap_or(false),
+            FeaturesUniqueId => input
+                .features()
+                .map(|features| features.unique_id == output.features.unique_id)
+                .unwrap_or(false),
+            FeaturesParentPublicKey => input
+                .features()
+                .map(|features| features.parent_public_key == output.features.parent_public_key)
+                .unwrap_or(false),
+            FeaturesMetadata => input
+                .features()
+                .map(|features| features.metadata == output.features.metadata)
+                .unwrap_or(false),
         }
     }
 
