@@ -58,11 +58,6 @@ impl Covenant {
         CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
     }
 
-    pub fn validate(&self) -> Result<(), CovenantError> {
-        // TODO
-        Ok(())
-    }
-
     pub fn execute<'a>(
         &self,
         block_height: u64,
