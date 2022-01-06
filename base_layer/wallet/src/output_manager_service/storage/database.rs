@@ -140,6 +140,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         amount: u64,
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+
+    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
@@ -445,6 +447,17 @@ where T: OutputManagerBackend + 'static
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(utxos)
+    }
+
+    pub async fn fetch_outputs_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let outputs = tokio::task::spawn_blocking(move || db_clone.fetch_outputs_by_tx_id(tx_id))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(outputs)
     }
 
     pub async fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {

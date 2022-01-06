@@ -72,6 +72,7 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
+            models::OutputStatus,
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
@@ -1766,4 +1767,25 @@ async fn test_oms_key_manager_discrepancy() {
         output_manager_service3,
         Err(OutputManagerError::MasterSeedMismatch)
     ));
+}
+
+#[tokio::test]
+async fn test_get_status_by_tx_id() {
+    let factories = CryptoFactories::default();
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
+
+    let (_ti, uo1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
+    oms.add_unvalidated_output(1, uo1, None).await.unwrap();
+
+    let (_ti, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
+    oms.add_unvalidated_output(2, uo2, None).await.unwrap();
+
+    let status = oms.get_output_statuses_by_tx_id(1).await.unwrap();
+
+    assert_eq!(status.len(), 1);
+    assert_eq!(status[0], OutputStatus::EncumberedToBeReceived);
 }

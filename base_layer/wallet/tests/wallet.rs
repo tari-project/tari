@@ -98,6 +98,7 @@ use tokio::{runtime::Runtime, time::sleep};
 
 pub mod support;
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
+use tari_common_types::transaction::TransactionStatus;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -776,6 +777,7 @@ async fn test_import_utxo() {
         .expect("Tx should be in collection");
 
     assert_eq!(completed_tx.amount, 20000 * uT);
+    assert_eq!(completed_tx.status, TransactionStatus::Imported);
 }
 
 #[test]

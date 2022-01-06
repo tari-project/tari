@@ -42,7 +42,7 @@ use tower::Service;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::Balance,
-    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
+    storage::models::{KnownOneSidedPaymentScript, OutputStatus, SpendingPriority},
 };
 
 /// API Request enum
@@ -81,6 +81,7 @@ pub enum OutputManagerRequest {
     SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
+    GetOutputStatusesByTxId(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -144,6 +145,8 @@ impl fmt::Display for OutputManagerRequest {
                 output.to_hex(),
                 fee_per_gram,
             ),
+
+            GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
         }
     }
 }
@@ -178,6 +181,7 @@ pub enum OutputManagerResponse {
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((u64, MicroTari, MicroTari, Transaction)),
+    OutputStatusesByTxId(Vec<OutputStatus>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -612,6 +616,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_output_statuses_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
+            .await??
+        {
+            OutputManagerResponse::OutputStatusesByTxId(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

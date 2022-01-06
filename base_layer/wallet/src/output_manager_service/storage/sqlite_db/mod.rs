@@ -1234,25 +1234,17 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
     }
-}
 
-impl TryFrom<i32> for OutputStatus {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(OutputStatus::Unspent),
-            1 => Ok(OutputStatus::Spent),
-            2 => Ok(OutputStatus::EncumberedToBeReceived),
-            3 => Ok(OutputStatus::EncumberedToBeSpent),
-            4 => Ok(OutputStatus::Invalid),
-            5 => Ok(OutputStatus::CancelledInbound),
-            6 => Ok(OutputStatus::UnspentMinedUnconfirmed),
-            7 => Ok(OutputStatus::SpentMinedUnconfirmed),
-            8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
-            9 => Ok(OutputStatus::ShortTermEncumberedToBeReceived),
-            _ => Err(OutputManagerStorageError::ConversionError),
+    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        let mut outputs = OutputSql::find_by_tx_id(tx_id, &conn)?;
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
         }
+        outputs
+            .iter()
+            .map(|o| DbUnblindedOutput::try_from(o.clone()))
+            .collect::<Result<Vec<_>, _>>()
     }
 }
 

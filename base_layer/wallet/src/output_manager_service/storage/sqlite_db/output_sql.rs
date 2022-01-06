@@ -210,6 +210,16 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::received_in_tx_id
+                    .eq(tx_id as i64)
+                    .or(outputs::spent_in_tx_id.eq(tx_id as i64)),
+            )
+            .load(conn)?)
+    }
+
     /// Return the available, time locked, pending incoming and pending outgoing balance
     pub fn get_balance(
         current_tip_for_time_lock_calculation: Option<u64>,
@@ -534,6 +544,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             marked_deleted_at_height: o.marked_deleted_at_height.map(|d| d as u64),
             marked_deleted_in_block: o.marked_deleted_in_block,
             spend_priority,
+            status: Some(OutputStatus::try_from(o.status)?),
         })
     }
 }

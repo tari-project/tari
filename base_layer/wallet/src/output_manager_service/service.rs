@@ -68,7 +68,7 @@ use crate::{
         resources::OutputManagerResources,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, OutputStatus, SpendingPriority},
         },
         tasks::TxoValidationTask,
         MasterKeyManager,
@@ -349,7 +349,16 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
+            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => self
+                .get_output_status_by_tx_id(tx_id)
+                .await
+                .map(OutputManagerResponse::OutputStatusesByTxId),
         }
+    }
+
+    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+        let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
+        Ok(outputs.into_iter().filter_map(|uo| uo.status).collect())
     }
 
     async fn claim_sha_atomic_swap_with_hash(

@@ -24,3 +24,4 @@ pub mod send_finalized_transaction;
 pub mod send_transaction_cancelled;
 pub mod send_transaction_reply;
 pub mod wait_on_dial;
+pub mod check_imported_transaction_status;

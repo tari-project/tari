@@ -1277,6 +1277,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
         Ok(sender_info)
     }
+
+    fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
+            .into_iter()
+            .map(|ct| CompletedTransaction::try_from(ct).map_err(|e| TransactionStorageError::from(e)))
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1714,6 +1722,17 @@ impl CompletedTransactionSql {
             .load::<CompletedTransactionSql>(conn)?)
     }
 
+    pub fn index_by_status_and_cancelled(
+        status: TransactionStatus,
+        cancelled: bool,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        Ok(completed_transactions::table
+            .filter(completed_transactions::cancelled.eq(cancelled as i32))
+            .filter(completed_transactions::status.eq(status as i32))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
     pub fn index_coinbase_at_block_height(
         block_height: i64,
         conn: &SqliteConnection,
@@ -2037,9 +2056,13 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::coinbase_block_height,
             ))
             .filter(
-                completed_transactions::mined_height
-                    .is_null()
-                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+                completed_transactions::status
+                    .ne(TransactionStatus::Imported as i32)
+                    .and(
+                        completed_transactions::mined_height
+                            .is_null()
+                            .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+                    ),
             )
             .filter(completed_transactions::cancelled.eq(false as i32))
             .order_by(completed_transactions::tx_id)

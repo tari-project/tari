@@ -72,7 +72,10 @@ use tokio::{
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        storage::models::SpendingPriority,
+    },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -90,6 +93,7 @@ use crate::{
             models::CompletedTransaction,
         },
         tasks::{
+            check_imported_transaction_status::check_imported_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -310,10 +314,17 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
+        let mut output_manager_event_stream = self.output_manager_service.get_event_stream();
 
         info!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
+                event = output_manager_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    };
+                },
                 // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
@@ -711,6 +722,17 @@ where
                 self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
             },
             BaseNodeEvent::NewBlockDetected(_) => {},
+        }
+    }
+
+    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
+        match (*event).clone() {
+            OutputManagerEvent::TxoValidationSuccess(_) => {
+                let db = self.db.clone();
+                let output_manager_handle = self.output_manager_service.clone();
+                tokio::spawn(check_imported_transactions(output_manager_handle, db));
+            },
+            _ => {},
         }
     }
 

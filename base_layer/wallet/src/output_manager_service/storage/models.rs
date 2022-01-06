@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, convert::TryFrom};
 
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::{
@@ -42,6 +42,7 @@ pub struct DbUnblindedOutput {
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
     pub spend_priority: SpendingPriority,
+    pub status: Option<OutputStatus>,
 }
 
 impl DbUnblindedOutput {
@@ -61,6 +62,7 @@ impl DbUnblindedOutput {
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            status: None,
         })
     }
 
@@ -81,6 +83,7 @@ impl DbUnblindedOutput {
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            status: None,
         })
     }
 }
@@ -166,4 +169,25 @@ pub enum OutputStatus {
     ShortTermEncumberedToBeSpent,
     SpentMinedUnconfirmed,
     AbandonedCoinbase,
+}
+
+impl TryFrom<i32> for OutputStatus {
+    type Error = OutputManagerStorageError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(OutputStatus::Unspent),
+            1 => Ok(OutputStatus::Spent),
+            2 => Ok(OutputStatus::EncumberedToBeReceived),
+            3 => Ok(OutputStatus::EncumberedToBeSpent),
+            4 => Ok(OutputStatus::Invalid),
+            5 => Ok(OutputStatus::CancelledInbound),
+            6 => Ok(OutputStatus::UnspentMinedUnconfirmed),
+            7 => Ok(OutputStatus::ShortTermEncumberedToBeReceived),
+            8 => Ok(OutputStatus::ShortTermEncumberedToBeSpent),
+            9 => Ok(OutputStatus::SpentMinedUnconfirmed),
+            10 => Ok(OutputStatus::AbandonedCoinbase),
+            _ => Err(OutputManagerStorageError::ConversionError),
+        }
+    }
 }
