@@ -263,7 +263,7 @@ impl TransactionInput {
                 ref features,
                 ..
             } => HashDigest::new()
-                .chain(features.to_v1_bytes())
+                .chain(features.to_consensus_bytes())
                 .chain(commitment.as_bytes())
                 .chain(script.as_bytes())
                 .finalize()
@@ -285,7 +285,7 @@ impl TransactionInput {
                 ref script,
                 ref sender_offset_public_key,
             } => Ok(HashDigest::new()
-                .chain(features.to_v1_bytes())
+                .chain(features.to_consensus_bytes())
                 .chain(commitment.as_bytes())
                 .chain(script.as_bytes())
                 .chain(sender_offset_public_key.as_bytes())

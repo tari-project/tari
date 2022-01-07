@@ -215,8 +215,7 @@ impl TransactionOutput {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())
             .chain(script.as_bytes())
-            // TODO: Use consensus encoded bytes #testnet_reset
-            .chain(features.to_v1_bytes())
+            .chain(features.to_consensus_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
             .finalize()

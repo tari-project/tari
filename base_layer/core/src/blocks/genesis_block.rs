@@ -112,7 +112,7 @@ fn get_igor_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort(1);
+    body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 06:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
@@ -195,7 +195,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
             excess_sig: sig,
         }],
     );
-    body.sort(2);
+    body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("31 Oct 2021 00:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;

@@ -730,7 +730,7 @@ where B: BlockchainBackend
             });
         }
 
-        body.sort(header.version);
+        body.sort();
         let mut header = BlockHeader::from(header);
         // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
         // to increase the timestamp to be greater than the median timestamp
@@ -1215,12 +1215,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    // TODO: #testnet_reset clean up this code
-    let input_mr = if header.version == 1 {
-        MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
-    } else {
-        input_mmr.get_merkle_root()?
-    };
+    let input_mr = input_mmr.get_merkle_root()?;
 
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,

@@ -107,18 +107,15 @@ pub fn create_origin_mac_challenge_parts(
     body: &[u8],
 ) -> Challenge {
     let mut mac_challenge = Challenge::new();
-    // TODO: #testnet_reset remove conditional
-    if protocol_version.as_major() > 1 {
-        mac_challenge.update(&protocol_version.to_bytes());
-        mac_challenge.update(destination.to_inner_bytes().as_slice());
-        mac_challenge.update(&(*message_type as i32).to_le_bytes());
-        mac_challenge.update(&flags.bits().to_le_bytes());
-        if let Some(t) = expires {
-            mac_challenge.update(&t.as_u64().to_le_bytes());
-        }
-        if let Some(e_pk) = ephemeral_public_key.as_ref() {
-            mac_challenge.update(e_pk.as_bytes());
-        }
+    mac_challenge.update(&protocol_version.to_bytes());
+    mac_challenge.update(destination.to_inner_bytes().as_slice());
+    mac_challenge.update(&(*message_type as i32).to_le_bytes());
+    mac_challenge.update(&flags.bits().to_le_bytes());
+    if let Some(t) = expires {
+        mac_challenge.update(&t.as_u64().to_le_bytes());
+    }
+    if let Some(e_pk) = ephemeral_public_key.as_ref() {
+        mac_challenge.update(e_pk.as_bytes());
     }
     mac_challenge.update(&body);
     mac_challenge

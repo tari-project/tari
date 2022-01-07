@@ -220,18 +220,13 @@ impl AggregateBody {
     }
 
     /// Sort the component lists of the aggregate body
-    pub fn sort(&mut self, version: u16) {
+    pub fn sort(&mut self) {
         if self.sorted {
             return;
         }
         self.inputs.sort();
         self.outputs.sort();
-        // TODO: #testnet_reset clean up this code
-        if version <= 1 {
-            self.kernels.sort_by(|a, b| a.deprecated_cmp(b));
-        } else {
-            self.kernels.sort();
-        }
+        self.kernels.sort();
         self.sorted = true;
     }
 
