@@ -33,9 +33,7 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
     proto::base_node::SyncUtxosByBlockRequest,
-    tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionOutput, UnblindedOutput},

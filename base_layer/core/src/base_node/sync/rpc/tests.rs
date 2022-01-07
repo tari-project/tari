@@ -151,6 +151,7 @@ mod sync_utxos {
     }
 
     #[tokio::test]
+    #[ignore = "need to put faucet utxos back"]
     async fn it_sends_an_offset_response() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
