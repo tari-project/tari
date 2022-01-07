@@ -205,21 +205,23 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Find the peer with the provided NodeID
-    pub fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
-        let peer_key = self
-            .node_id_index
-            .get(node_id)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
-            .get(peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| {
-                warn!(
-                    target: LOG_TARGET,
-                    "node_id_index and peer database are out of sync! (key={}, node_id={})", peer_key, node_id
-                );
-                PeerManagerError::PeerNotFoundError
-            })
+    pub fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
+        match self.node_id_index.get(node_id) {
+            Some(peer_key) => {
+                let peer = self.peer_db.get(peer_key)?.ok_or_else(|| {
+                    warn!(
+                        target: LOG_TARGET,
+                        "node_id_index and peer database are out of sync! (key={}, node_id={})", peer_key, node_id
+                    );
+                    PeerManagerError::DataInconsistency(format!(
+                        "node_id_index and peer database are out of sync! (key={}, node_id={})",
+                        peer_key, node_id
+                    ))
+                })?;
+                Ok(Some(peer))
+            },
+            None => Ok(None),
+        }
     }
 
     pub fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
@@ -240,23 +242,30 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Find the peer with the provided PublicKey
-    pub fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        let peer_key = self
-            .public_key_index
-            .get(public_key)
-            .ok_or(PeerManagerError::PeerNotFoundError)?;
-        self.peer_db
-            .get(peer_key)
-            .map_err(PeerManagerError::DatabaseError)?
-            .ok_or_else(|| {
-                warn!(
-                    target: LOG_TARGET,
-                    "public_key_index and peer database are out of sync! (key={}, public_key ={})",
-                    peer_key,
-                    public_key
-                );
-                PeerManagerError::PeerNotFoundError
-            })
+    pub fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
+        match self.public_key_index.get(public_key) {
+            Some(peer_key) => {
+                let peer = self
+                    .peer_db
+                    .get(peer_key)
+                    .map_err(PeerManagerError::DatabaseError)?
+                    .ok_or_else(|| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "public_key_index and peer database are out of sync! (key={}, public_key ={})",
+                            peer_key,
+                            public_key
+                        );
+                        PeerManagerError::DataInconsistency(format!(
+                            "public_key_index and peer database are out of sync! (key={}, public_key ={})",
+                            peer_key, public_key
+                        ))
+                    })?;
+
+                Ok(Some(peer))
+            },
+            None => Ok(None),
+        }
     }
 
     /// Check if a peer exist using the specified public_key
@@ -271,7 +280,9 @@ where DS: KeyValueStore<PeerId, Peer>
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
-        let peer = self.find_by_node_id(node_id)?;
+        let peer = self
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
 
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
@@ -282,7 +293,10 @@ where DS: KeyValueStore<PeerId, Peer>
 
     /// Constructs a single NodeIdentity for the peer corresponding to the provided NodeId
     pub fn direct_identity_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        let peer = self.find_by_public_key(public_key)?;
+        let peer = self
+            .find_by_public_key(public_key)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+
         if peer.is_banned() {
             Err(PeerManagerError::BannedPeer)
         } else {
@@ -514,7 +528,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("node_id_index is out of sync with peer db");
-        peer.addresses.add_net_address(net_address);
+        peer.addresses.add_address(net_address);
         self.peer_db
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
@@ -545,7 +559,9 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     pub fn mark_last_seen(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        let mut peer = self.find_by_node_id(node_id)?;
+        let mut peer = self
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         peer.last_seen = Some(Utc::now().naive_utc());
         peer.set_offline(false);
         self.peer_db
@@ -585,8 +601,8 @@ mod test {
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_net_address(&net_address2);
-        net_addresses.add_net_address(&net_address3);
+        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address3);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -616,7 +632,7 @@ mod test {
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_net_address(&net_address6);
+        net_addresses.add_address(&net_address6);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -664,8 +680,8 @@ mod test {
         let net_address2 = "/ip4/5.6.7.8/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/5.6.7.8/tcp/7000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address1);
-        net_addresses.add_net_address(&net_address2);
-        net_addresses.add_net_address(&net_address3);
+        net_addresses.add_address(&net_address2);
+        net_addresses.add_address(&net_address3);
         let peer1 = Peer::new(
             pk,
             node_id,
@@ -695,7 +711,7 @@ mod test {
         let net_address5 = "/ip4/13.14.15.16/tcp/6000".parse::<Multiaddr>().unwrap();
         let net_address6 = "/ip4/17.18.19.20/tcp/8000".parse::<Multiaddr>().unwrap();
         let mut net_addresses = MultiaddressesWithStats::from(net_address5);
-        net_addresses.add_net_address(&net_address6);
+        net_addresses.add_address(&net_address6);
         let peer3 = Peer::new(
             pk,
             node_id,
@@ -713,34 +729,46 @@ mod test {
         assert_eq!(peer_storage.peer_db.len().unwrap(), 3);
 
         assert_eq!(
-            peer_storage.find_by_public_key(&peer1.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer1.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer1.public_key
         );
         assert_eq!(
-            peer_storage.find_by_public_key(&peer2.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer2.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer2.public_key
         );
         assert_eq!(
-            peer_storage.find_by_public_key(&peer3.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer3.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer3.public_key
         );
 
         assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
             peer1.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer2.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
             peer2.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer3.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer3.node_id).unwrap().unwrap().node_id,
             peer3.node_id
         );
 
-        assert!(peer_storage.find_by_public_key(&peer1.public_key).is_ok());
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).is_ok());
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).is_ok());
+        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
+        peer_storage.find_by_public_key(&peer2.public_key).unwrap().unwrap();
+        peer_storage.find_by_public_key(&peer3.public_key).unwrap().unwrap();
 
         // Test delete of border case peer
         assert!(peer_storage.delete_peer(&peer3.node_id).is_ok());
@@ -748,28 +776,36 @@ mod test {
         assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
 
         assert_eq!(
-            peer_storage.find_by_public_key(&peer1.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer1.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer1.public_key
         );
         assert_eq!(
-            peer_storage.find_by_public_key(&peer2.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer2.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer2.public_key
         );
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).is_err());
+        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
 
         assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
             peer1.node_id
         );
         assert_eq!(
-            peer_storage.find_by_node_id(&peer2.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer2.node_id).unwrap().unwrap().node_id,
             peer2.node_id
         );
-        assert!(peer_storage.find_by_node_id(&peer3.node_id).is_err());
+        assert!(peer_storage.find_by_node_id(&peer3.node_id).unwrap().is_none());
 
-        assert!(peer_storage.find_by_public_key(&peer1.public_key).is_ok());
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).is_ok());
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).is_err());
+        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
+        peer_storage.find_by_public_key(&peer2.public_key).unwrap().unwrap();
+        assert!(peer_storage.find_by_public_key(&peer3.public_key).unwrap().is_none());
 
         // Test of delete with moving behaviour
         assert!(peer_storage.add_peer(peer3.clone()).is_ok());
@@ -778,28 +814,36 @@ mod test {
         assert_eq!(peer_storage.peer_db.len().unwrap(), 2);
 
         assert_eq!(
-            peer_storage.find_by_public_key(&peer1.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer1.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer1.public_key
         );
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).is_err());
+        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
         assert_eq!(
-            peer_storage.find_by_public_key(&peer3.public_key).unwrap().public_key,
+            peer_storage
+                .find_by_public_key(&peer3.public_key)
+                .unwrap()
+                .unwrap()
+                .public_key,
             peer3.public_key
         );
 
         assert_eq!(
-            peer_storage.find_by_node_id(&peer1.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer1.node_id).unwrap().unwrap().node_id,
             peer1.node_id
         );
-        assert!(peer_storage.find_by_node_id(&peer2.node_id).is_err());
+        assert!(peer_storage.find_by_node_id(&peer2.node_id).unwrap().is_none());
         assert_eq!(
-            peer_storage.find_by_node_id(&peer3.node_id).unwrap().node_id,
+            peer_storage.find_by_node_id(&peer3.node_id).unwrap().unwrap().node_id,
             peer3.node_id
         );
 
-        assert!(peer_storage.find_by_public_key(&peer1.public_key).is_ok());
-        assert!(peer_storage.find_by_public_key(&peer2.public_key).is_err());
-        assert!(peer_storage.find_by_public_key(&peer3.public_key).is_ok());
+        peer_storage.find_by_public_key(&peer1.public_key).unwrap().unwrap();
+        assert!(peer_storage.find_by_public_key(&peer2.public_key).unwrap().is_none());
+        peer_storage.find_by_public_key(&peer3.public_key).unwrap().unwrap();
     }
 
     fn create_test_peer(features: PeerFeatures, ban: bool, offline: bool) -> Peer {

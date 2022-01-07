@@ -6660,6 +6660,7 @@ dependencies = [
  "openssl-sys",
  "pin-project 1.0.8",
  "prost",
+ "prost-types",
  "rand 0.8.4",
  "serde 1.0.130",
  "serde_derive",

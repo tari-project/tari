@@ -120,7 +120,7 @@ impl<E: Into<NetworkDiscoveryError>> From<E> for StateEvent {
 
 #[derive(Debug, Clone)]
 pub(super) struct NetworkDiscoveryContext {
-    pub config: DhtConfig,
+    pub config: Arc<DhtConfig>,
     pub peer_manager: Arc<PeerManager>,
     pub connectivity: ConnectivityRequester,
     pub node_identity: Arc<NodeIdentity>,
@@ -170,7 +170,7 @@ pub struct DhtNetworkDiscovery {
 
 impl DhtNetworkDiscovery {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,

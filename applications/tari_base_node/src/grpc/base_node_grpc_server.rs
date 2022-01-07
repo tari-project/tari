@@ -1415,7 +1415,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 peer_manager
                     .find_by_node_id(peer.peer_node_id())
                     .await
-                    .map_err(|err| Status::internal(err.to_string()))?,
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .ok_or_else(|| Status::not_found(format!("Peer {} not found", peer.peer_node_id())))?,
             );
         }
 

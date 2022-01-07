@@ -294,6 +294,7 @@ async fn dht_join_propagation() {
     let node_A_peer = node_C_peer_manager
         .find_by_public_key(node_A.node_identity().public_key())
         .await
+        .unwrap()
         .unwrap();
     assert_eq!(node_A_peer.features, node_A.comms.node_identity().features());
 
@@ -750,6 +751,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
                 .peer_manager()
                 .find_by_node_id(node_B.node_identity().node_id())
                 .await
+                .unwrap()
                 .unwrap();
             n.is_banned()
         },

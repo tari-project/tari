@@ -762,7 +762,7 @@ impl AppStateInner {
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
         for c in connections.iter() {
-            if let Ok(p) = peer_manager.find_by_node_id(c.peer_node_id()).await {
+            if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
                 peers.push(p);
             }
         }
@@ -843,7 +843,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 
@@ -867,7 +867,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 peer.public_key.clone(),
-                peer.clone().addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                peer.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 
@@ -908,7 +908,7 @@ impl AppStateInner {
         self.wallet
             .set_base_node_peer(
                 previous.public_key.clone(),
-                previous.addresses.first().ok_or(UiError::NoAddress)?.to_string(),
+                previous.addresses.first().ok_or(UiError::NoAddress)?.address.clone(),
             )
             .await?;
 

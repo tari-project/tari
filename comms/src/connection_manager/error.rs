@@ -82,6 +82,12 @@ pub enum ConnectionManagerError {
     NoiseProtocolTimeout,
     #[error("Listener oneshot cancelled")]
     ListenerOneshotCancelled,
+    #[error("Peer sent invalid identity signature")]
+    PeerIdentityInvalidSignature,
+    #[error("Peer did not provide the identity timestamp")]
+    PeerIdentityNoUpdatedTimestampProvided,
+    #[error("Peer did not provide any public addresses")]
+    PeerHasNoAddresses,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

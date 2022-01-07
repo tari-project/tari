@@ -73,9 +73,8 @@ class InterfaceFFI {
   static library = null;
 
   static async init() {
-    this.library = `${process.cwd()}/temp/out/${
-      process.platform === "win32" ? "" : "lib"
-    }tari_wallet_ffi`;
+    let platform = process.platform === "win32" ? "" : "lib";
+    this.library = `${process.cwd()}/temp/out/${platform}tari_wallet_ffi`;
     // Load the library
     this.fn = ffi.Library(this.loaded ? null : this.library, {
       transport_memory_create: [this.ptr, []],
@@ -269,6 +268,7 @@ class InterfaceFFI {
         ],
       ],
       comms_config_destroy: [this.void, [this.ptr]],
+      comms_list_connected_public_keys: [this.ptr, [this.ptr, this.intPtr]],
       wallet_create: [
         this.ptr,
         [
@@ -726,6 +726,13 @@ class InterfaceFFI {
 
   static commsConfigDestroy(ptr) {
     this.fn.comms_config_destroy(ptr);
+  }
+
+  static commsListConnectedPublicKeys(walletPtr) {
+    let error = this.initError();
+    let result = this.fn.comms_list_connected_public_keys(walletPtr, error);
+    this.checkErrorResult(error, `commsListConnectedPublicKeys`);
+    return result;
   }
   //endregion
 

@@ -16,11 +16,11 @@ config = { version = "0.9.3" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 qrcode = { version = "0.12" }
 dirs-next = "1.0.2"
-serde = "1.0.126"
 json5 = "0.2.2"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.8"
 tokio = { version = "1.11", features = ["signal"] }
+serde = "1.0.126"
 structopt = { version = "0.3.13", default_features = false }
 strum = "^0.22"
 strum_macros = "^0.22"

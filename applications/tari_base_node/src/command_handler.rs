@@ -419,7 +419,7 @@ impl CommandHandler {
             let peer = match peer_manager.find_all_starts_with(&partial).await {
                 Ok(peers) if peers.is_empty() => {
                     if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                        if let Ok(peer) = peer_manager.find_by_public_key(&pk).await {
+                        if let Ok(Some(peer)) = peer_manager.find_by_public_key(&pk).await {
                             peer
                         } else {
                             println!("No peer matching '{}'", original_str);
@@ -457,6 +457,9 @@ impl CommandHandler {
             if let Some(dt) = peer.last_seen() {
                 println!("Last seen: {}", dt);
             }
+            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                println!("Last updated: {} (UTC)", updated_at);
+            }
         });
     }
 
@@ -479,7 +482,7 @@ impl CommandHandler {
                     let num_peers = peers.len();
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec!["NodeId", "Public Key", "Flags", "Role", "User Agent", "Info"]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
 
                     for peer in peers {
                         let info_str = {
@@ -491,7 +494,7 @@ impl CommandHandler {
                                 }
                             } else if let Some(dt) = peer.last_seen() {
                                 s.push(format!(
-                                    "LAST_SEEN = {}",
+                                    "LAST_SEEN: {}",
                                     Utc::now()
                                         .naive_utc()
                                         .signed_duration_since(dt)
@@ -516,10 +519,11 @@ impl CommandHandler {
                                 .get_metadata(1)
                                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                             {
-                                s.push(format!(
-                                    "chain height = {}",
-                                    metadata.metadata.height_of_longest_chain()
-                                ));
+                                s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
+                            }
+
+                            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                                s.push(format!("updated_at: {} (UTC)", updated_at));
                             }
 
                             if s.is_empty() {
@@ -531,7 +535,6 @@ impl CommandHandler {
                         table.add_row(row![
                             peer.node_id,
                             peer.public_key,
-                            format!("{:?}", peer.flags),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
                                     "Wallet"
@@ -724,7 +727,8 @@ impl CommandHandler {
                         let peer = peer_manager
                             .find_by_node_id(conn.peer_node_id())
                             .await
-                            .expect("Unexpected peer database error or peer not found");
+                            .expect("Unexpected peer database error")
+                            .expect("Peer not found");
 
                         let chain_height = peer
                             .get_metadata(1)
