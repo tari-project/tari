@@ -187,7 +187,7 @@ impl PeerConnection {
     }
 
     /// Returns a owned future that resolves on disconnection
-    pub fn disconnected(&self) -> impl Future<Output = ()> + 'static {
+    pub fn on_disconnect(&self) -> impl Future<Output = ()> + 'static {
         let request_tx = self.request_tx.clone();
         async move { request_tx.closed().await }
     }
@@ -361,7 +361,7 @@ impl PeerConnectionActor {
                     match maybe_request {
                         Some(request) => self.handle_request(request).await,
                         None => {
-                            debug!(target: LOG_TARGET, "[{}] All peer connection handled dropped closing the connection", self);
+                            debug!(target: LOG_TARGET, "[{}] All peer connection handles dropped closing the connection", self);
                             break;
                         }
                     }
@@ -475,11 +475,7 @@ impl PeerConnectionActor {
     }
 
     async fn notify_event(&mut self, event: ConnectionManagerEvent) {
-        log_if_error!(
-            target: LOG_TARGET,
-            self.event_notifier.send(event).await,
-            "Failed to send connection manager notification because '{}'",
-        );
+        let _ = self.event_notifier.send(event).await;
     }
 
     /// Disconnect this peer connection.

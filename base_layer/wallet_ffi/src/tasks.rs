@@ -87,8 +87,8 @@ pub async fn recovery_event_monitoring(
                 );
             },
             Ok(UtxoScannerEvent::Progress {
-                current_index: current,
-                total_index: total,
+                current_height: current,
+                tip_height: total,
             }) => {
                 unsafe {
                     (recovery_progress_callback)(RecoveryEvent::Progress as u8, current, total);
@@ -96,22 +96,27 @@ pub async fn recovery_event_monitoring(
                 info!(target: LOG_TARGET, "Recovery progress: {}/{}", current, total);
             },
             Ok(UtxoScannerEvent::Completed {
-                number_scanned: num_scanned,
-                number_received: num_utxos,
-                value_received: total_amount,
+                final_height,
+                num_recovered,
+                value_recovered,
                 time_taken: elapsed,
             }) => {
+                let rate = (final_height as f32) * 1000f32 / (elapsed.as_millis() as f32);
                 info!(
                     target: LOG_TARGET,
-                    "Recovery complete! Scanned = {} in {:.2?} ({} utxos/s), Recovered {} worth {}",
-                    num_scanned,
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
+                    final_height,
                     elapsed,
-                    num_scanned / (1 + elapsed.as_secs()),
-                    num_utxos,
-                    total_amount
+                    rate,
+                    num_recovered,
+                    value_recovered
                 );
                 unsafe {
-                    (recovery_progress_callback)(RecoveryEvent::Completed as u8, num_scanned, u64::from(total_amount));
+                    (recovery_progress_callback)(
+                        RecoveryEvent::Completed as u8,
+                        num_recovered,
+                        u64::from(value_recovered),
+                    );
                 }
                 break;
             },

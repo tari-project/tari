@@ -58,7 +58,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             None => Ok(Arc::new(id)),
         },
         Err(e) => {
-            error!(target: LOG_TARGET, "Failed to load node identity: {}", e);
+            debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
                 if !prompt {
@@ -78,7 +78,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                 };
             }
 
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
+            debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
             match create_new_identity(&identity_file, public_address.clone(), peer_features) {
                 Ok(id) => {
@@ -122,14 +122,14 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
         format!(
             "The node identity file, {}, could not be read. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
     let id = json5::from_str::<NodeIdentity>(&id_str).map_err(|e| {
         format!(
             "The node identity file, {}, has an error. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
     // Check whether the previous version has a signature and sign if necessary
@@ -211,7 +211,7 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
         format!(
             "Error writing json file, {}. {}",
             path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e.to_string()
+            e
         )
     })?;
 

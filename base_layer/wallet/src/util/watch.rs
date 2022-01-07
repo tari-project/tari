@@ -38,19 +38,13 @@ impl<T> Watch<T> {
     }
 
     pub async fn changed(&mut self) {
-        if self.1.changed().await.is_err() {
-            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
-            panic!("watch internal receiver is dropped");
-        }
+        assert!(!self.1.changed().await.is_err(), "watch internal receiver is dropped");
     }
 
     pub fn send(&self, item: T) {
         // PANIC: broadcast becomes infallible because the receiver is owned in Watch and so the failure case is
         // unreachable
-        if self.sender().send(item).is_err() {
-            // Result::expect requires E: fmt::Debug and `watch::SendError<T>` is not, this is equivalent
-            panic!("watch internal receiver is dropped");
-        }
+        assert!(!self.sender().send(item).is_err(), "watch internal receiver is dropped");
     }
 
     fn sender(&self) -> &watch::Sender<T> {

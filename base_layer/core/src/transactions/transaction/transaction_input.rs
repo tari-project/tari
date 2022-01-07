@@ -30,41 +30,58 @@ use std::{
 
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Challenge, ComSignature, Commitment, CommitmentFactory, HashDigest, PublicKey};
+use tari_common_types::types::{
+    Challenge,
+    ComSignature,
+    Commitment,
+    CommitmentFactory,
+    HashDigest,
+    HashOutput,
+    PublicKey,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, ScriptContext, StackItem, TariScript},
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::{
-    transaction,
-    transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
+use crate::transactions::transaction::{
+    transaction_output::TransactionOutput,
+    OutputFeatures,
+    TransactionError,
+    UnblindedOutput,
 };
 
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionInput {
-    /// The features of the output being spent. We will check maturity for all outputs.
-    pub features: OutputFeatures,
-    /// The commitment referencing the output being spent.
-    pub commitment: Commitment,
-    /// The serialised script
-    pub script: TariScript,
+    /// Either the hash of TransactionOutput that this Input is spending or its data
+    pub spent_output: SpentOutput,
     /// The script input data, if any
     pub input_data: ExecutionStack,
     /// A signature with k_s, signing the script, input data, and mined height
     pub script_signature: ComSignature,
-    /// The offset public key, K_O
-    pub sender_offset_public_key: PublicKey,
 }
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
-    /// Create a new Transaction Input
-    pub fn new(
+    /// Create a new Transaction Input with just a reference hash of the spent output
+    pub fn new_with_output_hash(
+        output_hash: HashOutput,
+        input_data: ExecutionStack,
+        script_signature: ComSignature,
+    ) -> TransactionInput {
+        TransactionInput {
+            spent_output: SpentOutput::OutputHash(output_hash),
+            input_data,
+            script_signature,
+        }
+    }
+
+    /// Create a new Transaction Input with just a reference hash of the spent output
+    pub fn new_with_output_data(
         features: OutputFeatures,
         commitment: Commitment,
         script: TariScript,
@@ -73,13 +90,31 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
     ) -> TransactionInput {
         TransactionInput {
+            spent_output: SpentOutput::OutputData {
+                features,
+                commitment,
+                script,
+                sender_offset_public_key,
+            },
+            input_data,
+            script_signature,
+        }
+    }
+
+    /// Populate the spent output data fields
+    pub fn add_output_data(
+        &mut self,
+        features: OutputFeatures,
+        commitment: Commitment,
+        script: TariScript,
+        sender_offset_public_key: PublicKey,
+    ) {
+        self.spent_output = SpentOutput::OutputData {
             features,
             commitment,
             script,
-            input_data,
-            script_signature,
             sender_offset_public_key,
-        }
+        };
     }
 
     pub fn build_script_challenge(
@@ -99,14 +134,45 @@ impl TransactionInput {
             .to_vec()
     }
 
-    /// Accessor method for the commitment contained in an input
-    pub fn commitment(&self) -> &Commitment {
-        &self.commitment
+    pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref commitment, .. } => Ok(commitment),
+        }
+    }
+
+    pub fn features(&self) -> Result<&OutputFeatures, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref features, .. } => Ok(features),
+        }
+    }
+
+    pub fn script(&self) -> Result<&TariScript, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref script, .. } => Ok(script),
+        }
+    }
+
+    pub fn sender_offset_public_key(&self) -> Result<&PublicKey, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref sender_offset_public_key,
+                ..
+            } => Ok(sender_offset_public_key),
+        }
     }
 
     /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
-    pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> bool {
-        factory.open(&input.spending_key, &input.value.into(), &self.commitment)
+    pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> Result<bool, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref commitment, .. } => {
+                Ok(factory.open(&input.spending_key, &input.value.into(), commitment))
+            },
+        }
     }
 
     /// This will check if the input and the output is the same transactional output by looking at the commitment and
@@ -119,11 +185,17 @@ impl TransactionInput {
     /// public key.
     pub fn run_script(&self, context: Option<ScriptContext>) -> Result<PublicKey, TransactionError> {
         let context = context.unwrap_or_default();
-        match self.script.execute_with_context(&self.input_data, &context)? {
-            StackItem::PublicKey(pubkey) => Ok(pubkey),
-            _ => Err(TransactionError::ScriptExecutionError(
-                "The script executed successfully but it did not leave a public key on the stack".to_string(),
-            )),
+
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref script, .. } => {
+                match script.execute_with_context(&self.input_data, &context)? {
+                    StackItem::PublicKey(pubkey) => Ok(pubkey),
+                    _ => Err(TransactionError::ScriptExecutionError(
+                        "The script executed successfully but it did not leave a public key on the stack".to_string(),
+                    )),
+                }
+            },
         }
     }
 
@@ -132,22 +204,31 @@ impl TransactionInput {
         public_script_key: &PublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
-        let challenge = TransactionInput::build_script_challenge(
-            self.script_signature.public_nonce(),
-            &self.script,
-            &self.input_data,
-            public_script_key,
-            &self.commitment,
-        );
-        if self
-            .script_signature
-            .verify_challenge(&(&self.commitment + public_script_key), &challenge, factory)
-        {
-            Ok(())
-        } else {
-            Err(TransactionError::InvalidSignatureError(
-                "Verifying script signature".to_string(),
-            ))
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref script,
+                ref commitment,
+                ..
+            } => {
+                let challenge = TransactionInput::build_script_challenge(
+                    self.script_signature.public_nonce(),
+                    script,
+                    &self.input_data,
+                    public_script_key,
+                    commitment,
+                );
+                if self
+                    .script_signature
+                    .verify_challenge(&(commitment + public_script_key), &challenge, factory)
+                {
+                    Ok(())
+                } else {
+                    Err(TransactionError::InvalidSignatureError(
+                        "Verifying script signature".to_string(),
+                    ))
+                }
+            },
         }
     }
 
@@ -164,55 +245,132 @@ impl TransactionInput {
     }
 
     /// Returns true if this input is mature at the given height, otherwise false
-    pub fn is_mature_at(&self, block_height: u64) -> bool {
-        self.features.maturity <= block_height
+    pub fn is_mature_at(&self, block_height: u64) -> Result<bool, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref features, .. } => Ok(features.maturity <= block_height),
+        }
     }
 
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
     pub fn output_hash(&self) -> Vec<u8> {
-        transaction::hash_output(&self.features, &self.commitment, &self.script)
+        match self.spent_output {
+            SpentOutput::OutputHash(ref h) => h.clone(),
+            SpentOutput::OutputData {
+                ref commitment,
+                ref script,
+                ref features,
+                ..
+            } => HashDigest::new()
+                .chain(features.to_v1_bytes())
+                .chain(commitment.as_bytes())
+                .chain(script.as_bytes())
+                .finalize()
+                .to_vec(),
+        }
     }
-}
 
-/// Implement the canonical hashing function for TransactionInput for use in ordering
-impl Hashable for TransactionInput {
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.features.to_v1_bytes())
-            .chain(self.commitment.as_bytes())
-            .chain(self.script.as_bytes())
-            .chain(self.sender_offset_public_key.as_bytes())
-            .chain(self.script_signature.u().as_bytes())
-            .chain(self.script_signature.v().as_bytes())
-            .chain(self.script_signature.public_nonce().as_bytes())
-            .chain(self.input_data.as_bytes())
-            .finalize()
-            .to_vec()
+    pub fn is_compact(&self) -> bool {
+        matches!(self.spent_output, SpentOutput::OutputHash(_))
+    }
+
+    /// Implement the canonical hashing function for TransactionInput for use in ordering
+    pub fn canonical_hash(&self) -> Result<Vec<u8>, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref features,
+                ref commitment,
+                ref script,
+                ref sender_offset_public_key,
+            } => Ok(HashDigest::new()
+                .chain(features.to_v1_bytes())
+                .chain(commitment.as_bytes())
+                .chain(script.as_bytes())
+                .chain(sender_offset_public_key.as_bytes())
+                .chain(self.script_signature.u().as_bytes())
+                .chain(self.script_signature.v().as_bytes())
+                .chain(self.script_signature.public_nonce().as_bytes())
+                .chain(self.input_data.as_bytes())
+                .finalize()
+                .to_vec()),
+        }
+    }
+
+    pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {
+        if let SpentOutput::OutputData { ref mut features, .. } = self.spent_output {
+            features.maturity = maturity;
+            Ok(())
+        } else {
+            Err(TransactionError::MissingTransactionInputData)
+        }
+    }
+
+    /// Return a clone of this Input into its compact form
+    pub fn to_compact(&self) -> Self {
+        Self {
+            spent_output: match &self.spent_output {
+                SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
+                SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
+            },
+            input_data: self.input_data.clone(),
+            script_signature: self.script_signature.clone(),
+        }
     }
 }
 
 impl Display for TransactionInput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(
-            fmt,
-            "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
-            self.commitment.to_hex(),
-            self.features,
-            self.script,
-            self.sender_offset_public_key.to_hex()
-        )
+        match self.spent_output {
+            SpentOutput::OutputHash(ref h) => write!(fmt, "Input spending Output hash: {}", h.to_hex()),
+            SpentOutput::OutputData {
+                ref commitment,
+                ref script,
+                ref features,
+                ref sender_offset_public_key,
+            } => write!(
+                fmt,
+                "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+                commitment.to_hex(),
+                features,
+                script,
+                sender_offset_public_key.to_hex()
+            ),
+        }
     }
 }
 
+impl PartialEq<Self> for TransactionInput {
+    fn eq(&self, other: &Self) -> bool {
+        self.output_hash() == other.output_hash() &&
+            self.script_signature == other.script_signature &&
+            self.input_data == other.input_data
+    }
+}
+
+impl Eq for TransactionInput {}
+
 impl PartialOrd for TransactionInput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.commitment.partial_cmp(&other.commitment)
+        self.output_hash().partial_cmp(&other.output_hash())
     }
 }
 
 impl Ord for TransactionInput {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.commitment.cmp(&other.commitment)
+        self.output_hash().cmp(&other.output_hash())
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
+pub enum SpentOutput {
+    OutputHash(HashOutput),
+    OutputData {
+        features: OutputFeatures,
+        commitment: Commitment,
+        script: TariScript,
+        sender_offset_public_key: PublicKey,
+    },
 }

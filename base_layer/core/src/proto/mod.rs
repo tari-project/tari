@@ -22,7 +22,7 @@
 
 //! Imports of code generated from protobuf files
 
-mod transaction;
+pub mod transaction;
 mod types_impls;
 
 pub mod base_node {

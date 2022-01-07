@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.22.0"
+version = "0.22.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -27,10 +27,7 @@ strum_macros = "^0.22"
 thiserror = "^1.0.26"
 tonic = "0.6.2"
 
-[dependencies.tari_core]
-path = "../../base_layer/core"
-default-features = false
-features = ["transactions", "base_node_proto"]
+
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }

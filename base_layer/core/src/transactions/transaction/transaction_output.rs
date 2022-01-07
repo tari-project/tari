@@ -181,7 +181,7 @@ impl TransactionOutput {
     /// This will ignore the output range proof
     #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
-        self.commitment == output.commitment && self.features == output.features
+        self.hash() == output.output_hash()
     }
 
     /// Returns true if the output is a coinbase, otherwise false
@@ -338,11 +338,7 @@ impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
         let proof = if proof.len() > 32 {
-            format!(
-                "{}..{}",
-                proof[0..16].to_string(),
-                proof[proof.len() - 16..proof.len()].to_string()
-            )
+            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
         } else {
             proof
         };

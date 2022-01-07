@@ -190,7 +190,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         match response {
             Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
-                transaction: Some(resp.into()),
+                transaction: Some(resp.try_into().map_err(Status::internal)?),
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }

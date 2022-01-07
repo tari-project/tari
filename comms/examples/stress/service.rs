@@ -81,6 +81,7 @@ pub fn start_service(
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum StressTestServiceRequest {
     BeginProtocol(Peer, StressProtocol, oneshot::Sender<Result<(), Error>>),
     Shutdown,

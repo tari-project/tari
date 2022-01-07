@@ -410,7 +410,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 
@@ -445,7 +446,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 

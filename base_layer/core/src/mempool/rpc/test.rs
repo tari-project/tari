@@ -64,6 +64,8 @@ mod get_stats {
 }
 
 mod get_state {
+    use std::convert::TryInto;
+
     use super::*;
     use crate::mempool::{MempoolService, StateResponse};
 
@@ -79,7 +81,7 @@ mod get_state {
 
         let resp = service.get_state(req_mock.request_no_context(())).await.unwrap();
         let stats = resp.into_message();
-        assert_eq!(stats, expected_state.into());
+        assert_eq!(stats, expected_state.try_into().unwrap());
         assert_eq!(mempool.get_call_count(), 1);
     }
 }

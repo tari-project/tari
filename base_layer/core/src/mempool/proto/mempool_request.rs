@@ -48,15 +48,17 @@ impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     }
 }
 
-impl From<MempoolRequest> for ProtoMempoolRequest {
-    fn from(request: MempoolRequest) -> Self {
+impl TryFrom<MempoolRequest> for ProtoMempoolRequest {
+    type Error = String;
+
+    fn try_from(request: MempoolRequest) -> Result<Self, Self::Error> {
         use MempoolRequest::*;
-        match request {
+        Ok(match request {
             GetStats => ProtoMempoolRequest::GetStats(true),
             GetState => ProtoMempoolRequest::GetState(true),
             GetTxStateByExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateByExcessSig(excess_sig.into()),
-            SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.into()),
-        }
+            SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.try_into()?),
+        })
     }
 }
 

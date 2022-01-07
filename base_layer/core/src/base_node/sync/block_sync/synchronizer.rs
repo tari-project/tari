@@ -191,7 +191,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .fetch_chain_header_by_block_hash(block.hash.clone())
                 .await?
                 .ok_or_else(|| {
-                    BlockSyncError::ProtocolViolation("Peer sent hash for block header we do not have".into())
+                    BlockSyncError::ProtocolViolation(format!(
+                        "Peer sent hash ({}) for block header we do not have",
+                        block.hash.to_hex()
+                    ))
                 })?;
 
             let current_height = header.height();

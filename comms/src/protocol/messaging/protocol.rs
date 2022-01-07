@@ -116,6 +116,8 @@ pub struct MessagingProtocol {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
+    retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+    retry_queue_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     shutdown_signal: ShutdownSignal,
     complete_trigger: Shutdown,
 }
@@ -133,6 +135,8 @@ impl MessagingProtocol {
     ) -> Self {
         let (internal_messaging_event_tx, internal_messaging_event_rx) =
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
+        let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
+
         Self {
             config,
             connectivity,
@@ -142,6 +146,8 @@ impl MessagingProtocol {
             messaging_events_tx,
             internal_messaging_event_rx,
             internal_messaging_event_tx,
+            retry_queue_tx,
+            retry_queue_rx,
             inbound_message_tx,
             shutdown_signal,
             complete_trigger: Shutdown::new(),
@@ -160,6 +166,16 @@ impl MessagingProtocol {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
                     self.handle_internal_messaging_event(event).await;
+                },
+
+                Some(msg) = self.retry_queue_rx.recv() => {
+                    if let Err(err) = self.handle_retry_queue_messages(msg).await {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to retry outbound message because '{}'",
+                            err
+                        );
+                    }
                 },
 
                 Some(req) = self.request_rx.recv() => {
@@ -248,6 +264,12 @@ impl MessagingProtocol {
         Ok(())
     }
 
+    async fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+        debug!(target: LOG_TARGET, "Retrying outbound message ({})", msg);
+        self.send_message(msg).await?;
+        Ok(())
+    }
+
     // #[tracing::instrument(skip(self, out_msg), err)]
     async fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         let peer_node_id = out_msg.peer_node_id.clone();
@@ -266,6 +288,7 @@ impl MessagingProtocol {
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id,
                         self.config.inactivity_timeout,
+                        self.retry_queue_tx.clone(),
                     );
                     break entry.insert(sender);
                 },
@@ -294,10 +317,17 @@ impl MessagingProtocol {
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
+        retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let outbound_messaging =
-            OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);
+        let outbound_messaging = OutboundMessaging::new(
+            connectivity,
+            events_tx,
+            msg_rx,
+            retry_queue_tx,
+            peer_node_id,
+            inactivity_timeout,
+        );
         task::spawn(outbound_messaging.run());
         msg_tx
     }

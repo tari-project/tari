@@ -1,0 +1,14 @@
+<h2>{{title}}</h2>
+<br />
+<h1>Found in blocks:</h1>
+{{#if items.length}}
+    <ul>
+    {{#each items}}
+    <li>{{link "/blocks/{{this.block.header.hash}}" this.block.header.height}}</a></li>
+
+
+    {{/each}}
+    </ul>
+    {{else}}
+    <h2>!!! No results found</h2>
+{{/if}}
