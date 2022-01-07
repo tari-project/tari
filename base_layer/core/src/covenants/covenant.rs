@@ -147,7 +147,7 @@ mod test {
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
         let mut input = create_input();
-        input.features.maturity = 42;
+        input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(@field::features)));
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);

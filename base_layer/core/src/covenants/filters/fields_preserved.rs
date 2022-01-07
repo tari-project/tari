@@ -49,9 +49,9 @@ mod test {
         let bytes = vec![0xab, 0xcd, 0xef];
         let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_unique_id, @field::features_flags)));
         let mut input = create_input();
-        input.features.maturity = 42;
-        input.features.unique_id = Some(bytes.clone());
-        input.features.flags = OutputFlags::SIDECHAIN_CHECKPOINT;
+        input.set_maturity(42).unwrap();
+        input.features_mut().unwrap().unique_id = Some(bytes.clone());
+        input.features_mut().unwrap().flags = OutputFlags::SIDECHAIN_CHECKPOINT;
         let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
             outputs[5].features.maturity = 42;
             outputs[5].features.unique_id = Some(bytes.clone());
